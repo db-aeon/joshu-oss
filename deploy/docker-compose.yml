@@ -1,0 +1,132 @@
+# Joshu per-customer VPS stack. Requires prebuilt image: see deploy/README.md
+# Usage:
+#   Standalone (no control plane): docker compose -f deploy/docker-compose.yml up -d
+#   Fleet (+ instance agent):       docker compose --profile fleet -f deploy/docker-compose.yml up -d
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    environment:
+      CUSTOMER_DOMAIN: ${CUSTOMER_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL:-ops@example.com}
+    depends_on:
+      joshu-stack:
+        condition: service_started
+
+  joshu-stack:
+    image: ${JOSHU_IMAGE_REF:-ghcr.io/your-org/joshu-oss:latest}
+    restart: unless-stopped
+    network_mode: host
+    env_file:
+      - ${JOSHU_COMPOSE_ENV_FILE:-./.env.vps.example}
+    volumes:
+      # Optional hotfix mounts (0.1.7+ bakes these in; keep for bootstrapping without rebuild).
+      - ./scripts/vps-start.sh:/opt/joshu/scripts/vps-start.sh:ro
+      - ../scripts/lib:/opt/joshu/scripts/lib:ro
+      - ../scripts/bootstrap-joshu-files.sh:/opt/joshu/scripts/bootstrap-joshu-files.sh:ro
+      - ../scripts/bootstrap-executive-assistant.sh:/opt/joshu/scripts/bootstrap-executive-assistant.sh:ro
+      - ../templates/ea:/opt/joshu/templates/ea:ro
+      - ../dist:/opt/joshu/dist:ro
+      # dist/ is synced from pulled image by instance-agent (syncDistFromImage) — not updated by git pull.
+      - ../packages/box-state/dist:/opt/joshu/packages/box-state/dist:ro
+      - ../packages/email-signature:/opt/joshu/packages/email-signature:ro
+      - ../integrations/hermes/skills-enabled.yaml:/opt/joshu/integrations/hermes/skills-enabled.yaml:ro
+      - ../integrations/hermes/skills:/opt/joshu/integrations/hermes/skills:ro
+      - ../factory/manifest.yaml:/opt/joshu/factory/manifest.yaml:ro
+      - ../arozos/system-setting:/opt/joshu/arozos/system-setting:ro
+      - ../arozos/locale:/opt/joshu/arozos/locale:ro
+      - ../scripts/rebind-gbrain-owner.sh:/opt/joshu/scripts/rebind-gbrain-owner.sh:ro
+      - ../scripts/start-gbrain.sh:/opt/joshu/scripts/start-gbrain.sh:ro
+      - ../scripts/install-gbrain.sh:/opt/joshu/scripts/install-gbrain.sh:ro
+      - ../scripts/setup-gbrain-schema.sh:/opt/joshu/scripts/setup-gbrain-schema.sh:ro
+      - ../scripts/start-hermes-dashboard.sh:/opt/joshu/scripts/start-hermes-dashboard.sh:ro
+      - ../scripts/stop-gbrain.sh:/opt/joshu/scripts/stop-gbrain.sh:ro
+      - ../scripts/repair-gbrain-pglite.sh:/opt/joshu/scripts/repair-gbrain-pglite.sh:ro
+      - ../scripts/start-gbrain-mcp-http.sh:/opt/joshu/scripts/start-gbrain-mcp-http.sh:ro
+      - ../scripts/gbrain-mcp-http-server.mjs:/opt/joshu/scripts/gbrain-mcp-http-server.mjs:ro
+      - ../scripts/ensure-gbrain-indexed.sh:/opt/joshu/scripts/ensure-gbrain-indexed.sh:ro
+      - ../scripts/ensure-hermes-gbrain-mcp.mjs:/opt/joshu/scripts/ensure-hermes-gbrain-mcp.mjs:ro
+      - ../scripts/joshu-connectors-mcp-http-server.mjs:/opt/joshu/scripts/joshu-connectors-mcp-http-server.mjs:ro
+      - ../scripts/start-joshu-connectors-mcp.sh:/opt/joshu/scripts/start-joshu-connectors-mcp.sh:ro
+      - ../scripts/composio-mcp-guard-proxy.mjs:/opt/joshu/scripts/composio-mcp-guard-proxy.mjs:ro
+      - ../scripts/start-composio-mcp-guard.sh:/opt/joshu/scripts/start-composio-mcp-guard.sh:ro
+      - ../scripts/hermes-cron-bridge.py:/opt/joshu/scripts/hermes-cron-bridge.py:ro
+      - ../scripts/hermes-kanban-bridge.py:/opt/joshu/scripts/hermes-kanban-bridge.py:ro
+      - ../scripts/bootstrap-hermes-learning-skills.sh:/opt/joshu/scripts/bootstrap-hermes-learning-skills.sh:ro
+      - ../scripts/merge-hermes-factory-skill.mjs:/opt/joshu/scripts/merge-hermes-factory-skill.mjs:ro
+      - ../scripts/hermes-learning-github-sync.sh:/opt/joshu/scripts/hermes-learning-github-sync.sh:ro
+      - ../scripts/apply-hermes-skill-evolution-patch.sh:/opt/joshu/scripts/apply-hermes-skill-evolution-patch.sh:ro
+      - ../scripts/hermes-skill-evolution.patch:/opt/joshu/scripts/hermes-skill-evolution.patch:ro
+      - ../scripts/render-time-block-excalidraw.mjs:/opt/joshu/scripts/render-time-block-excalidraw.mjs:ro
+      - ../scripts/gather-time-block-input.mjs:/opt/joshu/scripts/gather-time-block-input.mjs:ro
+      # Product skills are seeded to $HERMES_HOME/skills/joshu/ (writable learning loop).
+      - /etc/joshu/instance.env:/etc/joshu/instance.env:ro
+      - /etc/joshu/secrets:/etc/joshu/secrets:ro
+      - joshu_arozos:/var/lib/arozos
+      - joshu_hermes:/root/.hermes
+      - joshu_hindsight_home:/home/hindsight/.hindsight
+      - joshu_hindsight_cache:/home/hindsight/.cache/huggingface
+      - joshu_postgres:/var/lib/postgresql/hindsight
+      - joshu_gbrain:/root/.gbrain
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8788/joshu/api/instance/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 180s
+
+  instance-agent:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.instance-agent
+    command: ["node", "/opt/joshu/scripts/run-instance-agent.mjs"]
+    restart: unless-stopped
+    network_mode: host
+    profiles:
+      - fleet
+    env_file:
+      - ${JOSHU_COMPOSE_ENV_FILE:-./.env.vps.example}
+    volumes:
+      # Host paths must match inside the container — agent runs docker compose via the host socket.
+      - /var/run/docker.sock:/var/run/docker.sock
+      # GHCR creds live on the host (~/.docker/config.json); without this mount, compose pull is anonymous → 401.
+      - /root/.docker:/root/.docker:ro
+      - /etc/joshu/instance.env:/etc/joshu/instance.env
+      # Writable so persona-refresh can update companion-soul.md on the host.
+      - /etc/joshu/secrets:/etc/joshu/secrets
+      - /opt/joshu:/opt/joshu
+    depends_on:
+      joshu-stack:
+        condition: service_healthy
+
+
+  voice-realtime:
+    image: ${JOSHU_VOICE_IMAGE_REF:-ghcr.io/your-org/joshu-voice-realtime:latest}
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.voice-realtime
+    restart: unless-stopped
+    network_mode: host
+    env_file:
+      - ${JOSHU_COMPOSE_ENV_FILE:-./.env.vps.example}
+    volumes:
+      # Share Aroz user data so resolveJoshuIdentity() reads .joshu/identity.json (voiceId).
+      - joshu_arozos:/var/lib/arozos:ro
+    profiles:
+      - voice-rt
+
+volumes:
+  caddy_data:
+  caddy_config:
+  joshu_arozos:
+  joshu_hermes:
+  joshu_hindsight_home:
+  joshu_hindsight_cache:
+  joshu_postgres:
+  joshu_gbrain:

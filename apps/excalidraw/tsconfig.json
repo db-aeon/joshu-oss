@@ -1,0 +1,31 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "isolatedModules": true,
+    "resolveJsonModule": true,
+    "baseUrl": ".",
+    "paths": {
+      "@excalidraw/common": ["../../vendor/excalidraw/packages/common/src/index.ts"],
+      "@excalidraw/common/*": ["../../vendor/excalidraw/packages/common/src/*"],
+      "@excalidraw/element": ["../../vendor/excalidraw/packages/element/src/index.ts"],
+      "@excalidraw/element/*": ["../../vendor/excalidraw/packages/element/src/*"],
+      "@excalidraw/excalidraw": ["../../vendor/excalidraw/packages/excalidraw/index.tsx"],
+      "@excalidraw/excalidraw/*": ["../../vendor/excalidraw/packages/excalidraw/*"],
+      "@excalidraw/math": ["../../vendor/excalidraw/packages/math/src/index.ts"],
+      "@excalidraw/math/*": ["../../vendor/excalidraw/packages/math/src/*"],
+      "@excalidraw/utils": ["../../vendor/excalidraw/packages/utils/src/index.ts"],
+      "@excalidraw/utils/*": ["../../vendor/excalidraw/packages/utils/src/*"],
+      "@excalidraw/fractional-indexing": [
+        "../../vendor/excalidraw/packages/fractional-indexing/src/index.ts"
+      ]
+    }
+  },
+  "include": ["src"]
+}

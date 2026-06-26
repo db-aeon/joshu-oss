@@ -1,0 +1,11 @@
+{
+  "name": "@joshu/design-system",
+  "version": "0.1.0",
+  "private": true,
+  "description": "jōshu v1 CSS tokens and base styles for Joshu surfaces",
+  "exports": {
+    "./tokens.css": "./tokens.css",
+    "./base.css": "./base.css",
+    "./typography.css": "./typography.css"
+  }
+}

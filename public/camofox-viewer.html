@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Camofox viewer</title>
+    <base href="./" />
+    <style>
+      :root { --joshu-vnc-max-width: none; }
+      html, body { width: 100%; height: 100%; margin: 0; background: #000; overflow: hidden; }
+      body { min-width: 0; min-height: 0; }
+      #vnc-frame {
+        position: fixed;
+        inset: 0;
+        box-sizing: border-box;
+        display: flex;
+        min-width: 0;
+        min-height: 0;
+        overflow: hidden;
+      }
+      #vnc-screen {
+        flex: 1 1 auto;
+        width: 100%;
+        height: 100%;
+        min-width: 0;
+        min-height: 0;
+        overflow: hidden;
+        position: relative;
+      }
+      #vnc-screen > div {
+        width: 100% !important;
+        height: 100% !important;
+        min-width: 0 !important;
+        min-height: 0 !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        overflow: hidden !important;
+      }
+      #vnc-screen canvas {
+        display: block !important;
+        max-width: 100% !important;
+        max-height: 100% !important;
+      }
+      #status, #vnc-debug {
+        position: fixed;
+        left: 8px;
+        z-index: 2;
+        color: #aaa;
+        font: 12px/1.4 ui-monospace, monospace;
+        pointer-events: none;
+      }
+      #status { top: 8px; }
+      #vnc-debug {
+        top: 2.5rem;
+        color: #b8f0c8;
+        white-space: pre;
+        display: none;
+      }
+      #vnc-debug:not([hidden]) { display: block; }
+      .vnc-clipboard-bar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 8px;
+        background: #1a1a1a;
+        border-bottom: 1px solid #333;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        z-index: 3;
+      }
+      .vnc-clipboard-btn {
+        font: 12px/1.2 ui-monospace, monospace;
+        padding: 4px 8px;
+        border: 1px solid #444;
+        border-radius: 4px;
+        background: #222;
+        color: #ccc;
+        cursor: pointer;
+      }
+      .vnc-clipboard-btn:hover { background: #333; color: #fff; }
+      .vnc-clipboard-btn-primary { font-weight: 700; color: #fff; }
+      .vnc-clipboard-btn-icon { margin-left: auto; }
+      .vnc-clipboard-panel {
+        flex: 1 1 100%;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .vnc-clipboard-panel[hidden] { display: none !important; }
+      .vnc-clipboard-text {
+        width: 100%;
+        box-sizing: border-box;
+        font: 12px/1.35 ui-monospace, monospace;
+        padding: 6px;
+        border: 1px solid #444;
+        border-radius: 4px;
+        background: #111;
+        color: #ddd;
+        resize: vertical;
+      }
+      .vnc-clipboard-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+      .vnc-clipboard-hint { margin: 0; font-size: 11px; color: #888; }
+      #status { top: 2.75rem; }
+      #vnc-frame { top: 2.75rem; }
+    </style>
+  </head>
+  <body>
+    <div class="vnc-clipboard-bar" id="vnc-clipboard-bar">
+      <button type="button" id="vnc-paste-remote" class="vnc-clipboard-btn">Paste into field</button>
+      <button type="button" id="vnc-type-remote" class="vnc-clipboard-btn vnc-clipboard-btn-primary">Type into browser</button>
+      <button type="button" id="vnc-copy-remote" class="vnc-clipboard-btn">Copy from browser</button>
+      <button type="button" id="vnc-clipboard-toggle" class="vnc-clipboard-btn vnc-clipboard-btn-icon" aria-expanded="false" aria-controls="vnc-clipboard-panel">⋯</button>
+      <div id="vnc-clipboard-panel" class="vnc-clipboard-panel" hidden>
+        <textarea id="vnc-clipboard-text" class="vnc-clipboard-text" rows="3" spellcheck="false" placeholder="Clipboard bridge"></textarea>
+        <div class="vnc-clipboard-actions">
+          <button type="button" id="vnc-load-mac" class="vnc-clipboard-btn">Load from Mac</button>
+          <button type="button" id="vnc-save-mac" class="vnc-clipboard-btn">Copy to Mac</button>
+        </div>
+        <label class="vnc-clipboard-check" style="display:flex;align-items:center;gap:6px;font-size:11px;color:#888;">
+          <input type="checkbox" id="vnc-type-select-all" checked />
+          Select all first (Ctrl+A)
+        </label>
+        <p id="vnc-clipboard-hint" class="vnc-clipboard-hint">Address bar: click it, then Type into browser.</p>
+      </div>
+    </div>
+    <div id="status">connecting…</div>
+    <pre id="vnc-debug" hidden></pre>
+    <div id="vnc-frame">
+      <div id="vnc-screen" aria-label="Camofox via noVNC"></div>
+    </div>
+    <script type="module">
+      import { attachVncClipboard } from "./vnc-clipboard.js";
+      const DEBUG_VNC = new URLSearchParams(location.search).get("debugVnc") === "1";
+      const statusEl = document.getElementById("status");
+      const debugEl = document.getElementById("vnc-debug");
+      const frameEl = document.getElementById("vnc-frame");
+      const screenEl = document.getElementById("vnc-screen");
+      const fb = { width: 1024, height: 768 };
+      let rfb = null;
+      let clipboardDetach = null;
+
+      function readMaxWidthPx() {
+        const raw = getComputedStyle(document.documentElement).getPropertyValue("--joshu-vnc-max-width").trim();
+        if (!raw || raw === "none") return Infinity;
+        const probe = document.createElement("div");
+        probe.style.cssText = "position:absolute;visibility:hidden;pointer-events:none";
+        probe.style.width = raw;
+        document.documentElement.appendChild(probe);
+        const px = probe.getBoundingClientRect().width;
+        probe.remove();
+        return px > 0 ? px : Infinity;
+      }
+
+      function layout() {
+        const rect = {
+          width: document.documentElement.clientWidth,
+          height: document.documentElement.clientHeight,
+        };
+        if (rect.width < 2 || rect.height < 2) return null;
+        const w = Math.max(1, Math.floor(rect.width));
+        const h = Math.max(1, Math.floor(rect.height));
+        screenEl.style.flex = "1 1 auto";
+        screenEl.style.width = `${w}px`;
+        screenEl.style.height = `${h}px`;
+        frameEl.style.width = `${w}px`;
+        frameEl.style.height = `${h}px`;
+        return { width: w, height: h, aspect: w / h };
+      }
+
+      function wsUrl(path) {
+        const u = new URL(path, document.baseURI || location.href);
+        u.protocol = location.protocol === "https:" ? "wss:" : "ws:";
+        return u.toString();
+      }
+
+      function updateDebug(box) {
+        if (!DEBUG_VNC) return;
+        const frame = frameEl.getBoundingClientRect();
+        const screen = screenEl.getBoundingClientRect();
+        debugEl.hidden = false;
+        debugEl.textContent = [
+          `frame: ${Math.round(frame.width)}×${Math.round(frame.height)}`,
+          `screen: ${Math.round(screen.width)}×${Math.round(screen.height)} (aspect ${(screen.width / Math.max(1, screen.height)).toFixed(3)})`,
+          `target: ${(fb.width / fb.height).toFixed(3)} (${fb.width}×${fb.height})`,
+          box ? `layout: ${box.width}×${box.height}` : "layout: —",
+          rfb ? `fb: ${rfb._fbWidth ?? "?"}×${rfb._fbHeight ?? "?"} scale ${rfb._display?.scale ?? "?"}` : "fb: —",
+        ].join("\n");
+      }
+
+      function syncScale() {
+        const box = layout();
+        if (rfb?.scaleViewport) window.dispatchEvent(new Event("resize"));
+        updateDebug(box);
+      }
+
+      async function main() {
+        syncScale();
+        const res = await fetch("api/status", { cache: "no-store" });
+        if (!res.ok) throw new Error(`status ${res.status}`);
+        const data = await res.json();
+        const vp = data.browserViewport;
+        if (vp?.width > 0 && vp?.height > 0) {
+          fb.width = vp.width;
+          fb.height = vp.height;
+        }
+        syncScale();
+        const fitViewport = () => fetch("api/camofox/fit-viewport", { method: "POST", cache: "no-store" }).catch(() => undefined);
+        fitViewport();
+        setTimeout(fitViewport, 400);
+        setTimeout(fitViewport, 1200);
+        const base = data.novnc?.clientBaseUrl?.replace(/\/+$/, "");
+        const path = data.novnc?.websocketPath;
+        if (!base || !path) throw new Error("noVNC not configured");
+        const { default: RFB } = await import(`${base}/core/rfb.js`);
+        rfb = new RFB(screenEl, wsUrl(path), { shared: false });
+        rfb.scaleViewport = true;
+        rfb.resizeSession = false;
+        rfb.showDotCursor = true;
+        clipboardDetach?.();
+        clipboardDetach = attachVncClipboard(rfb, {
+          targetEl: screenEl,
+          ui: {
+            pasteBtn: document.getElementById("vnc-paste-remote"),
+            typeBtn: document.getElementById("vnc-type-remote"),
+            typeSelectAll: document.getElementById("vnc-type-select-all"),
+            copyBtn: document.getElementById("vnc-copy-remote"),
+            toggleBtn: document.getElementById("vnc-clipboard-toggle"),
+            panel: document.getElementById("vnc-clipboard-panel"),
+            textarea: document.getElementById("vnc-clipboard-text"),
+            loadMacBtn: document.getElementById("vnc-load-mac"),
+            saveMacBtn: document.getElementById("vnc-save-mac"),
+            hint: document.getElementById("vnc-clipboard-hint"),
+          },
+        });
+        rfb.addEventListener("connect", () => {
+          const fw = rfb._fbWidth;
+          const fh = rfb._fbHeight;
+          if (fw > 0 && fh > 0) {
+            fb.width = fw;
+            fb.height = fh;
+          }
+          const box = layout();
+          requestAnimationFrame(() => { syncScale(); setTimeout(syncScale, 50); setTimeout(syncScale, 200); });
+          fitViewport();
+          const mismatch = fw && fh && (Math.abs(fw - (data.browserViewport?.width ?? 1024)) > 16 || Math.abs(fh - (data.browserViewport?.height ?? 768)) > 16);
+          statusEl.textContent = mismatch
+            ? `connected ${fw}×${fh} (VNC desktop ≠ ${data.browserViewport?.width ?? 1024}×${data.browserViewport?.height ?? 768} — set VNC_RESOLUTION and restart stack)`
+            : `connected ${fb.width}×${fb.height} · ${box?.width ?? "?"}×${box?.height ?? "?"}`;
+        });
+        rfb.addEventListener("disconnect", () => { statusEl.textContent = "disconnected"; });
+        rfb.addEventListener("desktopresize", () => {
+          if (rfb._fbWidth > 0 && rfb._fbHeight > 0) {
+            fb.width = rfb._fbWidth;
+            fb.height = rfb._fbHeight;
+          }
+          syncScale();
+        });
+      }
+
+      new ResizeObserver(syncScale).observe(document.documentElement);
+      main().catch((err) => { statusEl.textContent = String(err.message || err); });
+    </script>
+  </body>
+</html>

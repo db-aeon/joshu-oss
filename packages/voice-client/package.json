@@ -1,0 +1,16 @@
+{
+  "name": "@joshu/voice-client",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Shared browser voice client for Joshu apps (WebSocket PCM24k ↔ voice-realtime)",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3"
+  }
+}

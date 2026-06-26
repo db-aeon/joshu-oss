@@ -1,0 +1,18 @@
+{
+  "en-US": {
+    "strings": {
+      "menu/group/Joshu": "Joshu",
+      "tab/joshu/Hermes Gateway": "Hermes Gateway",
+      "tab/joshu/Box State": "Box State",
+      "joshu/gateway/Title": "Hermes Gateway",
+      "joshu/gateway/Subtitle": "Start or stop the Hermes agent on this box",
+      "joshu/box/Title": "Box State",
+      "joshu/box/Subtitle": "Snapshot personal setup or re-apply factory defaults"
+    },
+    "titles": {
+      "Start or stop the Hermes agent gateway on this box": "Start or stop the Hermes agent gateway on this box",
+      "Joshu box snapshots and factory profile": "Joshu box snapshots and factory profile",
+      "Snapshot, restore, and factory reset for this Joshu box": "Snapshot, restore, and factory reset for this Joshu box"
+    }
+  }
+}

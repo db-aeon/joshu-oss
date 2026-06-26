@@ -1,0 +1,15 @@
+{
+  "Name": "jWeb",
+  "Desc": "Hermes + Camofox human-in-the-loop browser (HITL)",
+  "Group": "Internet",
+  "IconPath": "img/joshu/browser.png",
+  "Version": "0.1.0",
+  "StartDir": "joshu/index.html",
+  "SupportFW": true,
+  "LaunchFWDir": "joshu/index.html",
+  "SupportEmb": false,
+  "LaunchEmb": "",
+  "InitFWSize": [1024, 768],
+  "InitEmbSize": [800, 600],
+  "SupportedExt": []
+}

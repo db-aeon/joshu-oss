@@ -1,0 +1,15 @@
+{
+  "Name": "jWhiteboard",
+  "Desc": "Sketch diagrams, markdown notes, and whiteboards inside ArozOS",
+  "Group": "Office",
+  "IconPath": "img/joshu/whiteboard.png",
+  "Version": "0.1.0",
+  "StartDir": "excalidraw/index.html",
+  "SupportFW": true,
+  "LaunchFWDir": "excalidraw/index.html",
+  "SupportEmb": false,
+  "LaunchEmb": "",
+  "InitFWSize": [1280, 860],
+  "InitEmbSize": [960, 720],
+  "SupportedExt": ["excalidraw", "md"]
+}

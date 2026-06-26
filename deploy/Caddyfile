@@ -1,0 +1,3 @@
+# Template — run deploy/scripts/render-caddyfile.sh to generate deploy/Caddyfile on the VPS host.
+# Main customer site: ArozOS (:8787) + Joshu API (/joshu → :8788).
+# Hermes dashboard (when JOSHU_HERMES_DASHBOARD_DIRECT=true): separate vhost → :9119 at site root.

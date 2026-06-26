@@ -1,0 +1,10 @@
+{
+  "id": "connectors",
+  "name": "Connectors",
+  "version": "0.1.0",
+  "license": "AGPL-3.0",
+  "publisher": "joshu",
+  "entry": "connectors/index.html",
+  "apiPrefix": "/joshu/api/connectors",
+  "description": "Composio OAuth and sync"
+}

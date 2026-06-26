@@ -1,0 +1,15 @@
+{
+  "Name": "Connectors",
+  "Desc": "Manage OAuth connections, Gmail accounts, and connector sync",
+  "Group": "Joshu Apps",
+  "IconPath": "img/joshu/connectors.png",
+  "Version": "0.1.0",
+  "StartDir": "connectors/index.html",
+  "SupportFW": true,
+  "LaunchFWDir": "connectors/index.html",
+  "SupportEmb": false,
+  "LaunchEmb": "",
+  "InitFWSize": [960, 720],
+  "InitEmbSize": [800, 600],
+  "SupportedExt": []
+}

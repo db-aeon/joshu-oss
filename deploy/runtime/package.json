@@ -1,0 +1,25 @@
+{
+  "name": "@joshu/sandbox-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@composio/core": "^0.10.0",
+    "@joshu/box-state": "file:./packages/box-state",
+    "@joshu/email-signature": "file:./packages/email-signature",
+    "@js-temporal/polyfill": "^0.5.1",
+    "@langfuse/otel": "^5.4.1",
+    "@langfuse/tracing": "^5.4.1",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@opentelemetry/sdk-node": "^0.218.0",
+    "alawmulaw": "^6.0.0",
+    "dotenv": "^17.4.2",
+    "express": "^4.21.2",
+    "http-proxy-middleware": "^3.0.5",
+    "morgan": "^1.10.0",
+    "nylas": "^7.13.3",
+    "twilio": "^6.0.2",
+    "ws": "^8.20.1",
+    "yaml": "^2.8.4"
+  }
+}

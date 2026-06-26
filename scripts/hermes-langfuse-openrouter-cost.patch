@@ -1,0 +1,120 @@
+diff --git a/plugins/observability/langfuse/__init__.py b/plugins/observability/langfuse/__init__.py
+index caea1b244..ddf5df4cf 100644
+--- a/plugins/observability/langfuse/__init__.py
++++ b/plugins/observability/langfuse/__init__.py
+@@ -524,6 +524,48 @@ def _serialize_assistant_message(message: Any) -> dict[str, Any]:
+     }
+ 
+ 
++def _is_openrouter_route(*, provider: str, base_url: str) -> bool:
++    if (provider or "").strip().lower() == "openrouter":
++        return True
++    return "openrouter.ai" in (base_url or "").lower()
++
++
++def _read_usage_field(raw_usage: Any, field: str) -> Any:
++    if raw_usage is None:
++        return None
++    if isinstance(raw_usage, dict):
++        return raw_usage.get(field)
++    return getattr(raw_usage, field, None)
++
++
++def _openrouter_cost_details(raw_usage: Any) -> Dict[str, float]:
++    """Prefer OpenRouter-reported USD cost over Hermes/Langfuse price inference."""
++    cost_details: Dict[str, float] = {}
++    if raw_usage is None:
++        return cost_details
++
++    cost_details_raw = _read_usage_field(raw_usage, "cost_details")
++    if isinstance(cost_details_raw, dict):
++        prompt_cost = cost_details_raw.get("upstream_inference_prompt_cost")
++        completion_cost = cost_details_raw.get("upstream_inference_completions_cost")
++    elif cost_details_raw is not None:
++        prompt_cost = getattr(cost_details_raw, "upstream_inference_prompt_cost", None)
++        completion_cost = getattr(cost_details_raw, "upstream_inference_completions_cost", None)
++    else:
++        prompt_cost = completion_cost = None
++
++    if prompt_cost is not None:
++        cost_details["input"] = float(prompt_cost)
++    if completion_cost is not None:
++        cost_details["output"] = float(completion_cost)
++
++    total_cost = _read_usage_field(raw_usage, "cost")
++    if total_cost is not None:
++        cost_details["total"] = float(total_cost)
++
++    return cost_details
++
++
+ def _usage_and_cost(response: Any, *, provider: str, api_mode: str, model: str, base_url: str) -> tuple[dict[str, int], dict[str, float]]:
+     usage_details: Dict[str, int] = {}
+     cost_details: Dict[str, float] = {}
+@@ -552,6 +594,12 @@ def _usage_and_cost(response: Any, *, provider: str, api_mode: str, model: str,
+             usage_details["cache_creation_input_tokens"] = canonical.cache_write_tokens
+         if canonical.reasoning_tokens:
+             usage_details["reasoning_tokens"] = canonical.reasoning_tokens
++
++        if _is_openrouter_route(provider=provider, base_url=base_url):
++            or_cost_details = _openrouter_cost_details(raw_usage)
++            if or_cost_details:
++                return usage_details, or_cost_details
++
+         cost = estimate_usage_cost(
+             model,
+             canonical,
+@@ -664,7 +712,8 @@ def _start_child_observation(state: TraceState, *, client: Langfuse, name: str,
+ 
+ 
+ def _end_observation(observation: Any, *, output: Any = None, metadata: Optional[dict] = None,
+-                     usage_details: Optional[dict] = None, cost_details: Optional[dict] = None) -> None:
++                     usage_details: Optional[dict] = None, cost_details: Optional[dict] = None,
++                     model: Optional[str] = None) -> None:
+     if observation is None:
+         return
+     try:
+@@ -677,6 +726,8 @@ def _end_observation(observation: Any, *, output: Any = None, metadata: Optional
+             update_kwargs["usage_details"] = usage_details
+         if cost_details:
+             update_kwargs["cost_details"] = cost_details
++        if model:
++            update_kwargs["model"] = model
+         if update_kwargs:
+             observation.update(**update_kwargs)
+         observation.end()
+@@ -867,6 +918,7 @@ def on_post_llm_call(*, task_id: str = "", session_id: str = "", provider: str =
+                      api_duration: float = 0.0, finish_reason: str = "",
+                      usage: Any = None, assistant_content_chars: int = 0,
+                      assistant_tool_call_count: int = 0, assistant_response: Any = None,
++                     response_model: str = "",
+                      **_: Any) -> None:
+     client = _get_langfuse()
+     if client is None:
+@@ -967,12 +1019,26 @@ def on_post_llm_call(*, task_id: str = "", session_id: str = "", provider: str =
+         gen_metadata["api_duration_s"] = round(api_duration, 3)
+     if finish_reason:
+         gen_metadata["finish_reason"] = finish_reason
++
++    resolved_model = (response_model or "").strip()
++    if not resolved_model and response is not None:
++        resolved_model = str(getattr(response, "model", "") or "").strip()
++    if resolved_model and resolved_model != model:
++        gen_metadata["requested_model"] = model
++        gen_metadata["resolved_model"] = resolved_model
++    if response is not None and getattr(response, "id", None):
++        gen_metadata["openrouter_generation_id"] = getattr(response, "id")
++
++    if _is_openrouter_route(provider=provider, base_url=base_url) and cost_details:
++        gen_metadata["cost_source"] = "openrouter"
++
+     _end_observation(
+         generation,
+         output=output,
+         usage_details=usage_details,
+         cost_details=cost_details,
+         metadata=gen_metadata,
++        model=resolved_model or None,
+     )
+ 
+     has_tools = _assistant_has_tool_calls(assistant_message) if assistant_message else (assistant_tool_call_count > 0)

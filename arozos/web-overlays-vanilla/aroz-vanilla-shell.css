@@ -1,0 +1,27 @@
+/**
+ * Vanilla Box Stack theme for ArozOS (OSS default).
+ * Functional shell adjustments without Joshu brand identity.
+ * Branded paper-shell lives in private joshu-design (JDL).
+ */
+:root {
+  --vb-shell-bg: #e8e8e8;
+  --vb-shell-ink: #1a1a1a;
+  --vb-shell-accent: #2563eb;
+  --vb-nav-h: 36px;
+}
+
+body.whiteTheme,
+body.darkTheme {
+  --body_text: var(--vb-shell-ink);
+  --body_background: var(--vb-shell-bg);
+  --body_background_secondary: #ffffff;
+}
+
+#fwtaskbar {
+  min-height: var(--vb-nav-h);
+}
+
+.launchIconLabel {
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 11px;
+}

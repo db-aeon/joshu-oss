@@ -1,0 +1,10 @@
+{
+  "id": "safety-settings",
+  "name": "Safety",
+  "version": "0.1.0",
+  "license": "AGPL-3.0",
+  "publisher": "joshu",
+  "entry": "safety-settings/index.html",
+  "apiPrefix": "/joshu/api/safety-settings",
+  "description": "Agent safety gates"
+}

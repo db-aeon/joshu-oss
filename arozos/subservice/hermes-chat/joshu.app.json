@@ -1,0 +1,10 @@
+{
+  "id": "hermes-chat",
+  "name": "jChat",
+  "version": "0.1.0",
+  "license": "AGPL-3.0",
+  "publisher": "joshu",
+  "entry": "hermes-chat/index.html",
+  "apiPrefix": "/joshu/api/hermes-chat",
+  "description": "Chat with Hermes Agent"
+}

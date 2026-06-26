@@ -1,0 +1,15 @@
+{
+  "Name": "Pictures",
+  "Desc": "Placeholder app (coming soon)",
+  "Group": "Multimedia",
+  "IconPath": "img/joshu/pictures.png",
+  "Version": "0.0.1",
+  "StartDir": "placeholder-image/index.html",
+  "SupportFW": true,
+  "LaunchFWDir": "placeholder-image/index.html",
+  "SupportEmb": false,
+  "LaunchEmb": "",
+  "InitFWSize": [640, 480],
+  "InitEmbSize": [640, 480],
+  "SupportedExt": []
+}

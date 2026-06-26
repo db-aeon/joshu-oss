@@ -1,0 +1,28 @@
+Joshu Box Stack
+Copyright (c) 2025–2026 Joshu Inc. and contributors
+
+Licensed under AGPL-3.0 OR Joshu Commercial License — see LICENSE and COMMERCIAL_LICENSE.md.
+
+---
+
+Third-Party Notices
+
+This product includes or depends on software from third parties. See
+docs/THIRD_PARTY.md for the full list. Key components:
+
+  ArozOS — GNU General Public License v3.0
+    Upstream: https://github.com/tobychui/arozos
+    Joshu modifications: patches/arozos/
+
+  Hermes Agent — see upstream license at pinned ref in modal_app.py
+    Joshu modifications: scripts/hermes-*.patch
+
+  Excalidraw (fork) — see vendor/excalidraw/LICENSE
+    Remote: https://github.com/db-aeon/excalidraw
+
+  patch-package / http-proxy patch — see patches/http-proxy+1.18.1.patch
+
+  Tango icon set — public domain (icon mappings in JDL when branded)
+
+The combined Docker image is an aggregate of separately licensed components.
+Joshu-owned application code is offered as subservices loaded into ArozOS.

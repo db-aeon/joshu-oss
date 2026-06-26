@@ -1,0 +1,200 @@
+<!-- Joshu Hermes Gateway — fragment loaded into System Setting (#settingContentLoader). -->
+<style>
+  .joshu-hermes-gateway {
+    --jp-paper: var(--color-paper, #f5f0eb);
+    --jp-ink: var(--color-ink, #0d0d0d);
+    --jp-action: var(--color-action, #0057ff);
+    background: var(--jp-paper);
+    color: var(--jp-ink);
+    font-family: "Work Sans", Arial, sans-serif;
+  }
+  .joshu-hermes-gateway .ui.header .sub.header {
+    font-weight: 400;
+  }
+  .joshu-hermes-gateway .muted {
+    color: rgba(13, 13, 13, 0.62);
+  }
+  .joshu-hermes-gateway .mono {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.85em;
+    word-break: break-all;
+  }
+  .joshu-hermes-gateway #statusMessage.hidden,
+  .joshu-hermes-gateway #actionMessage.hidden {
+    display: none;
+  }
+  .joshu-hermes-gateway .status-pill {
+    display: inline-block;
+    padding: 0.25em 0.65em;
+    border-radius: 999px;
+    font-size: 0.85em;
+    font-weight: 600;
+  }
+  .joshu-hermes-gateway .status-pill.running {
+    background: rgba(33, 186, 69, 0.15);
+    color: #1a7f37;
+  }
+  .joshu-hermes-gateway .status-pill.stopped {
+    background: rgba(219, 40, 40, 0.12);
+    color: #a61b1b;
+  }
+</style>
+
+<div class="joshu-hermes-gateway">
+  <br />
+  <div class="ui container">
+    <div id="statusMessage" class="ui info message hidden"></div>
+    <div id="actionMessage" class="ui message hidden"></div>
+
+    <div class="ui header">
+      <img class="ui mini image" src="../../img/joshu/chat.png" alt="" />
+      <div class="content">
+        <span locale="joshu/gateway/Title">Hermes Gateway</span>
+        <div class="sub header">
+          <span locale="joshu/gateway/Subtitle">Start or stop the Hermes agent on this box</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="ui segment">
+      <h4 class="ui header">Status</h4>
+      <div id="gatewayStatusPanel" class="muted">Loading…</div>
+    </div>
+
+    <div class="ui segment">
+      <h4 class="ui header">Control</h4>
+      <p class="muted">
+        When off, jChat, scheduled jobs, and other Hermes features pause until you turn the gateway back on.
+        Your preference is saved for this box.
+      </p>
+      <div class="ui form">
+        <div class="field">
+          <div class="ui toggle checkbox" id="gatewayToggle">
+            <input type="checkbox" />
+            <label>Gateway enabled</label>
+          </div>
+        </div>
+      </div>
+      <p id="gatewayBusy" class="muted hidden" style="margin-top: 0.75em">Updating gateway…</p>
+    </div>
+  </div>
+</div>
+
+<script>
+  (function () {
+    var API = "/joshu/api/hermes/gateway";
+    var root = document.querySelector(".joshu-hermes-gateway");
+    if (!root) return;
+
+    var busy = false;
+    var suppressToggle = false;
+
+    function showMessage(el, type, text) {
+      el.className = "ui " + type + " message";
+      el.textContent = text;
+    }
+
+    function hideMessage(el) {
+      el.className = "ui message hidden";
+      el.textContent = "";
+    }
+
+    function setBusy(nextBusy) {
+      busy = nextBusy;
+      var busyEl = document.getElementById("gatewayBusy");
+      busyEl.className = nextBusy ? "muted" : "muted hidden";
+      window.jQuery("#gatewayToggle", root).checkbox(nextBusy ? "set disabled" : "set enabled");
+    }
+
+    function renderStatus(data) {
+      var running = Boolean(data && data.running);
+      var autoStart = Boolean(data && data.autoStart);
+      var pillClass = running ? "running" : "stopped";
+      var pillLabel = running ? "Running" : "Stopped";
+      var html = "";
+      html += '<p><span class="status-pill ' + pillClass + '">' + pillLabel + "</span></p>";
+      html += "<p><strong>Auto-start</strong> " + (autoStart ? "On" : "Off") + "</p>";
+      if (data && data.apiBaseUrl) {
+        html += '<p class="muted">API: <span class="mono">' + data.apiBaseUrl + "</span></p>";
+      }
+      document.getElementById("gatewayStatusPanel").innerHTML = html;
+
+      suppressToggle = true;
+      window.jQuery("#gatewayToggle", root).checkbox(autoStart ? "set checked" : "set unchecked");
+      suppressToggle = false;
+    }
+
+    function api(path, options) {
+      return fetch(API + (path || ""), options).then(function (res) {
+        return res.json().then(function (body) {
+          if (!res.ok) {
+            throw new Error(body && body.error ? body.error : "HTTP " + res.status);
+          }
+          return body;
+        });
+      });
+    }
+
+    function refreshStatus() {
+      hideMessage(document.getElementById("statusMessage"));
+      return api("", { method: "GET" })
+        .then(renderStatus)
+        .catch(function (err) {
+          showMessage(document.getElementById("statusMessage"), "negative", err.message);
+        });
+    }
+
+    function applyEnabled(enabled) {
+      if (busy) return;
+      setBusy(true);
+      hideMessage(document.getElementById("actionMessage"));
+      api("", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: enabled }),
+      })
+        .then(function (result) {
+          renderStatus(result);
+          showMessage(
+            document.getElementById("actionMessage"),
+            "positive",
+            enabled ? "Hermes gateway started" : "Hermes gateway stopped"
+          );
+        })
+        .catch(function (err) {
+          showMessage(document.getElementById("actionMessage"), "negative", err.message);
+          refreshStatus();
+        })
+        .finally(function () {
+          setBusy(false);
+        });
+    }
+
+    function boot() {
+      if (!window.jQuery) {
+        showMessage(
+          document.getElementById("statusMessage"),
+          "negative",
+          "Hermes Gateway UI failed to load (jQuery missing)."
+        );
+        return;
+      }
+
+      if (window.applocale && typeof window.applocale.translate === "function") {
+        window.applocale.translate();
+      }
+
+      window.jQuery("#gatewayToggle", root).checkbox({
+        onChange: function () {
+          if (suppressToggle || busy) return;
+          var enabled = window.jQuery("#gatewayToggle", root).checkbox("is checked");
+          applyEnabled(enabled);
+        },
+      });
+
+      refreshStatus();
+    }
+
+    boot();
+  })();
+</script>

@@ -1,0 +1,15 @@
+{
+  "Name": "Mail",
+  "Desc": "Placeholder app (coming soon)",
+  "Group": "Office",
+  "IconPath": "img/joshu/mail.png",
+  "Version": "0.0.1",
+  "StartDir": "placeholder-mail/index.html",
+  "SupportFW": true,
+  "LaunchFWDir": "placeholder-mail/index.html",
+  "SupportEmb": false,
+  "LaunchEmb": "",
+  "InitFWSize": [640, 480],
+  "InitEmbSize": [640, 480],
+  "SupportedExt": []
+}

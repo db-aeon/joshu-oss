@@ -1,0 +1,252 @@
+:root {
+  font-family: var(--font-sans, system-ui, sans-serif);
+  color: var(--text-primary, #1a1a1a);
+  background: var(--surface-canvas, #f4f2ef);
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+}
+
+.app {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 1.5rem 1.25rem 2.5rem;
+}
+
+header h1 {
+  margin: 0.25rem 0 0;
+  font-size: 1.75rem;
+}
+
+.eyebrow {
+  margin: 0;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.65;
+}
+
+.sub {
+  margin: 0.35rem 0 0;
+  opacity: 0.8;
+  font-size: 0.95rem;
+}
+
+.tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin: 1.25rem 0;
+  flex-wrap: wrap;
+}
+
+.tabs button {
+  border: 1px solid var(--border-subtle, #ccc);
+  background: var(--surface-raised, #fff);
+  border-radius: 999px;
+  padding: 0.4rem 0.9rem;
+  cursor: pointer;
+}
+
+.tabs button.active {
+  background: var(--accent, #2d5a4a);
+  color: #fff;
+  border-color: var(--accent, #2d5a4a);
+}
+
+.card {
+  background: var(--surface-raised, #fff);
+  border: 1px solid var(--border-subtle, #e0ddd8);
+  border-radius: 12px;
+  padding: 1rem 1.1rem;
+  margin-bottom: 1rem;
+}
+
+.card h2 {
+  margin: 0 0 0.75rem;
+  font-size: 1.05rem;
+}
+
+.row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.55rem 0;
+  border-bottom: 1px solid var(--border-subtle, #eee);
+}
+
+.row:last-child {
+  border-bottom: none;
+}
+
+.row small {
+  display: block;
+  opacity: 0.7;
+  margin-top: 0.15rem;
+}
+
+.btn {
+  border-radius: 8px;
+  padding: 0.35rem 0.75rem;
+  border: 1px solid var(--border-subtle, #ccc);
+  background: var(--surface-raised, #fff);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.btn-primary {
+  background: var(--accent, #2d5a4a);
+  color: #fff;
+  border-color: var(--accent, #2d5a4a);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.search-row {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.search-row input {
+  flex: 1;
+  padding: 0.45rem 0.6rem;
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle, #ccc);
+}
+
+.error {
+  color: #b42318;
+  margin: 0.5rem 0;
+}
+
+.hint {
+  opacity: 0.75;
+  font-size: 0.9rem;
+}
+
+.composio-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.composio-toolkit {
+  border-bottom: 1px solid var(--border-subtle, #eee);
+  padding: 0.6rem 0;
+}
+
+.composio-toolkit:last-child {
+  border-bottom: none;
+}
+
+.composio-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.composio-accounts {
+  list-style: none;
+  margin: 0.35rem 0 0 2.75rem;
+  padding: 0;
+}
+
+.composio-account-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.45rem 0;
+  border-top: 1px solid var(--border-subtle, #f0eeeb);
+}
+
+.composio-account-row small {
+  display: block;
+  opacity: 0.7;
+  margin-top: 0.15rem;
+}
+
+.composio-account-actions {
+  display: flex;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}
+
+.composio-row-main {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.composio-logo {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  object-fit: contain;
+}
+
+.composio-logo-fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #e8e4df;
+  font-weight: 600;
+}
+
+.day0-box {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border-subtle, #eee);
+}
+
+.day0-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 0.75rem;
+}
+
+.day0-progress {
+  font-style: italic;
+}
+
+.day0-success {
+  color: var(--accent, #2d5a4a);
+}
+
+.day0-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  z-index: 20;
+}
+
+.day0-modal {
+  width: min(420px, 100%);
+  margin: 0;
+}
+
+.day0-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0.65rem 0;
+  font-size: 0.9rem;
+}
+
+.day0-field input {
+  padding: 0.45rem 0.6rem;
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle, #ccc);
+}

@@ -1,0 +1,35 @@
+---
+description: Before editing factory Hermes skills, diff against the box learning GitHub repo
+globs: integrations/hermes/skills/**/*
+alwaysApply: false
+---
+
+# Factory skills — diff learning repo first
+
+Before editing any file under `integrations/hermes/skills/`, **always** compare against the matching path on GitHub:
+
+`db-aeon/joshu-learning-{slug}/skills/joshu/...`
+
+Default slug for the patrick test box: **`patrick`**.
+
+## Deploy policy (on the box)
+
+- **Default:** `bootstrap-hermes-learning-skills.sh` **LLM-merges** each changed `SKILL.md` with the box copy when `factory/manifest.yaml` `release` bumps (`JOSHU_HERMES_SKILLS_SEED_MODE=merge`).
+- **Exception:** `JOSHU_HERMES_SKILLS_SEED_MODE=overwrite` — full factory rsync (hard factory reset only).
+
+Cursor is for **authoring factory** and **reviewing** diffs — not for per-box deploy merges.
+
+## Required workflow (factory authoring)
+
+1. Fetch the learning-repo file (do not assume factory is current):
+   ```bash
+   bash scripts/diff-factory-skill-with-learning.sh executive-assistant/ea-playbook patrick
+   ```
+2. Edit `integrations/hermes/skills/...` with factory improvements informed by learning-repo diffs.
+3. Bump skill `metadata.hermes.version` when merging factory-side.
+4. On release bump, each box merges factory into its own evolved skills automatically.
+
+## When promoting to factory
+
+- **Promote to factory:** procedure fixes, tool routing, pitfalls learned from traces.
+- **Leave box-only:** owner-specific preferences — the on-box merge preserves them.

@@ -1,0 +1,10 @@
+{
+  "id": "file-brain-viewer",
+  "name": "File Brain",
+  "version": "0.1.0",
+  "license": "AGPL-3.0",
+  "publisher": "joshu",
+  "entry": "file-brain-viewer/index.html",
+  "apiPrefix": "/joshu/api/file-brain",
+  "description": "gbrain browser"
+}

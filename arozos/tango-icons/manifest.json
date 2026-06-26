@@ -1,0 +1,1167 @@
+{
+  "source": "tango-icons-for-windows 256x256",
+  "count": 230,
+  "categories": [
+    "actions",
+    "apps",
+    "categories",
+    "devices",
+    "emblems",
+    "emotes",
+    "mimetypes",
+    "places",
+    "status"
+  ],
+  "icons": [
+    {
+      "path": "actions/address-book-new.png",
+      "category": "actions",
+      "name": "address-book-new"
+    },
+    {
+      "path": "actions/appointment-new.png",
+      "category": "actions",
+      "name": "appointment-new"
+    },
+    {
+      "path": "actions/bookmark-new.png",
+      "category": "actions",
+      "name": "bookmark-new"
+    },
+    {
+      "path": "actions/contact-new.png",
+      "category": "actions",
+      "name": "contact-new"
+    },
+    {
+      "path": "actions/document-new.png",
+      "category": "actions",
+      "name": "document-new"
+    },
+    {
+      "path": "actions/document-open.png",
+      "category": "actions",
+      "name": "document-open"
+    },
+    {
+      "path": "actions/document-print-preview.png",
+      "category": "actions",
+      "name": "document-print-preview"
+    },
+    {
+      "path": "actions/document-print.png",
+      "category": "actions",
+      "name": "document-print"
+    },
+    {
+      "path": "actions/document-properties.png",
+      "category": "actions",
+      "name": "document-properties"
+    },
+    {
+      "path": "actions/document-save-as.png",
+      "category": "actions",
+      "name": "document-save-as"
+    },
+    {
+      "path": "actions/document-save.png",
+      "category": "actions",
+      "name": "document-save"
+    },
+    {
+      "path": "actions/edit-clear.png",
+      "category": "actions",
+      "name": "edit-clear"
+    },
+    {
+      "path": "actions/edit-copy.png",
+      "category": "actions",
+      "name": "edit-copy"
+    },
+    {
+      "path": "actions/edit-cut.png",
+      "category": "actions",
+      "name": "edit-cut"
+    },
+    {
+      "path": "actions/edit-delete.png",
+      "category": "actions",
+      "name": "edit-delete"
+    },
+    {
+      "path": "actions/edit-find-replace.png",
+      "category": "actions",
+      "name": "edit-find-replace"
+    },
+    {
+      "path": "actions/edit-find.png",
+      "category": "actions",
+      "name": "edit-find"
+    },
+    {
+      "path": "actions/edit-paste.png",
+      "category": "actions",
+      "name": "edit-paste"
+    },
+    {
+      "path": "actions/edit-redo.png",
+      "category": "actions",
+      "name": "edit-redo"
+    },
+    {
+      "path": "actions/edit-select-all.png",
+      "category": "actions",
+      "name": "edit-select-all"
+    },
+    {
+      "path": "actions/edit-undo.png",
+      "category": "actions",
+      "name": "edit-undo"
+    },
+    {
+      "path": "actions/folder-new.png",
+      "category": "actions",
+      "name": "folder-new"
+    },
+    {
+      "path": "actions/format-indent-less.png",
+      "category": "actions",
+      "name": "format-indent-less"
+    },
+    {
+      "path": "actions/format-indent-more.png",
+      "category": "actions",
+      "name": "format-indent-more"
+    },
+    {
+      "path": "actions/format-justify-center.png",
+      "category": "actions",
+      "name": "format-justify-center"
+    },
+    {
+      "path": "actions/format-justify-fill.png",
+      "category": "actions",
+      "name": "format-justify-fill"
+    },
+    {
+      "path": "actions/format-justify-left.png",
+      "category": "actions",
+      "name": "format-justify-left"
+    },
+    {
+      "path": "actions/format-justify-right.png",
+      "category": "actions",
+      "name": "format-justify-right"
+    },
+    {
+      "path": "actions/format-text-bold.png",
+      "category": "actions",
+      "name": "format-text-bold"
+    },
+    {
+      "path": "actions/format-text-italic.png",
+      "category": "actions",
+      "name": "format-text-italic"
+    },
+    {
+      "path": "actions/format-text-strikethrough.png",
+      "category": "actions",
+      "name": "format-text-strikethrough"
+    },
+    {
+      "path": "actions/format-text-underline.png",
+      "category": "actions",
+      "name": "format-text-underline"
+    },
+    {
+      "path": "actions/go-bottom.png",
+      "category": "actions",
+      "name": "go-bottom"
+    },
+    {
+      "path": "actions/go-down.png",
+      "category": "actions",
+      "name": "go-down"
+    },
+    {
+      "path": "actions/go-first.png",
+      "category": "actions",
+      "name": "go-first"
+    },
+    {
+      "path": "actions/go-home.png",
+      "category": "actions",
+      "name": "go-home"
+    },
+    {
+      "path": "actions/go-jump.png",
+      "category": "actions",
+      "name": "go-jump"
+    },
+    {
+      "path": "actions/go-last.png",
+      "category": "actions",
+      "name": "go-last"
+    },
+    {
+      "path": "actions/go-next.png",
+      "category": "actions",
+      "name": "go-next"
+    },
+    {
+      "path": "actions/go-previous.png",
+      "category": "actions",
+      "name": "go-previous"
+    },
+    {
+      "path": "actions/go-top.png",
+      "category": "actions",
+      "name": "go-top"
+    },
+    {
+      "path": "actions/go-up.png",
+      "category": "actions",
+      "name": "go-up"
+    },
+    {
+      "path": "actions/list-add.png",
+      "category": "actions",
+      "name": "list-add"
+    },
+    {
+      "path": "actions/list-remove.png",
+      "category": "actions",
+      "name": "list-remove"
+    },
+    {
+      "path": "actions/mail-forward.png",
+      "category": "actions",
+      "name": "mail-forward"
+    },
+    {
+      "path": "actions/mail-mark-junk.png",
+      "category": "actions",
+      "name": "mail-mark-junk"
+    },
+    {
+      "path": "actions/mail-mark-not-junk.png",
+      "category": "actions",
+      "name": "mail-mark-not-junk"
+    },
+    {
+      "path": "actions/mail-message-new.png",
+      "category": "actions",
+      "name": "mail-message-new"
+    },
+    {
+      "path": "actions/mail-reply-all.png",
+      "category": "actions",
+      "name": "mail-reply-all"
+    },
+    {
+      "path": "actions/mail-reply-sender.png",
+      "category": "actions",
+      "name": "mail-reply-sender"
+    },
+    {
+      "path": "actions/mail-send-receive.png",
+      "category": "actions",
+      "name": "mail-send-receive"
+    },
+    {
+      "path": "actions/media-eject.png",
+      "category": "actions",
+      "name": "media-eject"
+    },
+    {
+      "path": "actions/media-playback-pause.png",
+      "category": "actions",
+      "name": "media-playback-pause"
+    },
+    {
+      "path": "actions/media-playback-start.png",
+      "category": "actions",
+      "name": "media-playback-start"
+    },
+    {
+      "path": "actions/media-playback-stop.png",
+      "category": "actions",
+      "name": "media-playback-stop"
+    },
+    {
+      "path": "actions/media-record.png",
+      "category": "actions",
+      "name": "media-record"
+    },
+    {
+      "path": "actions/media-seek-backward.png",
+      "category": "actions",
+      "name": "media-seek-backward"
+    },
+    {
+      "path": "actions/media-seek-forward.png",
+      "category": "actions",
+      "name": "media-seek-forward"
+    },
+    {
+      "path": "actions/media-skip-backward.png",
+      "category": "actions",
+      "name": "media-skip-backward"
+    },
+    {
+      "path": "actions/media-skip-forward.png",
+      "category": "actions",
+      "name": "media-skip-forward"
+    },
+    {
+      "path": "actions/process-stop.png",
+      "category": "actions",
+      "name": "process-stop"
+    },
+    {
+      "path": "actions/system-lock-screen.png",
+      "category": "actions",
+      "name": "system-lock-screen"
+    },
+    {
+      "path": "actions/system-log-out.png",
+      "category": "actions",
+      "name": "system-log-out"
+    },
+    {
+      "path": "actions/system-search.png",
+      "category": "actions",
+      "name": "system-search"
+    },
+    {
+      "path": "actions/system-shutdown.png",
+      "category": "actions",
+      "name": "system-shutdown"
+    },
+    {
+      "path": "actions/tab-new.png",
+      "category": "actions",
+      "name": "tab-new"
+    },
+    {
+      "path": "actions/view-fullscreen.png",
+      "category": "actions",
+      "name": "view-fullscreen"
+    },
+    {
+      "path": "actions/view-refresh.png",
+      "category": "actions",
+      "name": "view-refresh"
+    },
+    {
+      "path": "actions/window-new.png",
+      "category": "actions",
+      "name": "window-new"
+    },
+    {
+      "path": "apps/accessories-calculator.png",
+      "category": "apps",
+      "name": "accessories-calculator"
+    },
+    {
+      "path": "apps/accessories-character-map.png",
+      "category": "apps",
+      "name": "accessories-character-map"
+    },
+    {
+      "path": "apps/accessories-text-editor.png",
+      "category": "apps",
+      "name": "accessories-text-editor"
+    },
+    {
+      "path": "apps/help-browser.png",
+      "category": "apps",
+      "name": "help-browser"
+    },
+    {
+      "path": "apps/internet-group-chat.png",
+      "category": "apps",
+      "name": "internet-group-chat"
+    },
+    {
+      "path": "apps/internet-mail.png",
+      "category": "apps",
+      "name": "internet-mail"
+    },
+    {
+      "path": "apps/internet-news-reader.png",
+      "category": "apps",
+      "name": "internet-news-reader"
+    },
+    {
+      "path": "apps/internet-web-browser.png",
+      "category": "apps",
+      "name": "internet-web-browser"
+    },
+    {
+      "path": "apps/office-calendar.png",
+      "category": "apps",
+      "name": "office-calendar"
+    },
+    {
+      "path": "apps/preferences-desktop-accessibility.png",
+      "category": "apps",
+      "name": "preferences-desktop-accessibility"
+    },
+    {
+      "path": "apps/preferences-desktop-assistive-technology.png",
+      "category": "apps",
+      "name": "preferences-desktop-assistive-technology"
+    },
+    {
+      "path": "apps/preferences-desktop-font.png",
+      "category": "apps",
+      "name": "preferences-desktop-font"
+    },
+    {
+      "path": "apps/preferences-desktop-keyboard-shortcuts.png",
+      "category": "apps",
+      "name": "preferences-desktop-keyboard-shortcuts"
+    },
+    {
+      "path": "apps/preferences-desktop-locale.png",
+      "category": "apps",
+      "name": "preferences-desktop-locale"
+    },
+    {
+      "path": "apps/preferences-desktop-multimedia.png",
+      "category": "apps",
+      "name": "preferences-desktop-multimedia"
+    },
+    {
+      "path": "apps/preferences-desktop-remote-desktop.png",
+      "category": "apps",
+      "name": "preferences-desktop-remote-desktop"
+    },
+    {
+      "path": "apps/preferences-desktop-screensaver.png",
+      "category": "apps",
+      "name": "preferences-desktop-screensaver"
+    },
+    {
+      "path": "apps/preferences-desktop-theme.png",
+      "category": "apps",
+      "name": "preferences-desktop-theme"
+    },
+    {
+      "path": "apps/preferences-desktop-wallpaper.png",
+      "category": "apps",
+      "name": "preferences-desktop-wallpaper"
+    },
+    {
+      "path": "apps/preferences-system-network-proxy.png",
+      "category": "apps",
+      "name": "preferences-system-network-proxy"
+    },
+    {
+      "path": "apps/preferences-system-session.png",
+      "category": "apps",
+      "name": "preferences-system-session"
+    },
+    {
+      "path": "apps/preferences-system-windows.png",
+      "category": "apps",
+      "name": "preferences-system-windows"
+    },
+    {
+      "path": "apps/system-file-manager.png",
+      "category": "apps",
+      "name": "system-file-manager"
+    },
+    {
+      "path": "apps/system-installer.png",
+      "category": "apps",
+      "name": "system-installer"
+    },
+    {
+      "path": "apps/system-software-update.png",
+      "category": "apps",
+      "name": "system-software-update"
+    },
+    {
+      "path": "apps/system-users.png",
+      "category": "apps",
+      "name": "system-users"
+    },
+    {
+      "path": "apps/utilities-system-monitor.png",
+      "category": "apps",
+      "name": "utilities-system-monitor"
+    },
+    {
+      "path": "apps/utilities-terminal.png",
+      "category": "apps",
+      "name": "utilities-terminal"
+    },
+    {
+      "path": "categories/applications-accessories.png",
+      "category": "categories",
+      "name": "applications-accessories"
+    },
+    {
+      "path": "categories/applications-development.png",
+      "category": "categories",
+      "name": "applications-development"
+    },
+    {
+      "path": "categories/applications-games.png",
+      "category": "categories",
+      "name": "applications-games"
+    },
+    {
+      "path": "categories/applications-graphics.png",
+      "category": "categories",
+      "name": "applications-graphics"
+    },
+    {
+      "path": "categories/applications-internet.png",
+      "category": "categories",
+      "name": "applications-internet"
+    },
+    {
+      "path": "categories/applications-multimedia.png",
+      "category": "categories",
+      "name": "applications-multimedia"
+    },
+    {
+      "path": "categories/applications-office.png",
+      "category": "categories",
+      "name": "applications-office"
+    },
+    {
+      "path": "categories/applications-other.png",
+      "category": "categories",
+      "name": "applications-other"
+    },
+    {
+      "path": "categories/applications-system.png",
+      "category": "categories",
+      "name": "applications-system"
+    },
+    {
+      "path": "categories/preferences-desktop-peripherals.png",
+      "category": "categories",
+      "name": "preferences-desktop-peripherals"
+    },
+    {
+      "path": "categories/preferences-desktop.png",
+      "category": "categories",
+      "name": "preferences-desktop"
+    },
+    {
+      "path": "categories/preferences-system.png",
+      "category": "categories",
+      "name": "preferences-system"
+    },
+    {
+      "path": "devices/audio-card.png",
+      "category": "devices",
+      "name": "audio-card"
+    },
+    {
+      "path": "devices/audio-input-microphone.png",
+      "category": "devices",
+      "name": "audio-input-microphone"
+    },
+    {
+      "path": "devices/battery.png",
+      "category": "devices",
+      "name": "battery"
+    },
+    {
+      "path": "devices/camera-photo.png",
+      "category": "devices",
+      "name": "camera-photo"
+    },
+    {
+      "path": "devices/camera-video.png",
+      "category": "devices",
+      "name": "camera-video"
+    },
+    {
+      "path": "devices/computer.png",
+      "category": "devices",
+      "name": "computer"
+    },
+    {
+      "path": "devices/drive-harddisk.png",
+      "category": "devices",
+      "name": "drive-harddisk"
+    },
+    {
+      "path": "devices/drive-optical.png",
+      "category": "devices",
+      "name": "drive-optical"
+    },
+    {
+      "path": "devices/drive-removable-media.png",
+      "category": "devices",
+      "name": "drive-removable-media"
+    },
+    {
+      "path": "devices/input-gaming.png",
+      "category": "devices",
+      "name": "input-gaming"
+    },
+    {
+      "path": "devices/input-keyboard.png",
+      "category": "devices",
+      "name": "input-keyboard"
+    },
+    {
+      "path": "devices/input-mouse.png",
+      "category": "devices",
+      "name": "input-mouse"
+    },
+    {
+      "path": "devices/media-flash.png",
+      "category": "devices",
+      "name": "media-flash"
+    },
+    {
+      "path": "devices/media-floppy.png",
+      "category": "devices",
+      "name": "media-floppy"
+    },
+    {
+      "path": "devices/media-optical.png",
+      "category": "devices",
+      "name": "media-optical"
+    },
+    {
+      "path": "devices/multimedia-player-dell-dj-pocket.png",
+      "category": "devices",
+      "name": "multimedia-player-dell-dj-pocket"
+    },
+    {
+      "path": "devices/multimedia-player-ipod-U2-color.png",
+      "category": "devices",
+      "name": "multimedia-player-ipod-U2-color"
+    },
+    {
+      "path": "devices/multimedia-player-ipod-U2-monochrome.png",
+      "category": "devices",
+      "name": "multimedia-player-ipod-U2-monochrome"
+    },
+    {
+      "path": "devices/multimedia-player-ipod-mini-blue.png",
+      "category": "devices",
+      "name": "multimedia-player-ipod-mini-blue"
+    },
+    {
+      "path": "devices/multimedia-player-ipod-mini-gold.png",
+      "category": "devices",
+      "name": "multimedia-player-ipod-mini-gold"
+    },
+    {
+      "path": "devices/multimedia-player-ipod-mini-green.png",
+      "category": "devices",
+      "name": "multimedia-player-ipod-mini-green"
+    },
+    {
+      "path": "devices/multimedia-player-ipod-mini-pink.png",
+      "category": "devices",
+      "name": "multimedia-player-ipod-mini-pink"
+    },
+    {
+      "path": "devices/multimedia-player-ipod-mini-silver.png",
+      "category": "devices",
+      "name": "multimedia-player-ipod-mini-silver"
+    },
+    {
+      "path": "devices/multimedia-player-ipod-nano-black.png",
+      "category": "devices",
+      "name": "multimedia-player-ipod-nano-black"
+    },
+    {
+      "path": "devices/multimedia-player-ipod-nano-white.png",
+      "category": "devices",
+      "name": "multimedia-player-ipod-nano-white"
+    },
+    {
+      "path": "devices/multimedia-player-ipod-shuffle.png",
+      "category": "devices",
+      "name": "multimedia-player-ipod-shuffle"
+    },
+    {
+      "path": "devices/multimedia-player-ipod-standard-color.png",
+      "category": "devices",
+      "name": "multimedia-player-ipod-standard-color"
+    },
+    {
+      "path": "devices/multimedia-player-ipod-standard-mono.png",
+      "category": "devices",
+      "name": "multimedia-player-ipod-standard-mono"
+    },
+    {
+      "path": "devices/multimedia-player-ipod-video-black.png",
+      "category": "devices",
+      "name": "multimedia-player-ipod-video-black"
+    },
+    {
+      "path": "devices/multimedia-player-ipod-video-white.png",
+      "category": "devices",
+      "name": "multimedia-player-ipod-video-white"
+    },
+    {
+      "path": "devices/multimedia-player-motorola-rokr.png",
+      "category": "devices",
+      "name": "multimedia-player-motorola-rokr"
+    },
+    {
+      "path": "devices/multimedia-player.png",
+      "category": "devices",
+      "name": "multimedia-player"
+    },
+    {
+      "path": "devices/network-wired.png",
+      "category": "devices",
+      "name": "network-wired"
+    },
+    {
+      "path": "devices/network-wireless.png",
+      "category": "devices",
+      "name": "network-wireless"
+    },
+    {
+      "path": "devices/printer.png",
+      "category": "devices",
+      "name": "printer"
+    },
+    {
+      "path": "devices/video-display.png",
+      "category": "devices",
+      "name": "video-display"
+    },
+    {
+      "path": "emblems/emblem-favorite.png",
+      "category": "emblems",
+      "name": "emblem-favorite"
+    },
+    {
+      "path": "emblems/emblem-important.png",
+      "category": "emblems",
+      "name": "emblem-important"
+    },
+    {
+      "path": "emblems/emblem-photos.png",
+      "category": "emblems",
+      "name": "emblem-photos"
+    },
+    {
+      "path": "emblems/emblem-readonly.png",
+      "category": "emblems",
+      "name": "emblem-readonly"
+    },
+    {
+      "path": "emblems/emblem-symbolic-link.png",
+      "category": "emblems",
+      "name": "emblem-symbolic-link"
+    },
+    {
+      "path": "emblems/emblem-system.png",
+      "category": "emblems",
+      "name": "emblem-system"
+    },
+    {
+      "path": "emblems/emblem-unreadable.png",
+      "category": "emblems",
+      "name": "emblem-unreadable"
+    },
+    {
+      "path": "emotes/face-angel.png",
+      "category": "emotes",
+      "name": "face-angel"
+    },
+    {
+      "path": "emotes/face-crying.png",
+      "category": "emotes",
+      "name": "face-crying"
+    },
+    {
+      "path": "emotes/face-devilish.png",
+      "category": "emotes",
+      "name": "face-devilish"
+    },
+    {
+      "path": "emotes/face-glasses.png",
+      "category": "emotes",
+      "name": "face-glasses"
+    },
+    {
+      "path": "emotes/face-grin.png",
+      "category": "emotes",
+      "name": "face-grin"
+    },
+    {
+      "path": "emotes/face-kiss.png",
+      "category": "emotes",
+      "name": "face-kiss"
+    },
+    {
+      "path": "emotes/face-monkey.png",
+      "category": "emotes",
+      "name": "face-monkey"
+    },
+    {
+      "path": "emotes/face-plain.png",
+      "category": "emotes",
+      "name": "face-plain"
+    },
+    {
+      "path": "emotes/face-sad.png",
+      "category": "emotes",
+      "name": "face-sad"
+    },
+    {
+      "path": "emotes/face-smile-big.png",
+      "category": "emotes",
+      "name": "face-smile-big"
+    },
+    {
+      "path": "emotes/face-smile.png",
+      "category": "emotes",
+      "name": "face-smile"
+    },
+    {
+      "path": "emotes/face-surprise.png",
+      "category": "emotes",
+      "name": "face-surprise"
+    },
+    {
+      "path": "emotes/face-wink.png",
+      "category": "emotes",
+      "name": "face-wink"
+    },
+    {
+      "path": "mimetypes/application-certificate.png",
+      "category": "mimetypes",
+      "name": "application-certificate"
+    },
+    {
+      "path": "mimetypes/application-x-executable.png",
+      "category": "mimetypes",
+      "name": "application-x-executable"
+    },
+    {
+      "path": "mimetypes/audio-x-generic.png",
+      "category": "mimetypes",
+      "name": "audio-x-generic"
+    },
+    {
+      "path": "mimetypes/font-x-generic.png",
+      "category": "mimetypes",
+      "name": "font-x-generic"
+    },
+    {
+      "path": "mimetypes/image-x-generic.png",
+      "category": "mimetypes",
+      "name": "image-x-generic"
+    },
+    {
+      "path": "mimetypes/package-x-generic.png",
+      "category": "mimetypes",
+      "name": "package-x-generic"
+    },
+    {
+      "path": "mimetypes/text-html.png",
+      "category": "mimetypes",
+      "name": "text-html"
+    },
+    {
+      "path": "mimetypes/text-x-generic-template.png",
+      "category": "mimetypes",
+      "name": "text-x-generic-template"
+    },
+    {
+      "path": "mimetypes/text-x-generic.png",
+      "category": "mimetypes",
+      "name": "text-x-generic"
+    },
+    {
+      "path": "mimetypes/text-x-script.png",
+      "category": "mimetypes",
+      "name": "text-x-script"
+    },
+    {
+      "path": "mimetypes/video-x-generic.png",
+      "category": "mimetypes",
+      "name": "video-x-generic"
+    },
+    {
+      "path": "mimetypes/x-office-address-book.png",
+      "category": "mimetypes",
+      "name": "x-office-address-book"
+    },
+    {
+      "path": "mimetypes/x-office-calendar.png",
+      "category": "mimetypes",
+      "name": "x-office-calendar"
+    },
+    {
+      "path": "mimetypes/x-office-document-template.png",
+      "category": "mimetypes",
+      "name": "x-office-document-template"
+    },
+    {
+      "path": "mimetypes/x-office-document.png",
+      "category": "mimetypes",
+      "name": "x-office-document"
+    },
+    {
+      "path": "mimetypes/x-office-drawing-template.png",
+      "category": "mimetypes",
+      "name": "x-office-drawing-template"
+    },
+    {
+      "path": "mimetypes/x-office-drawing.png",
+      "category": "mimetypes",
+      "name": "x-office-drawing"
+    },
+    {
+      "path": "mimetypes/x-office-presentation-template.png",
+      "category": "mimetypes",
+      "name": "x-office-presentation-template"
+    },
+    {
+      "path": "mimetypes/x-office-presentation.png",
+      "category": "mimetypes",
+      "name": "x-office-presentation"
+    },
+    {
+      "path": "mimetypes/x-office-spreadsheet-template.png",
+      "category": "mimetypes",
+      "name": "x-office-spreadsheet-template"
+    },
+    {
+      "path": "mimetypes/x-office-spreadsheet.png",
+      "category": "mimetypes",
+      "name": "x-office-spreadsheet"
+    },
+    {
+      "path": "places/folder-remote.png",
+      "category": "places",
+      "name": "folder-remote"
+    },
+    {
+      "path": "places/folder-saved-search.png",
+      "category": "places",
+      "name": "folder-saved-search"
+    },
+    {
+      "path": "places/folder.png",
+      "category": "places",
+      "name": "folder"
+    },
+    {
+      "path": "places/network-server.png",
+      "category": "places",
+      "name": "network-server"
+    },
+    {
+      "path": "places/network-workgroup.png",
+      "category": "places",
+      "name": "network-workgroup"
+    },
+    {
+      "path": "places/start-here.png",
+      "category": "places",
+      "name": "start-here"
+    },
+    {
+      "path": "places/user-desktop.png",
+      "category": "places",
+      "name": "user-desktop"
+    },
+    {
+      "path": "places/user-home.png",
+      "category": "places",
+      "name": "user-home"
+    },
+    {
+      "path": "places/user-trash.png",
+      "category": "places",
+      "name": "user-trash"
+    },
+    {
+      "path": "status/audio-volume-high.png",
+      "category": "status",
+      "name": "audio-volume-high"
+    },
+    {
+      "path": "status/audio-volume-low.png",
+      "category": "status",
+      "name": "audio-volume-low"
+    },
+    {
+      "path": "status/audio-volume-medium.png",
+      "category": "status",
+      "name": "audio-volume-medium"
+    },
+    {
+      "path": "status/audio-volume-muted.png",
+      "category": "status",
+      "name": "audio-volume-muted"
+    },
+    {
+      "path": "status/battery-caution.png",
+      "category": "status",
+      "name": "battery-caution"
+    },
+    {
+      "path": "status/dialog-error.png",
+      "category": "status",
+      "name": "dialog-error"
+    },
+    {
+      "path": "status/dialog-information.png",
+      "category": "status",
+      "name": "dialog-information"
+    },
+    {
+      "path": "status/dialog-warning.png",
+      "category": "status",
+      "name": "dialog-warning"
+    },
+    {
+      "path": "status/folder-drag-accept.png",
+      "category": "status",
+      "name": "folder-drag-accept"
+    },
+    {
+      "path": "status/folder-open.png",
+      "category": "status",
+      "name": "folder-open"
+    },
+    {
+      "path": "status/folder-visiting.png",
+      "category": "status",
+      "name": "folder-visiting"
+    },
+    {
+      "path": "status/image-loading.png",
+      "category": "status",
+      "name": "image-loading"
+    },
+    {
+      "path": "status/image-missing.png",
+      "category": "status",
+      "name": "image-missing"
+    },
+    {
+      "path": "status/mail-attachment.png",
+      "category": "status",
+      "name": "mail-attachment"
+    },
+    {
+      "path": "status/network-error.png",
+      "category": "status",
+      "name": "network-error"
+    },
+    {
+      "path": "status/network-idle.png",
+      "category": "status",
+      "name": "network-idle"
+    },
+    {
+      "path": "status/network-offline.png",
+      "category": "status",
+      "name": "network-offline"
+    },
+    {
+      "path": "status/network-receive.png",
+      "category": "status",
+      "name": "network-receive"
+    },
+    {
+      "path": "status/network-transmit-receive.png",
+      "category": "status",
+      "name": "network-transmit-receive"
+    },
+    {
+      "path": "status/network-transmit.png",
+      "category": "status",
+      "name": "network-transmit"
+    },
+    {
+      "path": "status/network-wireless-encrypted.png",
+      "category": "status",
+      "name": "network-wireless-encrypted"
+    },
+    {
+      "path": "status/printer-error.png",
+      "category": "status",
+      "name": "printer-error"
+    },
+    {
+      "path": "status/software-update-available.png",
+      "category": "status",
+      "name": "software-update-available"
+    },
+    {
+      "path": "status/software-update-urgent.png",
+      "category": "status",
+      "name": "software-update-urgent"
+    },
+    {
+      "path": "status/user-trash-full.png",
+      "category": "status",
+      "name": "user-trash-full"
+    },
+    {
+      "path": "status/weather-clear-night.png",
+      "category": "status",
+      "name": "weather-clear-night"
+    },
+    {
+      "path": "status/weather-clear.png",
+      "category": "status",
+      "name": "weather-clear"
+    },
+    {
+      "path": "status/weather-few-clouds-night.png",
+      "category": "status",
+      "name": "weather-few-clouds-night"
+    },
+    {
+      "path": "status/weather-few-clouds.png",
+      "category": "status",
+      "name": "weather-few-clouds"
+    },
+    {
+      "path": "status/weather-overcast.png",
+      "category": "status",
+      "name": "weather-overcast"
+    },
+    {
+      "path": "status/weather-severe-alert.png",
+      "category": "status",
+      "name": "weather-severe-alert"
+    },
+    {
+      "path": "status/weather-showers-scattered.png",
+      "category": "status",
+      "name": "weather-showers-scattered"
+    },
+    {
+      "path": "status/weather-showers.png",
+      "category": "status",
+      "name": "weather-showers"
+    },
+    {
+      "path": "status/weather-snow.png",
+      "category": "status",
+      "name": "weather-snow"
+    },
+    {
+      "path": "status/weather-storm.png",
+      "category": "status",
+      "name": "weather-storm"
+    }
+  ]
+}

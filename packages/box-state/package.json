@@ -1,0 +1,25 @@
+{
+  "name": "@joshu/box-state",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Joshu box snapshot, restore, and factory state",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "cli": "tsx src/cli.ts"
+  },
+  "dependencies": {
+    "yaml": "^2.7.0",
+    "@google-cloud/storage": "^7.16.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.10",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3"
+  }
+}

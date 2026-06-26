@@ -1,0 +1,10 @@
+{
+  "id": "jmovie",
+  "name": "jMovie",
+  "version": "0.1.0",
+  "license": "AGPL-3.0",
+  "publisher": "joshu",
+  "entry": "jmovie/index.html",
+  "apiPrefix": "/joshu/api/jmovie",
+  "description": "Creatomate video editor"
+}

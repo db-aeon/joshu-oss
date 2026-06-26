@@ -1,0 +1,67 @@
+# Joshu factory profile — product defaults on boot and soft factory-reset.
+schemaVersion: 1
+release: "0.2.1"
+
+seeds:
+  - from: templates/ea/
+    to: "{files_root}/"
+    mode: seed_if_missing
+
+structure:
+  - "{files_root}/Triage/"
+  - "{files_root}/Triage/_snapshots/"
+  - "{files_root}/Triage/_done/"
+  - "{files_root}/Projects/"
+  - "{files_root}/Projects/_system/"
+  - "{files_root}/Projects/other/"
+  - "{files_root}/Projects/other/scheduling/"
+  - "{files_root}/Projects/_archive/"
+  - "{files_root}/Projects/_template/"
+
+hermes:
+  skills_dir: integrations/hermes/skills
+  skills_seed_target: skills/joshu
+  skills_enabled: integrations/hermes/skills-enabled.yaml
+  managed_keys:
+    - model
+    - toolsets
+    - skills
+    - plugins
+    - browser
+    - mcp_servers
+    - memory
+    - terminal
+  user_keys:
+    - voice
+    - stt
+    - tts
+    - profiles
+    - personalities
+    - messaging
+
+identity:
+  defaults:
+    name: Patrick
+    imageUrl: null
+    voiceId: null
+    owner:
+      displayName: Dan
+
+arozos:
+  refresh_each_boot:
+    - web/
+    - subservice/
+
+gbrain:
+  rebuild_on_restore: true
+
+hindsight:
+  bank_id: joshu
+
+snapshot:
+  components:
+    - arozos_user
+    - hermes_user
+    - hindsight
+  optional_components:
+    - gbrain

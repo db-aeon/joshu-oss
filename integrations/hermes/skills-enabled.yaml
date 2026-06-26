@@ -1,0 +1,22 @@
+# Product skill allowlist — merged at gateway sync with bundled essentials below.
+# All other Hermes bundled skills are disabled at runtime (computed, not listed here).
+# Agent-created skills in ~/.hermes/skills/ are never auto-disabled (Hermes learning loop).
+# Optional extras: JOSHU_HERMES_SKILLS_ENABLED=name1,name2
+# Regenerate after Hermes pin bump: npm run hermes:sync-skills-policy
+# Bundled discovered: 172 | Enabled: 15 | Computed disabled: 158
+enabled:
+  - ea-playbook
+  - ea-morning-review
+  - ea-shutdown
+  - ea-project-kanban
+  - ea-scheduling
+  - ea-time-block
+  - excalidraw
+  - hermes-agent
+  - joshu-brain
+  - joshu-mail
+  - joshu-browser
+  - kanban-orchestrator
+  - kanban-worker
+  - mcporter
+  - native-mcp

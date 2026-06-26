@@ -1,0 +1,15 @@
+{
+  "Name": "Movie",
+  "Desc": "Placeholder app (coming soon)",
+  "Group": "Multimedia",
+  "IconPath": "img/joshu/movie.png",
+  "Version": "0.0.1",
+  "StartDir": "placeholder-movie/index.html",
+  "SupportFW": true,
+  "LaunchFWDir": "placeholder-movie/index.html",
+  "SupportEmb": false,
+  "LaunchEmb": "",
+  "InitFWSize": [640, 480],
+  "InitEmbSize": [640, 480],
+  "SupportedExt": []
+}

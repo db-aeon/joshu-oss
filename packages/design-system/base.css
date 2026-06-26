@@ -1,0 +1,45 @@
+/**
+ * Global primitives on top of tokens + typography.
+ * No glassmorphism; flat paper + ink borders.
+ */
+* {
+  box-sizing: border-box;
+}
+
+html {
+  color-scheme: light;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
+  color: var(--color-text-on-paper);
+  background-color: var(--color-paper);
+}
+
+a {
+  color: var(--color-action);
+  text-underline-offset: 2px;
+}
+
+a:hover {
+  color: var(--color-action-hover);
+}
+
+button {
+  font-family: inherit;
+  font-size: inherit;
+}
+
+input,
+textarea,
+select {
+  font-family: inherit;
+}
+
+:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}

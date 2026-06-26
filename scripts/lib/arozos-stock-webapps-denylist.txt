@@ -1,0 +1,4 @@
+# Stock ArozOS WebApp folders to omit from Joshu edition images.
+# One folder name per line (under web/). Comment lines start with #.
+# Browser
+# Manga

@@ -1,0 +1,7 @@
+[submodule "vendor/arozos"]
+	path = vendor/arozos
+	url = https://github.com/tobychui/arozos.git
+[submodule "vendor/excalidraw"]
+	path = vendor/excalidraw
+	url = https://github.com/db-aeon/excalidraw.git
+	branch = joshu-markdown-wysiwyg

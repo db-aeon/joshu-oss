@@ -1,0 +1,10 @@
+{
+  "id": "welcome",
+  "name": "Welcome",
+  "version": "0.1.0",
+  "license": "AGPL-3.0",
+  "publisher": "joshu",
+  "entry": "welcome/index.html",
+  "apiPrefix": "/joshu/api/welcome",
+  "description": "Day-1 onboarding"
+}

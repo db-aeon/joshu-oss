@@ -1,0 +1,36 @@
+diff --git a/plugins/observability/langfuse/__init__.py b/plugins/observability/langfuse/__init__.py
+--- a/plugins/observability/langfuse/__init__.py
++++ b/plugins/observability/langfuse/__init__.py
+@@ -15,6 +15,7 @@
+ 
+ Optional env vars:
+   HERMES_LANGFUSE_ENV         - environment tag (e.g. "production", "local")
++  HERMES_LANGFUSE_USER_ID     - Langfuse Users view id (e.g. per-sandbox box slug)
+   HERMES_LANGFUSE_RELEASE     - release/version tag
+   HERMES_LANGFUSE_SAMPLE_RATE - sampling rate 0.0–1.0 (default: 1.0)
+   HERMES_LANGFUSE_MAX_CHARS   - max chars per field (default: 12000)
+@@ -557,12 +558,21 @@
+     if session_id:
+         trace_ctx["session_id"] = session_id
+ 
++    langfuse_user_id = _env("HERMES_LANGFUSE_USER_ID")
++    if langfuse_user_id:
++        trace_ctx["user_id"] = langfuse_user_id
++        metadata["box_slug"] = langfuse_user_id
+     if propagate_attributes is not None:
+         try:
++            propagate_kwargs: Dict[str, Any] = {
++                "session_id": session_id or task_key,
++                "trace_name": "Hermes turn",
++                "tags": ["hermes", "langfuse"],
++            }
++            if langfuse_user_id:
++                propagate_kwargs["user_id"] = langfuse_user_id
+             with propagate_attributes(
+-                session_id=session_id or task_key,
+-                trace_name="Hermes turn",
+-                tags=["hermes", "langfuse"],
++                **propagate_kwargs,
+             ):
+                 root_ctx = client.start_as_current_observation(
+                     trace_context=trace_ctx,

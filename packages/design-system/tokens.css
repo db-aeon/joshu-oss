@@ -1,0 +1,62 @@
+/**
+ * jōshu design system v1 — CSS custom properties (single source of truth).
+ * Apps import this file first, then may override variables in local CSS.
+ */
+:root {
+  /* —— Faded photograph palette —— */
+  --color-paper: #f5f0eb;
+  --color-rose: #c8a2a6;
+  --color-peach: #f2cbae;
+  --color-yellow: #f6e3a5;
+  --color-sage: #a3839a;
+  --color-sky: #b7c0e0;
+  --color-action: #0057ff;
+  --color-action-hover: #0046cc;
+  --color-action-secondary: #00a86b;
+
+  /* —— Ink & text —— */
+  --color-ink: #0d0d0d;
+  --color-ink-muted: #4a4540;
+  --color-text-on-paper: var(--color-ink);
+  --color-text-muted: #5c5854;
+  --color-text-on-action: #ffffff;
+
+  /* —— Terminal / “computer moment” —— */
+  --color-terminal-bg: #0a0a0a;
+  --color-terminal-green: #5fdd8c;
+  --color-terminal-yellow: #f6e3a5;
+  --color-terminal-amber: #e8c547;
+
+  /* —— Semantic UI (mapped from palette) —— */
+  --color-surface-panel: #ffffff;
+  --color-surface-tint: rgba(163, 131, 154, 0.12);
+  --color-border-subtle: rgba(13, 13, 13, 0.12);
+  --color-border-strong: var(--color-ink);
+  --color-ok: var(--color-action-secondary);
+  --color-warn: #c47f00;
+  --color-err: #c23b22;
+
+  /* —— Layout & shape (HyperCard inflection) —— */
+  --border-width-default: 1px;
+  --border-default: var(--border-width-default) solid var(--color-ink);
+  --radius-panel: 0;
+  --radius-field: 3px;
+  --radius-pill: 999px;
+
+  /* —— Typography sizes (body set in typography.css) —— */
+  --font-size-body: 15px;
+  --line-height-body: 1.45;
+  --font-size-small: 0.78rem;
+  --font-size-code: 0.88rem;
+
+  /* —— Interaction —— */
+  --transition-fast: 120ms ease;
+  --focus-ring: 0 0 0 2px var(--color-action);
+  --cursor-hover-glow: 0 0 0 2px rgba(0, 87, 255, 0.35);
+
+  /* —— Graph defaults (Hindsight); apps may override —— */
+  --color-graph-node-default: var(--color-sage);
+  --color-graph-edge-constellation: var(--color-sky);
+  --color-graph-edge-cooccurrence: var(--color-yellow);
+  --color-graph-selection: var(--color-action);
+}

@@ -1,0 +1,15 @@
+{
+  "Name": "Safety",
+  "Desc": "Action guard, owner channel, and agent write policy",
+  "Group": "Joshu Apps",
+  "IconPath": "img/joshu/system-setting.png",
+  "Version": "0.1.0",
+  "StartDir": "safety-settings/index.html",
+  "SupportFW": true,
+  "LaunchFWDir": "safety-settings/index.html",
+  "SupportEmb": false,
+  "LaunchEmb": "",
+  "InitFWSize": [720, 820],
+  "InitEmbSize": [640, 720],
+  "SupportedExt": []
+}

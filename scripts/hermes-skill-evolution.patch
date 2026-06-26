@@ -1,0 +1,48 @@
+--- a/tools/skill_manager_tool.py
++++ b/tools/skill_manager_tool.py
+@@ -709,7 +709,31 @@
+ # =============================================================================
+ # Main entry point
+ # =============================================================================
++
++
++def _append_skill_evolution_record(action: str, name: str, message: str) -> None:
++    """Append one JSON line to ~/.hermes/skills/.evolution.jsonl (best-effort)."""
++    try:
++        import os
++        from datetime import datetime, timezone
++        from tools.skill_provenance import get_current_write_origin
++        record = {
++            "ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
++            "session_id": os.environ.get("HERMES_SESSION_ID") or "",
++            "origin": get_current_write_origin(),
++            "skill": name,
++            "action": action,
++            "message": (message or "")[:500],
++        }
++        path = SKILLS_DIR / ".evolution.jsonl"
++        path.parent.mkdir(parents=True, exist_ok=True)
++        with open(path, "a", encoding="utf-8") as f:
++            f.write(json.dumps(record, ensure_ascii=False) + "\n")
++    except Exception:
++        logger.debug("skill evolution record append failed", exc_info=True)
++
++
+ def skill_manage(
+     action: str,
+     name: str,
+@@ -787,6 +811,15 @@
+         except Exception:
+             pass
+ 
++        try:
++            _append_skill_evolution_record(
++                action,
++                name,
++                str(result.get("message", "")) if isinstance(result, dict) else "",
++            )
++        except Exception:
++            pass
++
+     return json.dumps(result, ensure_ascii=False)
+ 

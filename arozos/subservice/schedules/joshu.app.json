@@ -1,0 +1,10 @@
+{
+  "id": "schedules",
+  "name": "Schedules",
+  "version": "0.1.0",
+  "license": "AGPL-3.0",
+  "publisher": "joshu",
+  "entry": "schedules/index.html",
+  "apiPrefix": "/joshu/api/schedules",
+  "description": "Hermes cron UI"
+}

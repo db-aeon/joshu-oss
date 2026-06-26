@@ -1,0 +1,15 @@
+{
+  "Name": "File Brain",
+  "Desc": "Inspect and query the Joshu file brain (gbrain index)",
+  "Group": "Office",
+  "IconPath": "img/joshu/file-manager.png",
+  "Version": "0.1.0",
+  "StartDir": "file-brain-viewer/index.html",
+  "SupportFW": true,
+  "LaunchFWDir": "file-brain-viewer/index.html",
+  "SupportEmb": false,
+  "LaunchEmb": "",
+  "InitFWSize": [1280, 860],
+  "InitEmbSize": [960, 720],
+  "SupportedExt": []
+}

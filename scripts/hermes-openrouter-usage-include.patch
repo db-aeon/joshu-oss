@@ -1,0 +1,41 @@
+diff --git a/run_agent.py b/run_agent.py
+index 47b2c4c91..c8e4a1b2a 100644
+--- a/run_agent.py
++++ b/run_agent.py
+@@ -11957,6 +11957,9 @@ class AIAgent:
+             if _is_nous:
+                 from agent.portal_tags import nous_portal_tags as _portal_tags
+                 summary_extra_body["tags"] = _portal_tags()
++
++            if (self.provider or "").strip().lower() == "openrouter" or self._is_openrouter_url():
++                summary_extra_body.setdefault("usage", {"include": True})
+ 
+             if self.api_mode == "codex_responses":
+                 codex_kwargs = self._build_api_kwargs(api_messages)
+diff --git a/agent/transports/chat_completions.py b/agent/transports/chat_completions.py
+index 96997afca..7f3fbf428 100644
+--- a/agent/transports/chat_completions.py
++++ b/agent/transports/chat_completions.py
+@@ -322,6 +322,9 @@ class ChatCompletionsTransport(ProviderTransport):
+         if provider_prefs and is_openrouter:
+             extra_body["provider"] = provider_prefs
+ 
++        if is_openrouter:
++            extra_body.setdefault("usage", {"include": True})
++
+         # Pareto Code router plugin — model-gated. Same shape as the
+         # profile path in plugins/model-providers/openrouter/__init__.py;
+         # this branch only runs when the OpenRouter profile isn't loaded.
+diff --git a/plugins/model-providers/openrouter/__init__.py b/plugins/model-providers/openrouter/__init__.py
+index d1bf10de1..c389002ad 100644
+--- a/plugins/model-providers/openrouter/__init__.py
++++ b/plugins/model-providers/openrouter/__init__.py
+@@ -42,7 +42,7 @@ class OpenRouterProfile(ProviderProfile):
+     def build_extra_body(
+         self, *, session_id: str | None = None, **context: Any
+     ) -> dict[str, Any]:
+-        body: dict[str, Any] = {}
++        body: dict[str, Any] = {"usage": {"include": True}}
+         prefs = context.get("provider_preferences")
+         if prefs:
+             body["provider"] = prefs

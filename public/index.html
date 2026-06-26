@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Joshu</title>
+    <base href="./" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="design-system/typography.css" />
+    <link rel="stylesheet" href="design-system/tokens.css" />
+    <link rel="stylesheet" href="design-system/base.css" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="workspace">
+      <section class="browser-column" aria-label="Browser">
+        <div class="browser-window">
+          <header class="browser-chrome">
+            <div class="chrome-dots" aria-hidden="true">
+              <span></span><span></span><span></span>
+            </div>
+            <div class="chrome-title">Joshu</div>
+            <div class="chrome-tools">
+              <div class="chrome-tool-labeled" id="chrome-vnc-status" title="Remote desktop">
+                <span id="vnc-indicator" class="vnc-indicator" aria-hidden="true"></span>
+                <span id="chrome-vnc-label" class="chrome-tool-label">VNC</span>
+              </div>
+              <button
+                id="open-settings"
+                type="button"
+                class="chrome-tool-btn"
+                aria-label="Settings"
+                aria-haspopup="dialog"
+                aria-controls="settings-modal"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                  <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
+                </svg>
+                <span class="chrome-tool-label">Settings</span>
+              </button>
+            </div>
+          </header>
+          <div class="vnc-clipboard-bar" id="vnc-clipboard-bar">
+            <button type="button" id="vnc-paste-remote" class="vnc-clipboard-btn" title="Paste into page fields (forms, search boxes)">
+              Paste into field
+            </button>
+            <button type="button" id="vnc-type-remote" class="vnc-clipboard-btn vnc-clipboard-btn-primary" title="Type keystrokes — use for the Firefox address bar">
+              Type into browser
+            </button>
+            <button type="button" id="vnc-copy-remote" class="vnc-clipboard-btn" title="Copy selection from Camofox (select text first)">
+              Copy from browser
+            </button>
+            <button
+              type="button"
+              id="vnc-clipboard-toggle"
+              class="vnc-clipboard-btn vnc-clipboard-btn-icon"
+              aria-expanded="false"
+              aria-controls="vnc-clipboard-panel"
+              title="Clipboard options"
+            >
+              ⋯
+            </button>
+            <div id="vnc-clipboard-panel" class="vnc-clipboard-panel" hidden>
+              <textarea
+                id="vnc-clipboard-text"
+                class="vnc-clipboard-text"
+                rows="3"
+                spellcheck="false"
+                placeholder="Clipboard bridge — edit text here, or use the buttons below"
+              ></textarea>
+              <div class="vnc-clipboard-actions">
+                <button type="button" id="vnc-load-mac" class="vnc-clipboard-btn">Load from Mac</button>
+                <button type="button" id="vnc-save-mac" class="vnc-clipboard-btn">Copy to Mac</button>
+              </div>
+              <label class="vnc-clipboard-check">
+                <input type="checkbox" id="vnc-type-select-all" checked />
+                Select all first (Ctrl+A)
+              </label>
+              <p id="vnc-clipboard-hint" class="vnc-clipboard-hint">
+                Address bar: click it in Camofox, then Type into browser. Page fields: Paste into field.
+              </p>
+            </div>
+          </div>
+          <div id="vnc-frame" class="browser-viewport">
+            <div id="vnc-screen" class="vnc-screen" aria-label="Camofox via noVNC"></div>
+          </div>
+          <pre id="vnc-debug" class="vnc-debug" hidden aria-live="polite"></pre>
+        </div>
+      </section>
+
+      <aside class="chat-column" aria-label="Chat">
+        <div class="chat-panel">
+          <header class="chat-header">
+            <h2 class="chat-title">Chat</h2>
+            <span id="run-status" class="run-status" aria-live="polite"></span>
+          </header>
+          <pre id="log" class="chat-log" aria-live="polite"></pre>
+          <form id="run-form" class="chat-composer">
+            <textarea
+              id="prompt"
+              rows="3"
+              placeholder="Ask Hermes…"
+              required
+              aria-label="Message"
+            ></textarea>
+            <div class="chat-actions">
+              <button id="submit-run" type="submit">Send</button>
+              <button id="cancel-run" type="button" class="btn-ghost" disabled>Stop</button>
+            </div>
+          </form>
+        </div>
+      </aside>
+    </div>
+
+    <div id="settings-modal" class="modal" hidden>
+      <div class="modal-backdrop" data-close-settings></div>
+      <div
+        class="modal-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="settings-title"
+      >
+        <header class="modal-header">
+          <h2 id="settings-title">Settings</h2>
+          <button id="close-settings" type="button" class="icon-btn" aria-label="Close settings">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </header>
+        <div class="modal-body">
+          <section class="settings-group">
+            <h3>Status</h3>
+            <div id="status" class="status">checking…</div>
+            <p id="vnc-status" class="vnc-status-line">VNC: disconnected</p>
+            <p id="session-pill" class="session-line">No Hermes session</p>
+          </section>
+
+          <section class="settings-group">
+            <h3>Browser</h3>
+            <label class="field">
+              <span class="label">Start URL <span class="muted">(optional, next run)</span></span>
+              <input id="initial-url" type="url" placeholder="https://example.com" autocomplete="off" spellcheck="false" />
+            </label>
+            <div class="settings-actions">
+              <button id="reload-vnc" type="button">Reconnect VNC</button>
+              <a id="open-vnc" href="#" target="_blank" rel="noopener" class="btn-link">Open standalone viewer</a>
+            </div>
+          </section>
+
+          <section class="settings-group">
+            <h3>Hermes</h3>
+            <div class="settings-actions">
+              <button id="forget-session" type="button">Reset Hermes session</button>
+              <button id="clear-log" type="button" class="btn-ghost">Clear chat log</button>
+            </div>
+          </section>
+
+          <section class="settings-group">
+            <h3>Camofox</h3>
+            <div class="settings-actions">
+              <button id="restart-camofox" type="button">Restart Camofox container</button>
+            </div>
+            <p class="settings-hint">
+              Hermes and you share one Camofox tab. Click the browser pane to drive it with the mouse.
+            </p>
+          </section>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="app.js?v=ui-browser-10"></script>
+  </body>
+</html>

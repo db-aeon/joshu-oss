@@ -1,0 +1,15 @@
+{
+  "Name": "Welcome",
+  "Desc": "First-time setup for your executive assistant (Projects + Triage)",
+  "Group": "Office",
+  "IconPath": "img/joshu/chat.png",
+  "Version": "0.1.0",
+  "StartDir": "welcome/index.html",
+  "SupportFW": true,
+  "LaunchFWDir": "welcome/index.html",
+  "SupportEmb": false,
+  "LaunchEmb": "",
+  "InitFWSize": [720, 820],
+  "InitEmbSize": [640, 720],
+  "SupportedExt": []
+}

@@ -1,0 +1,19 @@
+node_modules/
+dist/
+.next/
+*.tsbuildinfo
+.local/
+.env
+.env.*
+!.env.example
+!deploy/.env.vps.example
+.DS_Store
+.pytest_cache/
+__pycache__/
+*.pyc
+*.log
+.vercel
+.joshu/skill-review-state.json
+
+# Standalone spec repo — https://github.com/db-aeon/portable-soul
+portable-soul/

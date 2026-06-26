@@ -1,0 +1,2 @@
+export const MAX_ATTACHMENT_BYTES = 100 * 1024 * 1024;
+export const MAX_ATTACHMENT_LABEL = "100MB";

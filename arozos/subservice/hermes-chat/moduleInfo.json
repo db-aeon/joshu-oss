@@ -1,0 +1,15 @@
+{
+  "Name": "jChat",
+  "Desc": "Chat with Hermes Agent from the ArozOS desktop",
+  "Group": "Office",
+  "IconPath": "img/joshu/chat.png",
+  "Version": "0.1.0",
+  "StartDir": "hermes-chat/index.html",
+  "SupportFW": true,
+  "LaunchFWDir": "hermes-chat/index.html",
+  "SupportEmb": false,
+  "LaunchEmb": "",
+  "InitFWSize": [400, 720],
+  "InitEmbSize": [920, 720],
+  "SupportedExt": []
+}

@@ -1,0 +1,10 @@
+{
+  "id": "hindsight-viewer",
+  "name": "Memory",
+  "version": "0.1.0",
+  "license": "AGPL-3.0",
+  "publisher": "joshu",
+  "entry": "hindsight-viewer/index.html",
+  "apiPrefix": "/joshu/api/hindsight",
+  "description": "Hindsight viewer"
+}

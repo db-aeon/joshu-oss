@@ -1,0 +1,7 @@
+name: joshu-desktop
+version: 1.0.1
+description: Open Joshu ArozOS desktop apps and files — validated actions enqueue to Joshu for the browser shell.
+provides_tools:
+  - desktop_open
+provides_hooks:
+  - post_tool_call

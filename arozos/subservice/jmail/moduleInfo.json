@@ -1,0 +1,12 @@
+{
+  "Name": "jMail",
+  "Desc": "Agent and principal mail — Nylas agent inbox and Gmail mirror",
+  "Group": "Joshu Apps",
+  "IconPath": "img/joshu/mail.png",
+  "Version": "1.0.0",
+  "StartDir": "jmail/index.html",
+  "SupportFW": true,
+  "LaunchFWDir": "jmail/index.html",
+  "InitFWSize": [1100, 720],
+  "SupportEmb": false
+}

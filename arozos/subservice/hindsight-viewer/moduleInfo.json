@@ -1,0 +1,15 @@
+{
+  "Name": "Memory",
+  "Desc": "Inspect Hindsight memory graphs from the Joshu desktop",
+  "Group": "Office",
+  "IconPath": "img/joshu/hindsight.png",
+  "Version": "0.1.0",
+  "StartDir": "hindsight-viewer/index.html",
+  "SupportFW": true,
+  "LaunchFWDir": "hindsight-viewer/index.html",
+  "SupportEmb": false,
+  "LaunchEmb": "",
+  "InitFWSize": [1280, 860],
+  "InitEmbSize": [960, 720],
+  "SupportedExt": []
+}

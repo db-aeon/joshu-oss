@@ -1,0 +1,10 @@
+{
+  "id": "joshu",
+  "name": "jWeb",
+  "version": "0.1.0",
+  "license": "AGPL-3.0",
+  "publisher": "joshu",
+  "entry": "joshu/index.html",
+  "apiPrefix": "/joshu/api/hitl",
+  "description": "HITL browser"
+}

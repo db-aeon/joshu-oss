@@ -1,0 +1,43 @@
+Joshu Box Stack — Dual License
+Copyright (c) 2025–2026 Joshu Inc. and contributors
+
+This software is available under **either**:
+
+1. **GNU Affero General Public License v3.0 (AGPL-3.0)** — see below, or
+2. **Joshu Commercial License** — contact license@joshu.me (see COMMERCIAL_LICENSE.md)
+
+If you do not have a commercial license agreement with Joshu Inc., you may use,
+modify, and distribute this software only under the terms of the AGPL-3.0.
+
+**Important third-party components** (not covered by this dual license):
+
+- **ArozOS** (`vendor/arozos` + `patches/arozos/`) remains under **GNU GPLv3**.
+  See NOTICE and docs/THIRD_PARTY.md.
+- **Hermes Agent**, **Excalidraw fork**, and other vendored dependencies retain
+  their upstream licenses.
+
+---
+
+                    GNU AFFERO GENERAL PUBLIC LICENSE
+                       Version 3, 19 November 2007
+
+ Copyright (C) 2007 Free Software Foundation, Inc. <https://fsf.org/>
+ Everyone is permitted to copy and distribute verbatim copies
+ of this license document, but changing it is not allowed.
+
+                            Preamble
+
+  The GNU Affero General Public License is a free, copyleft license for
+software and other kinds of works, specifically designed to ensure
+cooperation with the community in the case of network server software.
+
+  The full AGPL-3.0 text is available at:
+  https://www.gnu.org/licenses/agpl-3.0.txt
+
+  To receive a copy of the source code under AGPL, contact the copyright
+holder or obtain it from the public repository.
+
+---
+
+For commercial licensing terms, see COMMERCIAL_LICENSE.md.
+For trademark policy, see TRADEMARK.md.

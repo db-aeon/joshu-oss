@@ -1,0 +1,336 @@
+<!-- Joshu Box State — fragment loaded into System Setting (#settingContentLoader). -->
+<style>
+  .joshu-box-state {
+    --jp-paper: var(--color-paper, #f5f0eb);
+    --jp-ink: var(--color-ink, #0d0d0d);
+    --jp-action: var(--color-action, #0057ff);
+    background: var(--jp-paper);
+    color: var(--jp-ink);
+    font-family: "Work Sans", Arial, sans-serif;
+  }
+  .joshu-box-state .ui.header .sub.header {
+    font-weight: 400;
+  }
+  .joshu-box-state .mono {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.85em;
+    word-break: break-all;
+  }
+  .joshu-box-state .path-list {
+    margin: 0;
+    padding-left: 1.1em;
+  }
+  .joshu-box-state .muted {
+    color: rgba(13, 13, 13, 0.62);
+  }
+  .joshu-box-state #statusMessage.hidden,
+  .joshu-box-state #actionMessage.hidden {
+    display: none;
+  }
+</style>
+
+<div class="joshu-box-state">
+  <br />
+  <div class="ui container">
+    <div id="statusMessage" class="ui info message hidden"></div>
+    <div id="actionMessage" class="ui message hidden"></div>
+
+    <div class="ui header">
+      <img class="ui mini image" src="../../img/joshu/chat.png" alt="" />
+      <div class="content">
+        <span locale="joshu/box/Title">Box State</span>
+        <div class="sub header">
+          <span locale="joshu/box/Subtitle">Snapshot personal setup or re-apply factory defaults</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="ui two column stackable grid">
+      <div class="column">
+        <div class="ui segment">
+          <h4 class="ui header">Status</h4>
+          <div id="statusPanel" class="muted">Loading…</div>
+        </div>
+
+        <div class="ui segment">
+          <h4 class="ui header">Create snapshot</h4>
+          <p class="muted">Captures Desktop files, Hindsight memory, Hermes sessions, and optionally gbrain.</p>
+          <div class="ui form">
+            <div class="field">
+              <label>Label</label>
+              <input id="snapLabel" type="text" placeholder="e.g. before-refactor" />
+            </div>
+            <div class="field">
+              <div class="ui checkbox" id="includeGbrainCheck">
+                <input type="checkbox" checked />
+                <label>Include gbrain index (larger archive)</label>
+              </div>
+            </div>
+            <div class="field">
+              <div class="ui checkbox" id="sharedSnapCheck">
+                <input type="checkbox" />
+                <label>Save as shared snapshot (restorable on new boxes)</label>
+              </div>
+            </div>
+            <button id="btnSnap" class="ui primary button" type="button">
+              <i class="save icon"></i> Snap now
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="column">
+        <div class="ui segment">
+          <h4 class="ui header">Snapshots</h4>
+          <table class="ui celled compact table" id="snapshotsTable">
+            <thead>
+              <tr>
+                <th>When</th>
+                <th>Label</th>
+                <th>Release</th>
+                <th>Storage</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="snapshotsBody">
+              <tr><td colspan="5" class="muted">Loading…</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="ui segment">
+          <h4 class="ui header">Factory</h4>
+          <p class="muted">Factory = repo templates and product defaults. Personal = your files and memory.</p>
+          <div class="ui buttons">
+            <button id="btnFactoryApply" class="ui button" type="button">Soft apply</button>
+            <button id="btnFactoryHard" class="ui red button" type="button">Hard reset…</button>
+          </div>
+          <p class="muted" style="margin-top: 0.75em">
+            <strong>Soft apply</strong> re-seeds missing factory files without wiping your data.
+            <strong>Hard reset</strong> removes personal state then re-applies factory.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  (function () {
+    var API = "/joshu/api/box";
+    var root = document.querySelector(".joshu-box-state");
+    if (!root) return;
+
+    function showMessage(el, type, text) {
+      el.className = "ui " + type + " message";
+      el.textContent = text;
+    }
+
+    function hideMessage(el) {
+      el.className = "ui message hidden";
+      el.textContent = "";
+    }
+
+    function formatBytes(n) {
+      if (!n || n < 1024) return (n || 0) + " B";
+      if (n < 1024 * 1024) return (n / 1024).toFixed(1) + " KB";
+      return (n / (1024 * 1024)).toFixed(1) + " MB";
+    }
+
+    function formatDate(iso) {
+      if (!iso) return "—";
+      try {
+        return new Date(iso).toLocaleString();
+      } catch (e) {
+        return iso;
+      }
+    }
+
+    function api(path, options) {
+      return fetch(API + path, options).then(function (res) {
+        return res.json().then(function (body) {
+          if (!res.ok) {
+            throw new Error(body && body.error ? body.error : "HTTP " + res.status);
+          }
+          return body;
+        });
+      });
+    }
+
+    function renderStatus(status) {
+      var p = status.paths || {};
+      var st = status.storage || {};
+      var html = "";
+      html += "<p><strong>Release</strong> " + (status.releaseVersion || "—") + "</p>";
+      html += "<p><strong>User</strong> <span class=\"mono\">" + (p.arozUser || "—") + "</span></p>";
+      html += "<p><strong>Snapshot storage</strong> ";
+      if (st.mode === "gcs" && st.primary) {
+        html += "GCS <span class=\"mono\">" + (st.primary.bucket || "—") + "</span>";
+        html += " · box <span class=\"mono\">" + (st.boxId || "—") + "</span>";
+      } else {
+        html += "Local only <span class=\"mono\">" + (st.localCacheDir || p.snapshotDir || "—") + "</span>";
+      }
+      html += "</p>";
+      html += "<ul class=\"path-list\">";
+      html += "<li>Desktop: <span class=\"mono\">" + (p.desktopRoot || "—") + "</span></li>";
+      html += "<li>Files: <span class=\"mono\">" + (p.filesRoot || "—") + "</span></li>";
+      html += "<li>gbrain: <span class=\"mono\">" + (p.gbrainHome || "—") + "</span></li>";
+      html += "<li>Hindsight DB: <span class=\"mono\">" + (p.hindsightDatabaseUrl || "—") + "</span></li>";
+      html += "</ul>";
+      document.getElementById("statusPanel").innerHTML = html;
+    }
+
+    function renderSnapshots(snapshots) {
+      var tbody = document.getElementById("snapshotsBody");
+      tbody.innerHTML = "";
+      if (!snapshots || snapshots.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="muted">No snapshots yet</td></tr>';
+        return;
+      }
+      snapshots.forEach(function (s) {
+        var archive = (s.components || []).find(function (c) { return c.name === "archive"; });
+        var size = archive ? formatBytes(archive.bytes) : "—";
+        var storageLabel = s.storageBackend || "local";
+        if (s.storageBoxId && s.storageBoxId !== "shared") {
+          storageLabel += " · " + s.storageBoxId;
+        } else if (s.storageBoxId === "shared") {
+          storageLabel += " · shared";
+        }
+        var tr = document.createElement("tr");
+        tr.innerHTML =
+          "<td>" + formatDate(s.createdAt) + "<br><span class=\"muted mono\">" + s.snapshotId + "</span><br><span class=\"muted\">" + size + "</span></td>" +
+          "<td>" + (s.label || "—") + "</td>" +
+          "<td>" + (s.releaseVersion || "—") + "</td>" +
+          "<td><span class=\"muted\">" + storageLabel + "</span></td>" +
+          '<td><button class="ui mini button restore-btn" data-id="' + s.snapshotId + '" data-box="' + (s.storageBoxId || "") + '">Restore</button></td>';
+        tbody.appendChild(tr);
+      });
+      window.jQuery(".restore-btn", root).off("click").on("click", function () {
+        var id = window.jQuery(this).data("id");
+        var boxId = window.jQuery(this).data("box");
+        if (!confirm("Restore snapshot " + id + "?\n\nRunning services may need a restart after restore.")) return;
+        setBusy(true);
+        var body = { snapshotId: id };
+        if (boxId) body.sourceBoxId = boxId;
+        api("/restore", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        })
+          .then(function () {
+            showMessage(document.getElementById("actionMessage"), "positive", "Restored " + id);
+            refreshAll();
+          })
+          .catch(function (err) {
+            showMessage(document.getElementById("actionMessage"), "negative", err.message);
+          })
+          .finally(function () { setBusy(false); });
+      });
+    }
+
+    function setBusy(busy) {
+      window.jQuery("#btnSnap, #btnFactoryApply, #btnFactoryHard, .restore-btn", root).prop("disabled", busy);
+    }
+
+    function refreshAll() {
+      hideMessage(document.getElementById("statusMessage"));
+      return Promise.all([
+        api("/status").then(renderStatus),
+        api("/snapshots").then(function (data) { renderSnapshots(data.snapshots || []); }),
+      ]).catch(function (err) {
+        showMessage(document.getElementById("statusMessage"), "negative", err.message);
+      });
+    }
+
+    function boot() {
+      if (!window.jQuery) {
+        showMessage(
+          document.getElementById("statusMessage"),
+          "negative",
+          "Joshu Box State UI failed to load (jQuery missing)."
+        );
+        return;
+      }
+
+      if (window.applocale && typeof window.applocale.translate === "function") {
+        window.applocale.translate();
+      }
+
+      window.jQuery("#includeGbrainCheck", root).checkbox();
+      window.jQuery("#sharedSnapCheck", root).checkbox();
+
+      window.jQuery("#btnSnap", root).on("click", function () {
+        setBusy(true);
+        hideMessage(document.getElementById("actionMessage"));
+        api("/snap", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            label: document.getElementById("snapLabel").value.trim() || undefined,
+            includeGbrain: window.jQuery("#includeGbrainCheck", root).checkbox("is checked"),
+            shared: window.jQuery("#sharedSnapCheck", root).checkbox("is checked"),
+          }),
+        })
+          .then(function (result) {
+            var msg = "Snapshot created: " + result.snapshotId;
+            if (result.manifest && result.manifest.storageKey) {
+              msg += " (" + result.manifest.storageKey + ")";
+            }
+            showMessage(document.getElementById("actionMessage"), "positive", msg);
+            refreshAll();
+          })
+          .catch(function (err) {
+            showMessage(document.getElementById("actionMessage"), "negative", err.message);
+          })
+          .finally(function () { setBusy(false); });
+      });
+
+      window.jQuery("#btnFactoryApply", root).on("click", function () {
+        setBusy(true);
+        api("/factory-apply", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" })
+          .then(function (result) {
+            showMessage(
+              document.getElementById("actionMessage"),
+              "info",
+              "Factory apply: seeded " + (result.seeded || []).length + " files"
+            );
+          })
+          .catch(function (err) {
+            showMessage(document.getElementById("actionMessage"), "negative", err.message);
+          })
+          .finally(function () { setBusy(false); });
+      });
+
+      window.jQuery("#btnFactoryHard", root).on("click", function () {
+        if (
+          !confirm(
+            "Hard factory reset removes personal files, Hindsight memory, Hermes sessions, and the gbrain index on this box.\n\nFactory seeds from the repo will be re-applied. This cannot be undone unless you restore a snapshot first.\n\nContinue?"
+          )
+        ) {
+          return;
+        }
+        setBusy(true);
+        hideMessage(document.getElementById("actionMessage"));
+        api("/factory-reset", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ mode: "hard", confirm: true }),
+        })
+          .then(function () {
+            showMessage(document.getElementById("actionMessage"), "warning", "Hard factory reset complete");
+            refreshAll();
+          })
+          .catch(function (err) {
+            showMessage(document.getElementById("actionMessage"), "negative", err.message);
+          })
+          .finally(function () {
+            setBusy(false);
+          });
+      });
+
+      refreshAll();
+    }
+
+    boot();
+  })();
+</script>

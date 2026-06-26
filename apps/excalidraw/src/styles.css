@@ -1,0 +1,110 @@
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--color-paper);
+  color: var(--color-text-on-paper);
+}
+
+button,
+.import-button {
+  align-items: center;
+  background: var(--color-action);
+  border: var(--border-default);
+  border-radius: var(--radius-field);
+  color: var(--color-text-on-action);
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 700;
+  gap: 0.35rem;
+  min-height: 2.25rem;
+  padding: 0 0.85rem;
+}
+
+button:hover:not(:disabled),
+.import-button:hover:has(input:enabled) {
+  background: var(--color-action-hover);
+}
+
+button:disabled,
+.import-button:has(input:disabled) {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.excalidraw-app {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100%;
+}
+
+.excalidraw-toolbar {
+  align-items: center;
+  background: var(--color-surface-panel);
+  border-bottom: var(--border-default);
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+}
+
+.excalidraw-toolbar h1 {
+  font-size: 1rem;
+  line-height: 1.2;
+  margin: 0;
+  font-weight: 700;
+}
+
+.excalidraw-toolbar p {
+  color: var(--color-text-muted);
+  font-size: 0.82rem;
+  margin: 0.15rem 0 0;
+}
+
+.excalidraw-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  justify-content: flex-end;
+}
+
+.import-button {
+  background: var(--color-surface-panel);
+  color: var(--color-ink);
+}
+
+.import-button:hover {
+  background: var(--color-peach);
+}
+
+.import-button input {
+  display: none;
+}
+
+.excalidraw-canvas {
+  min-height: 0;
+}
+
+.excalidraw-canvas .excalidraw {
+  --color-primary: #0057ff;
+  --color-primary-darker: #0046cc;
+  --color-primary-darkest: #003399;
+  height: 100%;
+}
+
+@media (max-width: 720px) {
+  .excalidraw-toolbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .excalidraw-actions {
+    justify-content: flex-start;
+  }
+}

@@ -1,0 +1,241 @@
+.welcome-app {
+  min-height: 100vh;
+  background: var(--color-paper, #f5f0eb);
+  color: var(--color-ink, #0d0d0d);
+  padding: 1.5rem;
+  box-sizing: border-box;
+}
+
+.welcome-shell {
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+.welcome-header h1 {
+  margin: 0 0 0.25rem;
+  font-size: 1.75rem;
+}
+
+.welcome-header p {
+  margin: 0 0 1.25rem;
+  color: rgba(13, 13, 13, 0.65);
+}
+
+.welcome-progress {
+  display: flex;
+  gap: 0.35rem;
+  margin-bottom: 1.25rem;
+}
+
+.welcome-progress span {
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(13, 13, 13, 0.12);
+}
+
+.welcome-progress span.active {
+  background: var(--color-action, #0057ff);
+}
+
+.welcome-card {
+  background: #fff;
+  border: 1px solid rgba(13, 13, 13, 0.08);
+  border-radius: 12px;
+  padding: 1.25rem;
+  box-shadow: 0 8px 24px rgba(13, 13, 13, 0.06);
+}
+
+.welcome-card h2 {
+  margin: 0 0 0.75rem;
+  font-size: 1.15rem;
+}
+
+.welcome-field {
+  margin-bottom: 0.9rem;
+}
+
+.welcome-field > label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-bottom: 0.35rem;
+}
+
+.welcome-field input:not([type="checkbox"]),
+.welcome-field textarea,
+.welcome-field select {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid rgba(13, 13, 13, 0.15);
+  border-radius: 8px;
+  font: inherit;
+  background: #fff;
+}
+
+.welcome-field textarea {
+  min-height: 72px;
+  resize: vertical;
+}
+
+.welcome-hint {
+  font-size: 0.82rem;
+  color: rgba(13, 13, 13, 0.55);
+  margin: 0 0 0.75rem;
+}
+
+.welcome-actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  margin-top: 1rem;
+}
+
+.welcome-actions button {
+  border: none;
+  border-radius: 8px;
+  padding: 0.55rem 1rem;
+  font: inherit;
+  cursor: pointer;
+}
+
+.welcome-actions .secondary {
+  background: transparent;
+  color: var(--color-ink);
+  border: 1px solid rgba(13, 13, 13, 0.2);
+}
+
+.welcome-actions .primary {
+  background: var(--color-action, #0057ff);
+  color: #fff;
+}
+
+.welcome-error {
+  color: #b42318;
+  margin-bottom: 0.75rem;
+  font-size: 0.9rem;
+}
+
+.welcome-success {
+  color: #027a48;
+  margin-bottom: 0.75rem;
+  font-size: 0.9rem;
+}
+
+.welcome-checkboxes {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.welcome-check {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  font-size: 0.9rem;
+  line-height: 1.35;
+  font-weight: 400;
+  cursor: pointer;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid rgba(13, 13, 13, 0.12);
+  border-radius: 8px;
+  background: rgba(13, 13, 13, 0.02);
+  transition: border-color 0.12s, background 0.12s;
+}
+
+.welcome-check:hover {
+  border-color: rgba(13, 13, 13, 0.22);
+  background: rgba(13, 13, 13, 0.04);
+}
+
+.welcome-check:has(input:checked) {
+  border-color: rgba(0, 87, 255, 0.45);
+  background: rgba(0, 87, 255, 0.06);
+}
+
+.welcome-check input {
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  flex-shrink: 0;
+  accent-color: var(--color-action, #0057ff);
+  cursor: pointer;
+}
+
+.welcome-check span {
+  flex: 1;
+}
+
+.welcome-channel-row {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid rgba(13, 13, 13, 0.12);
+  border-radius: 8px;
+  background: rgba(13, 13, 13, 0.02);
+  overflow: hidden;
+}
+
+.welcome-channel-row:has(input[type="checkbox"]:checked) {
+  border-color: rgba(0, 87, 255, 0.45);
+  background: rgba(0, 87, 255, 0.04);
+}
+
+.welcome-channel-row .welcome-check {
+  margin-bottom: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+
+.welcome-channel-row .welcome-check:hover {
+  background: rgba(13, 13, 13, 0.03);
+}
+
+.welcome-channel-contact {
+  padding: 0 0.7rem 0.65rem;
+  border-top: 1px solid rgba(13, 13, 13, 0.08);
+  margin: 0;
+}
+
+.welcome-channel-contact label {
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: rgba(13, 13, 13, 0.6);
+  margin-bottom: 0.25rem;
+}
+
+.welcome-channel-contact input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid rgba(13, 13, 13, 0.15);
+  border-radius: 8px;
+  font: inherit;
+  background: #fff;
+}
+
+.welcome-mailbox {
+  padding: 0.75rem;
+  background: rgba(0, 87, 255, 0.06);
+  border-radius: 8px;
+  margin-bottom: 0.75rem;
+}
+
+.welcome-vip-row {
+  border: 1px solid rgba(13, 13, 13, 0.1);
+  border-radius: 8px;
+  padding: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.welcome-review dt {
+  font-weight: 600;
+  margin-top: 0.5rem;
+}
+
+.welcome-review dd {
+  margin: 0.15rem 0 0;
+  color: rgba(13, 13, 13, 0.75);
+}

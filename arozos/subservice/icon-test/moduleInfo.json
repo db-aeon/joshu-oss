@@ -1,0 +1,15 @@
+{
+  "Name": "Icon Test",
+  "Desc": "SVG desktop icon test (jōshu)",
+  "Group": "Office",
+  "IconPath": "img/joshu/icon-test.png",
+  "Version": "0.1.0",
+  "StartDir": "icon-test/index.html",
+  "SupportFW": true,
+  "LaunchFWDir": "icon-test/index.html",
+  "SupportEmb": false,
+  "LaunchEmb": "",
+  "InitFWSize": [640, 480],
+  "InitEmbSize": [640, 480],
+  "SupportedExt": []
+}

@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Joshu App Manifest",
+  "type": "object",
+  "required": ["id", "name", "version", "license", "publisher", "entry"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+    "name": { "type": "string" },
+    "version": { "type": "string" },
+    "license": {
+      "type": "string",
+      "enum": ["AGPL-3.0", "MIT", "proprietary"]
+    },
+    "publisher": { "type": "string" },
+    "entry": { "type": "string", "description": "HTML entry relative to subservice folder" },
+    "apiPrefix": { "type": "string", "description": "Joshu API mount, e.g. /joshu/api/hermes-chat" },
+    "description": { "type": "string" }
+  }
+}

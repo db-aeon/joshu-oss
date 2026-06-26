@@ -1,0 +1,50 @@
+name: joshu-oss-image
+
+on:
+  push:
+    tags: ["v*-oss", "v1.0.0-oss"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - run: npm ci
+      - run: npm run modal:predeploy
+      - run: npm run vps:sync-hermes-pin
+
+      - name: Resolve Hermes pin
+        id: hermes
+        run: echo "ref=$(node scripts/sync-vps-hermes-pin.mjs --print)" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push joshu-oss (Vanilla theme)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/Dockerfile
+          push: true
+          build-args: |
+            HERMES_AGENT_REF=${{ steps.hermes.outputs.ref }}
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/joshu-oss:${{ github.ref_name }}
+            ghcr.io/${{ github.repository_owner }}/joshu-oss:latest

@@ -1,0 +1,359 @@
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--color-paper);
+  color: var(--color-ink);
+}
+
+.mail-app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  max-height: 100vh;
+  overflow: hidden;
+}
+
+.mail-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  border-bottom: var(--border-default);
+  background: var(--color-surface-panel);
+}
+
+.mail-header h1 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.mail-subtitle {
+  margin: 0.25rem 0 0;
+  font-size: var(--font-size-small);
+  color: var(--color-text-muted);
+}
+
+.mail-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.account-switcher {
+  display: flex;
+  border: var(--border-default);
+  margin-right: 0.25rem;
+}
+
+.account-switcher button {
+  border: none;
+  border-radius: 0;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  padding: 0.35rem 0.65rem;
+  font-size: var(--font-size-small);
+  cursor: pointer;
+}
+
+.account-switcher button:not(:last-child) {
+  border-right: var(--border-default);
+}
+
+.account-switcher button.active {
+  background: var(--color-action);
+  color: #fff;
+}
+
+.account-switcher button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.banner {
+  margin: 0.5rem 1.25rem 0;
+  padding: 0.65rem 0.85rem;
+  border: var(--border-default);
+  font-size: var(--font-size-small);
+}
+
+.banner-warn {
+  background: var(--color-terminal-yellow);
+}
+
+.banner-err {
+  background: #f8e8e6;
+  color: var(--color-err);
+}
+
+.banner-ok {
+  background: #e6f4ec;
+  color: var(--color-ok);
+}
+
+.panel {
+  background: var(--color-surface-panel);
+  border: var(--border-default);
+  padding: 1rem 1.25rem;
+}
+
+.setup-panels {
+  overflow: auto;
+  padding: 1rem 1.25rem 1.5rem;
+  display: grid;
+  gap: 1rem;
+}
+
+.setup-panels .panel h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+}
+
+.mail-layout {
+  display: grid;
+  grid-template-columns: minmax(240px, 320px) 1fr;
+  flex: 1;
+  min-height: 0;
+  border-top: var(--border-default);
+}
+
+.mail-sidebar {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: var(--border-default);
+  background: var(--color-surface-panel);
+}
+
+.sidebar-toolbar {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border-bottom: var(--border-default);
+}
+
+.message-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  flex: 1;
+}
+
+.message-row {
+  width: 100%;
+  text-align: left;
+  border: none;
+  border-bottom: 1px solid var(--color-border-subtle);
+  background: transparent;
+  padding: 0.65rem 0.75rem;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+
+.message-row:hover {
+  background: var(--color-surface-tint);
+}
+
+.message-row.selected {
+  background: var(--color-sky);
+}
+
+.message-row.unread .message-from,
+.message-row.unread .message-subject {
+  font-weight: 600;
+}
+
+.message-row-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: var(--font-size-small);
+}
+
+.message-from {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.message-date {
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+.message-subject {
+  display: block;
+  margin-top: 0.15rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.message-snippet {
+  display: block;
+  margin-top: 0.1rem;
+  font-size: var(--font-size-small);
+  color: var(--color-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.message-empty,
+.message-empty-state {
+  padding: 1rem;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-small);
+}
+
+.mail-main {
+  min-height: 0;
+  overflow: auto;
+  background: var(--color-paper);
+}
+
+.message-detail {
+  padding: 1rem 1.25rem 1.5rem;
+}
+
+.message-detail-header h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.1rem;
+}
+
+.message-detail-header p {
+  margin: 0.2rem 0;
+  font-size: var(--font-size-small);
+}
+
+.message-meta {
+  color: var(--color-text-muted);
+}
+
+.message-body-frame {
+  width: 100%;
+  min-height: 320px;
+  border: var(--border-default);
+  background: #fff;
+  margin-top: 0.75rem;
+}
+
+.message-plain {
+  margin-top: 0.75rem;
+  white-space: pre-wrap;
+  line-height: var(--line-height-body);
+}
+
+.thread-conversation {
+  margin-top: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.thread-message {
+  border-left: 3px solid var(--color-border, #d4d0c8);
+  padding: 0.65rem 0 0.65rem 1rem;
+  background: var(--color-surface-muted, #f8f7f4);
+  border-radius: 0 var(--radius-field, 4px) var(--radius-field, 4px) 0;
+}
+
+.thread-message-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.75rem;
+  margin-bottom: 0.35rem;
+  font-size: var(--font-size-small);
+}
+
+.thread-message-from {
+  font-weight: 600;
+}
+
+.thread-message-date {
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+.thread-message-subject {
+  margin: 0 0 0.35rem;
+  font-size: var(--font-size-small);
+  color: var(--color-text-muted);
+}
+
+.thread-message-body {
+  margin-top: 0;
+}
+
+.compose-panel {
+  margin: 1rem 1.25rem;
+  overflow: auto;
+}
+
+label {
+  display: block;
+  font-size: var(--font-size-small);
+  font-weight: 500;
+  margin: 0.75rem 0 0.25rem;
+}
+
+input,
+textarea {
+  width: 100%;
+  max-width: 40rem;
+  padding: 0.5rem 0.65rem;
+  border: var(--border-default);
+  border-radius: var(--radius-field);
+  font: inherit;
+  background: #fff;
+}
+
+textarea {
+  resize: vertical;
+  min-height: 10rem;
+}
+
+button {
+  font: inherit;
+  padding: 0.45rem 0.9rem;
+  border: var(--border-default);
+  border-radius: var(--radius-field);
+  cursor: pointer;
+  background: var(--color-ink);
+  color: var(--color-text-on-action);
+}
+
+button.secondary {
+  background: var(--color-paper);
+  color: var(--color-ink);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.status-ok {
+  color: var(--color-ok);
+}
+
+@media (max-width: 720px) {
+  .mail-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .mail-sidebar {
+    max-height: 40vh;
+  }
+}

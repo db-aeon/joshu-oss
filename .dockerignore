@@ -1,0 +1,32 @@
+.git
+.gitignore
+.DS_Store
+
+# Local dependencies and build caches should never enter the Docker context.
+node_modules
+**/node_modules
+.local
+coverage
+.next
+**/.next
+.turbo
+.vite
+
+# Secrets and local machine config.
+.env
+.env.*
+!.env.example
+apps/control-plane/.env
+apps/control-plane/.env.*
+!apps/control-plane/.env.example
+
+# Modal / editor / runtime artifacts not needed for the VPS image.
+.cursor
+agent-transcripts
+*.log
+npm-debug.log*
+
+# Keep vendored source, but not its git metadata.
+vendor/arozos/.git
+vendor/arozos/.github
+

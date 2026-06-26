@@ -1,0 +1,596 @@
+diff --git a/.gitignore b/.gitignore
+index 0f6a724..8f21039 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -31,3 +31,4 @@ src/system/bridge.json
+ src/system/cron.json
+ src/system/smtp_conf.json
+ /src/web/FFmpeg Factory
++.DS_Store
+diff --git a/src/setting.go b/src/setting.go
+index 5b6e119..24f772f 100644
+--- a/src/setting.go
++++ b/src/setting.go
+@@ -111,6 +111,12 @@ func system_setting_getSettingGroups() []settingGroup {
+ 			IconPath: "SystemAO/system_setting/img/info.svg",
+ 			Desc:     "Information of the current running ArOZ Online System",
+ 		},
++		{
++			Name:     "Joshu",
++			Group:    "Joshu",
++			IconPath: "img/joshu/chat.png",
++			Desc:     "Joshu box snapshots and factory profile",
++		},
+ 	}
+ }
+ 
+diff --git a/src/setting_joshu.go b/src/setting_joshu.go
+new file mode 100644
+index 0000000..17a5867
+--- /dev/null
++++ b/src/setting_joshu.go
+@@ -0,0 +1,24 @@
++package main
++
++/*
++	Joshu System Setting pages (box snapshots, factory profile).
++*/
++
++func JoshuSettingInit() {
++	registerSetting(settingModule{
++		Name:         "Hermes Gateway",
++		Desc:         "Start or stop the Hermes agent gateway on this box",
++		IconPath:     "img/joshu/chat.png",
++		Group:        "Joshu",
++		StartDir:     "SystemAO/joshu/hermes-gateway.html",
++		RequireAdmin: true,
++	})
++	registerSetting(settingModule{
++		Name:         "Box State",
++		Desc:         "Snapshot, restore, and factory reset for this Joshu box",
++		IconPath:     "img/joshu/chat.png",
++		Group:        "Joshu",
++		StartDir:     "SystemAO/joshu/box-state.html",
++		RequireAdmin: true,
++	})
++}
+diff --git a/src/startup.go b/src/startup.go
+index 2f3b8bc..76dce43 100644
+--- a/src/startup.go
++++ b/src/startup.go
+@@ -96,6 +96,7 @@ func RunStartup() {
+ 	SystemIDInit()            //System UUID Manager
+ 	AuthSettingsInit()        //Authentication Settings Handler, must be start after user Handler
+ 	AdvanceSettingInit()      //System Advance Settings
++	JoshuSettingInit()        //Joshu box state (snapshots / factory)
+ 	StartupFlagsInit()        //System BootFlag settibg
+ 	HardwarePowerInit()       //Start host power manager
+ 	RegisterStorageSettings() //Storage Settings
+diff --git a/src/web/SystemAO/locale/system_settings.json b/src/web/SystemAO/locale/system_settings.json
+index e9d947e..7c658a5 100644
+--- a/src/web/SystemAO/locale/system_settings.json
++++ b/src/web/SystemAO/locale/system_settings.json
+@@ -428,8 +428,9 @@
+                 "menu/group/Security & Auth": "Security & Auth",
+                 "menu/group/Developer Options": "Developer Options",
+                 "menu/group/About ArOZ": "About ArozOS",
+-                
+-                "tab/info/Overview": "Overview",
++                "menu/group/Joshu": "Joshu",
++
++                "tab/joshu/Box State": "Box State",
+                 "tab/info/Host Info": "Host Information",
+                 "tab/info/Performance": "Performance",
+                 "tab/info/Runtime": "Runtime",
+@@ -483,10 +484,12 @@
+                 "tab/about/Open Source": "Open Source Components",
+                 "tab/about/License": "System License",
+                 "tab/about/Vendor": "Vendor",
+-                
++
+                 "": ""
+             },
+             "titles": {
++                "Joshu box snapshots and factory profile": "Joshu box snapshots and factory profile",
++                "Snapshot, restore, and factory reset for this Joshu box": "Snapshot, restore, and factory reset for this Joshu box",
+                 "Config and info about the Server Host": "Server Configuration and Information",
+                 "Connected clients and IoT devices": "Clients and IoT Devices",
+                 "List of modules loaded in the system": "System Modules and Subservices",
+diff --git a/src/web/SystemAO/utilities/mediaPlayer.html b/src/web/SystemAO/utilities/mediaPlayer.html
+index 412a64a..1235354 100644
+--- a/src/web/SystemAO/utilities/mediaPlayer.html
++++ b/src/web/SystemAO/utilities/mediaPlayer.html
+@@ -46,6 +46,28 @@
+ 			z-index:99;
+ 			display:none;
+ 		}
++		#playPrompt{
++			position:absolute;
++			inset:0;
++			z-index:50;
++			display:flex;
++			align-items:center;
++			justify-content:center;
++			background:rgba(0,0,0,0.45);
++			cursor:pointer;
++		}
++		#playPrompt.hidden{
++			display:none;
++		}
++		#playPrompt .playLabel{
++			color:white;
++			font-size:1.1rem;
++			letter-spacing:0.04em;
++			padding:0.75rem 1.25rem;
++			border:1px solid rgba(255,255,255,0.35);
++			border-radius:4px;
++			background:rgba(0,0,0,0.35);
++		}
+ 		.blur{
+ 			filter: blur(2px);
+ 		}
+@@ -59,7 +81,10 @@
+ 	</div>
+ 	<dib id="videocover" onclick="hideMenu();"></dib>
+ 	<div class="videoWrapper">
+-		<video id="player" autoplay controls></video>
++		<div id="playPrompt" class="hidden" onclick="startPlayback();" title="Play video">
++			<span class="playLabel"><i class="play icon"></i> Play</span>
++		</div>
++		<video id="player" controls playsinline preload="none"></video>
+ 	</div>
+ 	<div id="mainmenu" class="ui left fixed inverted vertical menu" style="overflow-y:auto; width:220px;">
+ 		<div id="playerIcon" class="item">
+@@ -74,14 +99,22 @@
+ 		var fileList = ao_module_loadInputFiles();
+ 		var vid = document.getElementById("player");
+ 		var currentPlaying = 0;
+-		var targetVol = 0.7;
+-		if (localStorage.getItem("global_volume") !== null && localStorage.getItem("global_volume") !== undefined){
+-			targetVol = localStorage.getItem("global_volume");
++		var pendingPlay = null;
++
++		function resolveVolume(){
++			var raw = localStorage.getItem("global_volume");
++			var vol = parseFloat(raw);
++			if (isNaN(vol) || vol <= 0){
++				return 0.7;
++			}
++			return Math.min(1, vol);
+ 		}
+ 		
+ 		if (fileList !== null){
+-			playFile(fileList[0]);
++			pendingPlay = fileList[0];
++			currentPlaying = 0;
+ 			ao_module_setWindowTitle(fileList[0].filename);
++			$("#playPrompt").removeClass("hidden");
+ 		}
+ 
+ 		$(".file.item").remove();
+@@ -92,11 +125,28 @@
+ 		}
+ 
+ 		function playFileByID(id){
+-			playFile(fileList[id]);
++			currentPlaying = id;
++			startPlayback(fileList[id]);
+ 			ao_module_setWindowTitle(fileList[id].filename);
+ 			hideMenu();
+ 		}
+ 
++		function startPlayback(fileObject){
++			var target = fileObject || pendingPlay;
++			if (target == null){
++				return;
++			}
++			pendingPlay = target;
++			$("#playPrompt").addClass("hidden");
++			playFile(target);
++			vid.muted = false;
++			vid.volume = resolveVolume();
++			var playAttempt = vid.play();
++			if (playAttempt && typeof playAttempt.catch === "function"){
++				playAttempt.catch(function(){});
++			}
++		}
++
+ 		function showMenu(){
+ 			$('.menu').show();
+ 			$('#videocover').show();
+@@ -114,8 +164,11 @@
+ 				videoURL = '../../media/transcode?file=' + encodeURIComponent(fileObject.filepath);
+ 			}
+ 
+-			$("#player").attr('src',videoURL);
+-			vid.volume = parseFloat(targetVol);
++			vid.pause();
++			vid.removeAttribute("autoplay");
++			vid.muted = false;
++			$("#player").attr('src', videoURL);
++			vid.volume = resolveVolume();
+ 		}
+ 
+ 		function hideMenu(){
+diff --git a/src/web/Video/embedded.html b/src/web/Video/embedded.html
+index 53b6ed7..e3adfb8 100644
+--- a/src/web/Video/embedded.html
++++ b/src/web/Video/embedded.html
+@@ -39,10 +39,14 @@
+             }
+            
+ 
+-            //Load global vol from localStorage
+-            var defaultVol = localStorage.getItem("global_volume");
+-            if (defaultVol == null || defaultVol == "" || defaultVol == undefined){
+-                defaultVol = 0.4;
++            //Load global vol from localStorage (ignore zero — desktop used to default to 0)
++            function resolveVolume(){
++                var raw = localStorage.getItem("global_volume");
++                var vol = parseFloat(raw);
++                if (isNaN(vol) || vol <= 0){
++                    return 0.7;
++                }
++                return Math.min(1, vol);
+             }
+ 
+             function initPlayback(){
+@@ -71,8 +75,8 @@
+                 const dp = new DPlayer({
+                     container: document.getElementById('dplayer'),
+                     screenshot: true,
+-                    autoplay: true,
+-                    volume: parseFloat(defaultVol),
++                    autoplay: false,
++                    volume: resolveVolume(),
+                     video: {
+                         url: videoURL
+                     },
+diff --git a/src/web/desktop.html b/src/web/desktop.html
+index 32478b7..b6dd679 100644
+--- a/src/web/desktop.html
++++ b/src/web/desktop.html
+@@ -20,7 +20,8 @@
+             background-repeat: no-repeat;
+             background-size: cover;
+             background-position: center;
+-            background-image: url('img/desktop/bg/init.jpg');
++            background-color: #000000;
++            background-image: none;
+             width: 100%;
+             height: 100%;
+             overflow: hidden;
+@@ -663,6 +664,13 @@
+             width:100%;
+             height: calc(100% - 28px);
+             z-index:1114;
++            /* Default off: during jQuery fade the bar can sit at opacity:0, display:block
++               and still capture the whole viewport above the taskbar. */
++            pointer-events: none;
++        }
++
++        .notificationbar.jp-notifications-open{
++            pointer-events: auto;
+         }
+ 
+         .notificationbar .content{
+@@ -703,6 +711,12 @@
+             left:0;
+             width:100%;
+             height: calc(100%);
++            /* Default off: during jQuery fadeOut the cover can sit at opacity:0 but still
++               capture the full viewport (including the taskbar). Only enable when open. */
++            pointer-events: none;
++        }
++
++        .notificationbar.jp-notifications-open .cover{
+             pointer-events: auto;
+         }
+ 
+@@ -1418,6 +1432,129 @@
+         var isMacOS = (navigator.appVersion.indexOf("Mac")!=-1);
+         var isTouchScreen = window.matchMedia("(any-pointer: coarse)").matches;
+ 
++        // Clear stuck full-screen layers (notification shade, drag capture planes, dimmed topmost windows).
++        function clearDesktopInitSplash() {
++            $("body").css({
++                "background-image": "none",
++                "background-color": "#000000"
++            });
++        }
++
++        function resetDesktopInteractionLayers() {
++            $(".notificationbar").removeClass("jp-notifications-open").stop(true, true).hide()
++                .css({"pointer-events": "none", "opacity": 1});
++            $(".notificationbar .cover").hide().css({"pointer-events": "none", "display": "none", "opacity": 0});
++            $("#fwdragpanel, #tfwdragpanel").hide().css({"pointer-events": "none"});
++            $('.floatWindow.topmost').css({"pointer-events": "auto", "opacity": 1});
++            $(".floatWindow").find(".iframecover").hide();
++            $("#selectionPanel").hide();
++            $("#quickAccessPanel").stop(true, true).hide();
++            $("#backgroundTaskPanel").stop(true, true).hide();
++            $("#listMenu").stop(true, true).hide();
++            $("body > .ui.dimmer.active").removeClass("active").hide();
++            movingWindow = false;
++            resizingWindow = false;
++            resizingEdgeID = 0;
++            multiSelecting = false;
++            multiSelectionStartPoint = [-1, -1];
++            resizingWindowTarget = undefined;
++            listMenuShown = false;
++        }
++
++        function scheduleDesktopLayerCleanup() {
++            [50, 200, 750, 2000, 5000, 10000].forEach(function(ms) {
++                window.setTimeout(resetDesktopInteractionLayers, ms);
++            });
++        }
++
++        function recoverDesktopInteraction() {
++            resetDesktopInteractionLayers();
++            $(".floatWindow").each(function() {
++                $(this).css({"pointer-events": "auto", "opacity": 1});
++                $(this).find(".iframecover").hide();
++            });
++            if (typeof hookFloatWindowEvents === "function") {
++                hookFloatWindowEvents();
++            }
++            if (typeof hookLaunchMenuEvents === "function") {
++                hookLaunchMenuEvents();
++            }
++            if (typeof moduleInstalled !== "undefined" && moduleInstalled.length > 0 && typeof listModulesType === "function") {
++                listModulesType("All");
++            } else if (typeof initModuleList === "function") {
++                initModuleList();
++            }
++            if (typeof refresh === "function") {
++                refresh(undefined, true);
++            }
++            try {
++                $(".dropdown").dropdown();
++            } catch (ex) {
++                /* ignore if Semantic UI not ready */
++            }
++        }
++
++        function markDesktopInitComplete() {
++            window.__arozDesktopInitComplete = true;
++            resetDesktopInteractionLayers();
++            scheduleDesktopLayerCleanup();
++            try {
++                var tabId = window.__arozDesktopTabId || "unknown";
++                localStorage.setItem("ao_desktop_ready", tabId + ":" + Date.now());
++            } catch (ex) {
++                /* ignore private mode / blocked storage */
++            }
++            if (typeof window.__arozOnDesktopInitComplete === "function") {
++                window.__arozOnDesktopInitComplete();
++            }
++        }
++
++        if (!window.__arozDesktopLifecycleHooks) {
++            window.__arozDesktopLifecycleHooks = true;
++            window.__arozDesktopTabId = Math.random().toString(36).slice(2);
++            window.resetDesktopInteractionLayers = resetDesktopInteractionLayers;
++            window.clearDesktopInitSplash = clearDesktopInitSplash;
++            clearDesktopInitSplash();
++            window.recoverDesktopInteraction = recoverDesktopInteraction;
++            window.markDesktopInitComplete = markDesktopInitComplete;
++            window.arozRecoverDesktop = function() {
++                if (!window.__arozDesktopInitComplete && typeof initDesktop === "function") {
++                    initDesktop();
++                } else {
++                    recoverDesktopInteraction();
++                }
++                if (typeof window.__arozDesktopDiag === "function") {
++                    console.log("[desktop] arozRecoverDesktop", window.__arozDesktopDiag());
++                }
++                return true;
++            };
++            // Register before async applocale init so bfcache pageshow is not missed.
++            window.addEventListener("pageshow", function(event) {
++                resetDesktopInteractionLayers();
++                scheduleDesktopLayerCleanup();
++            });
++            document.addEventListener("visibilitychange", function() {
++                if (document.visibilityState === "visible") {
++                    resetDesktopInteractionLayers();
++                    scheduleDesktopLayerCleanup();
++                }
++            });
++            window.addEventListener("focus", function() {
++                if (movingWindow || resizingWindow || multiSelecting) {
++                    resetDesktopInteractionLayers();
++                }
++            });
++            window.addEventListener("blur", function() {
++                if (movingWindow || resizingWindow) {
++                    resetDesktopInteractionLayers();
++                }
++            });
++            $(function() {
++                resetDesktopInteractionLayers();
++                scheduleDesktopLayerCleanup();
++            });
++        }
++
+         //Check and prepare localization
+         if (typeof(applocale) != "undefined"){
+             //Applocale found. Do localization
+@@ -1437,6 +1574,8 @@
+ 
+ 
+         function initDesktop(){
++            resetDesktopInteractionLayers();
++            clearDesktopInitSplash();
+             //Initiation functions
+             initDesktopTheme();
+             initDesktopHostInfo();
+@@ -1461,6 +1600,8 @@
+ 
+             //Activate all dropdowns
+             $(".dropdown").dropdown();
++
++            markDesktopInitComplete();
+         }
+ 
+         function initFrameLoading(){
+@@ -1717,7 +1858,7 @@
+         }
+ 
+         function showToolPanel(){
+-            if (listMenuShown = true){
++            if (listMenuShown) {
+                 hideListMenu();
+             }
+             $("#quickAccessPanel").fadeToggle("fast");
+@@ -1739,7 +1880,7 @@
+                     if (currentGlobalVol != null && currentGlobalVol != undefined && currentGlobalVol != ""){
+                         
+                     }else{
+-                        currentGlobalVol = 0;
++                        currentGlobalVol = 0.7;
+                     }
+ 
+                     var audio = new Audio("media?file=" + data);
+@@ -1798,7 +1939,7 @@
+             if (currentGlobalVol != null && currentGlobalVol != undefined && currentGlobalVol != ""){
+                 $("#volumebar").css("width", currentGlobalVol * 100 + "%");
+             }else{
+-                currentGlobalVol = 0;
++                currentGlobalVol = 0.7;
+                 localStorage.setItem("global_volume",currentGlobalVol);
+             }
+ 
+@@ -1829,15 +1970,21 @@
+         }
+ 
+         function toggleNotification(action=undefined){
++            function syncNotificationOpenState() {
++                if ($(".notificationbar").is(":visible")) {
++                    $(".notificationbar").addClass("jp-notifications-open");
++                } else {
++                    $(".notificationbar").removeClass("jp-notifications-open");
++                }
++            }
+             if (typeof action == "undefined"){
+-                $(".notificationbar").stop().finish().fadeToggle("fast", function(){
+-                  
+-                });
++                $(".notificationbar").stop().finish().fadeToggle("fast", syncNotificationOpenState);
+             }else{
+                 if (action == "hide"){
+-                    $(".notificationbar").stop().finish().fadeOut("fast");
++                    $(".notificationbar").removeClass("jp-notifications-open");
++                    $(".notificationbar").stop().finish().fadeOut("fast", syncNotificationOpenState);
+                 }else if (action == "show"){
+-                    $(".notificationbar").stop().finish().fadeIn("fast");
++                    $(".notificationbar").stop().finish().fadeIn("fast", syncNotificationOpenState);
+                 }
+             }
+         }
+@@ -3330,6 +3477,7 @@
+ 
+         //Actiave background cross fade changing animation
+         function initBackgroundSwitchingAnimation() {
++            clearDesktopInitSplash();
+             if (localStorage.getItem("ao/desktop/backgroundInterval") !== null && !isNaN(parseInt(localStorage.getItem("ao/desktop/backgroundInterval")))){
+                 //Localstorage has interval setting that is not NaN
+                 backgroundCrossfadeInterval = parseInt(localStorage.getItem("ao/desktop/backgroundInterval")) * 1000;
+@@ -3353,6 +3501,7 @@
+ 
+         //Function for changing the desktop theme
+         function changeDesktopTheme(targetThemeName) {
++            clearDesktopInitSplash();
+             currentUserTheme = targetThemeName;
+ 
+             if (currentUserTheme.includes(":/") == false){
+@@ -3374,6 +3523,7 @@
+                 }
+                 setTimeout(function() {
+                     $("#dbg0").addClass("showBackground");
++                    clearDesktopInitSplash();
+                 }, 300);
+ 
+                 if (currentBackgroundList.length == 1) {
+@@ -3404,6 +3554,7 @@
+                         }
+                         setTimeout(function() {
+                             $("#dbg0").addClass("showBackground");
++                            clearDesktopInitSplash();
+                         }, 300);
+ 
+                         if (currentBackgroundList.length == 1) {
+@@ -3804,9 +3955,9 @@
+                 //Folder objects
+                 icon = "folder outline";
+                 if (isEmptyDir){
+-                    imagePath = "img/desktop/system_icon/folder.png";
++                    imagePath = "img/joshu/folder.png?v=2";
+                 }else{
+-                    imagePath = "img/desktop/system_icon/folder-with-content.png";
++                    imagePath = "img/joshu/folder-open.png?v=2";
+                 }
+                 
+                 type = "folder";
+@@ -3904,7 +4055,8 @@
+                 if (updateObject !== undefined){
+                     //Check if content identical. If yes, skip rewrite
+                     if (updateObject.attr("filedata") == compressedFiledata){
+-                        //Identical. Skipping
++                        //Identical. Skipping layout rewrite but sync glyph path.
++                        updateObject.find(".launchIconImage").attr("src", imagePath);
+                     }else{
+                         //Update its contents
+                         updateObject.attr("type", type);
+@@ -3915,6 +4067,7 @@
+                         updateObject.css("height", iheight + "px");
+                         updateObject.css("left", screenX + "px");
+                         updateObject.css("top", screenY + "px");
++                        updateObject.find(".launchIconImage").attr("src", imagePath);
+                     }
+                 }else{
+                     //No exists. Append to wrapper
+@@ -5031,13 +5184,7 @@
+                 shiftHold = true;
+             }else if (keycode == "27"){
+                 //Cancel all floatwindow events and key events
+-                $("#fwdragpanel").hide();
+-                $("#tfwdragpanel").hide();
+-                $(".floatWindow").find(".iframecover").hide();
+-                movingWindow = false;
+-                resizingWindow = false;
+-                resizingEdgeID = 0;
+-                multiSelecting = false;
++                resetDesktopInteractionLayers();
+                 ctrlHold = false;
+                 shiftHold = false;
+             }else if (keycode == "46"){
+@@ -5130,6 +5277,7 @@
+             }else if (keycode == "27"){
+                 //ESC key, stop all floatWindow operations
+                 console.log("%c[Desktop] Dragging function killed. Restarting all dragging elements.", 'color: #e64747');
++                resetDesktopInteractionLayers();
+                 movingWindow = false;
+                 resizingWindow = false;
+                 event.preventDefault();
+@@ -6476,6 +6624,9 @@
+                 //Find the correct file in the current directory and place its image
+                 let thumbData = JSON.parse(event.data);
+                 $(".launchIcon").each(function(){
++                    if ($(this).attr("type") === "folder") {
++                        return;
++                    }
+                     if (thumbData[1].length > 0){
+                         if ($(this).attr("filename") == thumbData[0]){
+                             let imageContainer = $(this).find(".launchIconImage");
+@@ -6517,6 +6668,9 @@
+ 
+         function startFallbackThumbnailLoader(){
+                 $(".launchIcon").each(function(){
++                    if ($(this).attr("type") === "folder") {
++                        return;
++                    }
+                     let fd = JSON.parse(decodeURIComponent($(this).attr("filedata"))) 
+                     let filepath = fd.Filepath;
+                     let targetDOM = $(this);

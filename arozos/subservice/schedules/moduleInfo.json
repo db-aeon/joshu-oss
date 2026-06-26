@@ -1,0 +1,15 @@
+{
+  "Name": "Schedules",
+  "Desc": "Manage Hermes scheduled tasks (cron jobs)",
+  "Group": "Office",
+  "IconPath": "img/joshu/schedules.png",
+  "Version": "0.1.0",
+  "StartDir": "schedules/index.html",
+  "SupportFW": true,
+  "LaunchFWDir": "schedules/index.html",
+  "SupportEmb": false,
+  "LaunchEmb": "",
+  "InitFWSize": [960, 720],
+  "InitEmbSize": [800, 600],
+  "SupportedExt": []
+}

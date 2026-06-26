@@ -1,0 +1,169 @@
+diff --git a/run_agent.py b/run_agent.py
+index 1dd4219b2..8079ea6ff 100644
+--- a/run_agent.py
++++ b/run_agent.py
+@@ -3850,6 +3850,71 @@ class AIAgent:
+ 
+         return not self._has_natural_response_ending(visible_text)
+ 
++    # Provider-side moderation boilerplate (e.g. DeepSeek via OpenRouter).
++    _CONTENT_FILTER_REFUSAL_PATTERNS = (
++        re.compile(r"你好，我无法给到相关内容"),
++        re.compile(r"^I(?:'m| am) sorry,? but I can't assist with that request\.?$", re.I),
++        re.compile(r"^I cannot (?:help|assist) with (?:that|this)\.?$", re.I),
++    )
++
++    def _is_provider_content_filter_response(
++        self,
++        finish_reason: str,
++        assistant_message,
++    ) -> bool:
++        """Detect provider moderation blocks that should never reach the user."""
++        if (finish_reason or "").strip().lower() == "content_filter":
++            return True
++        content = getattr(assistant_message, "content", None)
++        if not isinstance(content, str):
++            return False
++        visible = self._strip_think_blocks(content).strip()
++        if not visible:
++            return False
++        for pattern in self._CONTENT_FILTER_REFUSAL_PATTERNS:
++            if pattern.search(visible):
++                return True
++        return False
++
++    def _trim_recent_tool_results_for_content_filter(
++        self,
++        messages: list,
++        *,
++        max_tool_chars: int = 4000,
++    ) -> int:
++        """Truncate bulky tool payloads that often trip provider moderation."""
++        trimmed = 0
++        for msg in messages:
++            if not isinstance(msg, dict) or msg.get("role") != "tool":
++                continue
++            content = msg.get("content")
++            if isinstance(content, str):
++                if len(content) <= max_tool_chars:
++                    continue
++                msg["content"] = (
++                    content[:max_tool_chars]
++                    + "\n\n… (truncated for moderation retry)"
++                )
++                trimmed += 1
++            elif isinstance(content, (dict, list)):
++                serialized = json.dumps(content, ensure_ascii=False)
++                if len(serialized) <= max_tool_chars:
++                    continue
++                msg["content"] = (
++                    serialized[:max_tool_chars]
++                    + "… (truncated for moderation retry)"
++                )
++                trimmed += 1
++        return trimmed
++
++    def _reset_streamed_assistant_output(self) -> None:
++        """Discard streamed assistant text after a blocked provider response."""
++        self._current_streamed_assistant_text = ""
++        for attr in ("_stream_context_scrubber", "_stream_think_scrubber"):
++            scrubber = getattr(self, attr, None)
++            if scrubber is not None and hasattr(scrubber, "reset"):
++                scrubber.reset()
++
+     def _looks_like_codex_intermediate_ack(
+         self,
+         user_message: str,
+@@ -12185,6 +12250,7 @@ class AIAgent:
+         self._empty_content_retries = 0
+         self._incomplete_scratchpad_retries = 0
+         self._codex_incomplete_retries = 0
++        self._content_filter_retries = 0
+         self._thinking_prefill_retries = 0
+         self._post_tool_empty_retried = False
+         self._last_content_with_tools = None
+@@ -14975,6 +15041,69 @@ class AIAgent:
+                 # Reset incomplete scratchpad counter on clean response
+                 self._incomplete_scratchpad_retries = 0
+ 
++                if self._is_provider_content_filter_response(
++                    finish_reason, assistant_message
++                ):
++                    self._content_filter_retries += 1
++                    filtered_preview = (assistant_message.content or "")[:120]
++                    logger.warning(
++                        "Provider content filter blocked response "
++                        "(retry %d/2, model=%s, preview=%r)",
++                        self._content_filter_retries,
++                        self.model,
++                        filtered_preview,
++                    )
++                    self._emit_status(
++                        "⚠️ Provider moderation blocked the response — retrying"
++                    )
++                    self._reset_streamed_assistant_output()
++
++                    if self._content_filter_retries <= 2:
++                        self._trim_recent_tool_results_for_content_filter(messages)
++                        messages.append({
++                            "role": "user",
++                            "content": (
++                                "[System: The model provider blocked the previous "
++                                "completion due to content moderation "
++                                "(finish_reason=content_filter). Respond in English "
++                                "only. Answer the user's latest request directly using "
++                                "available tools. Do not repeat provider refusal "
++                                "boilerplate. If tool outputs are large, summarize "
++                                "instead of echoing raw payloads.]"
++                            ),
++                            "_content_filter_recovery_synthetic": True,
++                        })
++                        self._session_messages = messages
++                        self._save_session_log(messages)
++                        continue
++
++                    if self._fallback_chain and self._try_activate_fallback():
++                        self._content_filter_retries = 0
++                        self._emit_status(
++                            f"↻ Switched to fallback after content filter: "
++                            f"{self.model} ({self.provider})"
++                        )
++                        continue
++
++                    self._content_filter_retries = 0
++                    _filter_response = (
++                        "Sorry — the model provider blocked that response due to "
++                        "content moderation. I couldn't complete this request after "
++                        "retrying. Try rephrasing, starting a fresh session, or asking "
++                        "me to use a specific tool path (for example joshu-mail for "
++                        "email)."
++                    )
++                    self._cleanup_task_resources(effective_task_id)
++                    self._persist_session(messages, conversation_history)
++                    return {
++                        "final_response": _filter_response,
++                        "messages": messages,
++                        "api_calls": api_call_count,
++                        "completed": False,
++                        "partial": True,
++                        "error": "content_filter",
++                    }
++
+                 if self.api_mode == "codex_responses" and finish_reason == "incomplete":
+                     self._codex_incomplete_retries += 1
+ 
+@@ -15669,12 +15798,14 @@ class AIAgent:
+                         and (
+                             messages[-1].get("_thinking_prefill")
+                             or messages[-1].get("_empty_recovery_synthetic")
++                            or messages[-1].get("_content_filter_recovery_synthetic")
+                             or messages[-1].get("_empty_terminal_sentinel")
+                         )
+                     ):
+                         messages.pop()
+ 
+                     messages.append(final_msg)
++                    self._content_filter_retries = 0
+                     
+                     _turn_exit_reason = f"text_response(finish_reason={finish_reason})"
+                     if not self.quiet_mode:

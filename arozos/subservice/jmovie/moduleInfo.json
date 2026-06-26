@@ -1,0 +1,15 @@
+{
+  "Name": "jMovie",
+  "Desc": "Creatomate video project editor",
+  "Group": "Multimedia",
+  "IconPath": "img/joshu/movie.png",
+  "Version": "0.1.0",
+  "StartDir": "jmovie/index.html",
+  "SupportFW": true,
+  "LaunchFWDir": "jmovie/index.html",
+  "SupportEmb": false,
+  "LaunchEmb": "",
+  "InitFWSize": [1280, 900],
+  "InitEmbSize": [1280, 900],
+  "SupportedExt": []
+}
