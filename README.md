@@ -1,14 +1,22 @@
-# Joshu
+# Joshu (private fleet monorepo)
 
-**Open-source box stack (AGPL-3.0)** — run your own joshu; managed hosting at
-[joshu.me](https://joshu.me).
+**Internal box stack + proprietary layer.** Public engine: [joshu-oss](https://github.com/db-aeon/joshu-oss).
+Control plane: [joshu-control-plane](https://github.com/db-aeon/joshu-control-plane) (`hello.joshu.me`).
+Brand pack: [joshu-design](https://github.com/db-aeon/joshu-design) (JDL).
+
+| Repo | Role |
+|------|------|
+| **joshu** (this repo, private) | Fleet dev, engine changes, **`proprietary/`** paid/fleet-only apps |
+| **joshu-oss** (public) | Community self-host snapshot — no CP, no proprietary apps, Vanilla theme |
+| **joshu-control-plane** (private) | Portal, provisioning, admin |
+| **joshu-design** (private) | Paper-shell, icons, design-system |
 
 | | |
 |--|--|
-| **License** | [AGPL-3.0 OR Commercial](LICENSE) — see [COMMERCIAL_LICENSE.md](COMMERCIAL_LICENSE.md) |
-| **Self-host** | [docs/self-host.md](docs/self-host.md) · `sudo bash scripts/bootstrap-self-host.sh` |
-| **Control plane** | Proprietary — not in this repo ([docs](docs/vps-sandbox/control-plane.md)) |
-| **Contributing** | [CONTRIBUTING.md](CONTRIBUTING.md) + [CLA](CLA.md) |
+| **Engine license** | [AGPL-3.0 OR Commercial](LICENSE) — see [COMMERCIAL_LICENSE.md](COMMERCIAL_LICENSE.md) |
+| **Self-host (public)** | [joshu-oss](https://github.com/db-aeon/joshu-oss) · [docs/self-host.md](docs/self-host.md) |
+| **Proprietary apps** | [`proprietary/README.md`](proprietary/README.md) |
+| **Managed hosting** | [joshu.me](https://joshu.me) |
 
 Joshu is a local-first app workspace that can also be packaged as a Modal
 deployment. It ships ArozOS desktop apps for jWeb (HITL browser), jChat, jMail,

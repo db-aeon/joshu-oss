@@ -78,6 +78,7 @@ COPY arozos/web-overlays-vanilla ./arozos/web-overlays-vanilla
 COPY arozos/system-setting ./arozos/system-setting
 COPY arozos/locale ./arozos/locale
 COPY scripts ./scripts
+COPY proprietary ./proprietary
 COPY patches/arozos ./patches/arozos
 COPY vendor/arozos ./vendor/arozos
 
@@ -109,6 +110,7 @@ RUN bash ${APP_DIR}/scripts/apply-arozos-patches.sh \
     && rsync -a ${APP_DIR}/dist/connectors-app/ ${AROZ_TEMPLATE}/subservice/connectors/app/ \
     && rsync -a ${APP_DIR}/dist/safety-settings/ ${AROZ_TEMPLATE}/subservice/safety-settings/app/ \
     && rsync -a ${APP_DIR}/dist/welcome/ ${AROZ_TEMPLATE}/subservice/welcome/app/ \
+    && bash ${APP_DIR}/scripts/install-proprietary-apps.sh ${AROZ_TEMPLATE}/subservice \
     && chmod +x ${AROZ_TEMPLATE}/subservice/*/start.sh \
     && (python3 ${APP_DIR}/scripts/apply_arozos_joshu_theme.py ${AROZ_TEMPLATE}/web || true)
 

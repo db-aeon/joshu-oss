@@ -319,6 +319,7 @@ prepare_arozos_template() {
   rsync -a "${ROOT_DIR}/arozos/subservice/safety-settings/" "${AROZ_TEMPLATE}/subservice/safety-settings/"
   rsync -a "${ROOT_DIR}/arozos/subservice/welcome/" "${AROZ_TEMPLATE}/subservice/welcome/"
   rsync -a "${ROOT_DIR}/arozos/subservice/placeholder-image/" "${AROZ_TEMPLATE}/subservice/placeholder-image/"
+  bash "${ROOT_DIR}/scripts/install-proprietary-apps.sh" "${AROZ_TEMPLATE}/subservice"
   (
     cd "${ROOT_DIR}"
     npm run build:excalidraw

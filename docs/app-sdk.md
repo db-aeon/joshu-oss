@@ -52,7 +52,13 @@ Example (`hermes-chat`):
 |-----------|---------|
 | `AGPL-3.0` | Open source (default for Joshu apps today) |
 | `MIT` | Permissive third-party app |
-| `proprietary` | Closed-source app bundle (future marketplace) |
+| `proprietary` | Fleet / paid apps in [`proprietary/`](../proprietary/README.md) — not in joshu-oss |
+
+---
+
+## Proprietary apps (fleet only)
+
+See [`proprietary/README.md`](../proprietary/README.md). Installed via `scripts/install-proprietary-apps.sh` during `dev:arozos` and fleet Docker builds.
 
 ---
 

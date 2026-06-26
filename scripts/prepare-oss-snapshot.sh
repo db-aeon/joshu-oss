@@ -24,10 +24,38 @@ rsync -a \
   --exclude '**/.env.local' \
   --exclude '**/.env.*.local' \
   --exclude aeon-page-to-speech-config.json \
+  --exclude proprietary \
   --exclude vendor \
+  --exclude 'docs/Joshu-SOP' \
+  --exclude 'docs/design/brand-guidelines.md' \
+  --exclude 'docs/design/joshu-style-guide-v1.png' \
+  --exclude 'docs/vps-sandbox/first-provisioning-notes.md' \
+  --exclude 'docs/vps-sandbox/troubleshooting-and-lessons.md' \
+  --exclude 'docs/vps-sandbox/session-2026-06-11-learning-browser-sync.md' \
+  --exclude 'docs/vps-sandbox/hotpatch-running-box.md' \
+  --exclude 'docs/vps-sandbox/provider-choices.md' \
+  --exclude 'docs/vps-sandbox/voice-think-speak.md' \
+  --exclude 'docs/vps-sandbox/voice-realtime.md' \
+  --exclude 'docs/vps-sandbox/web-voice.md' \
+  --exclude 'docs/vps-sandbox/phone-voice-local-test.md' \
+  --exclude 'docs/joshu-identity.md' \
+  --exclude 'docs/day0-cold-start.md' \
+  --exclude 'docs/box-state.md' \
+  --exclude 'docs/hermes-customizations.md' \
+  --exclude 'docs/README.oss.md' \
+  --exclude 'docs/vps-sandbox/README.oss.md' \
+  --exclude 'docs/design/README.oss.md' \
   "${ROOT_DIR}/" "${OUT_DIR}/"
 
+# Public doc indexes (curated for joshu-oss).
+cp "${ROOT_DIR}/docs/README.oss.md" "${OUT_DIR}/docs/README.md"
+cp "${ROOT_DIR}/docs/vps-sandbox/README.oss.md" "${OUT_DIR}/docs/vps-sandbox/README.md"
+cp "${ROOT_DIR}/docs/design/README.oss.md" "${OUT_DIR}/docs/design/README.md"
+
 bash "${ROOT_DIR}/scripts/secret-scan.sh" "${OUT_DIR}"
+
+DOC_COUNT="$(find "${OUT_DIR}/docs" -type f | wc -l | tr -d ' ')"
+echo "[prepare-oss-snapshot] docs in OSS tree: ${DOC_COUNT}"
 
 cat <<EOF
 
@@ -35,11 +63,11 @@ cat <<EOF
 
 Next steps:
   cd ${OUT_DIR}
-  git init
   git add -A
-  git commit -m "Joshu box stack v1.0.0-oss"
-  git tag v1.0.0-oss
-  git remote add origin git@github.com:your-org/joshu.git
-  git push -u origin main --tags
+  git commit -m "Curate public docs for OSS snapshot"
+  git push origin main
+
+Private docs remain in ${ROOT_DIR}/docs/ (Joshu-SOP, fleet runbooks, brand book).
+Control plane docs: joshu-control-plane/docs/
 
 EOF
