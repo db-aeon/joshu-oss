@@ -36,6 +36,7 @@ Shortcut format: [`arozos-desktop-shortcuts.md`](arozos-desktop-shortcuts.md).
 | Safety desktop app | [`safety-settings-arozos-app.md`](safety-settings-arozos-app.md) |
 | Nylas agent inbox | [`nylas-agent-mailbox.md`](nylas-agent-mailbox.md) |
 | App SDK + `joshu.app.json` | [`app-sdk.md`](app-sdk.md) |
+| App store / sideload / publishers | [`APP_STORE.md`](APP_STORE.md) |
 | Third-party licenses | [`THIRD_PARTY.md`](THIRD_PARTY.md) |
 | VPS / Docker architecture | [`vps-sandbox/README.md`](vps-sandbox/README.md) |
 | Vanilla ArozOS theme | [`design/README.md`](design/README.md) |

@@ -54,6 +54,8 @@ Example (`hermes-chat`):
 | `MIT` | Permissive third-party app |
 | `proprietary` | Fleet / paid apps in [`proprietary/`](../proprietary/README.md) — not in joshu-oss |
 
+Extended manifest fields (catalog, binaries, pricing): [APP_STORE.md](APP_STORE.md).
+
 ---
 
 ## Proprietary apps (fleet only)
@@ -62,15 +64,17 @@ See [`proprietary/README.md`](../proprietary/README.md). Installed via `scripts/
 
 ---
 
-## Future: sideload / marketplace
+## Sideload / marketplace
 
-Phase 2 (not in v1): signed `.joshu-app` bundles, publisher keys, catalog.
-Self-host will always allow manual drop-in via `scripts/install-joshu-app.sh` (planned).
+Phase 1–2: manual `.joshu-app` bundles and `scripts/install-joshu-app.sh` (planned).
+Official catalog and paid entitlements: control plane (proprietary). Full policy:
+[APP_STORE.md](APP_STORE.md).
 
 ---
 
 ## Related
 
+- [APP_STORE.md](APP_STORE.md) — distribution tiers, binaries, legal boundaries, roadmap
 - [ArozOS subservices](../arozos/subservice/)
 - [Desktop shortcuts](arozos-desktop-shortcuts.md)
 - [THIRD_PARTY.md](THIRD_PARTY.md)

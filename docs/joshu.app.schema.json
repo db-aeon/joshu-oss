@@ -11,9 +11,44 @@
       "type": "string",
       "enum": ["AGPL-3.0", "MIT", "proprietary"]
     },
-    "publisher": { "type": "string" },
+    "publisher": { "type": "string", "description": "Display publisher slug" },
     "entry": { "type": "string", "description": "HTML entry relative to subservice folder" },
     "apiPrefix": { "type": "string", "description": "Joshu API mount, e.g. /joshu/api/hermes-chat" },
-    "description": { "type": "string" }
+    "description": { "type": "string" },
+    "publisherId": {
+      "type": "string",
+      "description": "Stable publisher account id (catalog Phase 2)"
+    },
+    "publisherUrl": {
+      "type": "string",
+      "format": "uri",
+      "description": "Publisher support or product page"
+    },
+    "copyright": {
+      "type": "string",
+      "description": "Copyright line for About / catalog"
+    },
+    "runtime": {
+      "type": "string",
+      "enum": ["static", "binary", "proxy"],
+      "description": "How the subservice is launched (default: static)"
+    },
+    "minJoshuVersion": {
+      "type": "string",
+      "description": "Minimum box stack semver required"
+    },
+    "bundleSha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "Integrity hash for sideload bundle (Phase 2)"
+    },
+    "pricing": {
+      "type": "object",
+      "properties": {
+        "model": { "type": "string", "enum": ["free", "paid", "subscription"] },
+        "sku": { "type": "string", "description": "Store SKU or Stripe price id" }
+      },
+      "required": ["model"]
+    }
   }
 }

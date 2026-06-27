@@ -46,6 +46,7 @@ Shortcut filenames and `moduleInfo.json` names: [`arozos-desktop-shortcuts.md`](
 | Nylas agent inbox | [`nylas-agent-mailbox.md`](nylas-agent-mailbox.md) |
 | Self-host (standalone Docker) | [`self-host.md`](self-host.md) |
 | App SDK + `joshu.app.json` | [`app-sdk.md`](app-sdk.md) |
+| App store / publishers / paid apps | [`APP_STORE.md`](APP_STORE.md) |
 | Third-party licenses | [`THIRD_PARTY.md`](THIRD_PARTY.md) |
 | VPS production sandboxes | [`vps-sandbox/README.md`](vps-sandbox/README.md) |
 | Hotpatch a live box (git / dist / image) | [`vps-sandbox/hotpatch-running-box.md`](vps-sandbox/hotpatch-running-box.md) |
