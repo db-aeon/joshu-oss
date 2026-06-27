@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build the VPS sandbox image with HERMES_AGENT_REF from modal_app.py (Modal pin).
+# Build the VPS sandbox image with HERMES_AGENT_REF from deploy/RELEASE.json.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

@@ -1,6 +1,7 @@
 # Contributor License Agreement
 
-Thank you for your interest in contributing to Joshu ("We" or "Us").
+Thank you for your interest in contributing to Joshu. **We** and **Us** mean
+Project Aeon Inc.
 
 This contributor agreement ("Agreement") documents the rights granted by
 contributors to Us. Please read it carefully.
@@ -20,7 +21,7 @@ publicly display, publicly perform, sublicense, and distribute your
 Contributions and derivative works under:
 
 1. The GNU Affero General Public License v3.0, and
-2. Any other license We choose for Joshu-owned code (including commercial licenses).
+2. Any other license We choose for code owned by Project Aeon Inc. (including commercial licenses).
 
 ## Grant of patent license
 

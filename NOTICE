@@ -1,7 +1,7 @@
 Joshu Box Stack
-Copyright (c) 2025–2026 Joshu Inc. and contributors
+Copyright (c) 2025–2026 Project Aeon Inc. and contributors
 
-Licensed under AGPL-3.0 OR Joshu Commercial License — see LICENSE and COMMERCIAL_LICENSE.md.
+Licensed under AGPL-3.0 OR Joshu Commercial License — see LICENSE and COMMERCIAL_LICENSE.md (notice).
 
 ---
 
@@ -14,7 +14,7 @@ docs/THIRD_PARTY.md for the full list. Key components:
     Upstream: https://github.com/tobychui/arozos
     Joshu modifications: patches/arozos/
 
-  Hermes Agent — see upstream license at pinned ref in modal_app.py
+  Hermes Agent — see upstream license at pinned ref in deploy/RELEASE.json
     Joshu modifications: scripts/hermes-*.patch
 
   Excalidraw (fork) — see vendor/excalidraw/LICENSE

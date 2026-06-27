@@ -37,7 +37,7 @@ npm run dev:jmail    # Vite :3006, proxies /joshu → :8788
 npm run build:jmail
 ```
 
-Bundled into ArozOS by `scripts/dev-arozos.sh` and the VPS Docker image (`modal:predeploy` includes `build:jmail`).
+Bundled into ArozOS by `scripts/dev-arozos.sh` and the VPS Docker image (`build:deploy` includes `build:jmail`).
 
 ## Agent recall vs jMail UI
 

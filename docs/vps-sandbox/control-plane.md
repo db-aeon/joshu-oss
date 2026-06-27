@@ -4,7 +4,7 @@ The Joshu **control plane** — provisioning, customer portal, fleet admin at
 `hello.joshu.me` — is **not part of this open-source repository**.
 
 It lives in a separate private repository (`joshu-control-plane`) maintained by
-Joshu Inc.
+Project Aeon Inc.
 
 ## Self-host without the control plane
 

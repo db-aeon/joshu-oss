@@ -73,7 +73,7 @@ Open `http://127.0.0.1:3005` with Joshu running separately.
 ## Desktop registration
 
 - `arozos/subservice/jmovie/moduleInfo.json` — `"Name": "jMovie"`, `StartDir` / `LaunchFWDir`: `jmovie/index.html`
-- Desktop shortcut installed by `install_jmovie_shortcuts` in `scripts/dev-arozos.sh` and `scripts/modal-start.sh`
+- Desktop shortcut installed by `install_jmovie_shortcuts` in `scripts/dev-arozos.sh` and `deploy/scripts/vps-start.sh`
 
 See [`docs/arozos-desktop-shortcuts.md`](arozos-desktop-shortcuts.md) for the four-line `.shortcut` format.
 
@@ -84,9 +84,9 @@ See [`docs/arozos-desktop-shortcuts.md`](arozos-desktop-shortcuts.md) for the fo
 - **Blend mode:** `blend_mode: "normal"` is sanitized to `"none"` before preview.
 - **Empty preview:** If the player area shows “Creatomate preview not configured”, the bundle was built without `VITE_CREATOMATE_PUBLIC_TOKEN` — set it in `.env` and run `npm run build:movie-editor`.
 
-## Modal packaging
+## Docker image packaging
 
-`modal_app.py` / `npm run modal:predeploy` run `npm run build:movie-editor` and rsync into
+`deploy/RELEASE.json` / `npm run build:deploy` run `npm run build:movie-editor` and rsync into
 `/opt/arozos-template/subservice/jmovie/app/`. Ensure the Creatomate public token is available
 in the build environment (image build args or embedded `.env` on the builder host).
 

@@ -414,7 +414,7 @@ Joshu EA uses **filesystem markdown + links**, not gbrain `put_page`. When agent
 - Humans click links from time-block diagrams (`ea-time-block`)
 - Agents use **`get_backlinks`** / **`traverse_graph`** (read-only MCP) after sync
 
-Conventions: [`file-brain.md`](file-brain.md).
+Conventions: [`Joshu-SOP/gtd-workspace-linking.md`](Joshu-SOP/gtd-workspace-linking.md).
 
 Optional (ops): `gbrain config set link_resolution.global_basename true` — resolves Obsidian-style `[[note-name]]` across folders after sync. Not required if paths are explicit.
 
@@ -538,5 +538,5 @@ When `JOSHU_READ_API_KEY` is set (VPS: same value as `HERMES_API_KEY` from contr
 - [vps-sandbox/voice-realtime.md](vps-sandbox/voice-realtime.md) — speech-to-speech phone voice
 - [local-installation.md](local-installation.md)
 - [vps-sandbox/troubleshooting-and-lessons.md](vps-sandbox/troubleshooting-and-lessons.md) — file-brain row in ops table
-- [vps-sandbox/modal-to-vps-mapping.md](vps-sandbox/modal-to-vps-mapping.md)
+- [vps-sandbox/runtime-topology.md](vps-sandbox/runtime-topology.md)
 - EA filing templates: [`templates/ea/`](../templates/ea/)

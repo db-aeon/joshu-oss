@@ -79,7 +79,8 @@ See [local-installation.md](local-installation.md) and `npm run dev:arozos`.
 ## Offering Joshu to third parties
 
 Hosting Joshu as a **product or service for other organizations** requires a
-[Joshu commercial license](../COMMERCIAL_LICENSE.md). Internal employee use does not.
+commercial license from Project Aeon Inc. — contact **info@joshu.me** (see
+[COMMERCIAL_LICENSE.md](../COMMERCIAL_LICENSE.md) notice). Internal employee use does not.
 
 ---
 

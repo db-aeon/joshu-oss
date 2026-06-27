@@ -84,12 +84,12 @@ Reference templates upstream: `vendor/arozos/src/system/desktop/template/*.short
 | `${AROZ_DATA}/system/desktop/template/*.shortcut` | New user desktops |
 | `${AROZ_DATA}/files/users/*/Desktop/*.shortcut` | Existing users (refreshed every prepare) |
 
-Local dev: `AROZ_DATA` defaults to `.local/arozos-data` (`scripts/dev-arozos.sh`). Modal: `/var/lib/arozos` (`scripts/modal-start.sh`).
+Local dev: `AROZ_DATA` defaults to `.local/arozos-data` (`scripts/dev-arozos.sh`). Sandbox image: `/var/lib/arozos` (`deploy/scripts/vps-start.sh`).
 
 Install helpers live in `scripts/lib/arozos-desktop-shortcuts.sh` (`install_all_joshu_desktop_shortcuts`), sourced from:
 
 - `scripts/dev-arozos.sh` — local prepare
-- `scripts/modal-start.sh` — Modal container boot
+- `deploy/scripts/vps-start.sh` — VPS container boot
 - `deploy/scripts/vps-start.sh` — VPS / Docker boot (required; shortcuts are not baked into the image alone)
 
 Each helper:
@@ -111,7 +111,7 @@ After shortcut changes: **hard-refresh** the desktop (Cmd+Shift+R) or re-login. 
 ## Checklist: rename a desktop app
 
 1. **`moduleInfo.json`** — set `"Name"` (Joshu subservices only).
-2. **`scripts/dev-arozos.sh` and `scripts/modal-start.sh`** — update `*_SHORTCUT_CONTENT` and the matching `install_*_shortcuts` function (path, `rm` old files).
+2. **`scripts/dev-arozos.sh` and `deploy/scripts/vps-start.sh`** — update `*_SHORTCUT_CONTENT` and the matching `install_*_shortcuts` function (path, `rm` old files).
 3. **App bundle** — `apps/<app>/index.html` and in-app title if shown.
 4. **Icons** — optional; `IconPath` / fourth shortcut line / `arozos/icons/` → `web/img/joshu/` via `apply_arozos_joshu_theme.py`. Full Tango library (unused icons included): `arozos/tango-icons/` → `web/img/tango/`. See [Tango icon pipeline](design/README.md#tango-icon-pipeline).
 5. **Docs / README** — user-facing names.
@@ -128,7 +128,7 @@ printf '%s' $'module\nFiles\nFile Manager\nimg/joshu/file-manager.png\n' \
 
 ## Desktop label typography
 
-Visible labels are enabled in `arozos/web-overlays-vanilla/aroz-vanilla-shell.css` (`.launchIcon .launchIconText`):
+Visible labels are enabled in `arozos/web-overlays/aroz-paper-shell.css` (`.launchIcon .launchIconText`):
 
 - **Work Sans**, 13px, white text
 - Tight dark edge via multi-offset `text-shadow` (macOS-style on wallpaper)
@@ -162,4 +162,4 @@ python3 scripts/apply_arozos_joshu_theme.py .local/arozos-data/web
 - Safety (action guard, owner channel): [`docs/safety-settings-arozos-app.md`](safety-settings-arozos-app.md)
 - Schedules (Hermes cron): [`docs/schedules-arozos-app.md`](schedules-arozos-app.md)
 - jMovie: [`docs/jmovie-arozos-app.md`](jmovie-arozos-app.md)
-- Modal boot + shortcut refresh: [`docs/hitl-camofox-modal-notes.md`](hitl-camofox-modal-notes.md)
+- VPS boot + shortcut refresh: [`docs/hitl-camofox-notes.md`](hitl-camofox-notes.md)

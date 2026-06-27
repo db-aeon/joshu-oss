@@ -44,9 +44,9 @@ see [`excalidraw-markdown-wysiwyg.md`](excalidraw-markdown-wysiwyg.md).
   ArozOS subservices that serve prebuilt assets.
 - Updated `scripts/dev-arozos.sh` to build the Excalidraw bundle and copy it
   into the local ArozOS template/data tree.
-- Updated `modal_app.py` to copy the app source/subservice scripts, build the
+- Updated `deploy/RELEASE.json` to copy the app source/subservice scripts, build the
   Excalidraw bundle during image build, and place it in the ArozOS template.
-- Updated `scripts/modal-start.sh` to refresh the Excalidraw subservice into the
+- Updated `deploy/scripts/vps-start.sh` to refresh the Excalidraw subservice into the
   persistent ArozOS data volume on every boot.
 - Kept the upstream Excalidraw source sandbox as
   `npm run dev:excalidraw:upstream` for comparison/debugging.
@@ -183,9 +183,9 @@ canvas never initializes and the toolbar stays on "Waiting for canvas…".
 The first Joshu app implementation stores a working scene in browser
 `localStorage` and exposes Import/Export for `.excalidraw` files.
 
-## Modal packaging
+## Docker image packaging
 
-`modal_app.py` copies `apps/`, `arozos/subservice/excalidraw/`, and
+`deploy/RELEASE.json` copies `apps/`, `arozos/subservice/excalidraw/`, and
 `scripts/aroz-static-subservice.mjs` into the image. During image build it runs:
 
 ```bash
@@ -198,14 +198,13 @@ and copies `dist/excalidraw/` into the ArozOS template under:
 /opt/arozos-template/subservice/excalidraw/app/
 ```
 
-`scripts/modal-start.sh` refreshes that subservice into the persistent ArozOS
+`deploy/scripts/vps-start.sh` refreshes that subservice into the persistent ArozOS
 volume on every boot, matching the existing Joshu Browser refresh behavior.
 
-The Excalidraw-enabled Modal image was last deployed and verified on
+The Excalidraw-enabled VPS sandbox image was last deployed and verified on
 2026-05-09:
 
 ```text
-https://db-58636--joshu-hitl-serve.modal.run
 ```
 
 The public URL opens ArozOS first and should return the expected setup/login
@@ -293,7 +292,7 @@ EA skill **`ea-time-block`** (v1.3.0) runs a two-step pipeline:
 1. **Gather** — [`scripts/gather-time-block-input.mjs`](../scripts/gather-time-block-input.mjs) (`npm run time-block:gather`) pre-fills meeting blocks, active projects, journal paths, and planning file pointers from live calendar API (when Joshu is up) or mirror frontmatter scan.
 2. **Synthesize + render** — agent fills deep/shallow/buffer/carryover in plan JSON, then [`scripts/render-time-block-excalidraw.mjs`](../scripts/render-time-block-excalidraw.mjs) (`npm run time-block:render`) writes `Planning/time-block-YYYY-MM-DD.excalidraw` under `joshu's files`.
 
-**VPS:** run gather/render at **`/opt/joshu/scripts/gather-time-block-input.mjs`** and **`/opt/joshu/scripts/render-time-block-excalidraw.mjs`** — not `scripts/…` relative to Hermes Desktop cwd ([time-block-planning.md](excalidraw-sandbox.md)).
+**VPS:** run gather/render at **`/opt/joshu/scripts/gather-time-block-input.mjs`** and **`/opt/joshu/scripts/render-time-block-excalidraw.mjs`** — not `scripts/…` relative to Hermes Desktop cwd ([time-block-planning.md](Joshu-SOP/time-block-planning.md)).
 
 Bundled Hermes **`excalidraw`** skill supplies JSON envelope / container-label rules; **`ea-time-block`** owns the workflow. Calendar quirks (mirror UUID naming, FreeBusy calendar IDs): [`ea-time-block/references/calendar-api-quirks.md`](../integrations/hermes/skills/executive-assistant/ea-time-block/references/calendar-api-quirks.md).
 
@@ -311,9 +310,9 @@ Bundled Hermes **`excalidraw`** skill supplies JSON envelope / container-label r
 - `GET /joshu/api/files/read?path=...` — localhost-only read under `joshu's files`
 - CORS — localhost origins allowed so `:8787` subservices can call `:8788`
 
-See [`docs/excalidraw-sandbox.md`](excalidraw-sandbox.md) and [`gtd-workspace-linking.md`](file-brain.md).
+See [`docs/Joshu-SOP/time-block-planning.md`](Joshu-SOP/time-block-planning.md) and [`gtd-workspace-linking.md`](Joshu-SOP/gtd-workspace-linking.md).
 
-Plan JSON may include **`taskGroups`** (numbered ① lists), **`blockRef`** on blocks, **`yesterdayPlan`** (link strip to prior day's diagram), and **`carryover[]`** (**From yesterday ☐** in the notes column). One `.excalidraw` per calendar day accumulates in `Planning/`; checkboxes live in **`Planning/daily-review-YYYY-MM-DD.md`** ([daily handoff](excalidraw-sandbox.md#daily-handoff-morning-review)).
+Plan JSON may include **`taskGroups`** (numbered ① lists), **`blockRef`** on blocks, **`yesterdayPlan`** (link strip to prior day's diagram), and **`carryover[]`** (**From yesterday ☐** in the notes column). One `.excalidraw` per calendar day accumulates in `Planning/`; checkboxes live in **`Planning/daily-review-YYYY-MM-DD.md`** ([daily handoff](Joshu-SOP/time-block-planning.md#daily-handoff-morning-review)).
 
 **Typography:** jWhiteboard bundles **Assistant** (brand) woff2 fonts from the design system sync (`npm run sync-design-system` → `build:excalidraw`).
 
@@ -336,7 +335,7 @@ Double-click from ArozOS Files; expect **Loaded: test-kb-doc.md** and markdown o
 
 1. **jMail for mail thread links** — open thread mirrors in jMail instead of MDEditor when available.
 2. **Bundle size**: Excalidraw pulls in large optional chunks; revisit
-   code-splitting if load time becomes painful in Modal.
+   code-splitting if load time becomes painful in the sandbox image.
 3. **Joshu pointer tool** — custom ephemeral pointer with path capture (see
    [Joshu pointer tool (future)](#joshu-pointer-tool-future) below).
 

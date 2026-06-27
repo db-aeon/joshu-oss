@@ -1,16 +1,20 @@
-# Joshu Commercial License
+# Joshu Commercial License — Notice
 
 The Joshu box stack is dual-licensed. Community use is available under
-[AGPL-3.0](LICENSE). This document describes the **commercial license** option.
+[AGPL-3.0](LICENSE). This file is an **informational notice** about the
+commercial license option — **not** the full license text, and **not** an
+exhaustive list of rights, restrictions, or use cases.
 
-Contact: **license@joshu.me**
+**To obtain a commercial license**, contact **info@joshu.me**. Terms are
+negotiated in a written agreement with Project Aeon Inc.; nothing in this
+notice grants commercial rights by itself.
 
 ---
 
-## What the commercial license covers
+## What a commercial license may cover
 
-The commercial license grants rights to **Joshu-owned copyright** in this
-repository, including (non-exhaustive):
+Executed commercial agreements may grant rights to **copyright owned by
+Project Aeon Inc.** in this repository, including (non-exhaustive):
 
 - `src/` — Joshu Express backend and APIs
 - `apps/*` — Joshu Vite desktop applications (unless marked otherwise in `joshu.app.json`)
@@ -55,13 +59,15 @@ Under AGPL-3.0, **no payment is required** for:
 
 ---
 
-## Requires commercial license or Joshu managed service
+## Common cases that require a commercial license or Joshu managed service
+
+This table is illustrative, not complete. When in doubt, contact **info@joshu.me**.
 
 | Use case | Requirement |
 |----------|-------------|
-| Offering Joshu boxes as a **product or service to third parties** (managed SaaS, MSP hosting for clients, white-label fleet) | **Commercial OEM/MSP agreement** with Joshu, or use **hello.joshu.me** |
-| Closed-source modifications of **Joshu-owned** code without AGPL compliance | Commercial license |
-| Full **Joshu Design License (JDL)** brand pack (paper-shell, official icons) at scale | Commercial license or official fleet image |
+| Offering Joshu boxes as a **product or service to third parties** (managed SaaS, MSP hosting for clients, white-label fleet) | **Commercial OEM/MSP agreement** with Project Aeon Inc., or use **hello.joshu.me** |
+| Closed-source modifications of **Joshu-owned** code without AGPL compliance | Commercial license — contact **info@joshu.me** |
+| Full **Joshu Design License (JDL)** brand pack (paper-shell, official icons) at scale | Commercial license or official fleet image — contact **info@joshu.me** |
 | Implying **official Joshu hosting** without permission | Prohibited — see TRADEMARK.md |
 
 **Internal commercial use** (your company runs boxes for employees only) does
@@ -71,17 +77,22 @@ Under AGPL-3.0, **no payment is required** for:
 
 ## Commercial tiers (summary)
 
+Examples only — actual scope and pricing are set in executed agreements.
+Contact **info@joshu.me** to discuss options.
+
 | Tier | Buyer | Includes |
 |------|-------|----------|
 | **Commercial On-Prem** | Enterprise needing non-AGPL terms for Joshu layers | Joshu code on commercial terms; optional JDL; ArozOS still GPL |
 | **Commercial OEM / MSP** | Hosts Joshu for third parties or white-labels | OEM addendum + JDL; official partner program |
 | **Joshu Managed** | End customers | Proprietary control plane + branded fleet at hello.joshu.me — not sublicensable |
 
-Pricing and contract terms are negotiated per agreement.
-
 ---
 
 ## Disclaimer
 
-This document is a product summary, not a legal contract. Executed agreements
-with Joshu Inc. govern. Have your counsel review before signing.
+This notice summarizes product licensing posture for convenience. It is **not**
+a legal contract and does **not** replace the AGPL-3.0 text in [LICENSE](LICENSE)
+or any executed commercial agreement with Project Aeon Inc. Only a signed
+agreement grants commercial rights. Have your counsel review before signing.
+
+For commercial licensing inquiries: **info@joshu.me**

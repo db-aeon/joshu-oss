@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Joshu ArozOS desktop shortcuts — shared by dev-arozos, modal-start, and vps-start.
+# Joshu ArozOS desktop shortcuts — shared by dev-arozos and vps-start.
 # Requires AROZ_DATA. See docs/arozos-desktop-shortcuts.md.
 
 JWEB_SHORTCUT_CONTENT=$'module\njWeb\njWeb\nimg/joshu/browser.png\n'

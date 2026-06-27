@@ -1,3 +1,10 @@
 {
-    "postman.settings.dotenv-detection-notification-visibility": false
+    "postman.settings.dotenv-detection-notification-visibility": false,
+    "go.goroot": "/opt/homebrew/opt/go/libexec",
+    "go.alternateTools": {
+        "go": "/opt/homebrew/bin/go"
+    },
+    "terminal.integrated.env.osx": {
+        "PATH": "/opt/homebrew/bin:/opt/homebrew/sbin:${env:PATH}"
+    }
 }

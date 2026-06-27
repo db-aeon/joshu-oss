@@ -1,12 +1,12 @@
-# Joshu sandbox stack image (Modal parity → VPS)
-# Hermes pin defaults match modal_app.py — run `npm run vps:sync-hermes-pin` after `hermes:update`.
-# Build: npm run modal:predeploy && npm run vps:build-image (or JOSHU_IMAGE_PUSH=1 JOSHU_IMAGE_TAG=0.1.4 …)
+# Joshu sandbox stack image (VPS / self-host)
+# Hermes pin: deploy/RELEASE.json — run `npm run vps:sync-hermes-pin` after `hermes:update`.
+# Build: npm run vps:predeploy && npm run vps:build-image (or JOSHU_IMAGE_PUSH=1 JOSHU_IMAGE_TAG=0.1.4 …)
 
 ARG CAMOFOX_BASE=ghcr.io/jo-inc/camofox-browser:latest
 FROM ${CAMOFOX_BASE} AS builder
 
 ARG HERMES_AGENT_REPO=https://github.com/NousResearch/hermes-agent.git
-# v2026.5.16 → Hermes Agent v0.14.0 (synced from modal_app.py)
+# v2026.5.16 → Hermes Agent v0.14.0 (synced from deploy/RELEASE.json)
 ARG HERMES_AGENT_REF=a91a57fa5a13d516c38b07a141a9ce8a3daabeb0
 ARG GO_VERSION=1.24.1
 ARG PGVECTOR_REPO=https://github.com/pgvector/pgvector.git
@@ -27,7 +27,7 @@ RUN rm -rf /usr/local/go \
     && curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" | tar -C /usr/local -xz \
     && ln -sf /usr/local/go/bin/go /usr/local/bin/go
 
-# Hermes venv (Modal parity extras)
+# Hermes venv (image build extras)
 RUN git init "${HERMES_DIR}" \
     && cd "${HERMES_DIR}" \
     && git remote add origin "${HERMES_AGENT_REPO}" \

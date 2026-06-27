@@ -26,10 +26,10 @@ and related web shell adjustments (~280 lines across 8 files).
 | | |
 |--|--|
 | **Upstream** | [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent) |
-| **Pin** | See `HERMES_AGENT_REF` in `modal_app.py` / `deploy/RELEASE.json` |
+| **Pin** | See `hermesRef` in `deploy/RELEASE.json` |
 | **Joshu changes** | `scripts/hermes-*.patch`, applied by `scripts/apply-hermes-*.sh` |
 
-See [hermes-integration.md](hermes-integration.md) for the patch inventory.
+See [hermes-customizations.md](hermes-customizations.md) for the patch inventory.
 
 ---
 

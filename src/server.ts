@@ -479,7 +479,7 @@ function buildAppRouter(): {
     const rawText = typeof body.text === "string" ? body.text : "";
     const payloadText = normalizeTtsPayloadText(rawText);
     if (!payloadText) {
-      // Modal/Platform logs often capture stdout only; use console.info for visibility.
+      // Container/platform logs often capture stdout only; use console.info for visibility.
       console.info("[joshu] tts: missing or empty text", {
         contentType: req.headers["content-type"],
         typeofText: typeof (body as { text?: unknown }).text,

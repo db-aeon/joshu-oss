@@ -13,13 +13,13 @@ Brand pack: [joshu-design](https://github.com/db-aeon/joshu-design) (JDL).
 
 | | |
 |--|--|
-| **Engine license** | [AGPL-3.0 OR Commercial](LICENSE) — see [COMMERCIAL_LICENSE.md](COMMERCIAL_LICENSE.md) |
+| **Engine license** | [AGPL-3.0 OR Commercial](LICENSE) — [COMMERCIAL_LICENSE.md](COMMERCIAL_LICENSE.md) notice; contact info@joshu.me |
 | **Self-host (public)** | [joshu-oss](https://github.com/db-aeon/joshu-oss) · [docs/self-host.md](docs/self-host.md) |
 | **Proprietary apps** | [`proprietary/README.md`](proprietary/README.md) |
 | **Managed hosting** | [joshu.me](https://joshu.me) |
 
-Joshu is a local-first app workspace that can also be packaged as a Modal
-deployment. It ships ArozOS desktop apps for jWeb (HITL browser), jChat, jMail,
+Joshu is a local-first app workspace packaged as a VPS sandbox Docker image for
+always-on deployments. It ships ArozOS desktop apps for jWeb (HITL browser), jChat, jMail,
 Connectors, Memory, File Brain, jWhiteboard, Schedules, Welcome, and jMovie.
 
 The HITL browser is one Joshu app, not the whole repo. It owns one Camofox tab,
@@ -51,18 +51,15 @@ ArozOS desktop labels (May 2026) — full table in [`docs/arozos-desktop-shortcu
 
 ## Runtime Shape
 
-Joshu can run in three common shapes:
+Joshu can run in two common shapes:
 
 - **Standalone local app**: `npm run dev` starts the Joshu Express app directly
   on `127.0.0.1:8787`. Use this for focused browser-app development when Camofox
   and Hermes are already available.
 - **Local ArozOS parity stack**: `npm run dev:arozos` starts or reuses Camofox,
   builds ArozOS, runs Joshu privately on `127.0.0.1:8788` under `/joshu`, and
-  exposes ArozOS on `127.0.0.1:8787`.
-- **Modal package**: Modal builds one image with Camofox/noVNC, Hermes, Hindsight,
-  Joshu, the Hermes Chat, Hindsight Viewer, and Excalidraw bundles, and
-  source-built ArozOS. ArozOS is public; Joshu, Hermes, Hindsight, and Camofox
-  stay on localhost inside the container.
+  exposes ArozOS on `127.0.0.1:8787`. Production VPS sandboxes use the same
+  topology via Docker — see [`docs/vps-sandbox/README.md`](docs/vps-sandbox/README.md).
 
 ## Run Locally
 
@@ -78,7 +75,7 @@ This starts the standalone Joshu Express app. Camofox must be reachable through
 `CAMOFOX_URL`, and Hermes must be reachable through the configured gateway path
 or auto-started from `HERMES_BIN`.
 
-For local development that mirrors the Modal/ArozOS topology, run:
+For local development that mirrors the VPS/ArozOS topology, run:
 
 ```bash
 npm run dev:arozos
@@ -87,9 +84,8 @@ npm run dev:arozos
 That starts or reuses a local Camofox Docker container, builds ArozOS from
 source, starts Joshu privately on `127.0.0.1:8788` with
 `PUBLIC_BASE_PATH=/joshu`, and exposes ArozOS at <http://127.0.0.1:8787>.
-Launch **Joshu Browser**, **Hermes Chat**, **Hindsight Viewer**, **Excalidraw**, or
-**jMovie** from the ArozOS desktop to exercise the same subservice paths used in
-Modal. ArozOS state is persisted in `.local/arozos-data`.
+Launch **jWeb**, **jChat**, **Memory**, or other desktop apps from the ArozOS
+desktop to exercise the same subservice paths used in production sandboxes.
 
 Video playback on the ArozOS desktop (Media Player vs Video app, autoplay/mute):
 see [`docs/arozos-media-player.md`](docs/arozos-media-player.md).
@@ -109,10 +105,9 @@ verifying the theme after changes (including re-applying the shell link on
 If Hindsight memory is configured with `HINDSIGHT_API_LLM_*` env vars, the local
 ArozOS runner also starts a private Hindsight API on `127.0.0.1:8888`. Hindsight
 uses local PostgreSQL for memory storage; the LLM used for memory extraction can
-be a hosted OpenAI-compatible provider. Modal runs a local PostgreSQL service in
-the same container with pgvector built during image creation (portable build,
-`OPTFLAGS=""` in `modal_app.py`), so configure
-external embeddings and reranking there with `HINDSIGHT_API_EMBEDDINGS_*` and
+be a hosted OpenAI-compatible provider. The VPS sandbox image builds pgvector
+with portable compiler flags (`OPTFLAGS=""` in `deploy/Dockerfile`); configure
+external embeddings and reranking with `HINDSIGHT_API_EMBEDDINGS_*` and
 `HINDSIGHT_API_RERANKER_*` vars.
 Set `JOSHU_HINDSIGHT_ENABLED=false` to skip this during local runs, or `true` to
 fail fast when Hindsight cannot start.
@@ -268,12 +263,12 @@ See [`docs/hermes-customizations.md`](docs/hermes-customizations.md) for the ful
 model — factory skills, agent learning loop, EA skills, VPS notes, and post-`hermes update` steps.
 
 To promote a new upstream stable release to the external Hermes checkout and
-Modal pin with rollback snapshots, use `npm run hermes:update` (see
+deploy pin with rollback snapshots, use `npm run hermes:update` (see
 `scripts/update-hermes-agent.sh` and `docs/local-installation.md`).
 
-The Modal image fetches a pinned Hermes checkout and verifies that it has generic
-Camofox tab adoption support. Modal no longer patches Hermes core; the legacy
-Hermes browser patch remains only for old local checkouts.
+The sandbox image fetches a pinned Hermes checkout and verifies generic Camofox
+tab adoption support. The legacy Hermes browser patch remains only for old local
+checkouts.
 
 ### Browser resolution and “wide” display
 
@@ -299,7 +294,7 @@ aspect ≈ 1.333 and `innerWidth` ≈ 1024.
 - Joshu direct: `http://127.0.0.1:8788/joshu/...` (port `8788`)
 - Through ArozOS: `http://127.0.0.1:8787/joshu/...` only when the **Joshu Browser**
   subservice is running (not disabled). See
-  [`docs/hitl-camofox-modal-notes.md`](docs/hitl-camofox-modal-notes.md#vnc-display-routing-and-troubleshooting-resolved-may-2026).
+  [`docs/hitl-camofox-notes.md`](docs/hitl-camofox-notes.md#vnc-display-routing-and-troubleshooting).
 
 Set before **creating** the Camofox container:
 
@@ -327,95 +322,6 @@ Troubleshooting (Hermes empty stream, Hindsight, ArozOS, cloud-init, image tags)
 
 Quick path: `npm run vps:predeploy` → `npm run vps:build-image` → `deploy/docker-compose.yml` on the VPS.
 
-Modal remains useful for demos; production sandboxes should use the VPS stack.
-
-## Optional Modal Target
-
-The Modal target builds a single container image that includes:
-
-- Camofox + noVNC from `ghcr.io/jo-inc/camofox-browser:latest`
-- a pinned Hermes checkout installed at `/opt/hermes-agent`
-- a slim local Hindsight API for Hermes memory, backed by local PostgreSQL and a portable pgvector build
-- this Joshu app built at `/opt/joshu`
-- the Hermes Chat, jMail, Connectors, Memory, File Brain, and Excalidraw static app bundles
-- **ArozOS** built from source (`vendor/arozos` when present, otherwise `AROZOS_REPO` / `AROZOS_REF`) as the public web desktop on port `8787`
-
-The Modal image installs Go `1.24.1` directly from `go.dev` before building
-ArozOS because Debian bookworm's `golang-go` package is too old for ArozOS's
-current `go.mod`.
-
-Create the Modal secret from your local Hermes profile:
-
-```bash
-npm run modal:secret -- joshu-hitl-secrets
-```
-
-Deploy:
-
-```bash
-npm run modal:deploy       # npm ci + tsc + Vite builds on Modal workers
-```
-
-After local changes to Joshu-only code (**`src/`**, **`apps/`**, **`public/`**),
-faster iterative deploy:
-
-```bash
-npm run modal:deploy:fast  # npm run modal:predeploy locally, embed dist/ via MODAL_EMBED_LOCAL_DIST=1
-```
-
-Details: **`docs/hitl-camofox-modal-notes.md`** (Modal) and **`package.json`** scripts **`modal:predeploy`** / **`modal:deploy`** / **`modal:deploy:fast`**.
-
-To deploy a specific ArozOS fork or branch:
-
-```bash
-AROZOS_REPO=https://github.com/you/arozos.git AROZOS_REF=my-branch npm run modal:deploy
-```
-
-To update Hermes for Modal, set `HERMES_AGENT_REF` in `modal_app.py`. The image
-build verifies Camofox tab/session support (**`adopt_existing_tab`** on newer
-trees **or** the **`_ensure_tab` + `sessionKey`** REST contract on pinned
-releases) and fails if neither is present.
-
-Modal exposes **ArozOS** on the public URL. Inside the container:
-
-- Joshu runs on loopback only (`127.0.0.1:8788`) with `PUBLIC_BASE_PATH=/joshu` so APIs and noVNC match that prefix.
-- Camofox, Hermes, and Hindsight stay on localhost; noVNC is reverse-proxied under `/joshu/novnc`.
-- The Joshu UI is registered as an ArozOS **subservice** (`arozos/subservice/joshu/`) and appears as **jWeb** on the desktop (reverse-proxied path `/joshu/`). Desktop shortcut details: [`docs/arozos-desktop-shortcuts.md`](docs/arozos-desktop-shortcuts.md).
-- **Hermes Chat** is registered as a separate ArozOS subservice and desktop
-  shortcut; it calls Joshu at `/joshu/api/hermes-chat/*`.
-- **Hindsight Viewer** is registered as a separate ArozOS subservice and desktop
-  shortcut; it calls Joshu at `/joshu/api/hindsight/*`.
-- **Schedules** manages Hermes cron jobs (same registry as `hermes cron` and chat
-  `/cron`); it calls Joshu at `/joshu/api/cron/*`. See
-  [`docs/schedules-arozos-app.md`](docs/schedules-arozos-app.md).
-- ArozOS persistent state lives on the Modal volume mounted at `/var/lib/arozos` (`joshu-hitl-arozos-data`).
-- Hindsight runs as an unprivileged `hindsight` user. Modal starts PostgreSQL 15
-  locally in the same container, creates the `hindsight` database, and installs
-  a **portable** pgvector build (see `modal_app.py`: `make ... OPTFLAGS=""` so the
-  extension is not compiled with `-march=native`, which can crash Postgres workers
-  with `signal 4: Illegal instruction` on Modal CPUs that differ from the image
-  builder). Hindsight profile/log state and cache state are persisted on Modal
-  volumes, while PostgreSQL data currently lives under ephemeral
-  `/tmp/hindsight-postgres/data`. Use external PostgreSQL before relying on durable
-  Modal memory.
-- The Modal `serve` web function uses a **24-hour** execution timeout and a
-  **30-minute** `scaledown_window` (see `modal_app.py`). Shorter timeouts recycle
-  the whole container, which tears down local Postgres and can look like the app
-  “died”; ArozOS may log `Shutting down auth gateway` during that graceful
-  shutdown. Redeploys also replace the container ID. Hermes/Hindsight state on
-  volumes survives; local Postgres under `/tmp` does not.
-
-The public Modal URL should open ArozOS first. On a fresh ArozOS data volume it
-redirects to `/login.html?redirect=/` for ArozOS setup/login; after login,
-launch **jWeb**, **jChat**, **Memory**, or other desktop apps from the
-desktop. See [`docs/README.md`](docs/README.md).
-
-The Camofox runtime patch used by the Modal image is kept in this repo:
+Camofox runtime patching and jWeb debugging notes: [`docs/hitl-camofox-notes.md`](docs/hitl-camofox-notes.md).
 
 - `scripts/patch-camofox-single-tab.mjs`
-
-The legacy Hermes patch at `scripts/hermes-browser-camofox-hitl.patch` is not
-used by Modal anymore.
-
-See `docs/hitl-camofox-modal-notes.md` for the current implementation notes,
-debugging lessons, and unresolved VNC resolution findings.

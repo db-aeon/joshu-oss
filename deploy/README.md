@@ -1,21 +1,21 @@
 # Joshu VPS Deploy
 
-Production packaging for **one VPS per customer**. Replaces Modal for always-on sandboxes.
+Production packaging for **one VPS per customer**. Replaces VPS for always-on sandboxes.
 
 ## Prerequisites
 
 - `vendor/arozos` submodule initialized (ArozOS source build)
-- Local bundles: `npm run modal:predeploy`
+- Local bundles: `npm run build:deploy`
 - Docker on the VPS (or build in CI and pull from GHCR)
 
 ## Build image
 
-Hermes is baked at image build time from the pin in `modal_app.py` (same as Modal).
+Hermes is baked at image build time from the pin in `deploy/RELEASE.json` (same as the sandbox image).
 `npm run vps:sync-hermes-pin` copies that ref into `deploy/Dockerfile` and
 `deploy/RELEASE.json`; `npm run vps:build-image` always passes it as a Docker build-arg.
 
 ```bash
-npm run modal:predeploy
+npm run build:deploy
 
 # Local load (default tag: local)
 npm run vps:build-image
@@ -38,7 +38,7 @@ Joshu startup (`src/hermesApi.ts`). Details:
 [docs/hermes-customizations.md](../docs/hermes-customizations.md#hermes-runtime-config-local-hermes-vs-vps--image).
 
 CI: [`.github/workflows/joshu-sandbox-image.yml`](../.github/workflows/joshu-sandbox-image.yml)
-— reads `HERMES_AGENT_REF` from `modal_app.py` and passes it to `docker build`.
+— reads `HERMES_AGENT_REF` from `deploy/RELEASE.json` and passes it to `docker build`.
 
 ## Configure instance
 
@@ -185,5 +185,5 @@ Expect **200** and HTML (not `Invalid Host header`). Caddy rewrites upstream `Ho
 - [docs/vps-sandbox/README.md](../docs/vps-sandbox/README.md)
 - [docs/vps-sandbox/zero-touch-provisioning.md](../docs/vps-sandbox/zero-touch-provisioning.md) — provision checklist
 - [docs/vps-sandbox/troubleshooting-and-lessons.md](../docs/vps-sandbox/troubleshooting-and-lessons.md) — failures, diagnostics, hardening
-- [docs/vps-sandbox/modal-to-vps-mapping.md](../docs/vps-sandbox/modal-to-vps-mapping.md)
+- [docs/vps-sandbox/runtime-topology.md](../docs/vps-sandbox/runtime-topology.md)
 - [docs/vps-sandbox/first-provisioning-notes.md](../docs/vps-sandbox/first-provisioning-notes.md)

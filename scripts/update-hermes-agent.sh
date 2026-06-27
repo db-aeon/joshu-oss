@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Safely update the external Hermes Agent checkout and keep Joshu's Modal pin in sync.
+# Safely update the external Hermes Agent checkout and keep deploy/RELEASE.json in sync.
 #
 # See docs/hermes-customizations.md and docs/local-installation.md.
 #
@@ -20,17 +20,17 @@ HERMES_UPSTREAM_REMOTE="${HERMES_UPSTREAM_REMOTE:-upstream}"
 SNAPSHOT_ROOT="${SNAPSHOT_ROOT:-${ROOT_DIR}/.local/hermes-update-snapshots}"
 LATEST_LINK="${SNAPSHOT_ROOT}/latest"
 
-MODAL_APP="${ROOT_DIR}/modal_app.py"
+RELEASE_JSON="${ROOT_DIR}/deploy/RELEASE.json"
 ENV_EXAMPLE="${ROOT_DIR}/.env.example"
 HITL_PATCH_SCRIPT="${ROOT_DIR}/scripts/apply-hermes-hitl-patch.sh"
 LANGFUSE_SYSTEM_PATCH_SCRIPT="${ROOT_DIR}/scripts/apply-hermes-langfuse-system-patch.sh"
 CONTENT_FILTER_PATCH_SCRIPT="${ROOT_DIR}/scripts/apply-hermes-content-filter-patch.sh"
 INVOKE_TOOL_POST_HOOK_PATCH_SCRIPT="${ROOT_DIR}/scripts/apply-hermes-invoke-tool-post-hook-patch.sh"
 
-# Match modal_app.py extras for deploy parity; local dev may use broader extras via HERMES_LOCAL_EXTRAS.
-HERMES_MODAL_EXTRAS="${HERMES_MODAL_EXTRAS:-cli,pty,mcp,acp,google,bedrock,web,youtube,voice,messaging}"
-# Default to Modal parity for fast, reliable installs. Override with all,dev for full Hermes dev.
-HERMES_LOCAL_EXTRAS="${HERMES_LOCAL_EXTRAS:-${HERMES_MODAL_EXTRAS}}"
+# Match deploy/Dockerfile image extras; local dev may use broader extras via HERMES_LOCAL_EXTRAS.
+HERMES_IMAGE_EXTRAS="${HERMES_IMAGE_EXTRAS:-cli,pty,mcp,acp,google,bedrock,web,youtube,voice,messaging}"
+# Default to image parity for fast, reliable installs. Override with all,dev for full Hermes dev.
+HERMES_LOCAL_EXTRAS="${HERMES_LOCAL_EXTRAS:-${HERMES_IMAGE_EXTRAS}}"
 HERMES_AIOHTTP_CONSTRAINT="${HERMES_AIOHTTP_CONSTRAINT:-aiohttp>=3.13.3,<4}"
 
 # Joshu expects these after Hermes dependency refreshes (docs/local-installation.md).
@@ -61,42 +61,34 @@ timestamp_id() {
   date -u +"%Y%m%dT%H%M%SZ"
 }
 
-read_modal_hermes_ref() {
-  python3 - "${MODAL_APP}" <<'PY'
-import re
+read_deploy_hermes_ref() {
+  python3 - "${RELEASE_JSON}" <<'PY'
+import json
 import sys
 from pathlib import Path
 
-text = Path(sys.argv[1]).read_text()
-match = re.search(
-    r'HERMES_AGENT_REF\s*=\s*os\.environ\.get\("HERMES_AGENT_REF",\s*"([^"]+)"\)',
-    text,
-)
-if not match:
-    raise SystemExit("Could not parse HERMES_AGENT_REF from modal_app.py")
-print(match.group(1))
+data = json.loads(Path(sys.argv[1]).read_text())
+ref = (data.get("hermesRef") or "").strip()
+if not ref:
+    raise SystemExit("Could not read hermesRef from deploy/RELEASE.json")
+print(ref)
 PY
 }
 
-write_modal_hermes_ref() {
+write_deploy_hermes_ref() {
   local new_ref="$1"
-  python3 - "${MODAL_APP}" "${new_ref}" <<'PY'
-import re
+  python3 - "${RELEASE_JSON}" "${new_ref}" <<'PY'
+import json
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 path = Path(sys.argv[1])
 new_ref = sys.argv[2]
-text = path.read_text()
-pattern = r'(HERMES_AGENT_REF\s*=\s*os\.environ\.get\("HERMES_AGENT_REF",\s*")[^"]+("\))'
-
-def replace_ref(match: re.Match[str]) -> str:
-    return f"{match.group(1)}{new_ref}{match.group(2)}"
-
-updated, count = re.subn(pattern, replace_ref, text, count=1)
-if count != 1:
-    raise SystemExit("Could not update HERMES_AGENT_REF in modal_app.py")
-path.write_text(updated)
+data = json.loads(path.read_text())
+data["hermesRef"] = new_ref
+data["builtAt"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+path.write_text(json.dumps(data, indent=2) + "\n")
 PY
 }
 
@@ -179,13 +171,13 @@ create_snapshot() {
 
   mkdir -p "${snapshot_dir}"
 
-  local modal_ref hermes_head hermes_branch hermes_status
-  modal_ref="$(read_modal_hermes_ref)"
+  local deploy_ref hermes_head hermes_branch hermes_status
+  deploy_ref="$(read_deploy_hermes_ref)"
   hermes_head="$(hermes_git_head)"
   hermes_branch="$(git -C "${HERMES_DIR}" branch --show-current 2>/dev/null || true)"
   hermes_status="$(git -C "${HERMES_DIR}" status --porcelain || true)"
 
-  cp "${MODAL_APP}" "${snapshot_dir}/modal_app.py"
+  cp "${RELEASE_JSON}" "${snapshot_dir}/RELEASE.json"
   if [[ -f "${ENV_EXAMPLE}" ]]; then
     cp "${ENV_EXAMPLE}" "${snapshot_dir}/.env.example"
   fi
@@ -203,7 +195,7 @@ create_snapshot() {
 
   HERMES_SNAPSHOT_DIR="${snapshot_dir}" \
   HERMES_SNAPSHOT_ID="${snapshot_id}" \
-  HERMES_SNAPSHOT_MODAL_REF="${modal_ref}" \
+  HERMES_SNAPSHOT_DEPLOY_REF="${deploy_ref}" \
   HERMES_SNAPSHOT_HEAD="${hermes_head}" \
   HERMES_SNAPSHOT_BRANCH="${hermes_branch}" \
   HERMES_SNAPSHOT_DIRTY="${hermes_dirty_flag}" \
@@ -231,7 +223,7 @@ snapshot_dir.joinpath("manifest.json").write_text(
             "hermes_upstream_repo": os.environ["HERMES_SNAPSHOT_UPSTREAM_REPO"],
             "hermes_upstream_remote": os.environ["HERMES_SNAPSHOT_UPSTREAM_REMOTE"],
             "before": {
-                "modal_hermes_agent_ref": os.environ["HERMES_SNAPSHOT_MODAL_REF"],
+                "deploy_hermes_agent_ref": os.environ["HERMES_SNAPSHOT_DEPLOY_REF"],
                 "hermes_git_head": os.environ["HERMES_SNAPSHOT_HEAD"],
                 "hermes_git_branch": os.environ["HERMES_SNAPSHOT_BRANCH"],
                 "hermes_git_dirty": os.environ["HERMES_SNAPSHOT_DIRTY"] == "1",
@@ -267,7 +259,7 @@ restore_snapshot() {
 
   log "rolling back to snapshot ${snapshot_id}"
 
-  cp "${snapshot_dir}/modal_app.py" "${MODAL_APP}"
+  cp "${snapshot_dir}/RELEASE.json" "${RELEASE_JSON}"
   if [[ -f "${snapshot_dir}/.env.example" ]]; then
     cp "${snapshot_dir}/.env.example" "${ENV_EXAMPLE}"
   fi
@@ -302,19 +294,19 @@ PY
   fi
 
   log "rollback complete"
-  log "modal pin: $(read_modal_hermes_ref)"
+  log "deploy pin: $(read_deploy_hermes_ref)"
   log "hermes HEAD: $(hermes_git_head)"
 }
 
 install_hermes_dependencies() {
-  local mode="$1" # local | modal-parity
+  local mode="$1" # local | image-parity
   local extras
 
   [[ -d "${HERMES_DIR}/venv" ]] || die "missing ${HERMES_DIR}/venv; create a venv before updating"
 
   extras="${HERMES_LOCAL_EXTRAS}"
-  if [[ "${mode}" == "modal-parity" ]]; then
-    extras="${HERMES_MODAL_EXTRAS}"
+  if [[ "${mode}" == "image-parity" ]]; then
+    extras="${HERMES_IMAGE_EXTRAS}"
   fi
 
   log "reinstalling Hermes editable install (.[${extras}]) in ${HERMES_DIR}"
@@ -368,16 +360,16 @@ apply_content_filter_patch_if_needed() {
 }
 
 verify_hermes_checkout() {
-  hermes_has_adoption_support || die "Hermes checkout is missing tools/browser_camofox.py adopt_existing_tab support (required for Joshu/Modal)"
+  hermes_has_adoption_support || die "Hermes checkout is missing tools/browser_camofox.py adopt_existing_tab support (required for Joshu)"
   log "verified generic Camofox adopt_existing_tab support"
 }
 
 cmd_status() {
-  local modal_ref hermes_head
-  modal_ref="$(read_modal_hermes_ref)"
+  local deploy_ref hermes_head
+  deploy_ref="$(read_deploy_hermes_ref)"
   hermes_head="$(hermes_git_head)"
 
-  log "Joshu modal pin (HERMES_AGENT_REF default): ${modal_ref}"
+  log "Joshu deploy pin (deploy/RELEASE.json hermesRef): ${deploy_ref}"
   log "Local Hermes checkout HEAD: ${hermes_head}"
 
   if [[ -x "${HERMES_DIR}/venv/bin/hermes" ]]; then
@@ -388,8 +380,8 @@ cmd_status() {
   if command -v gh >/dev/null 2>&1; then
     load_release_info ""
     log "latest upstream release: ${RELEASE_TAG} @ ${RELEASE_COMMIT} (${RELEASE_PUBLISHED_AT})"
-    if [[ "${modal_ref}" == "${RELEASE_COMMIT}" || "${hermes_head}" == "${RELEASE_COMMIT}" ]]; then
-      log "local/modal pin matches latest release commit"
+    if [[ "${deploy_ref}" == "${RELEASE_COMMIT}" || "${hermes_head}" == "${RELEASE_COMMIT}" ]]; then
+      log "local/deploy pin matches latest release commit"
     else
       log "latest release is ahead of current pin/checkout"
     fi
@@ -409,7 +401,7 @@ data = json.loads(Path(sys.argv[1]).read_text())
 before = data["before"]
 planned = data.get("planned", {})
 print(
-    f"{data['snapshot_id']}  modal={before['modal_hermes_agent_ref'][:12]}  "
+    f"{data['snapshot_id']}  deploy={before.get('deploy_hermes_agent_ref', before.get('modal_hermes_agent_ref', '?'))[:12]}  "
     f"hermes={before['hermes_git_head'][:12]}  "
     f"-> {planned.get('release_tag', '?')}@{planned.get('release_commit', '?')[:12]}"
 )
@@ -426,11 +418,11 @@ cmd_verify() {
   log "optional local checks:"
   log "  cd ${ROOT_DIR} && npm run dev:arozos"
   log "  cd ${ROOT_DIR} && npm run hindsight:smoke"
-  log "  cd ${ROOT_DIR} && npm run modal:deploy"
+  log "  cd ${ROOT_DIR} && npm run vps:build-image"
 }
 
 cmd_update() {
-  local requested_tag="" dry_run=0 force=0 skip_modal_pin=0
+  local requested_tag="" dry_run=0 force=0 skip_deploy_pin=0
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -446,8 +438,8 @@ cmd_update() {
         force=1
         shift
         ;;
-      --skip-modal-pin)
-        skip_modal_pin=1
+      --skip-deploy-pin)
+        skip_deploy_pin=1
         shift
         ;;
       *)
@@ -462,14 +454,14 @@ cmd_update() {
 
   load_release_info "${requested_tag}"
 
-  local modal_ref hermes_head dirty
-  modal_ref="$(read_modal_hermes_ref)"
+  local deploy_ref hermes_head dirty
+  deploy_ref="$(read_deploy_hermes_ref)"
   hermes_head="$(hermes_git_head)"
   dirty="$(git -C "${HERMES_DIR}" status --porcelain || true)"
 
   log "target release: ${RELEASE_TAG} (${RELEASE_PUBLISHED_AT})"
   log "target commit: ${RELEASE_COMMIT}"
-  log "current modal pin: ${modal_ref}"
+  log "current deploy pin: ${deploy_ref}"
   log "current hermes HEAD: ${hermes_head}"
 
   if [[ -n "${dirty}" && "${force}" -ne 1 && "${dry_run}" -ne 1 ]]; then
@@ -479,7 +471,7 @@ cmd_update() {
     log "warning: Hermes checkout has local changes (dry run continues)"
   fi
 
-  if [[ "${modal_ref}" == "${RELEASE_COMMIT}" && "${hermes_head}" == "${RELEASE_COMMIT}" ]]; then
+  if [[ "${deploy_ref}" == "${RELEASE_COMMIT}" && "${hermes_head}" == "${RELEASE_COMMIT}" ]]; then
     log "already on requested release commit; refreshing dependencies only"
   fi
 
@@ -502,13 +494,13 @@ cmd_update() {
   apply_content_filter_patch_if_needed
   verify_hermes_checkout
 
-  if [[ "${skip_modal_pin}" -ne 1 ]]; then
-    write_modal_hermes_ref "${RELEASE_COMMIT}"
+  if [[ "${skip_deploy_pin}" -ne 1 ]]; then
+    write_deploy_hermes_ref "${RELEASE_COMMIT}"
     write_env_example_hermes_ref "${RELEASE_COMMIT}"
-    log "updated Modal default pin in modal_app.py and .env.example"
+    log "updated deploy/RELEASE.json hermesRef and .env.example"
     if command -v node >/dev/null 2>&1; then
       node "${ROOT_DIR}/scripts/sync-vps-hermes-pin.mjs"
-      log "synced deploy/Dockerfile and deploy/RELEASE.json from modal_app.py"
+      log "synced deploy/Dockerfile from deploy/RELEASE.json"
     fi
   fi
 
@@ -516,14 +508,14 @@ cmd_update() {
   log "next steps:"
   log "  1. Restart local stack and exercise HITL Camofox adoption"
   log "  2. cd ${ROOT_DIR} && npm run hindsight:smoke"
-  log "  3. cd ${ROOT_DIR} && npm run modal:deploy"
+  log "  3. cd ${ROOT_DIR} && npm run vps:build-image"
   log "If testing fails: scripts/update-hermes-agent.sh rollback ${snapshot_id}"
 }
 
 usage() {
   cat <<EOF
 Usage:
-  scripts/update-hermes-agent.sh update [--tag TAG] [--dry-run] [--force] [--skip-modal-pin]
+  scripts/update-hermes-agent.sh update [--tag TAG] [--dry-run] [--force] [--skip-deploy-pin]
   scripts/update-hermes-agent.sh rollback [snapshot-id]
   scripts/update-hermes-agent.sh status
   scripts/update-hermes-agent.sh list
@@ -534,8 +526,8 @@ Environment:
   HERMES_UPSTREAM_REPO       Upstream git URL (default: NousResearch/hermes-agent)
   HERMES_UPSTREAM_REMOTE     Remote name for upstream fetches (default: upstream)
   SNAPSHOT_ROOT              Snapshot directory (default: ${SNAPSHOT_ROOT})
-  HERMES_MODAL_EXTRAS        pip extras; must match modal_app.py install line
-  HERMES_LOCAL_EXTRAS        pip extras for local venv (defaults to HERMES_MODAL_EXTRAS)
+  HERMES_IMAGE_EXTRAS        pip extras; must match deploy/Dockerfile install line
+  HERMES_LOCAL_EXTRAS        pip extras for local venv (defaults to HERMES_IMAGE_EXTRAS)
 EOF
 }
 

@@ -23,7 +23,7 @@ jobs:
           cache: npm
 
       - run: npm ci
-      - run: npm run modal:predeploy
+      - run: npm run build:deploy
       - run: npm run vps:sync-hermes-pin
 
       - name: Resolve Hermes pin

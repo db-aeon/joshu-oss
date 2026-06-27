@@ -9,7 +9,7 @@ Joshu owns **agent write safety** end-to-end. Composio is OAuth and transport; H
 | Safety desktop app (configure policy in UI) | [`safety-settings-arozos-app.md`](safety-settings-arozos-app.md) |
 | Connectors UI (owner channel link) | [`connectors-arozos-app.md`](connectors-arozos-app.md) |
 | Mail/calendar MCP + cron | [`connectors.md`](connectors.md) |
-| Browser HITL (Camofox / noVNC) | [`hitl-camofox-modal-notes.md`](hitl-camofox-modal-notes.md) |
+| Browser HITL (Camofox / noVNC) | [`hitl-camofox-notes.md`](hitl-camofox-notes.md) |
 
 ---
 
@@ -194,7 +194,7 @@ Unified channel for **write approvals** (v1). Plain-text owner chat ingress is s
 | **Telegram** | `/start` on approval bot, or paste chat ID | Bot API or Composio send | Inline **Approve** / **Deny** buttons |
 | **Slack** | Composio Slack OAuth + channel ID (`D…` self-DM, or private channel `C…` e.g. `#patrick-approvals`) | Composio `SLACK_SEND_MESSAGE` (Block Kit — companion avatar + name in message body) | Reply **Y** or **N** in channel (`yes`/`no`/`approve`/`deny` also accepted) |
 
-**Not Hermes Slack chat:** owner-channel Slack uses **Composio** only (approvals). Full agent chat in Slack is a separate Hermes Socket Mode app — configure in **Safety → Hermes Slack chat** ([hermes-integration — Slack chat](hermes-integration.md#slack-chat-hermes-messaging-gateway)).
+**Not Hermes Slack chat:** owner-channel Slack uses **Composio** only (approvals). Full agent chat in Slack is a separate Hermes Socket Mode app — configure in **Safety → Hermes Slack chat** ([hermes-customizations — Slack chat](hermes-customizations.md#slack-chat-hermes-messaging-gateway)).
 
 ### Slack approval flow (v1)
 

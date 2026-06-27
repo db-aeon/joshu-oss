@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# VPS entrypoint: Camofox + Hindsight + Joshu + ArozOS (Modal parity, durable Postgres).
+# VPS entrypoint: Camofox + Hindsight + Joshu + ArozOS (VPS parity, durable Postgres).
 set -euo pipefail
 
 APP_DIR="${APP_DIR:-/opt/joshu}"
@@ -443,7 +443,7 @@ export PORT="${JOSHU_PORT}"
 export PUBLIC_BASE_PATH
 export CAMOFOX_URL="${CAMOFOX_URL:-http://127.0.0.1:9377}"
 export CAMOFOX_AUTO_RESTART="${CAMOFOX_AUTO_RESTART:-false}"
-# Camofox image serves noVNC on :6080 when ENABLE_VNC=1 (Modal parity — see scripts/modal-start.sh).
+# Camofox image serves noVNC on :6080 when ENABLE_VNC=1 (VPS parity — see deploy/scripts/vps-start.sh).
 export ENABLE_VNC="${ENABLE_VNC:-1}"
 export NOVNC_PORT="${NOVNC_PORT:-6080}"
 export NOVNC_URL="${NOVNC_URL:-/novnc}"

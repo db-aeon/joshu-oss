@@ -1,12 +1,12 @@
 Joshu Box Stack — Dual License
-Copyright (c) 2025–2026 Joshu Inc. and contributors
+Copyright (c) 2025–2026 Project Aeon Inc. and contributors
 
 This software is available under **either**:
 
 1. **GNU Affero General Public License v3.0 (AGPL-3.0)** — see below, or
-2. **Joshu Commercial License** — contact license@joshu.me (see COMMERCIAL_LICENSE.md)
+2. **Joshu Commercial License** — contact info@joshu.me (see COMMERCIAL_LICENSE.md notice)
 
-If you do not have a commercial license agreement with Joshu Inc., you may use,
+If you do not have a commercial license agreement with Project Aeon Inc., you may use,
 modify, and distribute this software only under the terms of the AGPL-3.0.
 
 **Important third-party components** (not covered by this dual license):
@@ -39,5 +39,5 @@ holder or obtain it from the public repository.
 
 ---
 
-For commercial licensing terms, see COMMERCIAL_LICENSE.md.
+For commercial licensing, contact info@joshu.me — see COMMERCIAL_LICENSE.md (notice only).
 For trademark policy, see TRADEMARK.md.

@@ -99,8 +99,8 @@ If you change `vendor/arozos/src/web/…` but still see old behavior, restart
 `.local/arozos-data/web/`. Hard-refresh or close and reopen the player window so
 the iframe does not cache old HTML.
 
-Modal deployments rebuild from the same `vendor/arozos` tree during image build;
-see [`docs/hitl-camofox-modal-notes.md`](hitl-camofox-modal-notes.md) for volume
+VPS deployments rebuild from the same `vendor/arozos` tree during image build;
+see [`docs/hitl-camofox-notes.md`](hitl-camofox-notes.md) for volume
 refresh behavior on container boot.
 
 ## Fixes applied in Joshu (vendor/arozos)
@@ -150,6 +150,6 @@ If iframe autoplay with sound is ever required again, consider adding
 click-to-play — policy still requires a user gesture for reliable audio.
 
 Joshu-specific desktop chrome (taskbar, theme) remains in
-[`arozos/web-overlays-vanilla/`](../arozos/web-overlays-vanilla/) via
+[`arozos/web-overlays/`](../arozos/web-overlays/) via
 [`scripts/apply_arozos_joshu_theme.py`](../scripts/apply_arozos_joshu_theme.py);
 video player behavior is upstream ArozOS web assets, not that overlay.

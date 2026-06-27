@@ -20,7 +20,7 @@ apps/control-plane/.env
 apps/control-plane/.env.*
 !apps/control-plane/.env.example
 
-# Modal / editor / runtime artifacts not needed for the VPS image.
+# Editor / runtime artifacts not needed for the VPS image.
 .cursor
 agent-transcripts
 *.log

@@ -43,5 +43,5 @@ context (brand assets in private `joshu-design` for official builds).
 
 ## Security
 
-Do not commit secrets. Report security issues to security@joshu.me (or your
+Do not commit secrets. Report security issues to info@joshu.me (or your
 designated contact) rather than opening public issues for sensitive findings.

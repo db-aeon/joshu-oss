@@ -1,34 +1,52 @@
-# VPS / Docker box stack
+# Joshu VPS Sandbox Architecture
 
-This directory documents running the Joshu **box stack** on a VPS or local Docker host.
+This directory documents the **box stack on VPS** — Docker Compose, instance agent
+protocol, voice, and troubleshooting.
 
-The **control plane** (managed provisioning, customer portal at `hello.joshu.me`) is proprietary and not part of this repository. Self-hosters use [`../self-host.md`](../self-host.md) instead.
+The **control plane** (hello.joshu.me provisioning, portal) is **proprietary** and
+documented in the private [`joshu-control-plane`](https://github.com/db-aeon/joshu-control-plane) repository (`docs/`).
+See [control-plane.md](control-plane.md).
 
-## Documents (public)
+For self-hosting without the control plane: [../self-host.md](../self-host.md).
+
+## Documents
 
 | Doc | Purpose |
 | --- | --- |
-| [`../self-host.md`](../self-host.md) | Standalone Docker bootstrap |
-| [`modal-to-vps-mapping.md`](modal-to-vps-mapping.md) | How Modal-era assumptions map to Compose |
-| [`instance-agent-protocol.md`](instance-agent-protocol.md) | Optional fleet sidecar — heartbeats and signed commands |
-| [`control-plane.md`](control-plane.md) | Stub — points to proprietary CP repo |
+| [control-plane.md](control-plane.md) | Proprietary CP — not in OSS repo |
+| [self-host.md](../self-host.md) | Standalone Docker / bootstrap |
+| [runtime-topology.md](runtime-topology.md) | VPS process layout, paths, boot order |
+| [provider-choices.md](provider-choices.md) | Recommended vendors for VPS, DNS, email, Twilio |
+| [instance-agent-protocol.md](instance-agent-protocol.md) | Heartbeats, signed commands, health contract |
+| [hotpatch-running-box.md](hotpatch-running-box.md) | Git / dist / image hotfixes on a live box |
+| [voice-think-speak.md](voice-think-speak.md) | When to think (Hermes) vs speak (Realtime) |
+| [voice-realtime.md](voice-realtime.md) | OpenAI Realtime S2S service |
+| [web-voice.md](web-voice.md) | Browser / jChat voice wiring |
+| [first-provisioning-notes.md](first-provisioning-notes.md) | First Hetzner run lessons |
+| [troubleshooting-and-lessons.md](troubleshooting-and-lessons.md) | Incidents and fixes |
+| [../box-state.md](../box-state.md) | Snapshots, factory profile |
 
-## Code layout
+## Code layout (OSS repo)
 
 | Path | Purpose |
 | --- | --- |
 | [`deploy/`](../../deploy/) | Docker Compose, Caddy, `vps-start.sh` |
-| [`packages/instance-agent/`](../../packages/instance-agent/) | Optional sidecar (`docker compose --profile fleet`) |
-| [`packages/voice-realtime/`](../../packages/voice-realtime/) | OpenAI Realtime speech-to-speech (optional profile) |
+| [`packages/instance-agent/`](../../packages/instance-agent/) | Optional fleet sidecar (`--profile fleet`) |
+| [`packages/voice-realtime/`](../../packages/voice-realtime/) | OpenAI Realtime speech-to-speech |
 
-## Quick start
+## Quick start (self-host)
 
 ```bash
 sudo bash scripts/bootstrap-self-host.sh
 ```
 
-Or see [`../self-host.md`](../self-host.md).
+Or see [self-host.md](../self-host.md).
 
-## Image
+## Fleet operators
 
-Public OSS image: `ghcr.io/db-aeon/joshu-oss:latest` (Vanilla theme). Pin tags in `deploy/RELEASE.json` when building from source.
+Joshu-managed sandboxes use the private control plane + `docker compose --profile fleet`.
+Image tags: see [`deploy/RELEASE.json`](../../deploy/RELEASE.json).
+
+Public OSS image: `ghcr.io/your-org/joshu-oss:latest` (Vanilla theme).
+
+Branded fleet builds set `JOSHU_DESIGN_PACK` to the private `joshu-design` checkout.
