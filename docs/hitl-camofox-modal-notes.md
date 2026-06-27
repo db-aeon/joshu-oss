@@ -88,7 +88,7 @@ clean and keep our integration code here.
 - When Hindsight is enabled, `src/hermesApi.ts` also sets
   `memory.provider: hindsight` and writes `$HERMES_HOME/hindsight/config.json`
   for Hermes's native Hindsight provider in `local_external` mode.
-- See `docs/hermes-customizations.md` for the canonical Hermes ownership,
+- See `docs/hermes-integration.md` for the canonical Hermes ownership,
   patch-lifecycle, and config rules.
 - `src/server.ts`, `src/camofoxSession.ts`, and `public/app.js` coordinate the
   shared browser session from Joshu.
@@ -291,7 +291,7 @@ maintained only as a local hand edit to `~/.hermes/config.yaml`. Local Hermes
 YAML can hold personal defaults, but Modal will not reliably receive those
 changes unless they are encoded in startup scripts or copied into a Modal secret.
 For the durable policy, including what to do after `hermes update`, see
-`docs/hermes-customizations.md`.
+`docs/hermes-integration.md`.
 
 ### Camofox Single-Tab Patch
 

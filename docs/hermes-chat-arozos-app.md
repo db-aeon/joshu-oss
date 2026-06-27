@@ -45,11 +45,11 @@ Slack DM / @mention
 | **Telegram chat bot** | `TELEGRAM_BOT_TOKEN` adapter | `agent:main:telegram:dm:<chat_id>` |
 | **Slack chat bot** | `SLACK_BOT_TOKEN` + `SLACK_APP_TOKEN` (Socket Mode) | `agent:main:slack:…` (Hermes session naming) |
 
-All three share toolsets, MCP catalog, SOUL.md, and Hindsight auto-recall. They do **not** share transcript history unless you explicitly hand off sessions (`/handoff` on gateway platforms). Slack setup: [hermes-customizations — Slack chat](hermes-customizations.md#slack-chat-hermes-messaging-gateway). Telegram: [hermes-customizations — Telegram & jChat](hermes-customizations.md#telegram-11-chat-hermes-messaging-gateway).
+All three share toolsets, MCP catalog, SOUL.md, and Hindsight auto-recall. They do **not** share transcript history unless you explicitly hand off sessions (`/handoff` on gateway platforms). Slack setup: [hermes-integration — Slack chat](hermes-integration.md#slack-chat-hermes-messaging-gateway). Telegram: [hermes-integration — Telegram & jChat](hermes-integration.md#telegram-11-chat-hermes-messaging-gateway).
 
 ### System prompt layers
 
-Each turn, jChat POSTs `sessionId` + a **minimal** client system message (mail/tools hints in [`apps/hermes-chat/src/main.tsx`](../apps/hermes-chat/src/main.tsx)) and **only the latest user message** — not the full UI transcript. Hermes merges server-side session history and adds its own cached system prompt: companion `SOUL.md`, desktop `HERMES.md`, **`<available_skills>`** (truncated `description` per skill, ≤60 chars), then tool guidance. The model must call **`skill_view(name)`** to load a full `SKILL.md`; nothing in Joshu auto-selects EA skills when the conversation drifts. Details: [hermes-customizations — Skill catalog](hermes-customizations.md#skill-catalog-descriptions-and-skill_view), [ea-for-joshu — EA skills in jChat](Joshu-SOP/ea-for-joshu.md#ea-skills-in-jchat-catalog--skill_view).
+Each turn, jChat POSTs `sessionId` + a **minimal** client system message (mail/tools hints in [`apps/hermes-chat/src/main.tsx`](../apps/hermes-chat/src/main.tsx)) and **only the latest user message** — not the full UI transcript. Hermes merges server-side session history and adds its own cached system prompt: companion `SOUL.md`, desktop `HERMES.md`, **`<available_skills>`** (truncated `description` per skill, ≤60 chars), then tool guidance. The model must call **`skill_view(name)`** to load a full `SKILL.md`; nothing in Joshu auto-selects EA skills when the conversation drifts. Details: [hermes-integration — Skill catalog](hermes-integration.md#skill-catalog-descriptions-and-skill_view), [ea-for-joshu — EA skills in jChat](hermes-integration.md#ea-skills-in-jchat-catalog--skill_view).
 
 The browser never receives `HERMES_API_KEY`; it talks only to Joshu. The UI
 supports markdown, GitHub-flavored markdown tables/lists, embedded image
@@ -82,8 +82,8 @@ img/joshu/chat.png
 ## ArozOS taskbar tray
 
 Joshu replaces the stock ArozOS **background tasks** button (`#backgroundtaskBtn`) with a
-compact jChat tray in the bottom taskbar ([`aroz-jchat-tray.js`](../arozos/web-overlays/aroz-jchat-tray.js),
-styled in [`aroz-paper-shell.css`](../arozos/web-overlays/aroz-paper-shell.css)).
+compact jChat tray in the bottom taskbar ([`aroz-jchat-tray.js`](../arozos/web-overlays-vanilla/aroz-jchat-tray.js),
+styled in [`aroz-paper-shell.css`](../arozos/web-overlays-vanilla/aroz-vanilla-shell.css)).
 
 Layout (left → right, immediately left of the clock): **VU meter · mic · avatar**.
 
@@ -93,7 +93,7 @@ Layout (left → right, immediately left of the clock): **VU meter · mic · ava
 | **Mic** | Toggle Realtime voice mode. Posts `jchat:voice-toggle` into the jChat iframe; opens jChat first if needed. Disabled when `/api/voice/status` reports unavailable. |
 | **VU meter** | Winamp-style level bars driven by `@joshu/voice-client` `onAudioLevel` (mic while listening, playback while speaking). Grayed out when voice is off. |
 
-**Persona:** tray and jChat iframe both load `GET /joshu/api/instance/identity`; portrait precedence is `avatarUrl` → `imageUrl` (see [joshu-identity.md](joshu-identity.md)). Email signatures use **`imageUrl` only**.
+**Persona:** tray and jChat iframe both load `GET /joshu/api/instance/identity`; portrait precedence is `avatarUrl` → `imageUrl` (see [self-host.md#identity-without-control-plane](self-host.md#identity-without-control-plane)). Email signatures use **`imageUrl` only**.
 
 **Shell ↔ iframe IPC** ([`apps/hermes-chat/src/traySync.ts`](../apps/hermes-chat/src/traySync.ts)):
 
@@ -127,7 +127,7 @@ jChat can open ArozOS apps and files on the user's screen without asking them to
 
 Session key for jChat: `joshu-hermes-chat:<sessionId>` (set via `X-Hermes-Session-Key` in [`src/hermesApi.ts`](../src/hermesApi.ts)).
 
-**Enable plugin:** `JOSHU_HERMES_PLUGIN_NAMES` must include `joshu-desktop` (see [hermes-customizations — joshu-desktop plugin](hermes-customizations.md#joshu-desktop-plugin)). Restart the Hermes gateway after plugin changes.
+**Enable plugin:** `JOSHU_HERMES_PLUGIN_NAMES` must include `joshu-desktop` (see [hermes-integration — joshu-desktop plugin](hermes-integration.md#joshu-desktop-plugin)). Restart the Hermes gateway after plugin changes.
 
 **Module aliases** (voice + typed fast path): `browser` → jWeb, `mail` / `email` → jMail, `whiteboard` → jWhiteboard, etc. Canonical names: [arozos-desktop-shortcuts.md](arozos-desktop-shortcuts.md).
 
@@ -199,7 +199,7 @@ jChat loads companion identity from `GET /joshu/api/instance/identity` ([`useIde
 | `name` | Assistant display name in header |
 | `voiceId` | Gemini Live voice when `JOSHU_VOICE_PROVIDER=gemini_live` |
 
-The taskbar tray uses the same `avatarUrl` → `imageUrl` precedence (see **ArozOS taskbar tray** above). Email signatures use **`imageUrl` only** (full portrait) — see [joshu-identity.md](joshu-identity.md).
+The taskbar tray uses the same `avatarUrl` → `imageUrl` precedence (see **ArozOS taskbar tray** above). Email signatures use **`imageUrl` only** (full portrait) — see [self-host.md#identity-without-control-plane](self-host.md#identity-without-control-plane).
 
 ## Typed-chat TTS (Speech toggle)
 
@@ -515,5 +515,5 @@ Pre-connecting in the **Connectors** app avoids that during normal use.
 - No session list or resume UI.
 - No file persistence bridge to ArozOS storage.
 - No direct browser calls to Hermes Agent.
-- No wholesale port of `/Users/danbenyamin/hermes-workspace`; that repo remains
+- No wholesale port of `~/hermes-workspace`; that repo remains
   a reference for UI patterns only.

@@ -13,7 +13,7 @@ Managed hosting with zero-touch provisioning: [joshu.me](https://joshu.me).
 ### Option A — bootstrap script (Linux VPS)
 
 ```bash
-git clone https://github.com/your-org/joshu.git
+git clone https://github.com/db-aeon/joshu-oss.git
 cd joshu
 sudo bash scripts/bootstrap-self-host.sh
 ```
@@ -33,7 +33,7 @@ docker compose -f deploy/docker-compose.yml up -d
 Pull a public image instead of building locally:
 
 ```bash
-JOSHU_IMAGE_REF=ghcr.io/your-org/joshu-oss:latest
+JOSHU_IMAGE_REF=ghcr.io/db-aeon/joshu-oss:latest
 ```
 
 ---
@@ -51,8 +51,8 @@ The instance agent **exits cleanly** when `JOSHU_STANDALONE=1` is set.
 
 ## Identity without control plane
 
-Box identity is configured via environment variables and
-[`.joshu/identity.json`](../joshu-identity.md) on the ArozOS data volume.
+Box identity is configured via environment variables (`JOSHU_*` in `/etc/joshu/instance.env`)
+and `.joshu/identity.json` on the ArozOS data volume.
 
 See [`src/joshuIdentity.ts`](../src/joshuIdentity.ts) — sources `bootstrap` and
 `local` work without CP metadata sync.

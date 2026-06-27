@@ -128,7 +128,7 @@ printf '%s' $'module\nFiles\nFile Manager\nimg/joshu/file-manager.png\n' \
 
 ## Desktop label typography
 
-Visible labels are enabled in `arozos/web-overlays/aroz-paper-shell.css` (`.launchIcon .launchIconText`):
+Visible labels are enabled in `arozos/web-overlays-vanilla/aroz-vanilla-shell.css` (`.launchIcon .launchIconText`):
 
 - **Work Sans**, 13px, white text
 - Tight dark edge via multi-offset `text-shadow` (macOS-style on wallpaper)

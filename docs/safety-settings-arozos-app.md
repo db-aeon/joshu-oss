@@ -73,7 +73,7 @@ Values already in process `.env` show a red **".env"** badge and cannot be chang
 
 ### Hermes Slack chat
 
-Full agent chat in Slack (Hermes **Socket Mode**) — separate from **Composio Slack** (MCP tools) and the **owner approval** channel (Composio Y/N). See [hermes-customizations — Slack chat](hermes-customizations.md#slack-chat-hermes-messaging-gateway).
+Full agent chat in Slack (Hermes **Socket Mode**) — separate from **Composio Slack** (MCP tools) and the **owner approval** channel (Composio Y/N). See [hermes-integration — Slack chat](hermes-integration.md#slack-chat-hermes-messaging-gateway).
 
 | Control | Description |
 |---------|-------------|

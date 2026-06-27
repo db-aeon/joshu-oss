@@ -102,7 +102,7 @@ Resolution: [`src/joshuFilesPaths.ts`](../src/joshuFilesPaths.ts), [`scripts/lib
 
 Each customer box has **one** ArozOS account. The control plane stores **owner email** on the customer and writes `JOSHU_AROZ_USER=<email>` into `/etc/joshu/instance.env` at provision. The customer must complete ArozOS first-time signup with **that exact email** so the Desktop path matches gbrain/Hermes.
 
-- Provision: [`apps/control-plane`](../apps/control-plane/) admin UI **Owner email** field → `buildSandboxBootstrapEnv()`.
+- Provision: **joshu-control-plane** admin UI **Owner email** field → `buildSandboxBootstrapEnv()`.
 - Boot: [`scripts/bootstrap-joshu-files.sh`](../scripts/bootstrap-joshu-files.sh) creates an empty `joshu's files` folder for `JOSHU_AROZ_USER` only (no silent `admin` user on VPS).
 - Rebind after owner change: [`scripts/rebind-gbrain-owner.sh`](../scripts/rebind-gbrain-owner.sh).
 
@@ -414,7 +414,7 @@ Joshu EA uses **filesystem markdown + links**, not gbrain `put_page`. When agent
 - Humans click links from time-block diagrams (`ea-time-block`)
 - Agents use **`get_backlinks`** / **`traverse_graph`** (read-only MCP) after sync
 
-Conventions: [`Joshu-SOP/gtd-workspace-linking.md`](Joshu-SOP/gtd-workspace-linking.md).
+Conventions: [`file-brain.md`](file-brain.md).
 
 Optional (ops): `gbrain config set link_resolution.global_basename true` — resolves Obsidian-style `[[note-name]]` across folders after sync. Not required if paths are explicit.
 

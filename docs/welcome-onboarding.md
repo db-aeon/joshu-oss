@@ -2,11 +2,11 @@
 
 First-time setup for Joshu boxes with the **EA v2** layout (`Projects/`, `Triage/` stubs). Replaces the **`ea-discovery`** Hermes skill with a desktop **Welcome** wizard.
 
-Human SOP: [`docs/Joshu-SOP/ea-for-joshu.md`](Joshu-SOP/ea-for-joshu.md). Welcome seeds project folders from big-picture priorities and installs morning/evening/weekly Hermes crons (no midday).
+Human SOP: [`docs/hermes-integration.md`](hermes-integration.md). Welcome seeds project folders from big-picture priorities and installs morning/evening/weekly Hermes crons (no midday).
 
 ## User flow
 
-1. On first login, **Welcome** auto-opens once per browser session when onboarding is incomplete (see [`arozos/web-overlays/aroz-onboarding-launch.js`](../arozos/web-overlays/aroz-onboarding-launch.js)).
+1. On first login, **Welcome** auto-opens once per browser session when onboarding is incomplete (see [`arozos/web-overlays-vanilla/aroz-onboarding-launch.js`](../arozos/web-overlays-vanilla/aroz-onboarding-launch.js)).
 2. **Optional Day 0:** After Gmail is connected, run **Analyze mail for setup (Day 0)** in **Connectors → Connect apps** to pre-fill the draft from 30 days of mail + calendar. See [`day0-cold-start.md`](day0-cold-start.md).
 3. Seven-step wizard captures priorities, communication (with contact details), online tools, and optional VIPs.
 3. Progress auto-saves on each **Continue** via `PUT /joshu/api/onboarding/draft`.
@@ -138,7 +138,7 @@ Mounted under `PUBLIC_BASE_PATH` (default `/joshu`). JSON body routes require `e
 | HTTP routes | [`src/onboardingApi.ts`](../src/onboardingApi.ts) |
 | React UI | [`apps/welcome/`](../apps/welcome/) (imports options via Vite alias `@joshu/onboarding`) |
 | ArozOS subservice | [`arozos/subservice/welcome/`](../arozos/subservice/welcome/) → `dist/welcome/` |
-| Auto-launch overlay | [`arozos/web-overlays/aroz-onboarding-launch.js`](../arozos/web-overlays/aroz-onboarding-launch.js) |
+| Auto-launch overlay | [`arozos/web-overlays-vanilla/aroz-onboarding-launch.js`](../arozos/web-overlays-vanilla/aroz-onboarding-launch.js) |
 | EA templates | [`templates/ea/`](../templates/ea/) |
 | Playbook skill | [`integrations/hermes/skills/executive-assistant/ea-playbook/`](../integrations/hermes/skills/executive-assistant/ea-playbook/SKILL.md) |
 
@@ -154,9 +154,9 @@ After UI or API changes: rebuild Welcome (`npm run build:welcome`) and restart J
 
 ## Related docs
 
-- [`docs/Joshu-SOP/executive-assistant.md`](Joshu-SOP/executive-assistant.md) — full EA operating model
-- [`docs/Joshu-SOP/ea-for-joshu.md`](Joshu-SOP/ea-for-joshu.md#project-kanban-multi-step--hitl-2026-06) — project Kanban for multi-step / HITL work (after Day-1 setup)
-- [`docs/hermes-customizations.md`](hermes-customizations.md) — skills, workspace bootstrap
+- [`docs/welcome-onboarding.md`](welcome-onboarding.md) — full EA operating model
+- [`docs/hermes-integration.md`](hermes-integration.md#project-kanban-multi-step--hitl-2026-06) — project Kanban for multi-step / HITL work (after Day-1 setup)
+- [`docs/hermes-integration.md`](hermes-integration.md) — skills, workspace bootstrap
 - [`docs/box-state.md`](box-state.md) — factory reset vs personal state
 - [`docs/nylas-agent-mailbox.md`](nylas-agent-mailbox.md) — agent inbox provisioning
 - [`docs/arozos-desktop-shortcuts.md`](arozos-desktop-shortcuts.md) — Welcome shortcut

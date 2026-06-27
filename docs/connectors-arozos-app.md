@@ -81,7 +81,7 @@ Legacy jChat paths under `/joshu/api/hermes-chat/composio/*` still work (same ha
 
 Slack approvals use **Y/N replies** in that channel (not interactive Block Kit buttons). Approval messages show companion **avatar + name** in the message body via Block Kit. Full flow: [`agent-safety.md` — Slack approval flow](agent-safety.md#slack-approval-flow-v1).
 
-**Hermes Slack chat** (full agent DM/@mention) is separate — configure in **Safety → Hermes Slack chat**, not Connectors. See [hermes-customizations — Slack chat](hermes-customizations.md#slack-chat-hermes-messaging-gateway).
+**Hermes Slack chat** (full agent DM/@mention) is separate — configure in **Safety → Hermes Slack chat**, not Connectors. See [hermes-integration — Slack chat](hermes-integration.md#slack-chat-hermes-messaging-gateway).
 
 For policy tiers, bypass rules, browser gate, and the **Safety** desktop app, see [`agent-safety.md`](agent-safety.md).
 

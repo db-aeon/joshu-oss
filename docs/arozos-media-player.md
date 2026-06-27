@@ -142,7 +142,7 @@ raising the system volume bar once is still worth doing.
 
 ## Future changes
 
-Prefer editing under `vendor/arozos/src/web/` (or your private ArozOS fork) rather
+Prefer editing under `vendor/arozos/src/web/` (or your upstream ArozOS (`vendor/arozos`) plus `patches/arozos/`) rather
 than only `.local/arozos-data`, so the next `dev-arozos` build stays consistent.
 
 If iframe autoplay with sound is ever required again, consider adding
@@ -150,6 +150,6 @@ If iframe autoplay with sound is ever required again, consider adding
 click-to-play — policy still requires a user gesture for reliable audio.
 
 Joshu-specific desktop chrome (taskbar, theme) remains in
-[`arozos/web-overlays/`](../arozos/web-overlays/) via
+[`arozos/web-overlays-vanilla/`](../arozos/web-overlays-vanilla/) via
 [`scripts/apply_arozos_joshu_theme.py`](../scripts/apply_arozos_joshu_theme.py);
 video player behavior is upstream ArozOS web assets, not that overlay.

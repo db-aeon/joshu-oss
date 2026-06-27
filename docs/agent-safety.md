@@ -194,7 +194,7 @@ Unified channel for **write approvals** (v1). Plain-text owner chat ingress is s
 | **Telegram** | `/start` on approval bot, or paste chat ID | Bot API or Composio send | Inline **Approve** / **Deny** buttons |
 | **Slack** | Composio Slack OAuth + channel ID (`D…` self-DM, or private channel `C…` e.g. `#patrick-approvals`) | Composio `SLACK_SEND_MESSAGE` (Block Kit — companion avatar + name in message body) | Reply **Y** or **N** in channel (`yes`/`no`/`approve`/`deny` also accepted) |
 
-**Not Hermes Slack chat:** owner-channel Slack uses **Composio** only (approvals). Full agent chat in Slack is a separate Hermes Socket Mode app — configure in **Safety → Hermes Slack chat** ([hermes-customizations — Slack chat](hermes-customizations.md#slack-chat-hermes-messaging-gateway)).
+**Not Hermes Slack chat:** owner-channel Slack uses **Composio** only (approvals). Full agent chat in Slack is a separate Hermes Socket Mode app — configure in **Safety → Hermes Slack chat** ([hermes-integration — Slack chat](hermes-integration.md#slack-chat-hermes-messaging-gateway)).
 
 ### Slack approval flow (v1)
 

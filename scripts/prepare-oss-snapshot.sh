@@ -8,10 +8,19 @@ OUT_DIR="${1:-${ROOT_DIR}/../joshu-oss}"
 echo "[prepare-oss-snapshot] source: ${ROOT_DIR}"
 echo "[prepare-oss-snapshot] output: ${OUT_DIR}"
 
-rm -rf "${OUT_DIR}"
 mkdir -p "${OUT_DIR}"
 
-rsync -a \
+# Preserve an existing git checkout (e.g. joshu-oss clone) when refreshing the tree.
+RSYNC_DELETE=()
+if [[ -d "${OUT_DIR}/.git" ]]; then
+  echo "[prepare-oss-snapshot] preserving ${OUT_DIR}/.git"
+  RSYNC_DELETE=(--delete)
+else
+  rm -rf "${OUT_DIR}"
+  mkdir -p "${OUT_DIR}"
+fi
+
+rsync -a "${RSYNC_DELETE[@]}" \
   --exclude .git \
   --exclude node_modules \
   --exclude .next \
@@ -26,6 +35,7 @@ rsync -a \
   --exclude aeon-page-to-speech-config.json \
   --exclude proprietary \
   --exclude vendor \
+  --exclude .git \
   --exclude 'docs/Joshu-SOP' \
   --exclude 'docs/design/brand-guidelines.md' \
   --exclude 'docs/design/joshu-style-guide-v1.png' \
@@ -41,6 +51,7 @@ rsync -a \
   --exclude 'docs/joshu-identity.md' \
   --exclude 'docs/day0-cold-start.md' \
   --exclude 'docs/box-state.md' \
+  --exclude 'docs/box-state.oss.md' \
   --exclude 'docs/hermes-customizations.md' \
   --exclude 'docs/README.oss.md' \
   --exclude 'docs/vps-sandbox/README.oss.md' \
@@ -51,11 +62,34 @@ rsync -a \
 cp "${ROOT_DIR}/docs/README.oss.md" "${OUT_DIR}/docs/README.md"
 cp "${ROOT_DIR}/docs/vps-sandbox/README.oss.md" "${OUT_DIR}/docs/vps-sandbox/README.md"
 cp "${ROOT_DIR}/docs/design/README.oss.md" "${OUT_DIR}/docs/design/README.md"
+cp "${ROOT_DIR}/docs/box-state.oss.md" "${OUT_DIR}/docs/box-state.md"
+
+bash "${ROOT_DIR}/scripts/oss-doc-sanitize.sh" "${OUT_DIR}"
 
 bash "${ROOT_DIR}/scripts/secret-scan.sh" "${OUT_DIR}"
 
 DOC_COUNT="$(find "${OUT_DIR}/docs" -type f | wc -l | tr -d ' ')"
 echo "[prepare-oss-snapshot] docs in OSS tree: ${DOC_COUNT}"
+
+STALE=0
+while IFS= read -r pattern; do
+  [[ -z "$pattern" || "$pattern" =~ ^# ]] && continue
+  if rg -q "$pattern" "${OUT_DIR}/docs" 2>/dev/null; then
+    echo "[prepare-oss-snapshot] WARN stale doc pattern still present: $pattern" >&2
+    STALE=1
+  fi
+done <<'PATTERNS'
+hermes-customizations\.md
+Joshu-SOP/
+your-org/joshu
+joshu-beige\.vercel\.app
+vps-sandbox/control-plane-portal\.md
+apps/control-plane/
+PATTERNS
+
+if [[ "$STALE" -eq 1 ]]; then
+  echo "[prepare-oss-snapshot] re-run oss-doc-sanitize or fix source docs" >&2
+fi
 
 cat <<EOF
 

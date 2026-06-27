@@ -11,7 +11,7 @@ Joshu can provision a **dedicated agent email address** via [Nylas Agent Account
 | Environment | Where | Keys |
 |-------------|--------|------|
 | Local dev | Repo root `.env` | `NYLAS_API_KEY`, `NYLAS_API_URI` |
-| VPS provision | `apps/control-plane/.env.local` or Vercel | `DEFAULT_NYLAS_API_KEY`, optional `DEFAULT_NYLAS_API_URI` → copied to `/etc/joshu/instance.env` |
+| VPS provision | ``joshu-control-plane/joshu-control-plane/.env.local` or Vercel | `DEFAULT_NYLAS_API_KEY`, optional `DEFAULT_NYLAS_API_URI` → copied to `/etc/joshu/instance.env` |
 
 ```dotenv
 NYLAS_API_KEY=nyk_v0_...
@@ -82,9 +82,9 @@ Grant file: `${AROZ_DATA}/files/users/<user>/.joshu/nylas/agent.json` (`grantId`
 
 **Multi-recipient send:** `to` accepts a string or array; use **`cc`** / **`bcc`** for additional guests — do not put `"a@x.com, b@y.com"` in a single `to` string ([`src/nylas/recipients.ts`](../src/nylas/recipients.ts)).
 
-Outbound sends always use the provisioned agent address as `from`. The Joshu API **appends a branded HTML signature** on every send (companion name, `{owner}'s Joshu`, signup link) — built from instance identity at send time, inlined into the Nylas message `body`. See [control-plane-portal.md — Email signature](vps-sandbox/control-plane-portal.md#email-signature-agent-outbound-mail).
+Outbound sends always use the provisioned agent address as `from`. The Joshu API **appends a branded HTML signature** on every send (companion name, `{owner}'s Joshu`, signup link) — built from instance identity at send time, inlined into the Nylas message `body`. See [control-plane-portal.md — Email signature](https://github.com/db-aeon/joshu-control-plane/blob/main/docs/control-plane-portal.md#email-signature-agent-outbound-mail).
 
-**EA v2:** owner Gmail (Composio) and agent Nylas are **separate** polled mirrors — no forward-from-owner setup ([`ea-for-joshu.md`](Joshu-SOP/ea-for-joshu.md)). Calendar CRUD uses the same Nylas grant as the agent mailbox.
+**EA v2:** owner Gmail (Composio) and agent Nylas are **separate** polled mirrors — no forward-from-owner setup ([`ea-for-joshu.md`](hermes-integration.md)). Calendar CRUD uses the same Nylas grant as the agent mailbox.
 
 ## Connector mirror (gbrain)
 
@@ -145,4 +145,4 @@ curl -s -X POST http://127.0.0.1:8788/joshu/api/nylas/events \
 | Many `400` / `404` on `/joshu/api/nylas/*` in `docker logs` | Hermes **`ea-scheduling`** trial-and-error (wrong path or missing required fields) | Use routes in the table above only. **404** on `/calendars`, `/events/create`, `/events/delete` means wrong URL — use `POST /events`, `DELETE /events/:id`. **400** on `POST /events` → need `title` plus **`date`/`startLocal`/`endLocal`/`timezone`** or `startTime`/`endTime`; on `messages/send` → `to`, `subject`, `body` (use **`cc`** for guests — not comma-separated `to`). Success lines (`200`) mixed in = normal agent learning, not outage. |
 | `connectors/status` shows stale `lastSyncAt` | Cron disabled or Joshu API down | `JOSHU_CONNECTORS_CRON=true`; `GET /joshu/api/connectors/cron/jobs`; manual `POST …/connectors/mail/nylas/sync` |
 
-**Log hygiene:** Express logs every HTTP status. For sync health, prefer **`/joshu/api/connectors/status`** over counting yellow `400`/`404` lines in `docker logs`. EA ops detail: [`docs/Joshu-SOP/ea-for-joshu.md`](Joshu-SOP/ea-for-joshu.md#operations--logs).
+**Log hygiene:** Express logs every HTTP status. For sync health, prefer **`/joshu/api/connectors/status`** over counting yellow `400`/`404` lines in `docker logs`. EA ops detail: [`docs/hermes-integration.md`](hermes-integration.md#operations--logs).

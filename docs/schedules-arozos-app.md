@@ -120,7 +120,7 @@ hermes cron create "0 8 * * 1-5" \
   --deliver local
 ```
 
-See [`docs/Joshu-SOP/ea-for-joshu.md`](Joshu-SOP/ea-for-joshu.md) and [`time-block-planning.md`](Joshu-SOP/time-block-planning.md) for daily handoff. Human VA reference: [`executive-assistant.md`](Joshu-SOP/executive-assistant.md). EA also runs **on demand** via jChat between scheduled windows.
+See [`docs/hermes-integration.md`](hermes-integration.md) and [`time-block-planning.md`](excalidraw-sandbox.md) for daily handoff. Human VA reference: [`executive-assistant.md`](welcome-onboarding.md). EA also runs **on demand** via jChat between scheduled windows.
 
 ## Build and dev
 
@@ -159,6 +159,6 @@ curl -s http://127.0.0.1:8788/joshu/api/cron/jobs | jq .
 ## Related docs
 
 - Desktop shortcuts: [`arozos-desktop-shortcuts.md`](arozos-desktop-shortcuts.md)
-- Hermes product config: [`hermes-customizations.md`](hermes-customizations.md) (Executive Assistant section)
+- Hermes product config: [`hermes-integration.md`](hermes-integration.md) (Executive Assistant section)
 - jChat (on-demand EA): [`hermes-chat-arozos-app.md`](hermes-chat-arozos-app.md)
 - Local stack: [`local-installation.md`](local-installation.md)

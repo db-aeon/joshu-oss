@@ -145,7 +145,7 @@ Thin MCP server: [`scripts/joshu-connectors-mcp-http-server.mjs`](../scripts/jos
 | `mcp_joshu_connectors_project_kanban_ensure_board` | `project_kanban_ensure_board` | `POST …/ea/project-kanban/boards` |
 | `mcp_joshu_connectors_project_kanban_create_triage_root` | `project_kanban_create_triage_root` | `POST …/ea/project-kanban/triage-root` |
 
-**EA scheduling (v4.19+):** Universal mail ingress → file project, then **`scheduling_*`** child on `ea-scheduling`. Owner availability → **`google_calendar_find_free_slots`** (default: `primary` + personal Gmail calendars; **`calendars.combined.free`**; respects transparent events). Book on owner Google via Composio `GOOGLECALENDAR_CREATE_EVENT`. Cross-board → **`scheduling_*`** / **`mail_*`** MCP (not Hermes `kanban_create`). See [`ea-for-joshu.md`](Joshu-SOP/ea-for-joshu.md#ea-scheduling--calendar-source-of-truth) and skills [`ea-scheduling`](../integrations/hermes/skills/executive-assistant/ea-scheduling/SKILL.md), [`ea-playbook`](../integrations/hermes/skills/executive-assistant/ea-playbook/SKILL.md).
+**EA scheduling (v4.19+):** Universal mail ingress → file project, then **`scheduling_*`** child on `ea-scheduling`. Owner availability → **`google_calendar_find_free_slots`** (default: `primary` + personal Gmail calendars; **`calendars.combined.free`**; respects transparent events). Book on owner Google via Composio `GOOGLECALENDAR_CREATE_EVENT`. Cross-board → **`scheduling_*`** / **`mail_*`** MCP (not Hermes `kanban_create`). See [`ea-for-joshu.md`](hermes-integration.md#ea-scheduling--calendar-source-of-truth) and skills [`ea-scheduling`](../integrations/hermes/skills/executive-assistant/ea-scheduling/SKILL.md), [`ea-playbook`](../integrations/hermes/skills/executive-assistant/ea-playbook/SKILL.md).
 
 #### `GET /api/connectors/calendar/google/free-slots`
 
@@ -171,11 +171,11 @@ curl -fsS "http://127.0.0.1:8788/joshu/api/connectors/calendar/google/free-slots
 | **Workers / dispatcher** (list, block, complete cards) | Native Hermes **`kanban_*`** when available in the worker toolset |
 | **Fallback** (only if MCP missing) | `hermes kanban …` CLI — avoid in jChat when connectors tools are registered |
 
-Outbound steps still go through **`nylas_send_message`** (action guard). Skill: [`ea-project-kanban`](../integrations/hermes/skills/executive-assistant/ea-project-kanban/SKILL.md). Product spec: [`ea-for-joshu.md`](Joshu-SOP/ea-for-joshu.md#project-kanban-multi-step--hitl-2026-06).
+Outbound steps still go through **`nylas_send_message`** (action guard). Skill: [`ea-project-kanban`](../integrations/hermes/skills/executive-assistant/ea-project-kanban/SKILL.md). Product spec: [`ea-for-joshu.md`](hermes-integration.md#project-kanban-multi-step--hitl-2026-06).
 
 **Tool naming:** Hermes exposes **prefixed** names to the model (`mcp_<server>_<tool>`). On a healthy path it routes to MCP with the **short** name (`nylas_send_message`). Langfuse metadata often shows the prefixed name even when the wire call succeeded. The MCP server also accepts prefixed names (strips `mcp_joshu_connectors_`) for clients that forward the display name verbatim.
 
-**EA summary sends** (morning brief / end of day) use `nylas_send_message` → agent Nylas mailbox only. The Joshu API appends the companion HTML signature automatically. See [`docs/Joshu-SOP/ea-for-joshu.md`](Joshu-SOP/ea-for-joshu.md#summary-email).
+**EA summary sends** (morning brief / end of day) use `nylas_send_message` → agent Nylas mailbox only. The Joshu API appends the companion HTML signature automatically. See [`docs/hermes-integration.md`](hermes-integration.md#summary-email).
 
 ### Troubleshooting `Unknown tool: mcp_joshu_connectors_*`
 
@@ -403,7 +403,7 @@ JOSHU_ACTION_GUARD_TELEGRAM_ALLOWED_USERS=123456789   # comma-separated
 
 Or `.joshu/action-guard/policy.json`: `"telegramAllowedUserIds": [123456789]`. Env wins when set. When the allowlist is **empty**, legacy behavior allows anyone who finds the bot to `/start` (last link wins). Status: `telegramAllowlistConfigured` / `telegramAllowlistCount` on `GET …/action-guard/status`.
 
-**1:1 chat** uses a **separate** Hermes messaging bot (`TELEGRAM_BOT_TOKEN` + `TELEGRAM_ALLOWED_USERS` in `/etc/joshu/instance.env` or `~/.hermes/.env`) — not the action-guard token. Joshu syncs `TELEGRAM_*` into `~/.hermes/.env` on gateway start. Setup: [hermes-customizations — Telegram 1:1](hermes-customizations.md#telegram-11-chat-hermes-messaging-gateway). Same Hermes gateway process as jChat; different platform adapter and session key.
+**1:1 chat** uses a **separate** Hermes messaging bot (`TELEGRAM_BOT_TOKEN` + `TELEGRAM_ALLOWED_USERS` in `/etc/joshu/instance.env` or `~/.hermes/.env`) — not the action-guard token. Joshu syncs `TELEGRAM_*` into `~/.hermes/.env` on gateway start. Setup: [hermes-integration — Telegram 1:1](hermes-integration.md#telegram-11-chat-hermes-messaging-gateway). Same Hermes gateway process as jChat; different platform adapter and session key.
 
 **Deny / timeout:** Agent receives `{ ok: true, messageId: "blocked-…" }` (Nylas) or Composio `{ successful: true, … }` — no mail is sent. Default timeout: 30 minutes (`approvalTimeoutMs` / `JOSHU_ACTION_GUARD_TIMEOUT_MS`).
 
@@ -422,9 +422,9 @@ Hermes agents call sends via **`mcp_joshu_connectors_nylas_send_message`**, whic
 
 **Hermes `connect_timeout: 1800`** in `~/.hermes/config.yaml` (when guard is on) only extends **MCP connection establishment** — not the per-invocation tool timeout inside Hermes.
 
-**Worker behavior:** [`ea-scheduling` v4.19+](../integrations/hermes/skills/executive-assistant/ea-scheduling/SKILL.md) and [`ea-playbook` v2.16+](../integrations/hermes/skills/executive-assistant/ea-playbook/SKILL.md): on send timeout with guard enabled → **`kanban_block(reason="awaiting owner approval")`**, not `connectors-mcp-down`. After **denied** send (`decision: denied` in action-guard audit, or `blocked-*` messageId), use [ops retry](../Joshu-SOP/ea-for-joshu.md#ea-scheduling--ops-retry-denied-send--bad-slots) — do not treat kanban comment "sent availability" as mail delivered.
+**Worker behavior:** [`ea-scheduling` v4.19+](../integrations/hermes/skills/executive-assistant/ea-scheduling/SKILL.md) and [`ea-playbook` v2.16+](../integrations/hermes/skills/executive-assistant/ea-playbook/SKILL.md): on send timeout with guard enabled → **`kanban_block(reason="awaiting owner approval")`**, not `connectors-mcp-down`. After **denied** send (`decision: denied` in action-guard audit, or `blocked-*` messageId), use [ops retry](../hermes-integration.md#ea-scheduling--ops-retry-denied-send--bad-slots) — do not treat kanban comment "sent availability" as mail delivered.
 
-**Future fix (backlog):** async approval — REST returns `{ status: "pending_approval", pendingId }` immediately; worker blocks on Kanban until Joshu completes send after Telegram approve. See [`ea-skill-future-fixes.md`](Joshu-SOP/ea-skill-future-fixes.md).
+**Future fix (backlog):** async approval — REST returns `{ status: "pending_approval", pendingId }` immediately; worker blocks on Kanban until Joshu completes send after Telegram approve. See [`ea-skill-future-fixes.md`](hermes-integration.md).
 
 **Disable:** `JOSHU_ACTION_GUARD_ENABLED=false` or `"enabled": false` in policy — Composio MCP reverts to direct cloud URL on next gateway sync (`POST …/connectors/composio/sync` with `restartGateway: true`).
 
