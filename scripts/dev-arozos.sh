@@ -16,6 +16,23 @@ load_env_file() {
 
 load_env_file "${ROOT_DIR}/.env"
 
+# Branded ArozOS shell (Work Sans, paper chrome, taskbar) requires joshu-design overlays.
+resolve_joshu_design_pack() {
+  if [[ -n "${JOSHU_DESIGN_PACK:-}" && -d "${JOSHU_DESIGN_PACK}/arozos/web-overlays" ]]; then
+    export JOSHU_DESIGN_PACK
+    return 0
+  fi
+  local sibling="${ROOT_DIR}/../joshu-design"
+  if [[ -d "${sibling}/arozos/web-overlays" ]]; then
+    export JOSHU_DESIGN_PACK="${sibling}"
+    echo "[dev-arozos] JOSHU_DESIGN_PACK=${JOSHU_DESIGN_PACK} (auto-detected sibling repo)"
+    return 0
+  fi
+  echo "[dev-arozos] JOSHU_DESIGN_PACK not set — using vanilla ArozOS shell (OSS). For branded chrome, clone joshu-design alongside joshu/ or set JOSHU_DESIGN_PACK."
+}
+
+resolve_joshu_design_pack
+
 LOCAL_DIR="${ROOT_DIR}/.local"
 VENDORED_AROZOS_SOURCE="${ROOT_DIR}/vendor/arozos"
 AROZOS_REPO="${AROZOS_REPO:-https://github.com/tobychui/arozos.git}"

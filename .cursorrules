@@ -1,0 +1,33 @@
+# .cursorrules
+
+This Cursor workspace is **multi-root**. All of these repos are open together:
+
+| Repo folder | Role |
+|-------------|------|
+| `joshu/` | Private fleet/dev monorepo (box stack, Hermes, ArozOS patches, full internal docs) |
+| `joshu-oss/` | Public AGPL box stack (self-host, curated public docs) |
+| `joshu-control-plane/` | Private control plane (Vercel → hello.joshu.me) |
+| `joshu-design/` | Private JDL brand pack (tokens, assets) |
+
+Documentation is **not** in a single `/docs` directory. Before performing any work in a new chat or empty context:
+
+1. **Read the relevant docs in the repo you are changing** (paths are relative to each workspace root):
+   - **`joshu/docs/`** — internal canon: Joshu-SOP, fleet runbooks, box stack, Hermes, ArozOS patch workflow, VPS sandbox, etc. Start here for most fleet/box work. See `joshu/docs/README.md`.
+   - **`joshu-oss/docs/`** — public self-host and app docs (curated snapshot of fleet docs). See `joshu-oss/docs/README.md`.
+   - **`joshu-control-plane/docs/`** — provisioning, portal, schema (`zero-touch-provisioning.md`, `control-plane-local-provisioning.md`, `control-plane-portal.md`, `control-plane-schema.md`).
+   - **`joshu-design/`** — brand guidelines and design assets (minimal prose docs).
+2. If the request spans repos, read docs in **each** affected repo before editing.
+3. Summarize the relevant doc sections when the task is covered by documentation.
+4. Only begin the requested task after confirming understanding of the documentation.
+5. If docs seem outdated or incomplete relative to the code, ask the user before proceeding.
+
+**Doc sync note:** Public docs in `joshu-oss/docs/` are generated from `joshu/docs/` via `joshu/scripts/prepare-oss-snapshot.sh` and `joshu/scripts/oss-doc-sanitize.sh`. Edit the source in `joshu/docs/` (or CP-specific docs in `joshu-control-plane/docs/`), then refresh the OSS snapshot when publishing public docs.
+
+**ArozOS:** Joshu changes live in `joshu/patches/arozos/joshu-core.patch`, not as commits inside `joshu/vendor/arozos` (submodule). A dirty submodule after `apply-arozos-patches.sh` is expected.
+
+Coding Style:
+- Use comments liberally
+- Keep things DRY
+- Keep architecture clean and separate interests
+
+Finally, if you need me to run something locally because of sandbox permissions, just ask.

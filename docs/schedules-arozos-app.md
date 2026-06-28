@@ -33,6 +33,27 @@ Neither system uses Linux `crontab`. Both are in-process schedulers.
 
 The UI talks to Joshu at `/joshu/api/cron/*`. Joshu spawns the Python bridge with `HERMES_HOME` and `HERMES_AGENT_ROOT` set (same pattern as Hermes Chat STT/TTS). The bridge uses Hermes’s own CRUD functions, so jobs created in the UI, via `hermes cron create`, or via chat `/cron` all share one registry.
 
+**Manifest v2 pilot:** `arozos/subservice/schedules/joshu.app.json` declares a headless invoke action:
+
+```json
+{
+  "agent": {
+    "headless": true,
+    "actions": [{ "name": "listCronJobs", "description": "List Hermes cron jobs" }]
+  }
+}
+```
+
+Agents and MCP tools can call:
+
+```bash
+curl -s -X POST http://127.0.0.1:8788/joshu/api/apps/schedules/invoke \
+  -H 'Content-Type: application/json' \
+  -d '{"action":"listCronJobs","args":{}}' | jq .
+```
+
+Same handler as `GET /joshu/api/cron/jobs`. See [`platform-architecture.md`](platform-architecture.md#app-invoke-api).
+
 ## ArozOS desktop registration
 
 - **Module name:** `Schedules` (`moduleInfo.json` → `"Name"`)
@@ -120,7 +141,7 @@ hermes cron create "0 8 * * 1-5" \
   --deliver local
 ```
 
-See [`docs/Joshu-SOP/ea-for-joshu.md`](Joshu-SOP/ea-for-joshu.md) and [`time-block-planning.md`](Joshu-SOP/time-block-planning.md) for daily handoff. Human VA reference: [`executive-assistant.md`](Joshu-SOP/executive-assistant.md). EA also runs **on demand** via jChat between scheduled windows.
+See [`docs/hermes-integration.md`](hermes-integration.md) and [`time-block-planning.md`](excalidraw-sandbox.md) for daily handoff. Human VA reference: [`executive-assistant.md`](welcome-onboarding.md). EA also runs **on demand** via jChat between scheduled windows.
 
 ## Build and dev
 
@@ -158,7 +179,8 @@ curl -s http://127.0.0.1:8788/joshu/api/cron/jobs | jq .
 
 ## Related docs
 
+- Platform invoke pilot: [`platform-architecture.md`](platform-architecture.md)
 - Desktop shortcuts: [`arozos-desktop-shortcuts.md`](arozos-desktop-shortcuts.md)
-- Hermes product config: [`hermes-customizations.md`](hermes-customizations.md) (Executive Assistant section)
+- Hermes product config: [`hermes-integration.md`](hermes-integration.md) (Executive Assistant section)
 - jChat (on-demand EA): [`hermes-chat-arozos-app.md`](hermes-chat-arozos-app.md)
 - Local stack: [`local-installation.md`](local-installation.md)

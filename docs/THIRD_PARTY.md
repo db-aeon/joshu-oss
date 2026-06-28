@@ -29,7 +29,7 @@ and related web shell adjustments (~280 lines across 8 files).
 | **Pin** | See `hermesRef` in `deploy/RELEASE.json` |
 | **Joshu changes** | `scripts/hermes-*.patch`, applied by `scripts/apply-hermes-*.sh` |
 
-See [hermes-customizations.md](hermes-customizations.md) for the patch inventory.
+See [hermes-integration.md](hermes-integration.md) for the patch inventory.
 
 ---
 

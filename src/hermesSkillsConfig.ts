@@ -128,6 +128,8 @@ export function computeDisabledFromAllowlist(allNames: string[], enabledNames: s
 export type ProductSkillsPolicyOptions = {
   externalSkillsDir: string;
   hermesAgentRoot?: string;
+  /** Skills from installed apps (.joshu/app-skills.json + manifests). */
+  appSkillNames?: string[];
 };
 
 /** Hermes checkout for bundled skill discovery (walk up from HERMES_BIN until skills/ exists). */
@@ -198,6 +200,7 @@ export async function computeProductSkillsPolicy(
     await discoverSkillNamesInDir(options.externalSkillsDir),
     [...JOSHU_ESSENTIAL_HERMES_SKILLS],
     parseExtraEnabledSkillsFromEnv(),
+    options.appSkillNames ?? [],
   );
   const enabledSet = new Set(enabled);
   const disabled = mergeDisabledSkillNames(
@@ -210,7 +213,13 @@ export async function computeProductSkillsPolicy(
 
 /** Gateway sync entrypoint. */
 export async function loadProductSkillsPolicy(cwd = process.cwd()): Promise<ProductSkillsPolicyResult> {
-  return computeProductSkillsPolicy(resolveProductSkillsDirs(cwd));
+  const { loadDevAppSkillNames } = await import("./appSkillsRegistry.js");
+  const { loadAppManifests, collectAppSkillNames } = await import("./appRegistry.js");
+  await loadAppManifests(cwd);
+  const appSkillNames = [
+    ...new Set([...(await loadDevAppSkillNames(cwd)), ...collectAppSkillNames()]),
+  ];
+  return computeProductSkillsPolicy({ ...resolveProductSkillsDirs(cwd), appSkillNames });
 }
 
 /** @deprecated Alias for sync script — use computeProductSkillsPolicy. */

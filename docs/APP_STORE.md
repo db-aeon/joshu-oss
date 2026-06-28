@@ -89,25 +89,30 @@ is absent — prefer explicit `start.sh` for clarity.
 
 ---
 
-## `.joshu-app` bundle format (planned)
+## `.joshu-app` bundle format
 
-Phase 2 install unit — a zip or tar archive installed by `scripts/install-joshu-app.sh` (planned):
+Install unit — a directory or zip installed by [`scripts/install-joshu-app.sh`](../scripts/install-joshu-app.sh):
 
 ```text
 my-app-1.2.0.joshu-app/
-  manifest.json          # copy of joshu.app.json + bundle metadata
-  subservice/            # tree merged into arozos/subservice/<id>/
-  signature.ed25519      # optional: publisher signature over manifest + file hashes
-  publisher.pem          # optional: embedded public key for offline verify
+  joshu.app.json          # manifest (schema v2: data + agent blocks)
+  moduleInfo.json
+  start.sh
+  app/                    # built static assets
+  skills/                 # optional app SKILL.md tree
+  signature.ed25519       # optional: publisher signature (future)
+  publisher.pem           # optional: offline verify (future)
 ```
 
 **Install flow (self-host):**
 
-1. User or admin copies `.joshu-app` to the box.
-2. `install-joshu-app.sh my-app-1.2.0.joshu-app` verifies hash/signature (when enabled), extracts to runtime subservice dir, refreshes desktop shortcut.
-3. Joshu/ArozOS restart or subservice refresh picks up the app.
+1. User or admin copies bundle to the box.
+2. `scripts/install-joshu-app.sh /path/to/my-app` rsyncs to `arozos/subservice/<id>/`, validates manifest, installs skills, updates app-skills registry.
+3. Restart `dev:arozos` or refresh subservices + desktop shortcut.
 
-Managed fleet may pull the same bundle from the control plane when entitlement checks pass.
+Managed fleet may pull the same bundle from the control plane when entitlement checks pass (future).
+
+See [`app-sdk.md`](app-sdk.md#sideload-with-install-joshu-appsh) and [`platform-architecture.md`](platform-architecture.md).
 
 ---
 
@@ -132,6 +137,20 @@ Canonical schema: [`joshu.app.schema.json`](joshu.app.schema.json).
 |-------|---------|
 | `apiPrefix` | Joshu API mount (`/joshu/api/...`) when UI calls Express backend |
 | `description` | Catalog / about text |
+
+### Schema v2 — platform + agent (shipped)
+
+Optional blocks in [`joshu.app.schema.json`](joshu.app.schema.json):
+
+| Block | Purpose |
+|-------|---------|
+| `data.uses[]` | Platform domains (`mail`, `calendar`, `files`, `memory`, `connections`) |
+| `data.mail.accounts` | Mail account policy hint |
+| `agent.usesSkills[]` | Platform Hermes skills to load |
+| `agent.skill` | Bundled app skill name |
+| `agent.actions[]` | Headless handlers → `POST /api/apps/:id/invoke` |
+
+Docs: [`platform-architecture.md`](platform-architecture.md), [`app-sdk.md`](app-sdk.md).
 
 ### Phase 2 (catalog / store — optional in manifest)
 
@@ -236,8 +255,9 @@ Until that agreement exists, third-party distribution is **sideload at your own 
 | Phase | Deliverable | Status |
 |-------|-------------|--------|
 | **0** | OSS apps + `joshu.app.json` + proprietary fleet folder | **Done** |
-| **1** | `install-joshu-app.sh` sideload + docs | Planned |
-| **2** | `.joshu-app` bundle + hash verify + extended manifest | Planned |
+| **1** | `@joshu/platform-data`, `@joshu/app-sdk`, manifest v2, invoke API, docs | **Done** |
+| **1b** | `install-joshu-app.sh` sideload + MCP tool codegen script | **Done** (hash/signature verify pending) |
+| **2** | `.joshu-app` bundle signing + extended catalog manifest | Planned |
 | **3** | Publisher keys + signed catalog in control plane | Planned |
 | **4** | Paid entitlements + Stripe on managed boxes | Planned |
 

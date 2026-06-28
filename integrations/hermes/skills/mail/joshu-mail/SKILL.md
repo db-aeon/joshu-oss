@@ -9,6 +9,9 @@ metadata:
 
 # Joshu mail — find, search, recall
 
+> **Platform mechanics:** Apps use [`@joshu/platform-data`](../docs/platform-data.md) (`mail.search`, `mail.sync`, `connections.status`).
+> Agents use MCP tools below or `POST /joshu/api/apps/jmail/invoke` for headless actions. This skill covers **workflow and escalation** — not REST path details.
+
 General-purpose mail **read/search** on the Joshu box. Not triage (`ea-playbook`), not meeting scheduling (`ea-scheduling`), not multi-step campaigns (`ea-project-kanban`).
 
 ## When to use (load this skill first)

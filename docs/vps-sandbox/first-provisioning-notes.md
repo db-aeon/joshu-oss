@@ -61,7 +61,7 @@ commands need the control-plane env exported first:
 
 ```bash
 set -a
-source apps/control-plane/.env.local
+source joshu-control-plane/.env.local
 set +a
 npm run db:push -w @joshu/control-plane
 ```
@@ -513,7 +513,7 @@ Manual copying from local `~/.hermes` is acceptable for a first smoke test but
 should not be part of production provisioning. Product Hermes YAML (model,
 `skills.disabled`, plugins, Camofox) is applied from the **repo + `instance.env`**
 via Joshu startup — see
-[hermes-customizations.md — Hermes runtime config](../hermes-customizations.md#hermes-runtime-config-local-hermes-vs-vps--image).
+[hermes-integration.md — Hermes runtime config](../hermes-integration.md#hermes-runtime-config-local-hermes-vs-vps--image).
 The control plane should own a typed secret contract per instance:
 
 - gateway auth secret: generate once per instance and write to both

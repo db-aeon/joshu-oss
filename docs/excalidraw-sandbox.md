@@ -292,7 +292,7 @@ EA skill **`ea-time-block`** (v1.3.0) runs a two-step pipeline:
 1. **Gather** — [`scripts/gather-time-block-input.mjs`](../scripts/gather-time-block-input.mjs) (`npm run time-block:gather`) pre-fills meeting blocks, active projects, journal paths, and planning file pointers from live calendar API (when Joshu is up) or mirror frontmatter scan.
 2. **Synthesize + render** — agent fills deep/shallow/buffer/carryover in plan JSON, then [`scripts/render-time-block-excalidraw.mjs`](../scripts/render-time-block-excalidraw.mjs) (`npm run time-block:render`) writes `Planning/time-block-YYYY-MM-DD.excalidraw` under `joshu's files`.
 
-**VPS:** run gather/render at **`/opt/joshu/scripts/gather-time-block-input.mjs`** and **`/opt/joshu/scripts/render-time-block-excalidraw.mjs`** — not `scripts/…` relative to Hermes Desktop cwd ([time-block-planning.md](Joshu-SOP/time-block-planning.md)).
+**VPS:** run gather/render at **`/opt/joshu/scripts/gather-time-block-input.mjs`** and **`/opt/joshu/scripts/render-time-block-excalidraw.mjs`** — not `scripts/…` relative to Hermes Desktop cwd ([time-block-planning.md](excalidraw-sandbox.md)).
 
 Bundled Hermes **`excalidraw`** skill supplies JSON envelope / container-label rules; **`ea-time-block`** owns the workflow. Calendar quirks (mirror UUID naming, FreeBusy calendar IDs): [`ea-time-block/references/calendar-api-quirks.md`](../integrations/hermes/skills/executive-assistant/ea-time-block/references/calendar-api-quirks.md).
 
@@ -310,9 +310,9 @@ Bundled Hermes **`excalidraw`** skill supplies JSON envelope / container-label r
 - `GET /joshu/api/files/read?path=...` — localhost-only read under `joshu's files`
 - CORS — localhost origins allowed so `:8787` subservices can call `:8788`
 
-See [`docs/Joshu-SOP/time-block-planning.md`](Joshu-SOP/time-block-planning.md) and [`gtd-workspace-linking.md`](Joshu-SOP/gtd-workspace-linking.md).
+See [`docs/excalidraw-sandbox.md`](excalidraw-sandbox.md) and [`gtd-workspace-linking.md`](file-brain.md).
 
-Plan JSON may include **`taskGroups`** (numbered ① lists), **`blockRef`** on blocks, **`yesterdayPlan`** (link strip to prior day's diagram), and **`carryover[]`** (**From yesterday ☐** in the notes column). One `.excalidraw` per calendar day accumulates in `Planning/`; checkboxes live in **`Planning/daily-review-YYYY-MM-DD.md`** ([daily handoff](Joshu-SOP/time-block-planning.md#daily-handoff-morning-review)).
+Plan JSON may include **`taskGroups`** (numbered ① lists), **`blockRef`** on blocks, **`yesterdayPlan`** (link strip to prior day's diagram), and **`carryover[]`** (**From yesterday ☐** in the notes column). One `.excalidraw` per calendar day accumulates in `Planning/`; checkboxes live in **`Planning/daily-review-YYYY-MM-DD.md`** ([daily handoff](excalidraw-sandbox.md#daily-handoff-morning-review)).
 
 **Typography:** jWhiteboard bundles **Assistant** (brand) woff2 fonts from the design system sync (`npm run sync-design-system` → `build:excalidraw`).
 

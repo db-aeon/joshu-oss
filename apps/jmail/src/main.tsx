@@ -7,10 +7,10 @@ import React, { StrictMode, useCallback, useEffect, useMemo, useRef, useState } 
 import { createRoot } from "react-dom/client";
 
 import { fetchVoiceGatewayStatus, startJoshuVoiceSession } from "./joshuVoice";
+import { platform } from "./joshuData";
 import { prepareEmailBodyDocument } from "./messageBody";
 
-const API = (import.meta.env.VITE_JMAIL_API_BASE || "/joshu/api/nylas").replace(/\/+$/, "");
-const CONNECTORS_API = "/joshu/api/connectors";
+const VOICE_API_BASE = "/joshu/api/voice";
 
 type MailInbox =
   | { kind: "nylas" }
@@ -56,8 +56,6 @@ function openConnectorsApp(): void {
   }
   window.open("/connectors/index.html", "_blank", "noopener,noreferrer");
 }
-const VOICE_API_BASE = "/joshu/api/voice";
-const IDENTITY_API = "/joshu/api/instance/identity";
 
 type ThreadMessage = {
   id: string;
@@ -215,9 +213,7 @@ function App() {
 
   const loadConnectorsStatus = useCallback(async () => {
     try {
-      const res = await fetch(`${CONNECTORS_API}/status`, { cache: "no-store" });
-      if (!res.ok) return;
-      const data = (await res.json()) as ConnectorsStatus;
+      const data = await platform.connections.status();
       setConnectorsStatus(data);
       return data;
     } catch {
@@ -226,11 +222,11 @@ function App() {
   }, []);
 
   const loadStatus = useCallback(async () => {
-    const [nylasRes, connectors] = await Promise.all([
-      fetch(`${API}/status`),
+    const [nylasData, connectors] = await Promise.all([
+      platform.nylas.status(),
       loadConnectorsStatus(),
     ]);
-    const data = (await nylasRes.json()) as Status;
+    const data = nylasData as Status;
     setStatus(data);
     if (data.agent.email) setAgentEmail(data.agent.email);
     const accounts = connectors?.gmail.accounts ?? [];
@@ -252,31 +248,25 @@ function App() {
 
   const loadIdentityAndProfile = useCallback(async () => {
     try {
-      const [identityRes, profileRes] = await Promise.all([
-        fetch(IDENTITY_API, { cache: "no-store" }),
-        fetch(`${API}/profile`, { cache: "no-store" }),
+      const [identity, profileData] = await Promise.all([
+        platform.identity.get().catch(() => null),
+        platform.nylas.getProfile().catch(() => null),
       ]);
-      if (identityRes.ok) {
-        const identity = (await identityRes.json()) as {
-          name?: string;
-          owner?: { displayName?: string };
-        };
+      if (identity) {
         setProfile((prev) => ({
           ...prev,
           assistantName: identity.name ?? prev.assistantName,
           ownerName: identity.owner?.displayName ?? prev.ownerName,
         }));
       }
-      if (profileRes.ok) {
-        const data = (await profileRes.json()) as { profile?: typeof profile };
-        if (data.profile) {
-          setProfile((prev) => ({
-            ...prev,
-            ...data.profile,
-            assistantName: data.profile?.assistantName ?? prev.assistantName,
-            ownerName: data.profile?.ownerName ?? prev.ownerName,
-          }));
-        }
+      if (profileData?.profile) {
+        const data = profileData.profile as typeof profile;
+        setProfile((prev) => ({
+          ...prev,
+          ...data,
+          assistantName: data.assistantName ?? prev.assistantName,
+          ownerName: data.ownerName ?? prev.ownerName,
+        }));
       }
     } catch {
       /* identity optional during setup */
@@ -289,25 +279,14 @@ function App() {
       setMirrorSyncing(true);
       setError("");
       try {
-        const syncBody: Record<string, unknown> = {
+        const mailProvider = inbox.kind === "nylas" ? "nylas" : "gmail";
+        const data = await platform.mail.sync({
+          provider: mailProvider,
           limit: 100,
           days: opts?.days ?? 7,
           ifEmpty: opts?.ifEmpty === true,
-        };
-        if (inbox.kind === "gmail") syncBody.connectedAccountId = inbox.connectedAccountId;
-        const mailProvider = inbox.kind === "nylas" ? "nylas" : "gmail";
-        const res = await fetch(`${CONNECTORS_API}/mail/${mailProvider}/sync`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(syncBody),
+          connectedAccountId: inbox.kind === "gmail" ? inbox.connectedAccountId : undefined,
         });
-        const data = (await res.json()) as {
-          ok?: boolean;
-          skipped?: boolean;
-          error?: string;
-          threadsWritten?: number;
-        };
-        if (!res.ok) throw new Error(data.error ?? "Mirror sync failed");
         if (data.skipped) {
           setNotice("Local mail store already has messages");
         } else {
@@ -327,11 +306,8 @@ function App() {
     if (!accountReady) return;
     try {
       const mailProvider = inbox.kind === "nylas" ? "nylas" : "gmail";
-      const res = await fetch(`${CONNECTORS_API}/mail/${mailProvider}/mirror`, { cache: "no-store" });
-      if (res.ok) {
-        const data = (await res.json()) as { empty?: boolean };
-        if (data.empty === false) return;
-      }
+      const data = await platform.mail.mirror({ provider: mailProvider }).catch(() => null);
+      if (data && data.empty === false) return;
     } catch {
       /* proceed to sync attempt */
     }
@@ -350,26 +326,20 @@ function App() {
     try {
       const q = search.trim();
       if (inbox.kind === "gmail" || q) {
-        const params = new URLSearchParams({ limit: "50" });
-        if (q) params.set("q", q);
-        if (inbox.kind === "gmail") params.set("connectedAccountId", inbox.connectedAccountId);
         const mailProvider = inbox.kind === "nylas" ? "nylas" : "gmail";
-        const res = await fetch(`${CONNECTORS_API}/mail/${mailProvider}/search?${params}`);
-        const data = (await res.json()) as {
-          hits?: Parameters<typeof hitsToMessages>[0];
-          error?: string;
-        };
-        if (!res.ok) throw new Error(data.error ?? "Could not load mail");
+        const data = await platform.mail.search({
+          provider: mailProvider,
+          q: q || undefined,
+          limit: 50,
+          connectedAccountId: inbox.kind === "gmail" ? inbox.connectedAccountId : undefined,
+        });
         const rows = hitsToMessages(data.hits ?? []);
         rows.sort((a, b) => (b.date ?? 0) - (a.date ?? 0));
         setMessages(rows);
         return;
       }
-      const params = new URLSearchParams({ limit: "40" });
-      const res = await fetch(`${API}/messages?${params}`);
-      const data = (await res.json()) as { messages?: MessageSummary[]; error?: string };
-      if (!res.ok) throw new Error(data.error ?? "Could not load inbox");
-      setMessages(data.messages ?? []);
+      const data = await platform.nylas.listMessages(40);
+      setMessages((data.messages ?? []) as MessageSummary[]);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -383,11 +353,7 @@ function App() {
       setError("");
       try {
         if (inbox.kind === "gmail") {
-          const params = new URLSearchParams({ connectedAccountId: inbox.connectedAccountId });
-          const res = await fetch(
-            `${CONNECTORS_API}/mail/gmail/messages/${encodeURIComponent(messageId)}?${params}`,
-          );
-          const data = (await res.json()) as {
+          const data = (await platform.mail.getGmailMessage(messageId, inbox.connectedAccountId)) as {
             message?: MessageDetail;
             threadMessages?: Array<{
               id: string;
@@ -399,7 +365,6 @@ function App() {
             }>;
             error?: string;
           };
-          if (!res.ok) throw new Error(data.error ?? "Could not load message");
           const msg = data.message;
           const threadMessages: ThreadMessage[] = (data.threadMessages ?? []).map((tm) => ({
             id: tm.id,
@@ -419,17 +384,14 @@ function App() {
           );
           return;
         }
-        const res = await fetch(`${API}/messages/${encodeURIComponent(messageId)}`);
-        const data = (await res.json()) as { message?: MessageDetail; error?: string };
-        if (!res.ok) throw new Error(data.error ?? "Could not load message");
+        const data = (await platform.nylas.getMessage(messageId)) as {
+          message?: MessageDetail;
+          error?: string;
+        };
         const message = data.message ?? null;
         setDetail(message);
         if (message?.unread) {
-          await fetch(`${API}/messages/${encodeURIComponent(messageId)}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ unread: false }),
-          });
+          await platform.nylas.patchMessage(messageId, { unread: false });
           setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, unread: false } : m)));
         }
       } catch (err) {
@@ -559,12 +521,11 @@ function App() {
   const provisionAgent = async () => {
     setNotice("");
     setError("");
-    const res = await fetch(`${API}/agent`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: agentEmail }),
-    });
-    const data = (await res.json()) as { ok?: boolean; error?: string; agent?: { email: string } };
+    const data = (await platform.nylas.provisionAgent(agentEmail)) as {
+      ok?: boolean;
+      error?: string;
+      agent?: { email: string };
+    };
     if (data.ok) {
       setNotice(`Mailbox ready: ${data.agent?.email}`);
       await loadStatus();
@@ -579,9 +540,6 @@ function App() {
     setError("");
     if (inbox.kind === "gmail") {
       const isReply = Boolean(compose.replyThreadId);
-      const url = isReply
-        ? `${CONNECTORS_API}/mail/gmail/reply`
-        : `${CONNECTORS_API}/mail/gmail/send`;
       const payload = isReply
         ? {
             threadId: compose.replyThreadId,
@@ -595,12 +553,9 @@ function App() {
             body: compose.body,
             connectedAccountId: inbox.connectedAccountId,
           };
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const data = (await res.json()) as { ok?: boolean; error?: string };
+      const data = (await (isReply
+        ? platform.mail.replyGmail(payload)
+        : platform.mail.sendGmail(payload))) as { ok?: boolean; error?: string };
       if (data.ok) {
         setNotice("Message sent via Gmail");
         setPane("inbox");
@@ -611,20 +566,15 @@ function App() {
       }
       return;
     }
-    const res = await fetch(`${API}/messages/send`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Joshu-Mail-Client": "jmail",
-      },
-      body: JSON.stringify({
+    const data = (await platform.nylas.sendMessage(
+      {
         to: compose.to,
         subject: compose.subject,
         body: compose.body,
         replyToMessageId: compose.replyToMessageId || undefined,
-      }),
-    });
-    const data = (await res.json()) as { ok?: boolean; error?: string };
+      },
+      { "X-Joshu-Mail-Client": "jmail" },
+    )) as { ok?: boolean; error?: string };
     if (data.ok) {
       setNotice("Message sent");
       setPane("inbox");
@@ -638,12 +588,11 @@ function App() {
   const testSend = async () => {
     setNotice("");
     setError("");
-    const res = await fetch(`${API}/test-send`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ to: notifyEmail }),
-    });
-    const data = (await res.json()) as { ok?: boolean; error?: string; from?: string };
+    const data = (await platform.nylas.testSend(notifyEmail)) as {
+      ok?: boolean;
+      error?: string;
+      from?: string;
+    };
     if (data.ok) setNotice(`Test sent from ${data.from}`);
     else setError(data.error ?? "Send failed");
   };
@@ -651,15 +600,10 @@ function App() {
   const saveProfile = async () => {
     setNotice("");
     setError("");
-    const res = await fetch(`${API}/profile`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ...profile,
-        assistantEmail: mailbox,
-      }),
-    });
-    const data = (await res.json()) as { ok?: boolean; error?: string };
+    const data = (await platform.nylas.saveProfile({
+      ...profile,
+      assistantEmail: mailbox,
+    })) as { ok?: boolean; error?: string };
     if (data.ok) setNotice("Profile saved");
     else setError(data.error ?? "Save failed");
   };

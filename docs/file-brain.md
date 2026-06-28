@@ -1,5 +1,8 @@
 # Joshu File Brain (gbrain)
 
+> **App developers:** use `platform.files.query()` / `platform.files.getPage()` from [`@joshu/platform-data`](platform-data.md).
+> This doc is the **implementation detail** for the files platform data plane.
+
 Joshu indexes the user's **ArozOS Desktop** tree with [gbrain](https://github.com/garrytan/gbrain) (PGLite + hybrid search). Structured markdown lives in **`joshu's files`**; everything on Desktop is indexed.
 
 **File brain is always on** — same on local dev and DO/VPS sandboxes. There is no `JOSHU_GBRAIN_ENABLED` toggle. We do **not** fork gbrain; integration is scripts, env, Hermes MCP, and docs. Pin: [`deploy/RELEASE.json`](../deploy/RELEASE.json) → `gbrainRef`.
@@ -414,7 +417,7 @@ Joshu EA uses **filesystem markdown + links**, not gbrain `put_page`. When agent
 - Humans click links from time-block diagrams (`ea-time-block`)
 - Agents use **`get_backlinks`** / **`traverse_graph`** (read-only MCP) after sync
 
-Conventions: [`Joshu-SOP/gtd-workspace-linking.md`](Joshu-SOP/gtd-workspace-linking.md).
+Conventions: [`file-brain.md`](file-brain.md).
 
 Optional (ops): `gbrain config set link_resolution.global_basename true` — resolves Obsidian-style `[[note-name]]` across folders after sync. Not required if paths are explicit.
 

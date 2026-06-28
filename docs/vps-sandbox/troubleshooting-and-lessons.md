@@ -61,7 +61,7 @@ Cloud-init clones `JOSHU_REPO_URL` at ref `JOSHU_REPO_REF` (usually `main`) into
 Gateway auth can pass while the model returns **empty** `finalText` and **0 tokens** — that almost always means the provider key or model config is wrong, not Caddy or Joshu routing.
 
 **Joshu default:** OpenRouter via `JOSHU_HERMES_PROVIDER=openrouter` (local and VPS).
-See `docs/hermes-customizations.md`.
+See `docs/hermes-integration.md`.
 
 ### Empty stream signature
 
@@ -157,7 +157,7 @@ Repair script: `scripts/fix-hermes-gateway-on-vps.sh` (host SSH) or `scripts/syn
 ### Root causes
 
 1. **Incomplete `instance.env`** — provisioner only passed a subset of Hindsight vars; `*_PROVIDER` keys were required by `start-hindsight.sh` but missing.  
-   **Fix:** `apps/control-plane/src/lib/hindsightBootstrap.ts` + `assertSandboxBootstrapConfig()`.
+   **Fix:** `joshu-control-plane/src/lib/hindsightBootstrap.ts` + `assertSandboxBootstrapConfig()`.
 
 2. **SA file `root:600` on host** — Hindsight runs as user `hindsight`; cannot read reranker JSON.  
    **Fix:** Bootstrap `chown root:<hindsight_gid>` on `/etc/joshu/secrets/`; `fix_hindsight_secrets_permissions()` in `vps-start.sh`.
@@ -609,7 +609,7 @@ Details: [`docs/design/README.md`](../design/README.md#desktop-startup-splash), 
 
 ### Fix (new provisions)
 
-In `apps/control-plane/.env.local` (or Vercel):
+In `joshu-control-plane/.env.local` (or Vercel):
 
 ```dotenv
 DEFAULT_COMPOSIO_API_KEY=...
@@ -691,11 +691,11 @@ docker logs deploy-joshu-stack-1 2>&1 | grep -c '\[nylas\] events.list failed'  
 
 **EA scheduling cron create failure:** `'<=' not supported between instances of 'dict' and 'int'` — Hermes bridge expects **`repeat: 1`** (int), not `{ times: 1 }`. Fixed in `schedulingCron.ts` + `hermes-cron-bridge.py` (`_normalize_repeat`). Log success: `[ea-scheduling] queued cron for nylas/<thread_id>`.
 
-**EA scheduling Kanban (2026-06):** Meeting state on **`ea-scheduling`**. As of **2026-06-17**, ingest uses universal **`ea-mail-ingress`** + Triage stub (no new **`ea-sched-ingress`**). Workers **cannot** cross boards with Hermes `kanban_create` / `kanban_list`; use **`scheduling_*`** / **`mail_*` MCP** ([`ea-for-joshu.md`](../Joshu-SOP/ea-for-joshu.md#ea-scheduling--board-isolation-hermes)). Owner availability: **`google_calendar_find_free_slots`** — omit `items`, use **`calendars.combined.free`** (ea-scheduling v4.19+). Hotpatch: [calendar free/busy](hotpatch-running-box.md#calendar-freebusy--transparent-events-2026-06-17), [multi-calendar + combined](hotpatch-running-box.md#calendar-multi-calendar-freebusy--combined-2026-06-24). Ops retry after denied send: [ea-for-joshu — ops retry](../Joshu-SOP/ea-for-joshu.md#ea-scheduling--ops-retry-denied-send--bad-slots).
+**EA scheduling Kanban (2026-06):** Meeting state on **`ea-scheduling`**. As of **2026-06-17**, ingest uses universal **`ea-mail-ingress`** + Triage stub (no new **`ea-sched-ingress`**). Workers **cannot** cross boards with Hermes `kanban_create` / `kanban_list`; use **`scheduling_*`** / **`mail_*` MCP** ([`ea-for-joshu.md`](../hermes-integration.md#ea-scheduling--board-isolation-hermes)). Owner availability: **`google_calendar_find_free_slots`** — omit `items`, use **`calendars.combined.free`** (ea-scheduling v4.19+). Hotpatch: [calendar free/busy](hotpatch-running-box.md#calendar-freebusy--transparent-events-2026-06-17), [multi-calendar + combined](hotpatch-running-box.md#calendar-multi-calendar-freebusy--combined-2026-06-24). Ops retry after denied send: [ea-for-joshu — ops retry](../hermes-integration.md#ea-scheduling--ops-retry-denied-send--bad-slots).
 
-**EA project Kanban (2026-06):** Multi-step / HITL work on **`project-<slug>`** boards via skill **`ea-project-kanban`**; global **`kanban.auto_decompose: true`**; default toolsets include **`kanban`**. Distinct from ingest-driven **`ea-sched-*`** boards. Spec: [`ea-for-joshu.md`](../Joshu-SOP/ea-for-joshu.md#project-kanban-multi-step--hitl-2026-06). Hotpatch: [`hotpatch-running-box.md`](hotpatch-running-box.md#skills-seed-after-docker-compose-recreate-gotcha).
+**EA project Kanban (2026-06):** Multi-step / HITL work on **`project-<slug>`** boards via skill **`ea-project-kanban`**; global **`kanban.auto_decompose: true`**; default toolsets include **`kanban`**. Distinct from ingest-driven **`ea-sched-*`** boards. Spec: [`ea-for-joshu.md`](../hermes-integration.md#project-kanban-multi-step--hitl-2026-06). Hotpatch: [`hotpatch-running-box.md`](hotpatch-running-box.md#skills-seed-after-docker-compose-recreate-gotcha).
 
-**EA scheduling — competing workers (2026-06-23, UP.Labs):** Two Kanban tasks on **different boards** (`ea-scheduling` + `project-uplabs-role`) both tried `nylas_send_message` on the same thread. Root cause: cross-board idempotency gap + project auto_decompose — not ingest dedupe failure. Fix: only **`ea-scheduling`** sends; thread-level dedup in [`schedulingCron.ts`](../../src/ea/schedulingCron.ts); skills [`ea-playbook` v2.16+](../../integrations/hermes/skills/executive-assistant/ea-playbook/SKILL.md), [`ea-scheduling` v4.18+](../../integrations/hermes/skills/executive-assistant/ea-scheduling/SKILL.md). Full write-up: [`ea-for-joshu.md` — Cross-board execution](../Joshu-SOP/ea-for-joshu.md#ea-scheduling--cross-board-execution-2026-06-23).
+**EA scheduling — competing workers (2026-06-23, UP.Labs):** Two Kanban tasks on **different boards** (`ea-scheduling` + `project-uplabs-role`) both tried `nylas_send_message` on the same thread. Root cause: cross-board idempotency gap + project auto_decompose — not ingest dedupe failure. Fix: only **`ea-scheduling`** sends; thread-level dedup in [`schedulingCron.ts`](../../src/ea/schedulingCron.ts); skills [`ea-playbook` v2.16+](../../integrations/hermes/skills/executive-assistant/ea-playbook/SKILL.md), [`ea-scheduling` v4.18+](../../integrations/hermes/skills/executive-assistant/ea-scheduling/SKILL.md). Full write-up: [`ea-for-joshu.md` — Cross-board execution](../hermes-integration.md#ea-scheduling--cross-board-execution-2026-06-23).
 
 ### Local dev — stopping `npm run dev:arozos` (2026-06-23)
 
@@ -780,11 +780,11 @@ curl -fsS -u admin:$JOSHU_HERMES_DASHBOARD_PASSWORD -o /dev/null -w '%{http_code
   https://hermes-admin.<slug>.<suffix>/
 ```
 
-Expect **200**. Full setup: [hermes-customizations.md — Hermes web dashboard](../hermes-customizations.md#hermes-web-dashboard).
+Expect **200**. Full setup: [hermes-integration.md — Hermes web dashboard](../hermes-integration.md#hermes-web-dashboard).
 
 **Kanban edits not persisting:** confirm board **`ea-scheduling`** (API default is `default`). PATCH without `?board=ea-scheduling` returns 404 and the UI rolls back optimistic updates.
 
-**Triage module split:** do not import `schedulingCase` from `triageStub.ts` — circular graph causes IDE “module not found” while `tsc` still passes. Use `triageTypes.ts`, `triageStubFiles.ts`, `triageSchedulingBridge.ts` ([`ea-for-joshu.md`](../Joshu-SOP/ea-for-joshu.md#scheduling-cases-coordination-unit)).
+**Triage module split:** do not import `schedulingCase` from `triageStub.ts` — circular graph causes IDE “module not found” while `tsc` still passes. Use `triageTypes.ts`, `triageStubFiles.ts`, `triageSchedulingBridge.ts` ([`ea-for-joshu.md`](../hermes-integration.md#scheduling-cases-coordination-unit)).
 
 **Log tail for app health (not security):**
 
@@ -860,7 +860,7 @@ Easy to confuse:
 
 **Truth on the box:** `grep JOSHU_IMAGE_REF /etc/joshu/instance.env` and `curl …/api/instance/version | jq .imageRef`.
 
-**Local provision only:** Value comes from `apps/control-plane/.env.local` at the moment `provisionQueuedInstance` runs. Restart `pnpm dev` after env edits. Avoid duplicate `JOSHU_IMAGE_REF` lines in the same file.
+**Local provision only:** Value comes from `joshu-control-plane/.env.local` at the moment `provisionQueuedInstance` runs. Restart `pnpm dev` after env edits. Avoid duplicate `JOSHU_IMAGE_REF` lines in the same file.
 
 **Admin upgrade dropdown:** `/admin` and `GET /api/admin/releases` auto-sync a `Release` row from [`deploy/RELEASE.json`](../../deploy/RELEASE.json) (or `DEFAULT_JOSHU_RELEASE_VERSION` on Vercel) via `syncDeployRelease.ts` — so a new local build tag appears without manual `db:seed` if the pin file is updated.
 
@@ -1230,7 +1230,7 @@ HERMES_LANGFUSE_ENV=production
 HERMES_LANGFUSE_USER_ID=<box-slug>
 ```
 
-Control plane injects the full set on **new** provisions when `DEFAULT_HERMES_LANGFUSE_*` are set in `apps/control-plane/.env.local` (`sandboxEnv.ts` → `langfuseBootstrapEnv()`).
+Control plane injects the full set on **new** provisions when `DEFAULT_HERMES_LANGFUSE_*` are set in `joshu-control-plane/.env.local` (`sandboxEnv.ts` → `langfuseBootstrapEnv()`).
 
 ### Symptom → cause → fix
 
@@ -1296,7 +1296,7 @@ Rebuild/push the sandbox image after Joshu or patch changes.
 
 | File | Role |
 | --- | --- |
-| `apps/control-plane/src/lib/sandboxEnv.ts` | Provision Langfuse vars + `HERMES_LANGFUSE_USER_ID=<slug>` |
+| `joshu-control-plane/src/lib/sandboxEnv.ts` | Provision Langfuse vars + `HERMES_LANGFUSE_USER_ID=<slug>` |
 | `src/hermesApi.ts` | Plugins, Camofox, gbrain MCP, Langfuse env, gateway restart on plugin/user-id change |
 | `src/observability/langfuse.ts`, `src/day0/llm.ts` | Joshu deterministic OpenRouter → Langfuse (Day 0, EA classifier) |
 | `deploy/runtime/package.json` | VPS container `node_modules` (includes `@langfuse/tracing`, `@langfuse/otel`, `@opentelemetry/sdk-node`) |
@@ -1311,7 +1311,7 @@ Rebuild/push the sandbox image after Joshu or patch changes.
 | `scripts/apply-hermes-content-filter-patch.sh` | Provider `content_filter` retry patch on `run_agent.py` |
 | `scripts/sync-hermes-skills-policy.mjs` | `npm run hermes:sync-skills-policy` — regen bundled denylist after Hermes pin bump |
 
-See [hermes-customizations.md](../hermes-customizations.md#langfuse-observability) and [Hermes runtime config](../hermes-customizations.md#hermes-runtime-config-local-hermes-vs-vps--image).
+See [hermes-integration.md](../hermes-integration.md#langfuse-observability) and [Hermes runtime config](../hermes-integration.md#hermes-runtime-config-local-hermes-vs-vps--image).
 
 ---
 
@@ -1338,7 +1338,7 @@ hermes gateway stop   # reload run_agent.py after first apply
 
 **Persistent blocks:** Configure `fallback_providers` in `$HERMES_HOME/config.yaml`
 (e.g. OpenRouter `google/gemini-flash-latest`). Details:
-[hermes-customizations — content_filter](../hermes-customizations.md#provider-content_filter-handling).
+[hermes-integration — content_filter](../hermes-integration.md#provider-content_filter-handling).
 
 | File | Role |
 | --- | --- |
@@ -1352,7 +1352,7 @@ hermes gateway stop   # reload run_agent.py after first apply
 ## Hermes `config.yaml` on VPS (not your laptop file)
 
 Sandboxes do **not** receive a copy of developer `~/.hermes/config.yaml`. See
-[hermes-customizations.md — Hermes runtime config](../hermes-customizations.md#hermes-runtime-config-local-hermes-vs-vps--image).
+[hermes-integration.md — Hermes runtime config](../hermes-integration.md#hermes-runtime-config-local-hermes-vs-vps--image).
 
 | Symptom | Cause | Fix |
 | --- | --- | --- |
@@ -1374,7 +1374,7 @@ Sandboxes do **not** receive a copy of developer `~/.hermes/config.yaml`. See
 | Symptom | Cause | Fix |
 | --- | --- | --- |
 | Portrait/soul missing; `identity.json` has name only | Admin create without portal draft sync | **Sync portal companion** on `/admin`, or re-create with matching email + slug so auto-sync runs — [portal doc](control-plane-portal.md#operator-admin-create-sandbox--portal-draft) |
-| `companion-soul.md` exists but `SOUL.md` is default Hermes | Soul sync ran before `JOSHU_COMPANION_SOUL_FILE` in env, or gateway not restarted | `POST …/sync-companion-identity` `{"forceSoul":true}`; nudge gateway; new jChat session — [joshu-identity.md](../joshu-identity.md) |
+| `companion-soul.md` exists but `SOUL.md` is default Hermes | Soul sync ran before `JOSHU_COMPANION_SOUL_FILE` in env, or gateway not restarted | `POST …/sync-companion-identity` `{"forceSoul":true}`; nudge gateway; new jChat session — [self-host.md#identity-without-control-plane](../self-host.md#identity-without-control-plane) |
 | Stack restart loop: `instance.env: line N: Tabis: command not found` | `JOSHU_OWNER_NAME=First Last` unquoted (instance-agent pre-quote fix) | Quote value: `JOSHU_OWNER_NAME="Susan Paley"`; recreate stack. Image/agent with `formatEnvValue()` in `packages/instance-agent` |
 | Joshu API crash: `Cannot find module …/email-signature/dist/index.js` | Host `git clone` bind-mounts `packages/email-signature` **source only** (no `dist/`) | Copy `dist/` from image: `docker cp $(docker create ghcr.io/…/joshu-sandbox:TAG):/opt/joshu/packages/email-signature/dist/. /opt/joshu/packages/email-signature/dist/` then recreate `joshu-stack` — [hotpatch-running-box.md](hotpatch-running-box.md) |
 
@@ -1414,7 +1414,7 @@ curl -fsS -H "Host: ${CUSTOMER_DOMAIN}" -H "X-Forwarded-Proto: https" \
 
 1. **Image / dist** with [`src/voiceWebApi.ts`](../../src/voiceWebApi.ts) loopback-client guard (`auto` only bypasses Joshu when session `Host` is also loopback).
 2. **Or env hotfix:** `JOSHU_VOICE_WSS_DIRECT=false` in `/etc/joshu/instance.env` → recreate `joshu-stack`.
-3. New boxes: control-plane bootstrap sets `JOSHU_VOICE_WSS_DIRECT=false` in [`sandboxEnv.ts`](../../apps/control-plane/src/lib/sandboxEnv.ts).
+3. New boxes: control-plane bootstrap sets `JOSHU_VOICE_WSS_DIRECT=false` in [`sandboxEnv.ts`](../../joshu-control-plane/src/lib/sandboxEnv.ts).
 
 See [web-voice.md — Browser WSS URL](web-voice.md#browser-wss-url-apivoicesession--wsurl).
 
@@ -1452,7 +1452,7 @@ Full runbook: [phone-voice-local-test.md](phone-voice-local-test.md). Validated 
 | --- | --- |
 | `src/twilioPhoneGateway.ts` | TwiML, WSS upgrade, path token, signature URL variants |
 | `src/audioMulawCodec.ts` | μ-law codec wrapper |
-| `apps/control-plane/src/lib/twilioProvisioner.ts` | Auto-buy number + path-style WSS URL on DO |
+| `joshu-control-plane/src/lib/twilioProvisioner.ts` | Auto-buy number + path-style WSS URL on DO |
 
 ---
 
@@ -1460,17 +1460,17 @@ Full runbook: [phone-voice-local-test.md](phone-voice-local-test.md). Validated 
 
 | Area | Files |
 |------|--------|
-| Provisioned env contract | `apps/control-plane/src/lib/sandboxEnv.ts`, `hindsightBootstrap.ts`, `customerOwner.ts` |
+| Provisioned env contract | `joshu-control-plane/src/lib/sandboxEnv.ts`, `hindsightBootstrap.ts`, `customerOwner.ts` |
 | Owner email → `JOSHU_AROZ_USER` | `apps/control-plane` admin UI + `buildSandboxBootstrapEnv()` |
-| Preflight | `apps/control-plane/src/lib/sandboxBootstrapPreflight.ts` |
-| Cloudflare DNS (proxied) | `apps/control-plane/src/lib/providers/cloudflare.ts`, `CLOUDFLARE_PROXIED` |
-| Cloud-init | `apps/control-plane/src/lib/providers/cloudInit.ts`, `digitalocean.ts` |
+| Preflight | `joshu-control-plane/src/lib/sandboxBootstrapPreflight.ts` |
+| Cloudflare DNS (proxied) | `joshu-control-plane/src/lib/providers/cloudflare.ts`, `CLOUDFLARE_PROXIED` |
+| Cloud-init | `joshu-control-plane/src/lib/providers/cloudInit.ts`, `digitalocean.ts` |
 | Runtime entry | `deploy/scripts/vps-start.sh` |
 | Compose | `deploy/docker-compose.yml` |
 | Hermes gateway + config | `src/hermesApi.ts`, `src/hermesConfigSplit.ts`, `src/hermesSkillsConfig.ts`, `integrations/hermes/skills-enabled.yaml`, `scripts/lib/hermes-gateway.sh` |
 | Langfuse on VPS | `sandboxEnv.ts`, `scripts/apply-hermes-langfuse-patches.sh`, `deploy/Dockerfile`, `deploy/runtime/package.json`, `src/observability/langfuse.ts`, `src/day0/llm.ts`, `vps-start.sh` |
 | File brain (gbrain) | `scripts/start-gbrain.sh`, `scripts/bootstrap-joshu-files.sh`, `scripts/rebind-gbrain-owner.sh`, `scripts/ensure-hermes-gbrain-mcp.mjs`, `src/joshuFilesPaths.ts`, `src/brainApi.ts` |
-| Twilio phone voice | `src/twilioPhoneGateway.ts`, `src/audioMulawCodec.ts`, `apps/control-plane/src/lib/twilioProvisioner.ts` |
+| Twilio phone voice | `src/twilioPhoneGateway.ts`, `src/audioMulawCodec.ts`, `joshu-control-plane/src/lib/twilioProvisioner.ts` |
 | Speech-to-speech voice | `packages/voice-realtime/`, `src/server.ts` (`/voice-rt` proxy), `src/voiceWebApi.ts` (`wsUrl`) |
 | VNC / Camofox HITL | `public/app.js`, `public/camofox-viewer.html`, `src/server.ts`, `src/camofoxSession.ts`, `scripts/patch-camofox-single-tab.mjs` |
 | VPS image build | `deploy/Dockerfile`, `scripts/vps-build-image.sh`, `deploy/RELEASE.json` |
@@ -1531,7 +1531,7 @@ Notes from Patrick `0.1.19` rollout — incidents, fixes shipped, and what would
 - [zero-touch-provisioning.md](zero-touch-provisioning.md) — preflight and verify commands
 - [first-provisioning-notes.md](first-provisioning-notes.md) — first Hetzner/Vercel run
 - [hermes-chat-arozos-app.md](../hermes-chat-arozos-app.md) — UI and SSE shape
-- [hermes-customizations.md](../hermes-customizations.md) — Hermes config conventions
+- [hermes-integration.md](../hermes-integration.md) — Hermes config conventions
 - [file-brain.md](../file-brain.md) — gbrain, `joshu's files`, slugs, PGLite locks
 - [hitl-camofox-notes.md](../hitl-camofox-notes.md) — VNC viewer, fit-viewport, Camofox patch
 - [phone-voice-local-test.md](phone-voice-local-test.md) — local PSTN E2E, ngrok, Media Stream auth

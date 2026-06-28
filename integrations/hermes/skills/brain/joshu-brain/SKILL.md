@@ -9,6 +9,9 @@ metadata:
 
 # Joshu File Brain
 
+> **Platform mechanics:** Apps use [`@joshu/platform-data`](../../../../docs/platform-data.md) (`files.query`, `files.getPage`, `memory.recall`).
+> Agents use gbrain MCP tools below. This skill covers **retrieval workflow** — not REST/MCP wiring.
+
 ## When to Use
 
 **Mail / email (find, search, recall, send):** Load skill **`joshu-mail`** — not this skill. gbrain is step 1 inside `joshu-mail`, but Composio workbench, multi-account routing, and send rules live there.

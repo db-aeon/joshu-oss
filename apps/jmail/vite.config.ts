@@ -5,6 +5,7 @@ import { defineConfig } from "vite";
 
 const appRoot = fileURLToPath(new URL(".", import.meta.url));
 const voiceClientRoot = path.resolve(appRoot, "../../packages/voice-client/src/index.ts");
+const platformDataRoot = path.resolve(appRoot, "../../packages/platform-data/src/index.ts");
 
 export default defineConfig({
   base: "./",
@@ -16,6 +17,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@joshu/voice-client": voiceClientRoot,
+      "@joshu/platform-data": platformDataRoot,
     },
   },
   plugins: [react()],

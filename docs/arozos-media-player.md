@@ -150,6 +150,6 @@ If iframe autoplay with sound is ever required again, consider adding
 click-to-play — policy still requires a user gesture for reliable audio.
 
 Joshu-specific desktop chrome (taskbar, theme) remains in
-[`arozos/web-overlays/`](../arozos/web-overlays/) via
+[`arozos/web-overlays-vanilla/`](../arozos/web-overlays-vanilla/) via
 [`scripts/apply_arozos_joshu_theme.py`](../scripts/apply_arozos_joshu_theme.py);
 video player behavior is upstream ArozOS web assets, not that overlay.

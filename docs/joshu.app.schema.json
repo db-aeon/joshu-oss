@@ -49,6 +49,64 @@
         "sku": { "type": "string", "description": "Store SKU or Stripe price id" }
       },
       "required": ["model"]
+    },
+    "data": {
+      "type": "object",
+      "description": "Platform data plane domains this app consumes",
+      "properties": {
+        "uses": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["mail", "calendar", "files", "memory", "connections"]
+          }
+        },
+        "mail": {
+          "type": "object",
+          "properties": {
+            "accounts": { "type": "string", "description": "any | nylas | gmail" }
+          }
+        }
+      }
+    },
+    "agent": {
+      "type": "object",
+      "description": "Agent integration: skills, headless actions, voice intents",
+      "properties": {
+        "skill": {
+          "type": "string",
+          "description": "Bundled app skill name (installed to HERMES_HOME/skills/apps/<id>/)"
+        },
+        "usesSkills": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Platform skills to load (e.g. joshu-mail, joshu-brain)"
+        },
+        "headless": { "type": "boolean", "description": "No desktop window required for actions" },
+        "intents": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["phrase", "action"],
+            "properties": {
+              "phrase": { "type": "string" },
+              "action": { "type": "string" }
+            }
+          }
+        },
+        "actions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name"],
+            "properties": {
+              "name": { "type": "string" },
+              "description": { "type": "string" },
+              "handler": { "type": "string", "description": "Optional server handler id (default: name)" }
+            }
+          }
+        }
+      }
     }
   }
 }

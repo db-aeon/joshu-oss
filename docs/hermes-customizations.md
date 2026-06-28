@@ -17,13 +17,13 @@ Joshu startup code.
 Local development expects a separate Hermes checkout:
 
 ```text
-/Users/danbenyamin/Documents/dev/hermes-agent
+~/hermes-agent
 ```
 
 The local binary path is configured with `HERMES_BIN`, usually:
 
 ```text
-/Users/danbenyamin/Documents/dev/hermes-agent/venv/bin/hermes
+~/hermes-agent/venv/bin/hermes
 ```
 
 The sandbox image fetches a pinned Hermes checkout during image build from upstream:
@@ -232,7 +232,7 @@ The legacy patch is kept only as a fallback for older Hermes checkouts. The loca
 helper skips cleanly when generic support is already present:
 
 ```bash
-cd /Users/danbenyamin/Documents/dev/joshu
+cd ~/joshu-oss
 scripts/apply-hermes-hitl-patch.sh
 ```
 
@@ -279,8 +279,8 @@ Manual apply (idempotent — skips when `_is_provider_content_filter_response` i
 already present in `run_agent.py`):
 
 ```bash
-cd /Users/danbenyamin/Documents/dev/joshu
-HERMES_DIR=/Users/danbenyamin/Documents/dev/hermes-agent \
+cd ~/joshu-oss
+HERMES_DIR=~/hermes-agent \
   scripts/apply-hermes-content-filter-patch.sh
 hermes gateway stop   # gateway must reload run_agent.py
 ```
@@ -328,8 +328,8 @@ per the [Hermes SOUL.md guide](https://hermes-agent.nousresearch.com/docs/guides
 `<!-- joshu-managed: companion-soul -->`. Implementation:
 [`src/hermesSoulFile.ts`](../src/hermesSoulFile.ts),
 [`src/companionIdentitySync.ts`](../src/companionIdentitySync.ts),
-[`joshu-control-plane/apps/control-plane/src/lib/companion-forge/prompts.ts`](../joshu-control-plane/apps/control-plane/src/lib/companion-forge/prompts.ts).
-See [joshu-identity.md](joshu-identity.md) and [control-plane-portal — Companion forge](https://github.com/db-aeon/joshu-control-plane/blob/main/docs/control-plane-portal.md#companion-forge).
+[`joshu-control-plane/joshu-control-plane/src/lib/companion-forge/prompts.ts`](../joshu-control-plane/joshu-control-plane/src/lib/companion-forge/prompts.ts).
+See [self-host.md#identity-without-control-plane](self-host.md#identity-without-control-plane) and [control-plane-portal — Companion forge](https://github.com/db-aeon/joshu-control-plane/blob/main/docs/control-plane-portal.md#companion-forge).
 
 **Local dev (verified):** Hermes routes through [OpenRouter](https://openrouter.ai).
 Joshu `.env` and synced `~/.hermes/config.yaml` use:
@@ -404,7 +404,7 @@ Monitor usage at [openrouter.ai/activity](https://openrouter.ai/activity). Resta
 Local dev uses the repo path:
 
 ```text
-/Users/danbenyamin/Documents/dev/joshu/integrations/hermes/skills
+~/joshu-oss/integrations/hermes/skills
 ```
 
 The sandbox image uses the image path:
@@ -540,7 +540,7 @@ Env: `JOSHU_HERMES_SKILLS_SEED_MODE`, `JOSHU_HERMES_SKILLS_MERGE_MODEL`, `OPENRO
 | `ea-scheduling` | `executive-assistant/ea-scheduling/` | Meeting negotiation on `ea-scheduling` (spawned after mail ingress) |
 
 EA **filesystem** layout (`FILING.md`, `Triage/`, `Projects/`) is seeded separately
-from `templates/ea/` — not a skill. See [Joshu-SOP/ea-for-joshu.md](Joshu-SOP/ea-for-joshu.md).
+from `templates/ea/` — not a skill. See [hermes-integration.md](hermes-integration.md).
 
 **Adding a factory skill:**
 
@@ -591,7 +591,7 @@ sessions and personalities — see [box-state.md](box-state.md#hard-factory-rese
 Joshu then runs **`resyncHermesAfterBoxHardReset()`**: re-seed `skills/joshu/` from
 `integrations/hermes/skills/` in **`overwrite`** mode (full factory copy), re-merge
 `skills.disabled`, restart gateway. Re-sync companion persona separately if needed:
-`bash scripts/sync-local-portal-profile.sh`.
+`configure identity in /etc/joshu/instance.env (see self-host.md)`.
 
 ### GitHub backup (per-box learning state)
 
@@ -623,7 +623,7 @@ joshu factory. Use the project skill
 [`.cursor/skills/skill-evolution-review/SKILL.md`](../.cursor/skills/skill-evolution-review/SKILL.md)
 (prompt: *"review skill evolution for patrick"*), optional prefetch
 [`scripts/skill-evolution-review-prefetch.sh`](../scripts/skill-evolution-review-prefetch.sh),
-and log findings in [`docs/Joshu-SOP/skill-evolution-reviews.md`](Joshu-SOP/skill-evolution-reviews.md).
+and log findings in [`docs/skill-evolution-reviews.md`](Joshu-SOP/skill-evolution-reviews.md).
 Local bookmark: `.joshu/skill-review-state.json` (gitignored).
 
 Session notes (2026-06-11): [learning loop + Patrick hotpatch](vps-sandbox/session-2026-06-11-learning-browser-sync.md).
@@ -696,7 +696,7 @@ turn" trace. See [Built-in Plugins — observability/langfuse](https://hermes-ag
 Joshu applies `scripts/apply-hermes-langfuse-patches.sh` at image build and VPS boot
 (system-prompt tracing + per-box `user_id`).
 
-**Control plane (DO sandboxes):** set in `joshu-control-plane/apps/control-plane/.env.local` (or Vercel env):
+**Control plane (DO sandboxes):** set in `joshu-control-plane/joshu-control-plane/.env.local` (or Vercel env):
 
 ```dotenv
 DEFAULT_JOSHU_HERMES_PLUGIN_NAMES=observability/langfuse
@@ -953,7 +953,7 @@ When `COMPOSIO_API_KEY` is set, `src/composioApi.ts` + `src/hermesApi.ts`:
 
 ## Executive Assistant (replaces joshu-chief)
 
-Human SOP: [`docs/Joshu-SOP/executive-assistant.md`](Joshu-SOP/executive-assistant.md).
+Human SOP: [`docs/welcome-onboarding.md`](welcome-onboarding.md).
 
 | Piece | Location |
 |-------|----------|
@@ -968,13 +968,13 @@ Human SOP: [`docs/Joshu-SOP/executive-assistant.md`](Joshu-SOP/executive-assista
 
 **Runs on demand** via Hermes skill invocation (jChat / `ea-playbook`) between scheduled windows. **Recurring EA windows** use **Hermes cron** — auto-installed on Welcome complete via [`src/onboarding/eaCronJobs.ts`](../src/onboarding/eaCronJobs.ts); manage in the desktop **Schedules** app, via `hermes cron`, or chat `/cron`.
 
-See [`docs/schedules-arozos-app.md`](schedules-arozos-app.md) for the Schedules UI, REST API, schedule syntax, and how Hermes cron differs from stock arozOS **Tasks Scheduler**. Product spec: [`docs/Joshu-SOP/ea-for-joshu.md`](Joshu-SOP/ea-for-joshu.md).
+See [`docs/schedules-arozos-app.md`](schedules-arozos-app.md) for the Schedules UI, REST API, schedule syntax, and how Hermes cron differs from stock arozOS **Tasks Scheduler**. Product spec: [`docs/hermes-integration.md`](hermes-integration.md).
 
 **Source of truth:** calendar times on Nylas; work queue in `Triage/*.stub.md`; owner-facing tasks/context in `Projects/<slug>/` (`about.md`, `todo.md`, `journal_YYYY-MM-DD.md`); **multi-step execution** on Hermes Kanban (`project-<slug>` boards, pointer in `about.md`). Owner Gmail mirrors under `connectors/mail/gmail/`; agent mail under `connectors/mail/nylas/` — see [`docs/connectors.md`](connectors.md).
 
-**EA scheduling (2026-06):** Universal mail ingress → `ea-mail-ingress` + Triage stub; scheduling child on `ea-scheduling` via `scheduling_*` MCP. Owner availability: **`google_calendar_find_free_slots`** — omit `items`, use **`calendars.combined.free`** (ea-scheduling v4.19.0). Product spec: [`docs/Joshu-SOP/ea-for-joshu.md`](Joshu-SOP/ea-for-joshu.md#scheduling-kanban-first-2026-06-v410).
+**EA scheduling (2026-06):** Universal mail ingress → `ea-mail-ingress` + Triage stub; scheduling child on `ea-scheduling` via `scheduling_*` MCP. Owner availability: **`google_calendar_find_free_slots`** — omit `items`, use **`calendars.combined.free`** (ea-scheduling v4.19.0). Product spec: [`docs/hermes-integration.md`](hermes-integration.md#scheduling-kanban-first-2026-06-v410).
 
-**EA project Kanban (2026-06):** Global `kanban.auto_decompose` + skill **`ea-project-kanban`**. jChat kickoff uses connectors MCP **`project_kanban_ensure_board`** / **`project_kanban_create_triage_root`** (Joshu bridge); workers use native **`kanban_*`** when in the worker toolset. Product spec: [`docs/Joshu-SOP/ea-for-joshu.md`](Joshu-SOP/ea-for-joshu.md#project-kanban-multi-step--hitl-2026-06).
+**EA project Kanban (2026-06):** Global `kanban.auto_decompose` + skill **`ea-project-kanban`**. jChat kickoff uses connectors MCP **`project_kanban_ensure_board`** / **`project_kanban_create_triage_root`** (Joshu bridge); workers use native **`kanban_*`** when in the worker toolset. Product spec: [`docs/hermes-integration.md`](hermes-integration.md#project-kanban-multi-step--hitl-2026-06).
 
 ## Hermes runtime config: local `~/.hermes` vs VPS / image
 
@@ -1153,7 +1153,7 @@ What the script does on `update`:
 1. Creates a rollback snapshot under `.local/hermes-update-snapshots/` (gitignored).
 2. Resolves the latest NousResearch release tag (or `--tag v2026.5.7`) to a commit SHA.
 3. Checks out that commit in the external Hermes tree (`HERMES_DIR`, default
-   `/Users/danbenyamin/Documents/dev/hermes-agent`) from the `upstream` remote.
+   `~/hermes-agent`) from the `upstream` remote.
 4. Reinstalls Hermes editable deps (image-parity extras by default) and restores
    Joshu's pinned Hindsight packages in the Hermes venv.
 5. Runs `scripts/apply-hermes-hitl-patch.sh` only when `adopt_existing_tab` is

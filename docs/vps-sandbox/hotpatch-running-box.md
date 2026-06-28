@@ -108,7 +108,7 @@ cd deploy && docker compose -f docker-compose.yml --env-file /etc/joshu/instance
 
 **Verify:** `docker exec "$CID" ls /root/.hermes/skills/joshu/executive-assistant/` includes `ea-time-block`; `grep excalidraw /opt/joshu/integrations/hermes/skills-enabled.yaml`; bundled **`excalidraw`** must **not** appear under `skills.disabled` in `/root/.hermes/config.yaml` after gateway sync. **New chat** so `skill_view('ea-time-block')` loads updated `SKILL.md`.
 
-**Time-block scripts on VPS:** Hermes `terminal.cwd` is the ArozOS **Desktop** folder — `node scripts/render-time-block-excalidraw.mjs` fails from there. Use **`/opt/joshu/scripts/render-time-block-excalidraw.mjs`** and **`/opt/joshu/scripts/gather-time-block-input.mjs`** (bind-mounted from host). Smoke: `docker exec "$CID" node /opt/joshu/scripts/render-time-block-excalidraw.mjs /tmp/plan.json -o /tmp/out.excalidraw` (see [time-block-planning.md](../Joshu-SOP/time-block-planning.md)).
+**Time-block scripts on VPS:** Hermes `terminal.cwd` is the ArozOS **Desktop** folder — `node scripts/render-time-block-excalidraw.mjs` fails from there. Use **`/opt/joshu/scripts/render-time-block-excalidraw.mjs`** and **`/opt/joshu/scripts/gather-time-block-input.mjs`** (bind-mounted from host). Smoke: `docker exec "$CID" node /opt/joshu/scripts/render-time-block-excalidraw.mjs /tmp/plan.json -o /tmp/out.excalidraw` (see [time-block-planning.md](../excalidraw-sandbox.md)).
 
 ### Skills hotpatch on boxes with learning (2026-06-12, merge default 2026-06)
 
@@ -160,7 +160,7 @@ Use when you cannot bump `release` or need one file immediately:
 
 **Validated incident (2026-06-12, Patrick):** Forced bootstrap with **`overwrite`** (delete `.joshu-seed-version` + old `rsync --delete`) reset **`ea-project-kanban`** evolution. Recovery: restore from `joshu-learning-patrick`, then factory deltas — [troubleshooting § skills evolution](troubleshooting-and-lessons.md#skills-bootstrap-overwrites-box-evolution-2026-06-12).
 
-**EA project Kanban (2026-06) — typical B3 + A bundle:** rsync `dist/ea/triageRoutes.js`, `dist/hermesKanbanBridge.js`, `dist/hermesApi.js`, `dist/server.js`, `scripts/joshu-connectors-mcp-http-server.mjs`, `scripts/hermes-kanban-bridge.py`, `integrations/hermes/skills/`, `integrations/hermes/skills-enabled.yaml`, `templates/ea/`; then recreate and verify bootstrap (above). After recreate, confirm `:8795` lists `project_kanban_*` and **restart Hermes gateway** if jChat still shows a partial connectors catalog — [partial MCP catalog](troubleshooting-and-lessons.md#partial-mcp-tool-catalog-jchat--telegram). See [`ea-for-joshu.md`](../Joshu-SOP/ea-for-joshu.md#project-kanban-multi-step--hitl-2026-06).
+**EA project Kanban (2026-06) — typical B3 + A bundle:** rsync `dist/ea/triageRoutes.js`, `dist/hermesKanbanBridge.js`, `dist/hermesApi.js`, `dist/server.js`, `scripts/joshu-connectors-mcp-http-server.mjs`, `scripts/hermes-kanban-bridge.py`, `integrations/hermes/skills/`, `integrations/hermes/skills-enabled.yaml`, `templates/ea/`; then recreate and verify bootstrap (above). After recreate, confirm `:8795` lists `project_kanban_*` and **restart Hermes gateway** if jChat still shows a partial connectors catalog — [partial MCP catalog](troubleshooting-and-lessons.md#partial-mcp-tool-catalog-jchat--telegram). See [`ea-for-joshu.md`](../hermes-integration.md#project-kanban-multi-step--hitl-2026-06).
 
 **Gemini Live web voice — GHCR voice image:** Build/push `joshu-voice-realtime:<tag>` with `npm run vps:build-image` (`JOSHU_IMAGE_PUSH=1`). Admin **Update release** pulls `JOSHU_VOICE_IMAGE_REF` and recreates `voice-realtime`. Env: `JOSHU_VOICE_PROVIDER=gemini_live`, `GEMINI_API_KEY`, optional `GEMINI_LIVE_MODEL` / voice id via `JOSHU_VOICE_ID`. See [web-voice.md — VPS](web-voice.md#vps-production--test-box).
 
@@ -263,7 +263,7 @@ curl -fsS "http://127.0.0.1:8788/joshu/api/connectors/calendar/google/free-slots
 # items should include primary + dbenyamin@gmail.com; combined.busy should include afternoon wrap block
 ```
 
-**Ops retry** after denied bad send: [`ea-for-joshu.md`](../Joshu-SOP/ea-for-joshu.md#ea-scheduling--ops-retry-denied-send--bad-slots).
+**Ops retry** after denied bad send: [`ea-for-joshu.md`](../hermes-integration.md#ea-scheduling--ops-retry-denied-send--bad-slots).
 
 ---
 

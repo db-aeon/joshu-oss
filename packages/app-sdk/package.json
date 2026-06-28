@@ -1,0 +1,25 @@
+{
+  "name": "@joshu/app-sdk",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Joshu app manifest validation and scaffolding helpers",
+  "bin": {
+    "joshu-app": "./dist/cli.js"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3"
+  }
+}

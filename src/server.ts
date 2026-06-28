@@ -60,6 +60,9 @@ import { startConnectorScheduler } from "./connectors/scheduler.js";
 import { isComposioEnabled, syncComposioHermesMcp } from "./composioApi.js";
 import { registerVoiceWebRoutes } from "./voiceWebApi.js";
 import { createTwilioUpgradeHandler, registerTwilioVoiceRoutes } from "./twilioPhoneGateway.js";
+import { registerAgUiRoutes } from "./agUiApi.js";
+import { registerAppInvokeRoutes } from "./appInvokeApi.js";
+import { registerHindsightRecallRoute } from "./hindsightRecallApi.js";
 import type { CreateRunRequest, CreateRunResponse, RunRecord, StatusReport } from "./types.js";
 
 function envOr(name: string, fallback: string): string {
@@ -445,6 +448,10 @@ function buildAppRouter(): {
   registerActionGuardRoutes(router, { projectRoot: PROJECT_ROOT });
   registerVoiceWebRoutes(router);
 
+  const joshuApiBase = `http://127.0.0.1:${PORT}${withPublicBase("/api")}`;
+  registerAppInvokeRoutes(router, PROJECT_ROOT, joshuApiBase);
+  registerAgUiRoutes(router, runner, PROJECT_ROOT);
+
   registerMovieEditorRoutes(router);
 
   router.get("/api/hermes-chat/voice-settings", async (_req: Request, res: Response) => {
@@ -768,6 +775,13 @@ function buildAppRouter(): {
         error: error instanceof Error ? error.message : String(error),
       });
     }
+  });
+
+  registerHindsightRecallRoute(router, {
+    hindsightApiUrl: HINDSIGHT_API_URL,
+    hindsightApiKey: HINDSIGHT_API_KEY,
+    bankId: HINDSIGHT_BANK_ID,
+    proxyHindsightJson,
   });
 
   router.get("/api/hindsight/graph/:kind", async (req: Request, res: Response) => {
