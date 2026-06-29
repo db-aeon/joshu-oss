@@ -78,13 +78,20 @@ See [local-installation.md](local-installation.md) and `npm run dev:arozos`.
 
 ## Offering Joshu to third parties
 
-Hosting Joshu as a **product or service for other organizations** requires a
-commercial license from Project Aeon Inc. — contact **info@joshu.me** (see
-[COMMERCIAL_LICENSE.md](../COMMERCIAL_LICENSE.md) notice).
+**Commercial use is allowed under AGPL-3.0**, including hosting Joshu as a
+**product or service for third parties**, provided you fully comply with AGPL
+obligations (including source availability for network-deployed modified
+versions), do not use restricted Joshu trademarks/JDL assets, and do not imply
+official affiliation.
+
+A **commercial OEM/MSP agreement** (or Joshu managed service at
+hello.joshu.me) is required for non-AGPL terms, white-label rights, official
+branding/JDL assets, proprietary control-plane access, support/SLA, or partner
+distribution rights. Contact **info@joshu.me** — see
+[COMMERCIAL_LICENSE.md](../COMMERCIAL_LICENSE.md).
 
 **Internal employee use** does not require payment or a commercial license,
-provided you comply with AGPL-3.0, including source-code obligations for
-modified versions made available over a network.
+provided you comply with AGPL-3.0.
 
 ---
 
