@@ -25,6 +25,14 @@ if [[ ! -d "${INSTALL_DIR}/.git" ]]; then
   git clone --depth 1 --branch "${JOSHU_REF}" "${JOSHU_REPO}" "${INSTALL_DIR}"
 fi
 
+if [[ ! -f "${ENV_FILE}" ]]; then
+  cp "${INSTALL_DIR}/deploy/.env.vps.example" "${ENV_FILE}"
+  chmod 600 "${ENV_FILE}"
+  echo "[bootstrap-vps] created ${ENV_FILE} from template"
+fi
+
+bash "${INSTALL_DIR}/deploy/scripts/ensure-instance-env-secrets.sh" "${ENV_FILE}"
+
 cd "${INSTALL_DIR}"
 if [[ -f "${ENV_FILE}" ]]; then
   set -a

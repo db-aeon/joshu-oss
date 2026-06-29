@@ -10,11 +10,37 @@ import {
   type CommunicationChannelDef,
   ONLINE_TOOL_SECTIONS,
 } from "@joshu/onboarding/options";
-import { StrictMode, useCallback, useEffect, useState, type ReactNode } from "react";
+import { StrictMode, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 
 const API = "/joshu/api/onboarding";
+const BOX_SECRETS_API = "/joshu/api/box-secrets";
 const NYLAS = "/joshu/api/nylas";
+
+type StepId =
+  | "welcome"
+  | "connect-ai"
+  | "you"
+  | "big-picture"
+  | "communication"
+  | "tools"
+  | "people"
+  | "review";
+
+const BASE_STEPS: StepId[] = [
+  "welcome",
+  "you",
+  "big-picture",
+  "communication",
+  "tools",
+  "people",
+  "review",
+];
+
+function buildSteps(needsConnectAi: boolean): StepId[] {
+  if (!needsConnectAi) return BASE_STEPS;
+  return ["welcome", "connect-ai", ...BASE_STEPS.slice(1)];
+}
 
 type VipRow = { who: string; priority: string; gatekeepNotes: string };
 
@@ -38,18 +64,6 @@ type Draft = {
   batchQuestions: string;
   vips: VipRow[];
 };
-
-const STEP_TITLES = [
-  "Welcome",
-  "You & your assistant",
-  "Big picture",
-  "Communication",
-  "Online tools",
-  "Key people",
-  "Review",
-];
-
-const LAST_STEP = STEP_TITLES.length - 1;
 
 const emptyDraft = (): Draft => ({
   ownerName: "Dan",
@@ -206,6 +220,8 @@ function formatList(items: string[]): string {
 
 function App() {
   const [step, setStep] = useState(0);
+  const [needsConnectAi, setNeedsConnectAi] = useState(false);
+  const [openRouterKey, setOpenRouterKey] = useState("");
   const [draft, setDraft] = useState<Draft>(emptyDraft);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -215,10 +231,15 @@ function App() {
   const [alreadyCompleted, setAlreadyCompleted] = useState(false);
   const [savedFlash, setSavedFlash] = useState("");
 
+  const steps = useMemo(() => buildSteps(needsConnectAi), [needsConnectAi]);
+  const stepId = steps[step] ?? "welcome";
+  const lastStep = steps.length - 1;
+
   const load = useCallback(async () => {
-    const [statusRes, draftRes] = await Promise.all([
+    const [statusRes, draftRes, secretsRes] = await Promise.all([
       fetch(`${API}/status`),
       fetch(`${API}/draft`),
+      fetch(`${BOX_SECRETS_API}/status`),
     ]);
     const status = (await statusRes.json()) as {
       completed?: boolean;
@@ -239,6 +260,8 @@ function App() {
     setAlreadyCompleted(Boolean(status.completed));
     setNylasProvisioned(Boolean(status.nylasProvisioned));
     if (status.assistantEmail) setAssistantEmail(status.assistantEmail);
+    const secrets = (await secretsRes.json()) as { needsConnectAi?: boolean };
+    setNeedsConnectAi(Boolean(secrets.needsConnectAi));
     const draftBody = (await draftRes.json()) as {
       draft?: Partial<Draft> & { primaryWorkEmail?: string; personalEmail?: string } | null;
     };
@@ -305,22 +328,59 @@ function App() {
 
   const patch = (partial: Partial<Draft>) => setDraft((d) => ({ ...d, ...partial }));
 
+  const saveConnectAi = async () => {
+    const res = await fetch(BOX_SECRETS_API, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ OPENROUTER_API_KEY: openRouterKey.trim() }),
+    });
+    if (!res.ok) {
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      throw new Error(data.error ?? "Could not save API key");
+    }
+    setNeedsConnectAi(false);
+    setOpenRouterKey("");
+  };
+
   const next = async () => {
     setError("");
     setSavedFlash("");
-    if (step === 1 && (!draft.ownerName.trim() || !draft.assistantName.trim())) {
+    if (stepId === "connect-ai") {
+      if (!openRouterKey.trim()) {
+        setError("Paste your OpenRouter API key to enable chat.");
+        return;
+      }
+      setBusy(true);
+      try {
+        await saveConnectAi();
+        setNeedsConnectAi(false);
+        // Step index stays at 1 — after removing connect-ai, that slot is "you".
+      } catch (e) {
+        setError((e as Error).message);
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+    if (stepId === "you" && (!draft.ownerName.trim() || !draft.assistantName.trim())) {
       setError("Please enter your name and your assistant's name.");
       return;
     }
     setBusy(true);
     try {
       await saveDraft(draft);
-      setStep((s) => Math.min(s + 1, LAST_STEP));
+      setStep((s) => Math.min(s + 1, lastStep));
     } catch (e) {
       setError((e as Error).message);
     } finally {
       setBusy(false);
     }
+  };
+
+  const skipConnectAi = () => {
+    setError("");
+    setSavedFlash("");
+    setStep((s) => Math.min(s + 1, lastStep));
   };
 
   const back = () => {
@@ -395,8 +455,8 @@ function App() {
         </header>
 
         <div className="welcome-progress" aria-hidden>
-          {STEP_TITLES.map((_, i) => (
-            <span key={i} className={i <= step ? "active" : ""} />
+          {steps.map((id, i) => (
+            <span key={id} className={i <= step ? "active" : ""} />
           ))}
         </div>
 
@@ -404,7 +464,7 @@ function App() {
           {error ? <div className="welcome-error">{error}</div> : null}
           {savedFlash ? <div className="welcome-success">{savedFlash}</div> : null}
 
-          {step === 0 && (
+          {stepId === "welcome" && (
             <>
               <h2>{alreadyCompleted ? "Review or update" : "Let's get you set up"}</h2>
               <p className="welcome-hint">
@@ -416,7 +476,30 @@ function App() {
             </>
           )}
 
-          {step === 1 && (
+          {stepId === "connect-ai" && (
+            <>
+              <h2>Connect AI</h2>
+              <p className="welcome-hint">
+                jChat and your assistant need an{" "}
+                <a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer">
+                  OpenRouter
+                </a>{" "}
+                API key. Create one on openrouter.ai, then paste it here. It is stored on your box
+                (not sent to Joshu).
+              </p>
+              <Field label="OpenRouter API key" hint="Starts with sk-or-v1-">
+                <input
+                  type="password"
+                  autoComplete="off"
+                  value={openRouterKey}
+                  onChange={(e) => setOpenRouterKey(e.target.value)}
+                  placeholder="sk-or-v1-…"
+                />
+              </Field>
+            </>
+          )}
+
+          {stepId === "you" && (
             <>
               <h2>You & your assistant</h2>
               <Field label="Your name (Principal)">
@@ -434,7 +517,7 @@ function App() {
             </>
           )}
 
-          {step === 2 && (
+          {stepId === "big-picture" && (
             <>
               <h2>Big picture</h2>
               <p className="welcome-hint">
@@ -457,7 +540,7 @@ function App() {
             </>
           )}
 
-          {step === 3 && (
+          {stepId === "communication" && (
             <>
               <h2>Communication</h2>
               <p className="welcome-hint">
@@ -539,7 +622,7 @@ function App() {
             </>
           )}
 
-          {step === 4 && (
+          {stepId === "tools" && (
             <>
               <h2>Online tools</h2>
               <p className="welcome-hint">
@@ -590,7 +673,7 @@ function App() {
             </>
           )}
 
-          {step === 5 && (
+          {stepId === "people" && (
             <>
               <h2>Key people (optional)</h2>
               <p className="welcome-hint">VIPs and gatekeeping notes — skip if you&apos;ll add these later.</p>
@@ -638,7 +721,7 @@ function App() {
             </>
           )}
 
-          {step === 6 && (
+          {stepId === "review" && (
             <>
               <h2>Review</h2>
               <dl className="welcome-review">
@@ -661,12 +744,17 @@ function App() {
           )}
 
           <div className="welcome-actions">
-            {step > 0 && step < LAST_STEP ? (
+            {step > 0 && step < lastStep ? (
               <button type="button" className="secondary" disabled={busy} onClick={back}>
                 Back
               </button>
             ) : null}
-            {alreadyCompleted && step === LAST_STEP ? (
+            {stepId === "connect-ai" ? (
+              <button type="button" className="secondary" disabled={busy} onClick={skipConnectAi}>
+                Skip for now
+              </button>
+            ) : null}
+            {alreadyCompleted && step === lastStep ? (
               <button type="button" className="secondary" disabled={busy} onClick={() => window.close?.()}>
                 Close
               </button>
@@ -675,9 +763,9 @@ function App() {
                 Finish later
               </button>
             )}
-            {step < LAST_STEP ? (
+            {step < lastStep ? (
               <button type="button" className="primary" disabled={busy} onClick={() => void next()}>
-                Continue
+                {stepId === "connect-ai" ? "Save & continue" : "Continue"}
               </button>
             ) : (
               <button type="button" className="primary" disabled={busy} onClick={() => void complete()}>

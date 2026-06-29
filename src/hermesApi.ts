@@ -6,7 +6,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
 import type { Readable } from "node:stream";
-import { randomUUID } from "node:crypto";
+import { resolveBoxSecret } from "./boxSecrets/resolve.js";
 import { promisify } from "node:util";
 import YAML from "yaml";
 import { bootstrapHermesLearning } from "./hermesLearning.js";
@@ -229,6 +229,25 @@ export async function syncHermesMessagingEnv(projectRoot = process.cwd()): Promi
   await syncHermesDotenv(buildHermesMessagingDotenvEntries(projectRoot));
 }
 
+/** LLM + gateway keys for Hermes (provision env, box-secrets, or process env). */
+export function buildHermesLlmDotenvEntries(projectRoot = process.cwd()): Record<string, string> {
+  const entries: Record<string, string> = {};
+  const openRouter = resolveBoxSecret("OPENROUTER_API_KEY", projectRoot);
+  if (openRouter) entries.OPENROUTER_API_KEY = openRouter;
+  const anthropic = resolveAnthropicApiKey();
+  if (anthropic) entries.ANTHROPIC_API_KEY = anthropic;
+  const gatewayKey = envString("HERMES_API_KEY") || envString("API_SERVER_KEY");
+  if (gatewayKey) {
+    entries.HERMES_API_KEY = gatewayKey;
+    entries.API_SERVER_KEY = envString("API_SERVER_KEY") || gatewayKey;
+  }
+  return entries;
+}
+
+export async function syncHermesLlmEnv(projectRoot = process.cwd()): Promise<void> {
+  await syncHermesDotenv(buildHermesLlmDotenvEntries(projectRoot));
+}
+
 function getJoshuHermesModel(): string {
   return envString("JOSHU_HERMES_MODEL", DEFAULT_JOSHU_HERMES_MODEL);
 }
@@ -290,7 +309,9 @@ function resolveAnthropicApiKey(): string {
   return resolveHermesHomeSecret("ANTHROPIC_API_KEY");
 }
 
-function resolveOpenRouterApiKey(): string {
+function resolveOpenRouterApiKey(projectRoot = process.cwd()): string {
+  const fromBox = resolveBoxSecret("OPENROUTER_API_KEY", projectRoot);
+  if (fromBox) return fromBox;
   return resolveHermesHomeSecret("OPENROUTER_API_KEY");
 }
 

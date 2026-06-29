@@ -32,6 +32,38 @@ load_env_file() {
 load_env_file "${HERMES_HOME}/.env"
 load_env_file "/etc/joshu/instance.env"
 
+# Welcome box-secrets (standalone self-host) — first ArozOS user with a saved file.
+load_box_secrets_env() {
+  local users_root="${AROZ_DATA}/files/users"
+  [[ -d "${users_root}" ]] || return 0
+  local user_dir json
+  for user_dir in "${users_root}"/*; do
+    [[ -d "${user_dir}" ]] || continue
+    json="${user_dir}/.joshu/box-secrets/local-env.json"
+    [[ -f "${json}" ]] || continue
+    if command -v python3 >/dev/null 2>&1; then
+      while IFS= read -r line; do
+        [[ -n "${line}" ]] || continue
+        export "${line?}"
+      done < <(python3 - "${json}" <<'PY'
+import json, sys
+path = sys.argv[1]
+with open(path) as f:
+    data = json.load(f)
+for key in ("OPENROUTER_API_KEY", "HINDSIGHT_API_LLM_API_KEY"):
+    val = (data.get(key) or "").strip()
+    if val:
+        print(f"{key}={val}")
+PY
+)
+      echo "[vps-start] loaded box-secrets from ${json}"
+      return 0
+    fi
+  done
+}
+
+load_box_secrets_env
+
 # gbrain CLI is installed via Bun; the /usr/local/bin/gbrain symlink uses #!/usr/bin/env bun.
 export PATH="${HOME}/.bun/bin:/usr/local/bin:${PATH}"
 export GBRAIN_BIN="${GBRAIN_BIN:-$(command -v gbrain 2>/dev/null || echo "${HOME}/.bun/bin/gbrain")}"
