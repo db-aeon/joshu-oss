@@ -15,7 +15,17 @@ permissions:
 
 jobs:
   cla-assistant:
-    if: (github.event.comment.body == 'recheck' || github.event.comment.body == 'I have read the CLA Document and I hereby sign the CLA') || github.event_name == 'pull_request_target'
+    # External contributors only — in-repo OWNER/MEMBER/COLLABORATOR are covered by cla-check.yml.
+    if: |
+      (github.event_name == 'issue_comment' && (
+        github.event.comment.body == 'recheck' ||
+        github.event.comment.body == 'I have read the CLA Document and I hereby sign the CLA'
+      )) ||
+      (github.event_name == 'pull_request_target' &&
+        github.event.pull_request.author_association != 'OWNER' &&
+        github.event.pull_request.author_association != 'MEMBER' &&
+        github.event.pull_request.author_association != 'COLLABORATOR' &&
+        github.event.pull_request.user.login != 'dependabot[bot]')
     runs-on: ubuntu-latest
     steps:
       - name: CLA Assistant
@@ -25,4 +35,5 @@ jobs:
         with:
           path-to-document: CLA.md
           path-to-signatures: signatures/cla.json
+          branch: main
           allowlist: dependabot[bot]
