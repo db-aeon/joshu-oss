@@ -69,10 +69,15 @@ Optional blocks declare platform dependencies and agent integration:
     "mail": { "accounts": "any" }
   },
   "agent": {
-    "skill": "my-app",
+    "skill": "my-app-gui",
     "usesSkills": ["joshu-mail", "joshu-brain"],
     "headless": false,
-    "intents": [{ "phrase": "open compose", "action": "openCompose" }],
+    "guiActions": [
+      { "name": "openCompose", "description": "Open compose pane with optional draft" }
+    ],
+    "voiceCommands": [
+      { "name": "compose", "phrases": ["new email"], "action": "openCompose" }
+    ],
     "actions": [{ "name": "syncMirror", "description": "Refresh local mail cache" }]
   }
 }
@@ -83,6 +88,8 @@ Optional blocks declare platform dependencies and agent integration:
 | `data.uses[]` | Platform domains consumed — use `@joshu/platform-data`, not raw REST |
 | `agent.usesSkills[]` | Shared Hermes skills (platform-owned) |
 | `agent.skill` | App-bundled skill name (sideload → `$HERMES_HOME/skills/apps/<id>/`) |
+| `agent.guiActions[]` | In-app GUI tool names → Hermes **`app_gui_action`** — see [`app-agent.md`](app-agent.md#developer-guide--add-an-agent-to-your-app) |
+| `agent.voiceCommands[]` | Voice phrase → action fast path (no Hermes) |
 | `agent.actions[]` | Headless handlers → `POST /joshu/api/apps/:id/invoke` |
 
 **Platform skills** (`joshu-mail`, `joshu-brain`, EA suite) live in `integrations/hermes/skills/`.
@@ -105,6 +112,16 @@ Example (jMail reference):
 ```
 
 Validate: `node packages/app-sdk/dist/cli.js validate path/to/joshu.app.json`
+
+### Embedded agent chat
+
+If your app needs an in-app assistant that opens panes and drafts content (not just headless invoke/MCP), follow the [**embedded app cookbook**](app-agent.md#embedded-app-cookbook-any-domain--not-mail-specific):
+
+1. `agent.guiActions[]` + [`@joshu/app-agent`](app-agent.md)
+2. `getGuiSnapshot()` contract (`activeView`, list/detail preview — no background state leak)
+3. Copy [`docs/templates/my-app-gui-SKILL.md`](templates/my-app-gui-SKILL.md) → `skills/<app>-gui/SKILL.md`
+
+jMail is the reference implementation ([`jmail-arozos-app.md`](jmail-arozos-app.md#agent-chat-panel)).
 
 ---
 
@@ -187,6 +204,7 @@ Official catalog and paid entitlements: control plane (proprietary). Full policy
 
 ## Related
 
+- [app-agent.md](app-agent.md) — **embedded agent chat** (developer guide, `app_gui_action`, CopilotKit panel)
 - [platform-architecture.md](platform-architecture.md) — three-layer model, invoke + AG-UI
 - [platform-data.md](platform-data.md) — `@joshu/platform-data` SDK
 - [APP_STORE.md](APP_STORE.md) — distribution tiers, binaries, legal boundaries, roadmap

@@ -11,7 +11,7 @@ metadata:
 
 Joshu mirrors mail every **10 minutes** (`connectors/mail/…`) and creates **`Triage/*.stub.md`** stubs plus one **`ea-mail-ingress`** Kanban task per actionable message. Your job on ingress is **filing** — match or create `Projects/<slug>/`, update docs, project track via `mail_*` MCP. **Scheduling** is a **child workflow** after filing (`ea-scheduling` + `scheduling_*` MCP on board `ea-scheduling`) — ingest no longer opens `ea-sched-ingress`.
 
-Layout: `docs/Joshu-SOP/ea-for-joshu.md` · `docs/Joshu-SOP/gtd-workspace-linking.md` · `${JOSHU_FILES_ROOT}/FILING.md`
+Layout: `docs/executive-assistant.md` · `docs/executive-assistant.md#gtd-workspace` · `${JOSHU_FILES_ROOT}/FILING.md`
 
 ## Triggers (what starts work)
 
@@ -122,7 +122,7 @@ Use path **C** when **any** of these apply (even if `scheduling_eligible: true`)
 - Latest mail looks like a **confirmation** but calendar check is inconclusive (no obvious event title, wrong week, multiple candidates)
 - Thread shows owner **already booked** (Calendly, "I booked…", counterparty confirmed) — you are filing the confirmation, not re-opening negotiation
 - **Sensitive / high-stakes** thread where a duplicate outreach would be embarrassing (recruiting, investors, partners)
-- Ambiguous whether Patrick should **negotiate again** vs update project status only
+- Ambiguous whether the companion should **negotiate again** vs update project status only
 - You would need **`find_free_slots`** or **`nylas_send_message`** but are not confident it is the right next move
 - **`about.md`** already notes a booked meeting for this thread and nothing in the latest mail asks for new times
 
@@ -135,14 +135,14 @@ When path **C**:
 1. **`about.md`** — set `owner_decisions_pending: true` if scheduling judgment is open.
 2. **`todo.md`** — add or update a row:
    - **Task:** `Review scheduling — <thread subject or counterparty>` (link thread)
-   - **Owner:** Dan (not `agent`)
+   - **Owner:** the owner (not `agent`)
    - **Waiting on:** owner review at morning check-in / jChat
    - **Blocker:** optional one-line reason (e.g. "booking may already exist")
 3. **`journal_YYYY-MM-DD.md`** — section **`## Scheduling — owner review needed`** with:
    - What the latest mail said (one sentence)
    - Why you did **not** spawn `ea-scheduling` or send mail
    - What you checked (e.g. calendar list) and what was unclear
-   - Suggested owner actions (confirm booked / ask Patrick to schedule / ignore)
+   - Suggested owner actions (confirm booked / ask the companion to schedule / ignore)
 4. **`kanban_complete`** metadata: `"scheduling_path": "owner_review"`, `"scheduling_deferred": true`
 
 Do **not** call `google_calendar_find_free_slots` on path C — at most one targeted `google_calendar_list_events` for the relevant date range if you need to mention what you saw in the journal.
@@ -155,7 +155,7 @@ Scheduling **confirmations** (owner or counterparty: "booked", "confirmed", "you
 2. **`google_calendar_list_events`** for the cited date or next ~7 days — look for a matching event (title/participant/time). **Do not** call `find_free_slots` once a matching event exists.
 3. File project docs; journal that scheduling is **closed**; complete ingress. **No** `scheduling_create_meeting_task`.
 
-> **Pitfall — stale Nylas scheduling confirmations**: A stub where Dan confirms a prior Patrick-initiated thread ("I can do that time" / "Let's put it on the calendar") is path **B**, not **A**. If calendar match is unclear, use path **C** instead of guessing.
+> **Pitfall — stale Nylas scheduling confirmations**: A stub where the owner confirms a prior the companion-initiated thread ("I can do that time" / "Let's put it on the calendar") is path **B**, not **A**. If calendar match is unclear, use path **C** instead of guessing.
 
 ## Triage drain (legacy — cron no longer batch-drains)
 
@@ -181,9 +181,9 @@ When promoting from `Projects/other/`, move scheduling meeting context with the 
 
 Not all stubs are equal. Classify each one to pick the right project and treatment.
 
-### Owner self-sent notes (Dan's note-to-self cadence)
+### Owner self-sent notes (owner's note-to-self cadence)
 
-Dan often sends fragmentary notes to his own `db@project-aeon.com` address — reminders, product ideas, isolated to-dos, and project-scoping thoughts. These are different from all other inbound mail:
+the owner often sends fragmentary notes to his own `owner work email` address — reminders, product ideas, isolated to-dos, and project-scoping thoughts. These are different from all other inbound mail:
 
 | Signal | What it is | Treatment |
 |--------|-----------|-----------|
@@ -192,21 +192,21 @@ Dan often sends fragmentary notes to his own `db@project-aeon.com` address — r
 | Sender = owner, contains multi-person action items ("Next steps" email to John) | Project rollout thread | Create or update existing project (e.g. `joshu-product-development`) |
 | Sender = owner, subject is blank or obvious self-note | Catch-all | Read body, triage by content — don't skip just because there's no subject |
 
-**Technique**: These notes are ingested into gbrain via the mail connector, so before raw Gmail searching, run a gbrain query with terms like `"note to file" OR "idea to jot down" OR "top things to sort" OR from:db@project-aeon.com` over recent date range. gbrain's compiled truths often already contain the categorized version. Fall back to Gmail search only when gbrain misses something.
+**Technique**: These notes are ingested into gbrain via the mail connector, so before raw Gmail searching, run a gbrain query with terms like `"note to file" OR "idea to jot down" OR "top things to sort" OR from:owner work email` over recent date range. gbrain's compiled truths often already contain the categorized version. Fall back to Gmail search only when gbrain misses something.
 
 ### Dan-as-sender: replies to existing threads (not notes)
 
-Dan's Gmail produces SENT-labeled stubs when he replies in an ongoing thread — this is different from a note-to-self. Similarly, Nylas can produce stubs where Dan is the sender replying to an ongoing scheduling or project thread (the Nylas mirror catches Dan's outgoing reply to an external party). The stub is a **signal that the thread moved**, not a new item to process:
+owner's Gmail produces SENT-labeled stubs when he replies in an ongoing thread — this is different from a note-to-self. Similarly, Nylas can produce stubs where the owner is the sender replying to an ongoing scheduling or project thread (the Nylas mirror catches owner's outgoing reply to an external party). The stub is a **signal that the thread moved**, not a new item to process:
 
 | Signal | What it is | Treatment |
 |--------|-----------|-----------|
-| Sender = Dan, thread has 3+ prior messages, label = SENT (Gmail) OR from=Dan, thread has Patrick+external messages (Nylas) | Dan replied in an existing conversation | Read the thread body to see what Dan said. Update the project's tracking for that thread (note the reply in the journal, update Waiting on status). Do NOT create a new project or todo row — the thread is already tracked. |
-| Sender = Dan, thread has external participants, labels/location indicate it's a reply | Dan sent a follow-up to a contact | Same as above. The reply is part of an existing workflow, not a new initiative. |
-| Sender = Dan, thread body shows Dan asked someone a question or made a request | Dan pushed the thread forward | Update the todo row's Waiting on column with the new status (now waiting on the other party). |
+| Sender = Dan, thread has 3+ prior messages, label = SENT (Gmail) OR from=Dan, thread has the companion+external messages (Nylas) | the owner replied in an existing conversation | Read the thread body to see what the owner said. Update the project's tracking for that thread (note the reply in the journal, update Waiting on status). Do NOT create a new project or todo row — the thread is already tracked. |
+| Sender = Dan, thread has external participants, labels/location indicate it's a reply | the owner sent a follow-up to a contact | Same as above. The reply is part of an existing workflow, not a new initiative. |
+| Sender = Dan, thread body shows the owner asked someone a question or made a request | the owner pushed the thread forward | Update the todo row's Waiting on column with the new status (now waiting on the other party). |
 
-**Why this matters**: These stubs are mirror artifacts of Dan's outbound activity, not inbound requests. Classifying them as new work leads to duplicate todo rows and stale project tracking. The correct response is "Dan did something in this thread — update the thread's status in the project, then close the stub."
+**Why this matters**: These stubs are mirror artifacts of owner's outbound activity, not inbound requests. Classifying them as new work leads to duplicate todo rows and stale project tracking. The correct response is "the owner did something in this thread — update the thread's status in the project, then close the stub."
 
-**Pitfall — long threads**: Some threads accumulate the full email history (especially older threads forwarded or replied to repeatedly). A thread can be 1000-3000+ lines. When reading a thread where Dan is the sender and the thread has 10+ messages, use `grep` to find the latest message date first, then `read_file` with offset to get only the most recent 1-2 messages. You don't need to read the full history — the stub was created because of the latest message.
+**Pitfall — long threads**: Some threads accumulate the full email history (especially older threads forwarded or replied to repeatedly). A thread can be 1000-3000+ lines. When reading a thread where the owner is the sender and the thread has 10+ messages, use `grep` to find the latest message date first, then `read_file` with offset to get only the most recent 1-2 messages. You don't need to read the full history — the stub was created because of the latest message.
 
 **Classification bucket for new notes**:
 1. **Larger projects/strategic** — 2+ related threads, multi-step work, product/infra decisions → `joshu-product-development` (or analogous named project)
@@ -216,9 +216,9 @@ Dan's Gmail produces SENT-labeled stubs when he replies in an ongoing thread —
 
 After categorizing, update the project's `todo.md` (add/refresh task rows + Waiting on columns) and `about.md` (add to Active threads list). Mark owner-sent stubs as done when processed.
 
-### In-chat idea capture (Dan riffing in conversation)
+### In-chat idea capture (the owner riffing in conversation)
 
-Dan often uses jChat (or voice) to dump ideas, follow-ups, and product thoughts in real-time — the conversational equivalent of "Another note to file." These are **not mail stubs**.
+the owner often uses jChat (or voice) to dump ideas, follow-ups, and product thoughts in real-time — the conversational equivalent of "Another note to file." These are **not mail stubs**.
 
 **Pattern signals:**
 - Owner says "add to my list of follow-ups" or "jot this down"
@@ -239,7 +239,7 @@ Dan often uses jChat (or voice) to dump ideas, follow-ups, and product thoughts 
 
 ### Deduplication across mailboxes (owner Gmail + agent Nylas)
 
-The same message often arrives as **both** a Gmail stub (from owner's Gmail — Dan sent to himself) and a Nylas stub (from `patrick@joshu.me` inbox — Dan sent to the agent). Match on:
+The same message often arrives as **both** a Gmail stub (from owner's Gmail — the owner sent to himself) and a Nylas stub (from `agent mailbox` inbox — the owner sent to the agent). Match on:
 - **Subject + received_at timestamp** (within seconds), or
 - **identical thread body content**
 
@@ -249,17 +249,17 @@ When you detect a duplicate pair:
 3. Note the dedup in the journal entry for the project.
 
 Common patterns:
-- Dan sends an email to himself (Gmail SENT) AND also sends to patrick@joshu.me via Nylas → same content, process once
-- Dan forwards an external message to himself AND Patrick receives it via Nylas → process from Nylas copy (has full context)
+- the owner sends an email to himself (Gmail SENT) AND also sends to agent mailbox via Nylas → same content, process once
+- the owner forwards an external message to himself AND the companion receives it via Nylas → process from Nylas copy (has full context)
 
 ### Bulk / mass-send deduplication (newsletters, investor updates, broadcasts)
 
-When Dan sends the **same content** to multiple recipients (investor update, launch announcement, mass blast), expect **N stubs for N recipients** — both Gmail self-copies and Nylas sends. These are NOT truly independent threads.
+When the owner sends the **same content** to multiple recipients (investor update, launch announcement, mass blast), expect **N stubs for N recipients** — both Gmail self-copies and Nylas sends. These are NOT truly independent threads.
 
 **Detection signals:**
 - Same subject line across 3+ stubs arriving within minutes
 - Nearly identical thread body content (same newsletter text)
-- Gmail copies labeled SENT (Dan to self) + Nylas copies (to specific recipients)
+- Gmail copies labeled SENT (the owner to self) + Nylas copies (to specific recipients)
 
 **Treatment:**
 1. Read **one** representative thread body (typically the Gmail sent-to-self copy or the first Nylas copy — they're identical).
@@ -368,7 +368,7 @@ Owner preference: **strategic product thinking** (ideas, concepts, design direct
 
 ## On-demand situation report / agenda review
 
-When Dan asks "what's on the agenda", "give me the rundown", "what's the big picture this week", or similar, **this is an EA function** — not triage, but a live multi-source pull to build a comprehensive picture. The agenda review is the starting gate for deciding which of the open loops to act on.
+When the owner asks "what's on the agenda", "give me the rundown", "what's the big picture this week", or similar, **this is an EA function** — not triage, but a live multi-source pull to build a comprehensive picture. The agenda review is the starting gate for deciding which of the open loops to act on.
 
 ### Meeting follow-up in jChat (required skill load)
 
@@ -411,9 +411,9 @@ WHAT I'D PRIORITIZE
 
 ### "Answer your / my inbound mail" trigger
 
-When Dan says "let's answer your inbound mail", "let's answer my mail", "capture all work streams", "make sure everything's accounted for", or similar:
+When the owner says "let's answer your inbound mail", "let's answer my mail", "capture all work streams", "make sure everything's accounted for", or similar:
 
-**Goal:** Produce a comprehensive, categorized survey of everything in the agent's (Patrick's) inbox, distinguishing live action items from historical noise.
+**Goal:** Produce a comprehensive, categorized survey of everything in the agent's (the companion's) inbox, distinguishing live action items from historical noise.
 
 #### Method: Systematic inbox audit
 
@@ -424,7 +424,7 @@ When Dan says "let's answer your inbound mail", "let's answer my mail", "capture
 3. **Bulk-scan to build a roster** — Use a code block or `execute_code` to iterate over the thread files efficiently. Extract from each: thread_id, from, subject, date, latest_message_timestamp, unread flag, and a quick check for OOO/bounce markers. Sort by recency. This avoids 28 sequential `read_file` calls.
 
 4. **Read actionable ones fully** — From the roster, identify threads that are:
-   - **Incoming from real people** (not `patrick@joshu.me` sends, not MAILER-DAEMON, not Dan's already-filed notes)
+   - **Incoming from real people** (not `agent mailbox` sends, not MAILER-DAEMON, not owner's already-filed notes)
    - **Recent** (within the last 1-3 days unless it's clearly unresolved)
    - Read the full body of each to understand the ask.
 
@@ -432,13 +432,13 @@ When Dan says "let's answer your inbound mail", "let's answer my mail", "capture
 
    | Bucket | Examples | Treatment |
    |--------|----------|-----------|
-   | **Needs action** | Investor replied asking to schedule; waitlist user lost signup code | Handle or create kanban card. Present to Dan with next-step recommendation. |
+   | **Needs action** | Investor replied asking to schedule; waitlist user lost signup code | Handle or create kanban card. Present to the owner with next-step recommendation. |
    | **Already handled / waiting on reply** | You already replied, awaiting their response | Note the thread is in-flight. Create kanban card if it needs durable tracking. |
    | **Historical / already past** | Oil change from Jun 8, hair appointment from Jun 7, old scheduling requests | Acknowledge as done. No action. |
    | **Delivery failure / bounce** | MAILER-DAEMON, Nylas delivery failed | Note which recipient bounced. Group under the parent broadcast's journal entry. |
    | **OOO auto-reply** | Out-of-office autoreplies | Note return date if given. Add to project journal as related notification. |
-   | **Owner notes (already filed)** | Dan's "Another note to file", "Next steps", etc. | Already categorized in previous session. No duplicate work. |
-   | **Own outbound / system** | patrick@joshu.me sent messages, morning briefs, reminders | Skip — they're artifacts of your own activity, not new work. |
+   | **Owner notes (already filed)** | owner's "Another note to file", "Next steps", etc. | Already categorized in previous session. No duplicate work. |
+   | **Own outbound / system** | agent mailbox sent messages, morning briefs, reminders | Skip — they're artifacts of your own activity, not new work. |
 
 6. **Present the summary** — Organize into clear sections:
    ```
@@ -457,12 +457,12 @@ When Dan says "let's answer your inbound mail", "let's answer my mail", "capture
 
 7. **For each "needs action" item**, either:
    - Handle it immediately (reply to the thread, schedule the call, etc.)
-   - Or create a kanban card to track it and tell Dan what you've done
+   - Or create a kanban card to track it and tell the owner what you've done
 
 #### Deduplication notes
 
 - **Your own sent messages** carry `unread: true` in the Nylas mirror. Skip them — they're not new mail.
-- **Dan's note-to-self emails** (`db@project-aeon.com → patrick@joshu.me`) that were already filed in a previous session don't need re-processing. The session where they were categorized is in session history — trust that it was handled.
+- **owner's note-to-self emails** (`owner work email → agent mailbox`) that were already filed in a previous session don't need re-processing. The session where they were categorized is in session history — trust that it was handled.
 - **Multiple copies of the same thread** (e.g. Gmail + Nylas mirrors of the same conversation) — process the Nylas copy (agent inbox), skip the Gmail one for inbox audit purposes. Triage handles the Gmail side.
 
 #### Example output shape
@@ -486,7 +486,7 @@ When Dan says "let's answer your inbound mail", "let's answer my mail", "capture
 
 ### Resolved-by-owner investor replies
 
-Investor broadcast replies where Dan already handled the reply himself (asked a question, made a closing remark) and the investor replied back with a natural resolution do NOT need a new todo row. Note them in the project journal under a single "Investor newsletter follow-up" heading and close the stub. The existing `references/investor-response-classification.md` covers the classification table — add "Dan already replied" as a terminal state: file and note only.
+Investor broadcast replies where the owner already handled the reply himself (asked a question, made a closing remark) and the investor replied back with a natural resolution do NOT need a new todo row. Note them in the project journal under a single "Investor newsletter follow-up" heading and close the stub. The existing `references/investor-response-classification.md` covers the classification table — add "the owner already replied" as a terminal state: file and note only.
 
 ## Hermes skill-backed crons
 

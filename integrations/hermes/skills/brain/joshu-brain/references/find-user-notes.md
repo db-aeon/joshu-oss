@@ -1,6 +1,6 @@
 # Finding user notes & reminders sent via email
 
-The user often captures thoughts by emailing themselves (to their `db@project-aeon.com` inbox). When they ask "remember those notes I sent" or "organize the things I jotted down", use this pattern.
+The user often captures thoughts by emailing themselves (to their `owner work email` inbox). When they ask "remember those notes I sent" or "organize the things I jotted down", use this pattern.
 
 ## Pattern: gbrain-first, Gmail-second
 
@@ -10,8 +10,8 @@ The user often captures thoughts by emailing themselves (to their `db@project-ae
    → Source slugs like: joshus-files/connectors/mail/gmail/db_at_project-aeon_com/threads/<thread_id>
 
 2. For anything gbrain missed, use Gmail API:
-   COMPOSIO_SEARCH_TOOLS → GMAIL_FETCH_EMAILS(from:db@project-aeon.com, after:YYYY/MM/DD)
-   → Dan's "notes to self" come FROM db@project-aeon.com
+   COMPOSIO_SEARCH_TOOLS → GMAIL_FETCH_EMAILS(from:owner work email, after:YYYY/MM/DD)
+   → owner's "notes to self" come FROM owner work email
 ```
 
 ## Why gbrain first
@@ -26,5 +26,5 @@ The user often captures thoughts by emailing themselves (to their `db@project-ae
 Self-sent notes tend to be:
 - Short, bullet-point style
 - Subject: "Another note to file", "Another idea to jot down", "Top things to sort out", or blank
-- Sent TO the user's own principal email (`db@project-aeon.com`)
+- Sent TO the user's own principal email (`owner work email`)
 - Mix of reminders, to-dos, and larger project ideas in a single email

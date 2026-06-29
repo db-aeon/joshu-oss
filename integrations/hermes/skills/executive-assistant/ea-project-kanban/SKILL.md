@@ -15,7 +15,7 @@ Kanban gives you durable state (`ready` / `running` / `blocked` / `done`), crash
 
 `Projects/<slug>/` holds a **brief summary** and file pointers — not a mirror of every card.
 
-Layout: `docs/Joshu-SOP/ea-for-joshu.md` · `${JOSHU_FILES_ROOT}/FILING.md`
+Layout: `docs/executive-assistant.md` · `${JOSHU_FILES_ROOT}/FILING.md`
 
 ## When to use Kanban (prefer this skill)
 

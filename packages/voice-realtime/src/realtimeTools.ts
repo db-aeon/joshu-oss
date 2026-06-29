@@ -53,10 +53,13 @@ export function normalizeThinkToolName(name: string): string {
 }
 
 /** Gemini Live API tool declarations (function calling). */
-export function geminiToolDefinitions(): Array<{ functionDeclarations: Array<Record<string, unknown>> }> {
+export function geminiToolDefinitions(
+  extraTools: Array<Record<string, unknown>> = [],
+): Array<{ functionDeclarations: Array<Record<string, unknown>> }> {
+  const allTools = [...REALTIME_TOOL_DEFINITIONS, ...extraTools];
   return [
     {
-      functionDeclarations: REALTIME_TOOL_DEFINITIONS.map((tool) => ({
+      functionDeclarations: allTools.map((tool) => ({
         name: tool.name,
         description: tool.description,
         parameters: tool.parameters,

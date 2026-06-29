@@ -53,7 +53,7 @@ const LAST_STEP = STEP_TITLES.length - 1;
 
 const emptyDraft = (): Draft => ({
   ownerName: "Dan",
-  assistantName: "Patrick",
+  assistantName: "Companion",
   bigPicturePriorities: [],
   bigPictureNotes: "",
   communicationChannels: [],

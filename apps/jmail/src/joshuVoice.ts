@@ -21,10 +21,22 @@ export const fetchVoiceGatewayStatus = fetchVoiceStatus;
 export async function startJoshuVoiceSession(params: {
   voiceApiBase: string;
   sessionId: string;
+  surface?: {
+    appId: string;
+    voiceCommands?: Array<{
+      name: string;
+      phrases: string[];
+      action: string;
+      params?: string[];
+      description?: string;
+    }>;
+  };
   onUserTranscript?: (text: string, partial: boolean) => void;
   onAssistantDelta?: (delta: string) => void;
   onAssistantDone?: (text: string) => void;
   onState?: (state: string) => void;
+  onDesktopAction?: (action: { kind: "module" | "file"; target: string }) => void;
+  onAppAction?: (event: { appId: string; action: string; args?: Record<string, unknown> }) => void;
   onBargeIn?: () => void;
   onThinkJobStart?: () => void;
   /** @deprecated Use onThinkJobStart */
@@ -43,9 +55,12 @@ export async function startJoshuVoiceSession(params: {
     wsUrl: json.wsUrl,
     sessionId: `web:${params.sessionId}`,
     chatSessionId: params.sessionId,
+    surface: params.surface,
     onUserTranscript: params.onUserTranscript,
     onAssistantDelta: params.onAssistantDelta,
     onAssistantDone: params.onAssistantDone,
+    onDesktopAction: params.onDesktopAction,
+    onAppAction: params.onAppAction,
     onThinkJobStart: params.onThinkJobStart ?? params.onHermesJobStart,
     onState: params.onState,
     onBargeIn: params.onBargeIn,

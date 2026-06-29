@@ -11,6 +11,7 @@ metadata:
 
 > **Platform mechanics:** Apps use [`@joshu/platform-data`](../docs/platform-data.md) (`mail.search`, `mail.sync`, `connections.status`).
 > Agents use MCP tools below or `POST /joshu/api/apps/jmail/invoke` for headless actions. This skill covers **workflow and escalation** — not REST path details.
+> When the **jMail GUI** is open, load **`jmail-gui`** first — list/read visible inbox from GUI snapshot; use **`joshu-mail`** only when mail is not in the loaded list or user wants deep/live search.
 
 General-purpose mail **read/search** on the Joshu box. Not triage (`ea-playbook`), not meeting scheduling (`ea-scheduling`), not multi-step campaigns (`ea-project-kanban`).
 
@@ -20,7 +21,7 @@ General-purpose mail **read/search** on the Joshu box. Not triage (`ea-playbook`
 
 - **Find / search / recall** mail by subject, sender, topic, or date
 - Read a thread, list signups, or “what did X email about Y?”
-- Search a **specific inbox** (e.g. `db@project-aeon.com` vs agent Nylas)
+- Search a **specific inbox** (e.g. `owner work email` vs agent Nylas)
 - Confirm whether a notification exists when mirrors may be stale or unsynced
 
 Also load before **Composio live Gmail** — even if you already ran gbrain.
@@ -81,7 +82,7 @@ Hermes tool names: `mcp_composio_COMPOSIO_*`.
 ### Multi-Gmail (critical)
 
 1. **`connectors_status`** → `gmail.accounts[]` → `email`, `accountKey`, `connectedAccountId`  
-2. Pick the account the user named (e.g. `db@project-aeon.com` → `db_at_project_aeon_com`)  
+2. Pick the account the user named (e.g. `owner work email` → `db_at_project_aeon_com`)  
 3. **`GMAIL_FETCH_EMAILS`:** always **`user_id: "me"`** — **never** an email address (delegation denied)  
 4. Put **`connected_account_id: ca_…`** in `SEARCH_TOOLS` `known_fields`; scope OAuth to that account per Composio plan  
 5. Do **not** assume `user_id: me` hits principal mail if the Composio session is bound to another account

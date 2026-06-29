@@ -1,0 +1,24 @@
+name: fleet-sync-check
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Ensure oss remote
+        run: |
+          git remote add oss https://github.com/db-aeon/joshu-oss.git 2>/dev/null || true
+          git fetch oss main || echo "WARN: could not fetch oss/main — skip behind check"
+      - run: bash scripts/sync-from-oss.sh --check
+        continue-on-error: true

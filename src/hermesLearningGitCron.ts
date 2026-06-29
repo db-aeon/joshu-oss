@@ -1,7 +1,7 @@
 /**
  * Hourly Hermes cron job: commit+push learning state to private GitHub.
  */
-import { copyFile, mkdir } from "node:fs/promises";
+import { copyFile, existsSync, mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
 
@@ -14,9 +14,19 @@ function hermesHome(): string {
   return process.env.HERMES_HOME?.trim() || path.join(homedir(), ".hermes");
 }
 
+function resolveLearningGitScriptSource(): string | null {
+  const root = process.cwd();
+  const fleet = path.join(root, "proprietary/scripts", LEARNING_GIT_CRON_SCRIPT_NAME);
+  if (existsSync(fleet)) return fleet;
+  const legacy = path.join(root, "scripts", LEARNING_GIT_CRON_SCRIPT_NAME);
+  if (existsSync(legacy)) return legacy;
+  return null;
+}
+
 /** Hermes no_agent crons require script paths relative to ~/.hermes/scripts/. */
-async function installLearningGitCronScript(): Promise<string> {
-  const source = path.join(process.cwd(), "scripts", LEARNING_GIT_CRON_SCRIPT_NAME);
+async function installLearningGitCronScript(): Promise<string | null> {
+  const source = resolveLearningGitScriptSource();
+  if (!source) return null;
   const targetDir = path.join(hermesHome(), "scripts");
   const target = path.join(targetDir, LEARNING_GIT_CRON_SCRIPT_NAME);
   await mkdir(targetDir, { recursive: true });
@@ -39,6 +49,7 @@ export async function syncHermesLearningGitCron(): Promise<"created" | "updated"
   }
 
   const script = await installLearningGitCronScript();
+  if (!script) return "skipped";
   const schedule = "0 * * * *";
   const payload = {
     schedule,

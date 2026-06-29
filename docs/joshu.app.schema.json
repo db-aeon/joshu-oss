@@ -83,6 +83,31 @@
           "description": "Platform skills to load (e.g. joshu-mail, joshu-brain)"
         },
         "headless": { "type": "boolean", "description": "No desktop window required for actions" },
+        "guiActions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name"],
+            "properties": {
+              "name": { "type": "string" },
+              "description": { "type": "string" }
+            }
+          }
+        },
+        "voiceCommands": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "phrases", "action"],
+            "properties": {
+              "name": { "type": "string" },
+              "phrases": { "type": "array", "items": { "type": "string" } },
+              "action": { "type": "string" },
+              "params": { "type": "array", "items": { "type": "string" } },
+              "description": { "type": "string" }
+            }
+          }
+        },
         "intents": {
           "type": "array",
           "items": {

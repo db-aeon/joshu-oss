@@ -45,6 +45,21 @@ See [excalidraw-sandbox.md](excalidraw-sandbox.md).
 
 ---
 
+## CopilotKit + AG-UI (app agent SDK)
+
+| | |
+|--|--|
+| **Upstream** | [CopilotKit/CopilotKit](https://github.com/CopilotKit/CopilotKit) |
+| **License** | MIT |
+| **In this repo** | `packages/app-agent` (optional app-layer dependency) |
+| **Protocol** | [ag-ui-protocol/ag-ui](https://github.com/ag-ui-protocol/ag-ui) (MIT) |
+
+Joshu does **not** ship Copilot Cloud or Enterprise on the box. Apps use client-side `HttpAgent` → `POST /joshu/api/ag-ui/run`.
+
+See [app-agent.md](app-agent.md).
+
+---
+
 ## npm dependencies
 
 Runtime and build dependencies are listed in `package.json` with their

@@ -25,6 +25,8 @@ export type VoiceS2sConfig = {
   injectPresentation?: import("./speechPresentation.js").InjectPresentation;
   /** Browser: higher threshold reduces noise / echo false turns. Phone uses provider defaults. */
   turnDetection?: RealtimeTurnDetection;
+  /** App-specific fast tools merged into Realtime session (manifest voiceCommands). */
+  extraTools?: Array<Record<string, unknown>>;
 };
 
 export type FunctionCallPayload = {

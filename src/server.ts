@@ -41,6 +41,7 @@ import {
 import { registerBrainRoutes, probeGbrainHealth } from "./brainApi.js";
 import { registerFilesRoutes } from "./filesApi.js";
 import { registerDesktopActionRoutes, drainDesktopActionsForChat, desktopActionFromHermesToolRaw } from "./desktopActionApi.js";
+import { registerAppGuiActionRoutes } from "./appGuiActionApi.js";
 import { registerNylasRoutes } from "./nylas/routes.js";
 import { registerComposioRoutes } from "./composioRoutes.js";
 import { registerConnectorRoutes } from "./connectors/routes.js";
@@ -430,6 +431,7 @@ function buildAppRouter(): {
   router.use(express.json({ limit: "12mb" }));
 
   registerDesktopActionRoutes(router);
+  registerAppGuiActionRoutes(router, PROJECT_ROOT);
 
   registerBoxStateRoutes(router, {
     onHardResetComplete: () => runner.resyncHermesAfterBoxHardReset(),

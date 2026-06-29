@@ -1,7 +1,7 @@
 # Joshu per-customer VPS stack. Requires prebuilt image: see deploy/README.md
 # Usage:
 #   Standalone (no control plane): docker compose -f deploy/docker-compose.yml up -d
-#   Fleet (+ instance agent):       docker compose --profile fleet -f deploy/docker-compose.yml up -d
+# Fleet (+ instance agent):       docker compose -f deploy/docker-compose.yml -f proprietary/deploy/docker-compose.fleet.yml --profile fleet up -d
 
 services:
   caddy:
@@ -60,9 +60,6 @@ services:
       - ../scripts/hermes-kanban-bridge.py:/opt/joshu/scripts/hermes-kanban-bridge.py:ro
       - ../scripts/bootstrap-hermes-learning-skills.sh:/opt/joshu/scripts/bootstrap-hermes-learning-skills.sh:ro
       - ../scripts/merge-hermes-factory-skill.mjs:/opt/joshu/scripts/merge-hermes-factory-skill.mjs:ro
-      - ../scripts/hermes-learning-github-sync.sh:/opt/joshu/scripts/hermes-learning-github-sync.sh:ro
-      - ../scripts/apply-hermes-skill-evolution-patch.sh:/opt/joshu/scripts/apply-hermes-skill-evolution-patch.sh:ro
-      - ../scripts/hermes-skill-evolution.patch:/opt/joshu/scripts/hermes-skill-evolution.patch:ro
       - ../scripts/render-time-block-excalidraw.mjs:/opt/joshu/scripts/render-time-block-excalidraw.mjs:ro
       - ../scripts/gather-time-block-input.mjs:/opt/joshu/scripts/gather-time-block-input.mjs:ro
       # Product skills are seeded to $HERMES_HOME/skills/joshu/ (writable learning loop).

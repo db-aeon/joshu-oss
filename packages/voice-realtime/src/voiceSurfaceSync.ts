@@ -13,7 +13,8 @@ export type VoiceSurfaceWireEvent =
   | { event: "assistant_delta"; text: string }
   | { event: "assistant_done"; text: string }
   | { event: "think_job_start" }
-  | { event: "desktop_action"; action: DesktopSurfaceAction };
+  | { event: "desktop_action"; action: DesktopSurfaceAction }
+  | { event: "app_action"; appId: string; action: string; args?: Record<string, unknown> };
 
 export type VoiceSurfaceSessionKind = "chat" | "desktop";
 
@@ -31,6 +32,14 @@ export function surfaceBrainJobStart(): VoiceSurfaceWireEvent {
 
 export function surfaceDesktopAction(action: DesktopSurfaceAction): VoiceSurfaceWireEvent {
   return { event: "desktop_action", action };
+}
+
+export function surfaceAppAction(
+  appId: string,
+  action: string,
+  args?: Record<string, unknown>,
+): VoiceSurfaceWireEvent {
+  return { event: "app_action", appId, action, args };
 }
 
 export function responseDoneRequestedThink(functionCalls: unknown): boolean {

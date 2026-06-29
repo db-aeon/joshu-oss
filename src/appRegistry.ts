@@ -23,6 +23,14 @@ export type JoshuAppManifest = {
     usesSkills?: string[];
     headless?: boolean;
     intents?: Array<{ phrase: string; action: string }>;
+    guiActions?: Array<{ name: string; description?: string }>;
+    voiceCommands?: Array<{
+      name: string;
+      phrases: string[];
+      action: string;
+      params?: string[];
+      description?: string;
+    }>;
     actions?: Array<{
       name: string;
       description?: string;

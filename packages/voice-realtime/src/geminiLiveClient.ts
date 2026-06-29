@@ -117,7 +117,7 @@ export class GeminiLiveClient implements VoiceS2sClient {
           systemInstruction: {
             parts: [{ text: this.systemPrompt }],
           },
-          tools: geminiToolDefinitions(),
+          tools: geminiToolDefinitions(this.config.extraTools ?? []),
           realtimeInputConfig: {
             automaticActivityDetection: this.vadConfig(),
           },

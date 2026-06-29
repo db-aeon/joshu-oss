@@ -102,7 +102,7 @@ function buildMailIngressTaskBody(
     ...(auth.agent_authorized
       ? []
       : [
-          "NOT authorized to act: Patrick was not copied on this message and owner did not delegate. File project docs only — no scheduling child, no outbound mail.",
+          "NOT authorized to act: the companion was not copied on this message and owner did not delegate. File project docs only — no scheduling child, no outbound mail.",
         ]),
     ...(schedulingEligible
       ? [

@@ -368,8 +368,15 @@ export type HermesChatContentPart =
   | { type: "image_url"; image_url: { url: string } };
 
 export interface HermesChatMessage {
-  role: "system" | "user" | "assistant";
+  role: "system" | "user" | "assistant" | "tool";
   content: string | HermesChatContentPart[];
+  /** Required for role=tool result messages in multi-turn frontend tool loops. */
+  tool_call_id?: string;
+  tool_calls?: Array<{
+    id: string;
+    type: "function";
+    function: { name: string; arguments: string };
+  }>;
 }
 
 export interface HermesChatToolEvent {
@@ -383,9 +390,26 @@ export interface HermesChatToolEvent {
 
 export interface StreamHermesChatParams {
   sessionId: string;
+  /** Override Hermes session key prefix (default joshu-hermes-chat). */
+  sessionKey?: string;
   messages: HermesChatMessage[];
   model?: string;
   signal?: AbortSignal;
+  /** CopilotKit frontend tools — passed to the LLM; executed client-side only. */
+  clientTools?: Array<{
+    type: "function";
+    function: { name: string; description: string; parameters: Record<string, unknown> };
+  }>;
+  /** Names of client-side tools (skip Hermes MCP progress events for these). */
+  clientToolNames?: Set<string>;
+}
+
+export interface HermesClientToolCallEvent {
+  toolCallId: string;
+  toolCallName: string;
+  /** Incremental JSON args chunk (phase args) or full args (phase end). */
+  argumentsDelta?: string;
+  phase: "start" | "args" | "end";
 }
 
 export interface StreamHermesChatCallbacks {
@@ -393,6 +417,8 @@ export interface StreamHermesChatCallbacks {
   onDelta?: (text: string) => void;
   onReasoning?: (text: string) => void;
   onTool?: (event: HermesChatToolEvent) => void;
+  /** OpenAI stream tool_calls for CopilotKit frontend tools (not executed server-side). */
+  onClientToolCall?: (event: HermesClientToolCallEvent) => void;
 }
 
 export type BrowserSyncMessageLevel = "light" | "full";
@@ -647,7 +673,8 @@ export class HermesApiRunner extends EventEmitter {
 
       if (params.sessionId) {
         headers["X-Hermes-Session-Id"] = params.sessionId;
-        headers["X-Hermes-Session-Key"] = `joshu-hermes-chat:${params.sessionId}`;
+        headers["X-Hermes-Session-Key"] =
+          params.sessionKey ?? `joshu-hermes-chat:${params.sessionId}`;
       }
 
       const res = await fetch(`${this.opts.apiBaseUrl.replace(/\/+$/, "")}/v1/chat/completions`, {
@@ -657,6 +684,7 @@ export class HermesApiRunner extends EventEmitter {
           model: params.model?.trim() || getJoshuHermesModel(),
           messages: params.messages,
           stream: true,
+          ...(params.clientTools?.length ? { tools: params.clientTools, tool_choice: "auto" } : {}),
         }),
         signal: controller.signal,
       });
@@ -671,7 +699,7 @@ export class HermesApiRunner extends EventEmitter {
         callbacks.onSession?.(responseSessionId);
       }
 
-      const finalText = await this.readChatCompletionStream(res.body, callbacks);
+      const finalText = await this.readChatCompletionStream(res.body, callbacks, params.clientToolNames);
       return { sessionId: responseSessionId, finalText };
     } finally {
       params.signal?.removeEventListener("abort", abort);
@@ -839,11 +867,33 @@ export class HermesApiRunner extends EventEmitter {
   private async readChatCompletionStream(
     body: ReadableStream<Uint8Array>,
     callbacks: StreamHermesChatCallbacks,
+    clientToolNames?: Set<string>,
   ): Promise<string> {
     const reader = body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
     let finalText = "";
+    const pendingToolCalls = new Map<
+      number,
+      { id: string; name: string; arguments: string; started: boolean; ended: boolean }
+    >();
+
+    const flushClientToolEnd = (pending: {
+      id: string;
+      name: string;
+      arguments: string;
+      started: boolean;
+      ended: boolean;
+    }): void => {
+      if (pending.ended || !pending.started) return;
+      pending.ended = true;
+      callbacks.onClientToolCall?.({
+        toolCallId: pending.id,
+        toolCallName: pending.name,
+        argumentsDelta: pending.arguments,
+        phase: "end",
+      });
+    };
 
     while (true) {
       const { done, value } = await reader.read();
@@ -860,7 +910,12 @@ export class HermesApiRunner extends EventEmitter {
         if (event.name === "hermes.tool.progress" || event.name === "claude.tool.progress") {
           const parsed = this.parseJson(event.data);
           if (parsed && typeof parsed === "object") {
-            callbacks.onTool?.(this.normalizeToolEvent(parsed as Record<string, unknown>));
+            const normalized = this.normalizeToolEvent(parsed as Record<string, unknown>);
+            const shortName = normalized.tool.replace(/^.*\./, "");
+            if (clientToolNames?.has(normalized.tool) || clientToolNames?.has(shortName)) {
+              continue;
+            }
+            callbacks.onTool?.(normalized);
           }
           continue;
         }
@@ -868,15 +923,23 @@ export class HermesApiRunner extends EventEmitter {
         const parsed = this.parseJson(event.data) as
           | {
               choices?: Array<{
+                finish_reason?: string | null;
                 delta?: {
                   content?: string | null;
                   reasoning?: string | null;
                   reasoning_content?: string | null;
+                  tool_calls?: Array<{
+                    index?: number;
+                    id?: string;
+                    type?: string;
+                    function?: { name?: string; arguments?: string };
+                  }>;
                 };
               }>;
             }
           | undefined;
-        const delta = parsed?.choices?.[0]?.delta;
+        const choice = parsed?.choices?.[0];
+        const delta = choice?.delta;
         const content = delta?.content || "";
         const reasoning = delta?.reasoning || delta?.reasoning_content || "";
         if (content) {
@@ -885,7 +948,60 @@ export class HermesApiRunner extends EventEmitter {
         } else if (reasoning) {
           callbacks.onReasoning?.(reasoning);
         }
+
+        if (delta?.tool_calls?.length) {
+          for (const tc of delta.tool_calls) {
+            const index = typeof tc.index === "number" ? tc.index : 0;
+            let pending = pendingToolCalls.get(index);
+            if (!pending) {
+              pending = {
+                id: tc.id ?? `call_${index}_${Date.now()}`,
+                name: tc.function?.name ?? "",
+                arguments: "",
+                started: false,
+                ended: false,
+              };
+              pendingToolCalls.set(index, pending);
+            }
+            if (tc.id) pending.id = tc.id;
+            if (tc.function?.name) pending.name = tc.function.name;
+            if (tc.function?.arguments) {
+              pending.arguments += tc.function.arguments;
+              if (!pending.started && pending.name) {
+                pending.started = true;
+                callbacks.onClientToolCall?.({
+                  toolCallId: pending.id,
+                  toolCallName: pending.name,
+                  phase: "start",
+                });
+              }
+              callbacks.onClientToolCall?.({
+                toolCallId: pending.id,
+                toolCallName: pending.name,
+                argumentsDelta: tc.function.arguments,
+                phase: "args",
+              });
+            } else if (!pending.started && pending.name && tc.id) {
+              pending.started = true;
+              callbacks.onClientToolCall?.({
+                toolCallId: pending.id,
+                toolCallName: pending.name,
+                phase: "start",
+              });
+            }
+          }
+        }
+
+        if (choice?.finish_reason === "tool_calls") {
+          for (const pending of pendingToolCalls.values()) {
+            flushClientToolEnd(pending);
+          }
+        }
       }
+    }
+
+    for (const pending of pendingToolCalls.values()) {
+      flushClientToolEnd(pending);
     }
 
     return finalText;
@@ -1283,6 +1399,21 @@ export class HermesApiRunner extends EventEmitter {
     }
     if (pluginNames.includes("joshu-desktop") && !toolsets.includes("joshu-desktop")) {
       toolsets.push("joshu-desktop");
+      changed = true;
+    }
+    {
+      const plugins = asRecord(config.plugins);
+      const enabled = asStringArray(plugins.enabled);
+      if (!enabled.includes("joshu-app-gui")) {
+        enabled.push("joshu-app-gui");
+        changed = true;
+        pluginsChanged = true;
+      }
+      plugins.enabled = enabled;
+      config.plugins = plugins;
+    }
+    if (!toolsets.includes("joshu-app-gui")) {
+      toolsets.push("joshu-app-gui");
       changed = true;
     }
 

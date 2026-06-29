@@ -2,7 +2,7 @@
 
 First-time setup for Joshu boxes with the **EA v2** layout (`Projects/`, `Triage/` stubs). Replaces the **`ea-discovery`** Hermes skill with a desktop **Welcome** wizard.
 
-Human SOP: [`docs/hermes-integration.md`](hermes-integration.md). Welcome seeds project folders from big-picture priorities and installs morning/evening/weekly Hermes crons (no midday).
+Human SOP: [`executive-assistant.md`](executive-assistant.md). Welcome seeds project folders from big-picture priorities and installs morning/evening/weekly Hermes crons (no midday).
 
 ## User flow
 
@@ -154,8 +154,8 @@ After UI or API changes: rebuild Welcome (`npm run build:welcome`) and restart J
 
 ## Related docs
 
-- [`docs/welcome-onboarding.md`](welcome-onboarding.md) — full EA operating model
-- [`docs/hermes-integration.md`](hermes-integration.md#project-kanban-multi-step--hitl-2026-06) — project Kanban for multi-step / HITL work (after Day-1 setup)
+- [`executive-assistant.md`](executive-assistant.md) — full EA operating model
+- [`executive-assistant.md`](executive-assistant.md#project-kanban-multi-step--hitl-2026-06) — project Kanban for multi-step / HITL work (after Day-1 setup)
 - [`docs/hermes-integration.md`](hermes-integration.md) — skills, workspace bootstrap
 - [`docs/box-state.md`](box-state.md) — factory reset vs personal state
 - [`docs/nylas-agent-mailbox.md`](nylas-agent-mailbox.md) — agent inbox provisioning

@@ -11,7 +11,7 @@ metadata:
 
 Bridges **yesterday → today**: read yesterday's time-block plan, draft **`Planning/daily-review-YYYY-MM-DD.md`** with checkboxes (source of truth for done/carryover), run an **interactive jChat session** when the owner is ready, then refresh **today's** linked Excalidraw via **`ea-time-block`**.
 
-**GTD / linking:** `docs/Joshu-SOP/gtd-workspace-linking.md` · **Time block:** `skill_view('ea-time-block')`
+**GTD / linking:** `docs/executive-assistant.md#gtd-workspace` · **Time block:** `skill_view('ea-time-block')`
 
 ## When to use
 

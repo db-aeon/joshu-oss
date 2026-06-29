@@ -13,6 +13,12 @@ import { runJoshuThink } from "./brainThink.js";
 import { resolveDesktopModule } from "./desktopModules.js";
 import { JOSHU_IDENTITY } from "./config.js";
 import { createVoiceS2sClient } from "./createVoiceS2sClient.js";
+import {
+  buildAppVoiceToolDefinitions,
+  mapAppVoiceToolArgs,
+  resolveAppVoiceTool,
+  type AppVoiceCommand,
+} from "./appVoiceTools.js";
 import { normalizeThinkToolName } from "./realtimeTools.js";
 import type { FunctionCallPayload, ResponseSpeechReason } from "./voiceS2sTypes.js";
 import type { VoiceS2sClient } from "./voiceS2sTypes.js";
@@ -23,6 +29,7 @@ import {
   surfaceAssistantDone,
   surfaceBrainJobStart,
   surfaceDesktopAction,
+  surfaceAppAction,
   type VoiceSurfaceWireEvent,
 } from "./voiceSurfaceSync.js";
 
@@ -86,13 +93,34 @@ export class BrowserRealtimeSession {
   private lastAssistantItem: string | null = null;
   private pcmOutAcc = Buffer.alloc(0);
   private t0 = performance.now();
+  private surfaceAppId = "";
+  private voiceCommands: AppVoiceCommand[] = [];
 
   constructor(private readonly ws: WebSocket) {}
 
-  handleStart(sessionId: string, chatSessionId: string): void {
+  handleRegisterSurface(appId: string, commands: AppVoiceCommand[]): void {
+    this.surfaceAppId = appId.trim();
+    this.voiceCommands = commands;
+    voiceLog(this.sessionId, "surface", `register app=${this.surfaceAppId} commands=${commands.length}`);
+  }
+
+  handleStart(
+    sessionId: string,
+    chatSessionId: string,
+    surface?: { appId?: string; voiceCommands?: AppVoiceCommand[] },
+  ): void {
     this.sessionId = sessionId;
     this.surfaceSessionId = chatSessionId || sessionId;
     this.t0 = performance.now();
+
+    if (surface?.appId) {
+      this.handleRegisterSurface(surface.appId, surface.voiceCommands ?? []);
+    }
+
+    const extraTools =
+      this.surfaceAppId && this.voiceCommands.length
+        ? buildAppVoiceToolDefinitions(this.surfaceAppId, this.voiceCommands)
+        : [];
 
     const provider = VOICE_S2S_PROVIDER;
     this.s2s = createVoiceS2sClient(
@@ -101,6 +129,7 @@ export class BrowserRealtimeSession {
         systemPrompt: WEB_SYSTEM_PROMPT,
         injectPresentation: "screen",
         turnDetection: BROWSER_VAD,
+        extraTools,
       },
       {
         sessionId: this.sessionId,
@@ -358,6 +387,20 @@ export class BrowserRealtimeSession {
         { triggerResponse: true },
       );
       return;
+    }
+
+    if (this.surfaceAppId && this.voiceCommands.length) {
+      const resolved = resolveAppVoiceTool(call.name, this.voiceCommands, this.surfaceAppId);
+      if (resolved) {
+        const actionArgs = mapAppVoiceToolArgs(resolved.cmd, args);
+        this.emitSurface(surfaceAppAction(this.surfaceAppId, resolved.action, actionArgs));
+        s2s.sendFunctionOutput(
+          call.callId,
+          JSON.stringify({ status: "ok", action: resolved.action, args: actionArgs }),
+          { triggerResponse: true },
+        );
+        return;
+      }
     }
 
     if (toolName !== "think") {

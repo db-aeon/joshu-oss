@@ -20,7 +20,8 @@
 | Gmail + mirror status | `platform.connections.status()`, `platform.mail.*` |
 | Mirror files | `joshu's files/connectors/mail/nylas/threads/`, `…/gmail/{account_key}/threads/` |
 | Headless actions | `POST /joshu/api/apps/jmail/invoke` — `connectorsStatus`, `syncMirror` |
-| Voice (optional) | Same Realtime S2S stack as jChat — see [`vps-sandbox/web-voice.md`](vps-sandbox/web-voice.md) |
+| Embedded agent chat | `@joshu/app-agent` — expandable panel, GUI frontend tools — see [Agent chat panel](#agent-chat-panel) |
+| Voice (optional) | Realtime S2S + manifest `voiceCommands` fast path — see [`app-agent.md`](app-agent.md) |
 
 ## Platform-data migration
 
@@ -70,9 +71,39 @@ Bundled into ArozOS by `scripts/dev-arozos.sh` and the VPS Docker image (`build:
 
 Cron refreshes mirrors (Nylas + Gmail every **10m**) when `JOSHU_CONNECTORS_CRON=true` (default).
 
+## Agent chat panel
+
+jMail is the **reference app** for [`@joshu/app-agent`](app-agent.md). To build the same in your app, follow the [**developer guide**](app-agent.md#developer-guide--add-an-agent-to-your-app) (8 steps: manifest → bridge → skill → verify).
+
+| Piece | Location |
+|-------|----------|
+| Provider + frontend tools | `apps/jmail/src/mailAgentBridge.tsx` |
+| Chat thread id | `apps/jmail/src/chatThreadId.ts` — `jmail:{mailbox}:chat:{rev}` |
+| Manifest (build-time) | `apps/jmail/src/mailAppManifest.ts` |
+| Bundled GUI skill | `arozos/subservice/jmail/skills/jmail-gui/SKILL.md` |
+| Server AG-UI + queue | `src/agUiAppContext.ts`, `src/agUiApi.ts`, `src/appGuiActionApi.ts` |
+| Hermes tool | `.hermes/plugins/joshu-app-gui/` — **`app_gui_action`** |
+
+**Behavior:**
+
+- Expandable chat rail (`JoshuAgentChatPanel`) uses a **chat thread id** `jmail:{mailbox}:chat:{rev}` (distinct from voice `jmail:{mailbox}`). Use **New chat** in the panel or bump `sessionStorage` key `jmail-agent-chat-rev` to reset Langfuse/Hermes history (`DELETE /joshu/api/ag-ui/session` runs automatically).
+- Hermes calls **`app_gui_action(appId="jmail", action=…)`** — not raw CopilotKit tools through chat/completions. AG-UI drains the queue and emits `CUSTOM app_action` + synthesized `TOOL_CALL` events; `@joshu/app-agent` handlers update `guiRef`.
+- **Readables** expose current pane, inbox, selection, search, compose draft preview.
+- **Frontend tools** mirror manifest `guiActions`: `openCompose`, `openThread`, `searchMail`, `switchInbox`, `startReply`, etc.
+- **Send rule:** the agent may open compose with a draft; the user always confirms send in the compose pane.
+- **Voice fast path:** phrases like “new email” / “search mail for …” hit `app_action` without a Hermes round-trip; complex work still uses `think` → Hermes + `joshu-mail`.
+- Chat may show **`app_gui_action` → Running** alongside **`openCompose` → Done** — the pane update is driven by the client tool row; see [app-agent.md — Chat UI](app-agent.md#chat-ui--two-tool-rows).
+
+Headless / cron / MCP flows unchanged — see [`joshu-mail`](../integrations/hermes/skills/mail/joshu-mail/SKILL.md) and the `jmail-gui` skill for when the GUI is open vs closed.
+
+### Debugging compose / frontend tools
+
+See [app-agent.md — How to confirm quickly](app-agent.md#how-to-confirm-quickly-without-code-changes). After server changes: `npm run build`, restart `dev:arozos`, `POST /joshu/api/safety-settings/restart-gateway`, rebuild jMail if needed, hard-reload the app.
+
 ## Related
 
 - [`platform-architecture.md`](platform-architecture.md) — invoke API, skills split
+- [`app-agent.md`](app-agent.md) — CopilotKit app chat SDK
 - [`platform-data.md`](platform-data.md) — SDK reference
 - [`docs/connectors.md`](connectors.md) — mirror layout, REST API, MCP
 - [`docs/nylas-agent-mailbox.md`](nylas-agent-mailbox.md) — agent provisioning and Nylas API

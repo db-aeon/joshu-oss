@@ -2,6 +2,19 @@
  * Lightweight manifest validation (schema v2 subset).
  */
 
+export type JoshuGuiActionDef = {
+  name: string;
+  description?: string;
+};
+
+export type JoshuVoiceCommandDef = {
+  name: string;
+  phrases: string[];
+  action: string;
+  params?: string[];
+  description?: string;
+};
+
 export type JoshuAppManifest = {
   id: string;
   name: string;
@@ -20,6 +33,8 @@ export type JoshuAppManifest = {
     usesSkills?: string[];
     headless?: boolean;
     intents?: Array<{ phrase: string; action: string }>;
+    guiActions?: JoshuGuiActionDef[];
+    voiceCommands?: JoshuVoiceCommandDef[];
     actions?: Array<{ name: string; description?: string; handler?: string }>;
   };
 };
@@ -81,6 +96,12 @@ export function validateJoshuAppManifest(raw: unknown): ManifestValidationResult
           }
         }
       }
+    }
+    if (agent.guiActions !== undefined && !Array.isArray(agent.guiActions)) {
+      errors.push("agent.guiActions must be an array");
+    }
+    if (agent.voiceCommands !== undefined && !Array.isArray(agent.voiceCommands)) {
+      errors.push("agent.voiceCommands must be an array");
     }
   }
 

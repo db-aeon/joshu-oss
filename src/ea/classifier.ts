@@ -38,20 +38,20 @@ Output JSON only with this shape:
   "reason": "one short line"
 }
 
-disposition rules (routing — Joshu queues ALL actionable mail to one ingress; Patrick files + may spawn scheduling later):
+disposition rules (routing — Joshu queues ALL actionable mail to one ingress; the companion files + may spawn scheduling later):
 - noise: spam, marketing, bulk with no action, auto-replies with no follow-up
-- info: transactional alerts (security, billing, signup confirm), FYI-only notifications; Dan owner_sent_update with no new action
+- info: transactional alerts (security, billing, signup confirm), FYI-only notifications; owner_sent_update with no new action
 - track: ANY actionable mail — project filing, follow-up, OR meeting/scheduling content
 
 category examples: transactional, security_alert, marketing, investor_reply, networking, project_work, owner_note, owner_sent_update, family_logistics, waitlist_signup, product_development, scheduling, unknown
 
-Use category=scheduling when the mail is primarily about meeting times, availability, reschedule, or owner delegating Patrick to offer slots — even though disposition is still track.
+Use category=scheduling when the mail is primarily about meeting times, availability, reschedule, or owner delegating the companion to offer slots — even though disposition is still track.
 
 project_slug: optional HINT for Projects/<slug>/ (lowercase-hyphen). Use null when unknown. Standalone cold scheduling with no project context → other. Known project threads → that slug (e.g. joshu-product-development, joshu-waitlist-drip).
 
 is_new_track: hint only — true when likely a new work item; false when clearly a reply/update.
 
-owner_sent_update: Dan replying in an existing thread with no new ask — disposition=info, is_new_track=false. If Dan delegates work (e.g. "Copying Patrick to suggest times") → disposition=track, category may be scheduling.`;
+owner_sent_update: owner replying in an existing thread with no new ask — disposition=info, is_new_track=false. If the owner delegates work (e.g. "Copying the companion to suggest times") → disposition=track, category may be scheduling.`;
 
 /** True when ingest hints that the ingress worker should spawn ea-scheduling after filing. */
 export function isSchedulingCategoryHint(c: Pick<InboundMailClassification, "category">): boolean {

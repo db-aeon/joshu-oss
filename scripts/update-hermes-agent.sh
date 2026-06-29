@@ -344,7 +344,8 @@ apply_langfuse_system_patch_if_needed() {
 }
 
 apply_skill_evolution_patch_if_needed() {
-  local script="${ROOT_DIR}/scripts/apply-hermes-skill-evolution-patch.sh"
+  local script="${ROOT_DIR}/proprietary/scripts/apply-hermes-skill-evolution-patch.sh"
+  [[ -x "${script}" ]] || script="${ROOT_DIR}/scripts/apply-hermes-skill-evolution-patch.sh"
   if [[ -x "${script}" ]]; then
     HERMES_DIR="${HERMES_DIR}" bash "${script}" || true
   fi

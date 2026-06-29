@@ -90,7 +90,7 @@ Users can drop **text PDFs** in **`${JOSHU_FILES_ROOT}/research/kb/inbox/`**. Jo
 - Do **not** paste full PDF bodies into markdown — the ingest pipeline handles extraction.
 - Scanned/image PDFs may fail ingest; suggest OCR or manual markdown if extraction errors.
 
-Read **`FILING.md`** and **`docs/Joshu-SOP/gtd-workspace-linking.md`** before creating new pages. Connector layout and APIs: Joshu **`docs/connectors.md`**. PDF ingest details: **`docs/file-brain.md`** (Knowledge base section).
+Read **`FILING.md`** and **`docs/executive-assistant.md#gtd-workspace`** before creating new pages. Connector layout and APIs: Joshu **`docs/connectors.md`**. PDF ingest details: **`docs/file-brain.md`** (Knowledge base section).
 
 ### Linking for recall (EA projects)
 

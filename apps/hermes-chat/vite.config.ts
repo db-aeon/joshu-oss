@@ -5,6 +5,7 @@ import { defineConfig } from "vite";
 
 const appRoot = fileURLToPath(new URL(".", import.meta.url));
 const voiceClientRoot = path.resolve(appRoot, "../../packages/voice-client/src/index.ts");
+const jchatUiRoot = path.resolve(appRoot, "../../packages/jchat-ui/src");
 
 export default defineConfig({
   base: "./",
@@ -16,6 +17,8 @@ export default defineConfig({
   resolve: {
     alias: {
       "@joshu/voice-client": voiceClientRoot,
+      "@joshu/jchat-ui": jchatUiRoot,
+      "@joshu/app-agent": path.resolve(appRoot, "../../packages/app-agent/src"),
     },
   },
   plugins: [react()],

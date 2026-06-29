@@ -1,0 +1,7 @@
+name: joshu-app-gui
+version: 1.0.0
+description: Invoke manifest guiActions inside Joshu desktop apps — enqueues to Joshu for the embedded browser client.
+provides_tools:
+  - app_gui_action
+provides_hooks:
+  - post_tool_call

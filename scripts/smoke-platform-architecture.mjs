@@ -48,7 +48,51 @@ assert.ok(manifests.has("jmail"), "jmail manifest should load");
 assert.ok(manifests.has("schedules"), "schedules manifest should load");
 const jmail = manifests.get("jmail");
 assert.ok(jmail?.data?.uses?.includes("mail"));
+assert.ok(jmail?.agent?.guiActions?.length, "jmail should declare guiActions");
+assert.ok(jmail?.agent?.voiceCommands?.length, "jmail should declare voiceCommands");
 assert.ok(collectAppSkillNames().length >= 0);
+
+// --- app-scoped AG-UI system messages ---
+const { buildAppAgentSystemMessages, buildAppAgentSessionId } = await import(
+  pathToFileURL(path.join(rootDir, "dist/agUiAppContext.js")).href
+);
+const sessionId = buildAppAgentSessionId("jmail", "thread-1");
+assert.equal(sessionId, "joshu-app:jmail:thread-1");
+const sysMsgs = buildAppAgentSystemMessages(jmail, {
+  appId: "jmail",
+  mode: "embedded",
+  gui: { pane: "inbox", selectedId: "abc" },
+});
+assert.equal(sysMsgs.length, 1);
+assert.match(sysMsgs[0].content, /jMail|jmail/i);
+assert.match(sysMsgs[0].content, /Never send email/);
+assert.match(sysMsgs[0].content, /app_gui_action/);
+assert.match(sysMsgs[0].content, /action=openCompose/);
+assert.match(sysMsgs[0].content, /openCompose/);
+
+// --- app GUI action queue ---
+const { enqueueAppGuiAction, drainAppGuiActions, isValidAppGuiAction } = await import(
+  pathToFileURL(path.join(rootDir, "dist/appGuiActionQueue.js")).href
+);
+const { buildAppAgentSessionId: buildSession } = await import(
+  pathToFileURL(path.join(rootDir, "dist/agUiAppContext.js")).href
+);
+const sample = { appId: "jmail", action: "openCompose", args: { subject: "Hi" } };
+assert.ok(isValidAppGuiAction(sample));
+enqueueAppGuiAction(buildSession("jmail", "t1"), sample);
+const drained = drainAppGuiActions(buildSession("jmail", "t1"));
+assert.equal(drained.length, 1);
+assert.equal(drained[0]?.action, "openCompose");
+
+// --- frontend tool parsing ---
+const { parseAgUiClientTools, toOpenAiChatTools } = await import(
+  pathToFileURL(path.join(rootDir, "dist/agUiFrontendTools.js")).href
+);
+const parsedTools = parseAgUiClientTools([
+  { name: "openCompose", description: "Open compose", parameters: { type: "object", properties: { body: { type: "string" } } } },
+]);
+assert.equal(parsedTools.length, 1);
+assert.equal(toOpenAiChatTools(parsedTools)[0]?.function.name, "openCompose");
 
 // --- optional live server checks ---
 const port = process.env.JOSHU_PORT || "8788";

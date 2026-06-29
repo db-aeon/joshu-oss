@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import fs from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
 
@@ -12,12 +13,26 @@ function hermesHome(): string {
   return process.env.HERMES_HOME?.trim() || path.join(process.env.HOME || "/root", ".hermes");
 }
 
+/** Resolve fleet-only scripts under proprietary/scripts/, then legacy scripts/. */
+function resolveScript(relativeScript: string): string | null {
+  const root = projectRoot();
+  const fleetPath = path.join(root, "proprietary/scripts", path.basename(relativeScript));
+  if (fs.existsSync(fleetPath)) return fleetPath;
+  const legacyPath = path.join(root, relativeScript);
+  if (fs.existsSync(legacyPath)) return legacyPath;
+  return null;
+}
+
 async function runBashScript(
   relativeScript: string,
   extraEnv?: Record<string, string>,
 ): Promise<void> {
+  const scriptPath = resolveScript(relativeScript);
+  if (!scriptPath) {
+    console.log(`[hermes-learning] skip missing script: ${relativeScript}`);
+    return;
+  }
   const root = projectRoot();
-  const scriptPath = path.join(root, relativeScript);
   const env = {
     ...process.env,
     HERMES_HOME: hermesHome(),

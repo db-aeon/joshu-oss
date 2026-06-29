@@ -1,5 +1,5 @@
 /**
- * Deterministic "may Patrick act on this mail?" — copied on thread or owner delegated.
+ * Deterministic "may the companion act on this mail?" — copied on thread or owner delegated.
  * Filing/observing is allowed without authorization; scheduling + outbound mail are not.
  */
 import { readFile } from "node:fs/promises";

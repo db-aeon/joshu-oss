@@ -31,7 +31,7 @@ function looksLikeHtml(text: string): boolean {
   return tagCount >= 2;
 }
 
-/** Role line under the companion name, e.g. "Dan Benyamin's Joshu". */
+/** Role line under the companion name, e.g. "Owner Name's Joshu". */
 export function formatJoshuSignatureRoleLine(ownerDisplayName?: string): string {
   const owner = ownerDisplayName?.trim();
   if (!owner) return "Joshu";

@@ -1,0 +1,38 @@
+{
+  "name": "@joshu/app-agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "CopilotKit headless SDK for GUI-aware Joshu desktop apps",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./agentChat.css": "./src/agentChat.css"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "peerDependencies": {
+    "react": "^18.0.0 || ^19.0.0",
+    "react-dom": "^18.0.0 || ^19.0.0"
+  },
+  "dependencies": {
+    "@ag-ui/client": "^0.0.57",
+    "@ag-ui/core": "^0.0.57",
+    "@copilotkit/react-core": "^1.50.0",
+    "@joshu/jchat-ui": "*",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "typescript": "^5.6.3"
+  }
+}

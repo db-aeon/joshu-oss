@@ -13,7 +13,7 @@ On demand: build **today's** intentional schedule as a **linked Excalidraw diagr
 
 Inspired by Cal Newport's [time blocking](https://calnewport.com/deep-habits-the-importance-of-planning-every-minute-of-your-work-day/): schedule column = hour grid with named blocks; right column = capture notes and optional **numbered task groups** (① → task list). Replan when disrupted — rerun this skill to refresh the diagram.
 
-**GTD / linking context:** `docs/Joshu-SOP/gtd-workspace-linking.md`
+**GTD / linking context:** `docs/executive-assistant.md#gtd-workspace`
 
 ## When to use
 

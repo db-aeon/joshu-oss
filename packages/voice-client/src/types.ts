@@ -7,6 +7,17 @@ export type JoshuVoiceClientOptions = {
   sessionId: string;
   /** Hermes chat session id for memory/tools scoping. */
   chatSessionId: string;
+  /** Optional app surface for manifest voiceCommands (browser_start). */
+  surface?: {
+    appId: string;
+    voiceCommands?: Array<{
+      name: string;
+      phrases: string[];
+      action: string;
+      params?: string[];
+      description?: string;
+    }>;
+  };
   /** Called when gateway emits assistant token deltas (synced UI). */
   onAssistantDelta?: (delta: string) => void;
   /** Called when a user utterance is finalized. */
@@ -17,6 +28,8 @@ export type JoshuVoiceClientOptions = {
   onThinkJobStart?: () => void;
   /** Open a desktop app or file on the ArozOS shell. */
   onDesktopAction?: (action: { kind: "module" | "file"; target: string }) => void;
+  /** Fast app GUI action from voice-realtime (no Hermes). */
+  onAppAction?: (event: { appId: string; action: string; args?: Record<string, unknown> }) => void;
   /** @deprecated Use onThinkJobStart */
   onHermesJobStart?: () => void;
   onState?: (state: VoiceSessionState) => void;

@@ -35,7 +35,7 @@ See [docs/vps-sandbox/control-plane-local-provisioning.md](../docs/vps-sandbox/c
 **Hermes config:** The image does not include your laptop `~/.hermes/config.yaml`. Product
 settings come from `instance.env`, `integrations/hermes/skills-enabled.yaml`, and
 Joshu startup (`src/hermesApi.ts`). Details:
-[docs/hermes-customizations.md](../docs/hermes-customizations.md#hermes-runtime-config-local-hermes-vs-vps--image).
+[docs/hermes-integration.md](../docs/hermes-integration.md#hermes-runtime-config-local-hermes-vs-vps--image).
 
 CI: [`.github/workflows/joshu-sandbox-image.yml`](../.github/workflows/joshu-sandbox-image.yml)
 — reads `HERMES_AGENT_REF` from `deploy/RELEASE.json` and passes it to `docker build`.
@@ -105,7 +105,7 @@ docker logs deploy-joshu-stack-1 2>&1 | rg 'Hermes skills policy|skills.disabled
 
 If count is near zero after image upgrade: confirm `HERMES_DIR=/opt/hermes-agent` in the container (`docker exec … env | rg HERMES`), restart the stack, or `curl -fsS http://127.0.0.1:8788/joshu/api/hermes-chat/status` from inside the container. Start a **new jChat** session — Hermes caches the skill catalog per session.
 
-See [hermes-customizations — Disabled skills](../docs/hermes-customizations.md#disabled-skills-product-denylist) and [box-state — hard reset](../docs/box-state.md#hard-factory-reset).
+See [hermes-customizations — Disabled skills](../docs/hermes-integration.md#disabled-skills-product-denylist) and [box-state — hard reset](../docs/box-state.md#hard-factory-reset).
 
 **Connectors MCP (`:8795`):** EA summary sends and connector sync actions. On boot, `vps-start.sh` starts it and runs a 60s health watchdog.
 
@@ -178,7 +178,7 @@ curl -fsS -u admin:<JOSHU_HERMES_DASHBOARD_PASSWORD> \
   https://hermes-admin.<customer-hostname>/
 ```
 
-Expect **200** and HTML (not `Invalid Host header`). Caddy rewrites upstream `Host` to `127.0.0.1:9119` — see [hermes-customizations.md](../docs/hermes-customizations.md#hermes-web-dashboard).
+Expect **200** and HTML (not `Invalid Host header`). Caddy rewrites upstream `Host` to `127.0.0.1:9119` — see [hermes-integration.md](../docs/hermes-integration.md#hermes-web-dashboard).
 
 ## Architecture docs
 

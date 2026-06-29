@@ -170,7 +170,8 @@ apply_hermes_kanban_ws_patch() {
 }
 
 apply_hermes_skill_evolution_patch() {
-  local script="${APP_DIR}/scripts/apply-hermes-skill-evolution-patch.sh"
+  local script="${APP_DIR}/proprietary/scripts/apply-hermes-skill-evolution-patch.sh"
+  [[ -f "${script}" ]] || script="${APP_DIR}/scripts/apply-hermes-skill-evolution-patch.sh"
   [[ -f "${script}" ]] || return 0
   HERMES_DIR="${HERMES_DIR}" bash "${script}" || echo "[vps-start] WARN: skill evolution patch failed" >&2
 }

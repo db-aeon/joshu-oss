@@ -23,7 +23,7 @@ Joshu often has **multiple** Gmail OAuth connections. **`connectors_status`** re
 
 Before live search:
 
-1. Match the user’s inbox (e.g. `db@project-aeon.com` → `db_at_project_aeon_com`).
+1. Match the user’s inbox (e.g. `owner work email` → `db_at_project_aeon_com`).
 2. Put **`connected_account_id: ca_…`** in `COMPOSIO_SEARCH_TOOLS` `known_fields`.
 3. **`GMAIL_FETCH_EMAILS`:** **`user_id` must be `"me"`** — **never** an email address (`user_id: db@…` → delegation denied).
 4. Scope the Composio session to the correct connected account per `connection_details` / plan from `SEARCH_TOOLS`.
@@ -166,7 +166,7 @@ Confusing the two sandboxes causes silent failure: the agent searches the box wh
 | Empty inline preview → “mail doesn’t exist” | WORKBENCH/BASH to parse response |
 | 64k-token inline blob + no workbench | Set `sync_response_to_workbench: true`; next call = BASH or WORKBENCH |
 | Local `grep` / `search_files` after Composio offload | Use Composio meta-tools for `/mnt/files/` paths |
-| Nylas / drip mail mistaken for principal Gmail | User asked `db@project-aeon.com` → principal Gmail only, not agent Nylas mirrors |
+| Nylas / drip mail mistaken for principal Gmail | User asked `owner work email` → principal Gmail only, not agent Nylas mirrors |
 | `COMPOSIO_SEARCH_TOOLS` twice in one task | Reuse `session_id` and plan from first search |
 | Skipping `session_id` on follow-up meta-tools | Pass `session_id` from step 1 on every Composio meta-tool call |
 | Mark read / archive / send without ask | Report only unless user requested an action |

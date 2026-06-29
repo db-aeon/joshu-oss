@@ -1,0 +1,110 @@
+/* Joshu app-agent slide-out panel shell — thread UI from @joshu/jchat-ui */
+.joshu-agent-chat {
+  position: relative;
+  z-index: 20;
+}
+
+.joshu-agent-chat__toggle {
+  position: fixed;
+  bottom: 1rem;
+  right: 1rem;
+  z-index: 21;
+  padding: 0.5rem 0.85rem;
+  border-radius: 999px;
+  border: 1px solid var(--joshu-border, var(--border-default, #ccc));
+  background: var(--joshu-surface, var(--color-surface-panel, #fff));
+  color: var(--joshu-text, var(--color-text-on-paper, #111));
+  cursor: pointer;
+  font: inherit;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+}
+
+.joshu-agent-chat__panel {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  z-index: 22;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--joshu-border, var(--border-default, #ddd));
+  background: var(--jchat-panel-bg, var(--color-paper, #faf7f2));
+  box-shadow: -4px 0 16px rgba(0, 0, 0, 0.08);
+}
+
+.joshu-agent-chat__panel--right {
+  right: 0;
+}
+
+.joshu-agent-chat__panel--left {
+  left: 0;
+  border-left: none;
+  border-right: 1px solid var(--joshu-border, var(--border-default, #ddd));
+  box-shadow: 4px 0 16px rgba(0, 0, 0, 0.08);
+}
+
+.joshu-agent-chat__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.45rem 0.55rem;
+  border-bottom: var(--border-default, 1px solid rgba(13, 13, 13, 0.12));
+  background: var(--jchat-panel-bg, var(--color-paper, #faf7f2));
+  font-weight: 600;
+  font-size: 0.82rem;
+}
+
+.joshu-agent-chat__header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.joshu-agent-chat__new {
+  /* jchat-history-new base styles come from jchatThread.css */
+  margin: 0;
+}
+
+.joshu-agent-chat__close {
+  border: none;
+  background: transparent;
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+  color: inherit;
+  padding: 0 0.15rem;
+}
+
+.joshu-agent-chat__body {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.joshu-agent-chat__body .jchat-thread {
+  height: 100%;
+}
+
+/* Match jChat history "New" button when used in panel header */
+.jchat-history-new {
+  margin-left: auto;
+  padding: 0.25rem 0.45rem;
+  border: var(--border-default, 1px solid rgba(13, 13, 13, 0.12));
+  border-radius: var(--radius-field, 6px);
+  background: var(--color-surface-panel, #fff);
+  font-size: 0.68rem;
+  font-weight: 600;
+  cursor: pointer;
+  color: inherit;
+}
+
+.jchat-history-new:hover:not(:disabled) {
+  background: var(--color-paper, #faf7f2);
+}
+
+.jchat-history-new:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

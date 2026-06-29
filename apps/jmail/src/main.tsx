@@ -9,36 +9,21 @@ import { createRoot } from "react-dom/client";
 import { fetchVoiceGatewayStatus, startJoshuVoiceSession } from "./joshuVoice";
 import { platform } from "./joshuData";
 import { prepareEmailBodyDocument } from "./messageBody";
+import { MailAgentBridge, type MailGuiAgentApi } from "./mailAgentBridge";
+import {
+  buildJmailChatThreadId,
+  readJmailChatThreadRev,
+  rotateJmailChatThread,
+} from "./chatThreadId.js";
+import { executeDesktopAction } from "@joshu/app-agent";
+import type { ConnectorsStatus } from "@joshu/platform-data";
+import { JMAIL_MANIFEST } from "./mailAppManifest";
 
 const VOICE_API_BASE = "/joshu/api/voice";
 
 type MailInbox =
   | { kind: "nylas" }
   | { kind: "gmail"; connectedAccountId: string; accountKey: string; email?: string };
-
-type GmailAccountStatus = {
-  connectedAccountId: string;
-  accountKey: string;
-  email?: string;
-  label?: string;
-  isDefault?: boolean;
-};
-
-type ConnectorsStatus = {
-  nylas: {
-    configured: boolean;
-    provisioned: boolean;
-    email?: string;
-    mirror?: { threadCount: number; empty: boolean };
-  };
-  gmail: {
-    enabled: boolean;
-    connected: boolean;
-    email?: string;
-    accounts: GmailAccountStatus[];
-    mirror?: { threadCount: number; empty: boolean };
-  };
-};
 
 function inboxTabId(inbox: MailInbox): string {
   return inbox.kind === "nylas" ? "nylas" : inbox.connectedAccountId;
@@ -83,6 +68,24 @@ type MessageDetail = MessageSummary & {
   cc?: string[];
   threadMessages?: ThreadMessage[];
 };
+
+/** Compact rows for agent GUI snapshot (what the user sees in the inbox list). */
+function buildInboxPreview(items: MessageSummary[], limit = 25) {
+  return items.slice(0, limit).map((m) => ({
+    id: m.id,
+    subject: m.subject?.trim() || "(no subject)",
+    from: m.fromName?.trim() || m.from || "",
+    date: m.date,
+  }));
+}
+
+function formatInboxPreviewForAgent(items: MessageSummary[], limit = 10): string {
+  const rows = buildInboxPreview(items, limit);
+  if (rows.length === 0) return "Inbox list is empty.";
+  return rows
+    .map((m, i) => `${i + 1}. ${m.subject} — ${m.from}${m.date ? ` (${new Date(m.date).toISOString()})` : ""}`)
+    .join("\n");
+}
 
 type Status = {
   configured: boolean;
@@ -199,17 +202,35 @@ function App() {
   const [voiceTranscript, setVoiceTranscript] = useState("");
   const [voiceAssistant, setVoiceAssistant] = useState("");
   const voiceSessionRef = useRef<{ stop: () => Promise<void> } | null>(null);
+  const guiRef = useRef<MailGuiAgentApi | null>(null);
 
   const mailbox = status?.agent.email ?? agentEmail;
   const nylasProvisioned = Boolean(status?.agent.provisioned);
-  const gmailAccounts = connectorsStatus?.gmail.accounts ?? [];
-  const gmailConnected = gmailAccounts.length > 0 || Boolean(connectorsStatus?.gmail.connected);
+  const gmailAccounts = connectorsStatus?.gmail?.accounts ?? [];
+  const gmailConnected = gmailAccounts.length > 0 || Boolean(connectorsStatus?.gmail?.connected);
   const accountReady = inbox.kind === "nylas" ? nylasProvisioned : gmailAccounts.length > 0;
   const accountLabel =
     inbox.kind === "nylas"
       ? mailbox || "Agent mailbox"
       : inbox.email || inbox.accountKey || "Gmail";
   const voiceSessionId = useMemo(() => `jmail:${mailbox || "default"}`, [mailbox]);
+  const [chatRev, setChatRev] = useState(() => readJmailChatThreadRev());
+  const chatThreadId = useMemo(
+    () => buildJmailChatThreadId(mailbox, chatRev),
+    [mailbox, chatRev],
+  );
+
+  const startNewAgentChat = useCallback(async () => {
+    try {
+      await fetch(`/joshu/api/ag-ui/session?threadId=${encodeURIComponent(chatThreadId)}`, {
+        method: "DELETE",
+      });
+    } catch {
+      /* best-effort */
+    }
+    const rev = rotateJmailChatThread();
+    setChatRev(rev);
+  }, [chatThreadId]);
 
   const loadConnectorsStatus = useCallback(async () => {
     try {
@@ -229,8 +250,8 @@ function App() {
     const data = nylasData as Status;
     setStatus(data);
     if (data.agent.email) setAgentEmail(data.agent.email);
-    const accounts = connectors?.gmail.accounts ?? [];
-    const gmailOk = accounts.length > 0 || Boolean(connectors?.gmail.connected);
+    const accounts = connectors?.gmail?.accounts ?? [];
+    const gmailOk = accounts.length > 0 || Boolean(connectors?.gmail?.connected);
     if (!data.agent.provisioned && !gmailOk) {
       setPane("setup");
     } else if (!data.agent.provisioned && accounts[0]) {
@@ -404,6 +425,75 @@ function App() {
     [inbox],
   );
 
+  const loadMessagesWithQuery = useCallback(
+    async (query: string) => {
+      if (!accountReady) return;
+      setSearch(query);
+      setLoadingList(true);
+      setError("");
+      try {
+        const q = query.trim();
+        if (inbox.kind === "gmail" || q) {
+          const mailProvider = inbox.kind === "nylas" ? "nylas" : "gmail";
+          const data = await platform.mail.search({
+            provider: mailProvider,
+            q: q || undefined,
+            limit: 50,
+            connectedAccountId: inbox.kind === "gmail" ? inbox.connectedAccountId : undefined,
+          });
+          const rows = hitsToMessages(data.hits ?? []);
+          rows.sort((a, b) => (b.date ?? 0) - (a.date ?? 0));
+          setMessages(rows);
+          return;
+        }
+        const data = await platform.nylas.listMessages(40);
+        setMessages((data.messages ?? []) as MessageSummary[]);
+      } catch (err) {
+        setError((err as Error).message);
+      } finally {
+        setLoadingList(false);
+      }
+    },
+    [inbox, accountReady],
+  );
+
+  const switchInboxFromAgent = useCallback(
+    (raw: Record<string, unknown>) => {
+      if (raw.kind === "gmail" && typeof raw.connectedAccountId === "string") {
+        const match = gmailAccounts.find((g) => g.connectedAccountId === raw.connectedAccountId);
+        if (match) {
+          setInbox({
+            kind: "gmail",
+            connectedAccountId: match.connectedAccountId,
+            accountKey: match.accountKey,
+            email: match.email,
+          });
+          return;
+        }
+      }
+      if (raw.kind === "nylas" || nylasProvisioned) {
+        setInbox({ kind: "nylas" });
+      }
+    },
+    [gmailAccounts, nylasProvisioned],
+  );
+
+  const handleVoiceAppAction = useCallback((action: string, args?: Record<string, unknown>) => {
+    const api = guiRef.current;
+    if (!api) return;
+    if (action === "openCompose") {
+      api.openCompose({
+        to: typeof args?.to === "string" ? args.to : undefined,
+        subject: typeof args?.subject === "string" ? args.subject : undefined,
+        body: typeof args?.body === "string" ? args.body : undefined,
+      });
+      return;
+    }
+    if (action === "searchMail") {
+      void api.searchMail(String(args?.query ?? ""));
+    }
+  }, []);
+
   useEffect(() => {
     void loadStatus();
     void loadIdentityAndProfile();
@@ -436,6 +526,14 @@ function App() {
         const session = await startJoshuVoiceSession({
           voiceApiBase: VOICE_API_BASE,
           sessionId: voiceSessionId,
+          surface: {
+            appId: JMAIL_MANIFEST.id,
+            voiceCommands: JMAIL_MANIFEST.agent?.voiceCommands,
+          },
+          onDesktopAction: (action) => {
+            void executeDesktopAction(action);
+          },
+          onAppAction: ({ action, args }) => handleVoiceAppAction(action, args),
           onState: setVoiceState,
           onUserTranscript: (text, partial) => {
             if (!partial) setVoiceTranscript(text);
@@ -463,7 +561,7 @@ function App() {
       void voiceSessionRef.current?.stop();
       voiceSessionRef.current = null;
     };
-  }, [voiceOn, gatewayVoiceAvailable, nylasProvisioned, inbox, voiceSessionId]);
+  }, [voiceOn, gatewayVoiceAvailable, nylasProvisioned, inbox, voiceSessionId, handleVoiceAppAction]);
 
   useEffect(() => {
     setSelectedId(null);
@@ -608,9 +706,88 @@ function App() {
     else setError(data.error ?? "Save failed");
   };
 
+  guiRef.current = {
+    getGuiSnapshot: () => {
+      const inboxKind = inbox.kind;
+      const inboxLabel =
+        inboxKind === "nylas"
+          ? { kind: "nylas" as const, mailbox }
+          : { kind: "gmail" as const, email: inbox.email, connectedAccountId: inbox.connectedAccountId };
+
+      if (pane === "setup") {
+        return { pane, inbox: inboxLabel, activeView: "setup" as const };
+      }
+
+      if (pane === "compose") {
+        return {
+          pane,
+          inbox: inboxLabel,
+          activeView: "compose" as const,
+          compose: {
+            to: compose.to,
+            subject: compose.subject,
+            bodyPreview: compose.body.slice(0, 600),
+            bodyLength: compose.body.length,
+            replyThreadId: compose.replyThreadId || undefined,
+          },
+        };
+      }
+
+      // Inbox — only expose the thread/list the user actually sees (not background compose state).
+      if (selectedId && detail) {
+        return {
+          pane,
+          inbox: inboxLabel,
+          search: search || undefined,
+          activeView: "thread" as const,
+          inboxPreview: buildInboxPreview(messages),
+          openThread: {
+            id: detail.id,
+            subject: detail.subject,
+            from: detail.from,
+            fromName: detail.fromName,
+            date: detail.date,
+            threadId: detail.threadId,
+            bodyPreview: (detail.body ?? detail.snippet ?? "").slice(0, 600),
+          },
+        };
+      }
+
+      if (selectedId) {
+        return {
+          pane,
+          inbox: inboxLabel,
+          search: search || undefined,
+          activeView: "thread_loading" as const,
+          selectedId,
+        };
+      }
+
+      return {
+        pane,
+        inbox: inboxLabel,
+        search: search || undefined,
+        activeView: "inbox_list" as const,
+        messageCount: messages.length,
+        inboxPreview: buildInboxPreview(messages),
+      };
+    },
+    getInboxListSummary: (limit = 10) => formatInboxPreviewForAgent(messages, limit),
+    openCompose,
+    openThread: (messageId: string) => {
+      setPane("inbox");
+      setSelectedId(messageId);
+    },
+    searchMail: loadMessagesWithQuery,
+    switchInbox: switchInboxFromAgent,
+    startReply,
+    syncMirror: (opts) => syncMirror({ days: opts?.days ?? 7 }),
+    loadMessages,
+    setPane,
+  };
+
   return (
-    <StrictMode>
-      <div className="mail-app">
+    <div className="mail-app">
         <header className="mail-header">
           <div>
             <h1>jMail</h1>
@@ -1000,9 +1177,18 @@ function App() {
             </main>
           </div>
         )}
-      </div>
-    </StrictMode>
+      <MailAgentBridge
+        key={chatThreadId}
+        guiRef={guiRef}
+        threadId={chatThreadId}
+        onNewChat={startNewAgentChat}
+      />
+    </div>
   );
 }
 
-createRoot(document.getElementById("root")!).render(<App />);
+createRoot(document.getElementById("root")!).render(
+  <StrictMode>
+    <App />
+  </StrictMode>,
+);

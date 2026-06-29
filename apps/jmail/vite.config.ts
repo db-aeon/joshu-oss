@@ -6,6 +6,8 @@ import { defineConfig } from "vite";
 const appRoot = fileURLToPath(new URL(".", import.meta.url));
 const voiceClientRoot = path.resolve(appRoot, "../../packages/voice-client/src/index.ts");
 const platformDataRoot = path.resolve(appRoot, "../../packages/platform-data/src/index.ts");
+const appAgentRoot = path.resolve(appRoot, "../../packages/app-agent/src");
+const jchatUiRoot = path.resolve(appRoot, "../../packages/jchat-ui/src");
 
 export default defineConfig({
   base: "./",
@@ -18,6 +20,8 @@ export default defineConfig({
     alias: {
       "@joshu/voice-client": voiceClientRoot,
       "@joshu/platform-data": platformDataRoot,
+      "@joshu/app-agent": appAgentRoot,
+      "@joshu/jchat-ui": jchatUiRoot,
     },
   },
   plugins: [react()],

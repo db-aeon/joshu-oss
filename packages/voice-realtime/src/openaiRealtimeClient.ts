@@ -153,7 +153,7 @@ export class OpenAiRealtimeClient implements VoiceS2sClient {
               voice: OPENAI_REALTIME_VOICE,
             },
           },
-          tools: REALTIME_TOOL_DEFINITIONS,
+          tools: [...REALTIME_TOOL_DEFINITIONS, ...(this.config.extraTools ?? [])],
           tool_choice: "auto",
           ...(this.reasoningPayload() ? { reasoning: this.reasoningPayload() } : {}),
         },

@@ -32,11 +32,11 @@ export interface JoshuIdentity {
 
 export const DEFAULT_JOSHU_IDENTITY: JoshuIdentity = {
   schemaVersion: 1,
-  name: "Patrick",
+  name: "Companion",
   imageUrl: null,
   avatarUrl: null,
   voiceId: null,
-  owner: { displayName: "Dan" },
+  owner: { displayName: "Owner" },
   source: "bootstrap",
 };
 

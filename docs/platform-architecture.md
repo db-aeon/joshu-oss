@@ -50,10 +50,11 @@ Single entry point for how Joshu apps, agents, and shared data fit together.
 | Package | Path | Role |
 |---------|------|------|
 | `@joshu/platform-data` | [`packages/platform-data/`](../packages/platform-data/) | Browser/Node client for platform data plane |
+| `@joshu/app-agent` | [`packages/app-agent/`](../packages/app-agent/) | CopilotKit headless app chat + GUI tools — [developer guide](app-agent.md#developer-guide--add-an-agent-to-your-app) |
 | `@joshu/app-sdk` | [`packages/app-sdk/`](../packages/app-sdk/) | Manifest validation CLI (`joshu-app validate`) |
 | `@joshu/design-system` | [`packages/design-system/`](../packages/design-system/) | In-app UI tokens (separate from ArozOS shell) |
 
-Build: `npm run build` (root) builds both platform packages. Smoke test: `npm run test:platform-architecture`.
+Build: `npm run build` (root) builds platform packages including `@joshu/app-agent`. Smoke test: `npm run test:platform-architecture`.
 
 ## App developer checklist
 
@@ -62,6 +63,7 @@ Build: `npm run build` (root) builds both platform packages. Smoke test: `npm ru
 3. Use **`@joshu/platform-data`** for all domain I/O (reference: [`jmail-arozos-app.md`](jmail-arozos-app.md)).
 4. Declare platform skills in `agent.usesSkills` (e.g. `joshu-mail`); bundle app-specific skills under `skills/` for sideload.
 5. Optional headless actions → `agent.actions` → `POST /joshu/api/apps/:id/invoke`.
+6. Optional **embedded agent chat** → follow the [**embedded app cookbook**](app-agent.md#embedded-app-cookbook-any-domain--not-mail-specific): `agent.guiActions[]`, `getGuiSnapshot()` with `activeView` + `listPreview`, `<app>-gui` skill, [`@joshu/app-agent`](app-agent.md#developer-guide--add-an-agent-to-your-app). Reference: [jMail](jmail-arozos-app.md#agent-chat-panel).
 
 Validate manifests:
 
@@ -71,12 +73,13 @@ node packages/app-sdk/dist/cli.js validate arozos/subservice/my-app/joshu.app.js
 
 ### Vite alias pattern
 
-Point `@joshu/platform-data` at package source during dev (see [`apps/jmail/vite.config.ts`](../apps/jmail/vite.config.ts)):
+Point `@joshu/platform-data` and (if using embedded chat) `@joshu/app-agent` at package source during dev (see [`apps/jmail/vite.config.ts`](../apps/jmail/vite.config.ts)):
 
 ```typescript
 resolve: {
   alias: {
     "@joshu/platform-data": path.resolve(appRoot, "../../packages/platform-data/src/index.ts"),
+    "@joshu/app-agent": path.resolve(appRoot, "../../packages/app-agent/src/index.ts"),
   },
 },
 ```
@@ -150,16 +153,33 @@ Output JSON maps each `agent.actions[]` entry to `POST /joshu/api/apps/:id/invok
 
 ## AG-UI interop
 
-Thin adapter — **no CopilotKit runtime** on the box. CopilotKit `HttpAgent` can point at Joshu directly.
+Thin adapter — **no CopilotKit runtime on the box**. App UIs use [`@joshu/app-agent`](app-agent.md) (CopilotKit headless + `HttpAgent`) pointing at Joshu AG-UI.
+
+**Developer guide:** [app-agent.md — Add an agent to your app](app-agent.md#developer-guide--add-an-agent-to-your-app)
 
 | Endpoint | Purpose |
 |----------|---------|
-| `GET /joshu/api/ag-ui/info` | Agent discovery (`hermes-default`) |
+| `GET /joshu/api/ag-ui/info` | Agent discovery (`hermes-default`) + manifest `guiActions` |
 | `POST /joshu/api/ag-ui/run` | SSE stream of AG-UI BaseEvents |
+| `DELETE /joshu/api/ag-ui/session?threadId=` | Clear Hermes transcript for a chat thread (localhost) |
 
-**Supported events:** `RUN_STARTED`, `RUN_FINISHED`, `RUN_ERROR`, `TEXT_MESSAGE_START`, `TEXT_MESSAGE_CONTENT`, `TEXT_MESSAGE_END`, `TOOL_CALL_START`, `TOOL_CALL_END`, `CUSTOM` (`desktop_action` for `openModule`).
+**Supported events:** `RUN_STARTED`, `RUN_FINISHED`, `RUN_ERROR`, `TEXT_MESSAGE_*`, `TOOL_CALL_*`, `CUSTOM` (`desktop_action`, `app_action`).
 
-Implementation: [`src/agUiApi.ts`](../src/agUiApi.ts) — maps Hermes chat stream → AG-UI SSE.
+**GUI action pipeline** (same idea as `desktop_open` → `desktop_action`):
+
+```text
+Hermes app_gui_action → POST /app-gui-actions/enqueue
+  → AG-UI drain (session key joshu-app:{appId}:{threadId})
+  → CUSTOM app_action + synthesized TOOL_CALL
+  → @joshu/app-agent handler → guiRef
+```
+
+| Module | Role |
+|--------|------|
+| [`.hermes/plugins/joshu-app-gui/`](../.hermes/plugins/joshu-app-gui/) | Hermes tool + enqueue hook |
+| [`src/appGuiActionApi.ts`](../src/appGuiActionApi.ts) | Queue + validation against manifest |
+| [`src/agUiApi.ts`](../src/agUiApi.ts) | SSE adapter |
+| [`packages/app-agent/`](../packages/app-agent/) | Browser handlers + chat panel |
 
 Voice uses a separate Realtime wire — see [`vps-sandbox/web-voice.md`](vps-sandbox/web-voice.md).
 
@@ -191,7 +211,7 @@ Covers tier URL routing, manifest validation, app registry load, and optional li
 ## Non-goals (current)
 
 - A2UI generative UI trees
-- CopilotKit as a box dependency
+- CopilotKit **runtime** as a box dependency (app-layer `@joshu/app-agent` is supported)
 - Replacing existing REST/MCP/gbrain routes — consolidation is at the **developer boundary**
 
 ## OSS snapshot
@@ -201,6 +221,7 @@ Public docs: run [`scripts/prepare-oss-snapshot.sh`](../scripts/prepare-oss-snap
 ## Related
 
 - [`platform-data.md`](platform-data.md) — SDK reference
+- [`app-agent.md`](app-agent.md) — CopilotKit app chat SDK
 - [`app-sdk.md`](app-sdk.md) — manifest v2, sideload, build pipeline
 - [`connectors.md`](connectors.md) — mail/calendar implementation
 - [`file-brain.md`](file-brain.md) — gbrain implementation

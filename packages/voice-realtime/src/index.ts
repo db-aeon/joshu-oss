@@ -9,6 +9,7 @@ import { createServer } from "node:http";
 import { WebSocketServer, type RawData } from "ws";
 
 import { BrowserRealtimeSession } from "./browserRealtimeSession.js";
+import type { AppVoiceCommand } from "./appVoiceTools.js";
 import {
   GEMINI_LIVE_MODEL,
   HERMES_API_BASE_URL,
@@ -152,7 +153,12 @@ server.on("upgrade", (req, socket, head) => {
               typeof msg.chatSessionId === "string" && msg.chatSessionId.trim()
                 ? msg.chatSessionId.trim()
                 : voiceSessionId;
-            browserSession.handleStart(voiceSessionId, chatSessionId);
+            browserSession.handleStart(voiceSessionId, chatSessionId, {
+              appId: typeof msg.appId === "string" ? msg.appId : undefined,
+              voiceCommands: Array.isArray(msg.voiceCommands)
+                ? (msg.voiceCommands as AppVoiceCommand[])
+                : undefined,
+            });
             return;
           }
           if (ev === "connected" || ev === "start") {
@@ -166,6 +172,14 @@ server.on("upgrade", (req, socket, head) => {
         }
 
         if (transport === "browser" && browserSession) {
+          if (ev === "register_surface") {
+            const appId = typeof msg.appId === "string" ? msg.appId : "";
+            const voiceCommands = Array.isArray(msg.voiceCommands)
+              ? (msg.voiceCommands as AppVoiceCommand[])
+              : [];
+            if (appId) browserSession.handleRegisterSurface(appId, voiceCommands);
+            return;
+          }
           if (ev === "browser_audio") {
             const payload = msg.payload;
             if (typeof payload === "string") browserSession.handleInboundPcm24kPayload(payload);

@@ -103,6 +103,8 @@ export class JoshuVoiceClient {
         event: "browser_start",
         sessionId: this.opts.sessionId,
         chatSessionId: this.opts.chatSessionId,
+        appId: this.opts.surface?.appId,
+        voiceCommands: this.opts.surface?.voiceCommands,
       }),
     );
 
@@ -259,6 +261,15 @@ export class JoshuVoiceClient {
           typeof action.target === "string"
         ) {
           this.opts.onDesktopAction?.({ kind: action.kind, target: action.target });
+        }
+        break;
+      }
+      case "app_action": {
+        const appId = typeof (msg as { appId?: string }).appId === "string" ? (msg as { appId: string }).appId : "";
+        const action = typeof (msg as { action?: string }).action === "string" ? (msg as { action: string }).action : "";
+        const args = (msg as { args?: Record<string, unknown> }).args;
+        if (appId && action) {
+          this.opts.onAppAction?.({ appId, action, args });
         }
         break;
       }

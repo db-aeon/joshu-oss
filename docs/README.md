@@ -35,6 +35,7 @@ Shortcut format: [`arozos-desktop-shortcuts.md`](arozos-desktop-shortcuts.md).
 | Agent write safety | [`agent-safety.md`](agent-safety.md) |
 | Safety desktop app | [`safety-settings-arozos-app.md`](safety-settings-arozos-app.md) |
 | Nylas agent inbox | [`nylas-agent-mailbox.md`](nylas-agent-mailbox.md) |
+| **Executive assistant (GTD)** | [`executive-assistant.md`](executive-assistant.md) |
 | App SDK + `joshu.app.json` | [`app-sdk.md`](app-sdk.md) |
 | Platform architecture + `@joshu/platform-data` | [`platform-architecture.md`](platform-architecture.md) · [`platform-data.md`](platform-data.md) |
 | Platform smoke test | `npm run test:platform-architecture` |

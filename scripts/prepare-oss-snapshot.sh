@@ -35,6 +35,8 @@ rsync -a "${RSYNC_DELETE[@]}" \
   --exclude aeon-page-to-speech-config.json \
   --exclude proprietary \
   --exclude vendor \
+  --exclude .cursor \
+  --exclude 'arozos/web-overlays' \
   --exclude .git \
   --exclude 'docs/Joshu-SOP' \
   --exclude 'docs/design/brand-guidelines.md' \
@@ -59,6 +61,8 @@ rsync -a "${RSYNC_DELETE[@]}" \
   "${ROOT_DIR}/" "${OUT_DIR}/"
 
 # Public doc indexes (curated for joshu-oss).
+cp "${ROOT_DIR}/README.oss.md" "${OUT_DIR}/README.md"
+cp "${ROOT_DIR}/CONTRIBUTING.oss.md" "${OUT_DIR}/CONTRIBUTING.md"
 cp "${ROOT_DIR}/docs/README.oss.md" "${OUT_DIR}/docs/README.md"
 cp "${ROOT_DIR}/docs/vps-sandbox/README.oss.md" "${OUT_DIR}/docs/vps-sandbox/README.md"
 cp "${ROOT_DIR}/docs/design/README.oss.md" "${OUT_DIR}/docs/design/README.md"
@@ -67,6 +71,28 @@ cp "${ROOT_DIR}/docs/box-state.oss.md" "${OUT_DIR}/docs/box-state.md"
 bash "${ROOT_DIR}/scripts/oss-doc-sanitize.sh" "${OUT_DIR}"
 
 bash "${ROOT_DIR}/scripts/secret-scan.sh" "${OUT_DIR}"
+
+# Remove files excluded from rsync that may linger from older snapshots (--delete does not drop excluded paths).
+rm -rf \
+  "${OUT_DIR}/docs/Joshu-SOP" \
+  "${OUT_DIR}/docs/hermes-customizations.md" \
+  "${OUT_DIR}/docs/joshu-identity.md" \
+  "${OUT_DIR}/docs/day0-cold-start.md" \
+  "${OUT_DIR}/docs/box-state.md" \
+  "${OUT_DIR}/docs/design/brand-guidelines.md" \
+  "${OUT_DIR}/docs/design/joshu-style-guide-v1.png" \
+  "${OUT_DIR}/docs/vps-sandbox/first-provisioning-notes.md" \
+  "${OUT_DIR}/docs/vps-sandbox/troubleshooting-and-lessons.md" \
+  "${OUT_DIR}/docs/vps-sandbox/session-2026-06-11-learning-browser-sync.md" \
+  "${OUT_DIR}/docs/vps-sandbox/hotpatch-running-box.md" \
+  "${OUT_DIR}/docs/vps-sandbox/provider-choices.md" \
+  "${OUT_DIR}/docs/vps-sandbox/voice-think-speak.md" \
+  "${OUT_DIR}/docs/vps-sandbox/voice-realtime.md" \
+  "${OUT_DIR}/docs/vps-sandbox/web-voice.md" \
+  "${OUT_DIR}/docs/vps-sandbox/phone-voice-local-test.md" \
+  "${OUT_DIR}/arozos/web-overlays" \
+  "${OUT_DIR}/.cursor" \
+  2>/dev/null || true
 
 DOC_COUNT="$(find "${OUT_DIR}/docs" -type f | wc -l | tr -d ' ')"
 echo "[prepare-oss-snapshot] docs in OSS tree: ${DOC_COUNT}"

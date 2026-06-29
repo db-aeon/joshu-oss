@@ -417,7 +417,7 @@ Joshu EA uses **filesystem markdown + links**, not gbrain `put_page`. When agent
 - Humans click links from time-block diagrams (`ea-time-block`)
 - Agents use **`get_backlinks`** / **`traverse_graph`** (read-only MCP) after sync
 
-Conventions: [`file-brain.md`](file-brain.md).
+Conventions: [`executive-assistant.md#gtd-workspace`](executive-assistant.md#gtd-workspace).
 
 Optional (ops): `gbrain config set link_resolution.global_basename true` — resolves Obsidian-style `[[note-name]]` across folders after sync. Not required if paths are explicit.
 

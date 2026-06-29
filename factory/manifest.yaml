@@ -41,11 +41,11 @@ hermes:
 
 identity:
   defaults:
-    name: Patrick
+    name: Companion
     imageUrl: null
     voiceId: null
     owner:
-      displayName: Dan
+      displayName: Owner
 
 arozos:
   refresh_each_boot:

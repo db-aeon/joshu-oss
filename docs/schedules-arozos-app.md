@@ -141,7 +141,7 @@ hermes cron create "0 8 * * 1-5" \
   --deliver local
 ```
 
-See [`docs/hermes-integration.md`](hermes-integration.md) and [`time-block-planning.md`](excalidraw-sandbox.md) for daily handoff. Human VA reference: [`executive-assistant.md`](welcome-onboarding.md). EA also runs **on demand** via jChat between scheduled windows.
+See [`executive-assistant.md`](executive-assistant.md) and [`time-block-planning.md`](excalidraw-sandbox.md) for daily handoff. Human VA reference: [`executive-assistant.md`](executive-assistant.md). EA also runs **on demand** via jChat between scheduled windows.
 
 ## Build and dev
 

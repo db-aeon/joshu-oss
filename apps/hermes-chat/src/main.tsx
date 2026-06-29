@@ -1,12 +1,12 @@
 import "@joshu/design-system/typography.css";
 import "@joshu/design-system/tokens.css";
 import "@joshu/design-system/base.css";
+import "@joshu/jchat-ui/jchatThread.css";
 import "./styles.css";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { JChatThread, type JChatAttachment, type JChatMessage, type JChatToolEvent } from "@joshu/jchat-ui";
 
 import { fetchVoiceStatus, startJoshuVoiceSession } from "./joshuVoice";
 import { executeDesktopAction, matchQuickDesktopOpen, openDesktopModule, type DesktopAction } from "./desktopActions";
@@ -16,7 +16,6 @@ import {
   formatSessionWhen,
   type ChatSessionRow,
 } from "./chatSessions";
-import { ToolPixelIcon } from "./toolIcons";
 import { syncJChatTray } from "./traySync";
 import { resolvePortraitUrl, useIdentity } from "./useIdentity";
 
@@ -29,31 +28,7 @@ type HermesMessage = {
   content: string | HermesContentPart[];
 };
 
-type Attachment = {
-  id: string;
-  name: string;
-  mimeType: string;
-  dataUrl: string;
-};
-
-type ToolEvent = {
-  id: string;
-  tool: string;
-  emoji?: string;
-  label?: string;
-  status: "running" | "completed";
-  raw?: unknown;
-};
-
-type ChatMessage = {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  attachments?: Attachment[];
-  reasoning?: string;
-  tools?: ToolEvent[];
-  status?: "streaming" | "done" | "error";
-};
+type Attachment = JChatAttachment;
 
 type SseEvent = {
   event: string;
@@ -189,119 +164,12 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function MarkdownMessage({ content }: { content: string }) {
-  return (
-    <ReactMarkdown
-      remarkPlugins={[remarkGfm]}
-      components={{
-        a: ({ href, children }) => (
-          <a href={href} target="_blank" rel="noreferrer">
-            {children}
-          </a>
-        ),
-        img: ({ src, alt }) => (
-          <a className="markdown-image-link" href={src} target="_blank" rel="noreferrer">
-            <img src={src} alt={alt ?? ""} loading="lazy" />
-          </a>
-        ),
-        code: ({ className, children }) => {
-          const code = String(children).replace(/\n$/, "");
-          return (
-            <code className={className} title={code.length > 120 ? code : undefined}>
-              {children}
-            </code>
-          );
-        },
-      }}
-    >
-      {content || ""}
-    </ReactMarkdown>
-  );
-}
-
-function ToolCard({ tool }: { tool: ToolEvent }) {
-  const [open, setOpen] = useState(false);
-  const isDone = tool.status === "completed";
-  const raw = tool.raw ? JSON.stringify(tool.raw, null, 2) : "";
-
-  return (
-    <article className={`tool-card ${isDone ? "tool-card-done" : "tool-card-running"}`}>
-      <button type="button" className="tool-summary" onClick={() => setOpen((value) => !value)}>
-        <span className="tool-icon" aria-hidden>
-          <ToolPixelIcon tool={tool.tool} emoji={tool.emoji} />
-        </span>
-        <span>
-          <strong>{tool.label || tool.tool}</strong>
-          <small>{tool.tool}</small>
-        </span>
-        <span className="tool-state">{isDone ? "completed" : "running"}</span>
-      </button>
-      {open && raw && <pre className="tool-raw">{raw}</pre>}
-    </article>
-  );
-}
-
-function MessageBubble({ message }: { message: ChatMessage }) {
-  const hasBody =
-    Boolean(message.content.trim()) ||
-    Boolean(message.attachments?.length) ||
-    Boolean(message.tools?.length);
-
-  if (!hasBody && message.status === "streaming") {
-    return (
-      <div className={`jchat-bubble-row jchat-bubble-row-${message.role}`}>
-        <div className={`jchat-bubble jchat-bubble-${message.role}`}>
-          <span className="jchat-streaming">…</span>
-        </div>
-      </div>
-    );
-  }
-
-  if (!hasBody) return null;
-
-  return (
-    <div className={`jchat-bubble-row jchat-bubble-row-${message.role}`}>
-      <article className={`jchat-bubble jchat-bubble-${message.role}`}>
-        {message.attachments && message.attachments.length > 0 && (
-          <div className="attachment-grid">
-            {message.attachments.map((attachment) => (
-              <a href={attachment.dataUrl} target="_blank" rel="noreferrer" key={attachment.id}>
-                <img src={attachment.dataUrl} alt={attachment.name} />
-              </a>
-            ))}
-          </div>
-        )}
-
-        {message.reasoning && (
-          <details className="reasoning">
-            <summary>Reasoning</summary>
-            <p>{message.reasoning}</p>
-          </details>
-        )}
-
-        {message.tools && message.tools.length > 0 && (
-          <div className="tool-list">
-            {message.tools.map((tool) => (
-              <ToolCard key={tool.id} tool={tool} />
-            ))}
-          </div>
-        )}
-
-        <div className="markdown-body">
-          <MarkdownMessage content={message.content} />
-          {message.status === "streaming" && <span className="jchat-streaming"> …</span>}
-        </div>
-      </article>
-    </div>
-  );
-}
-
 function App() {
   const identity = useIdentity();
   const portraitUrl = resolvePortraitUrl(identity.imageUrl, identity.avatarUrl);
 
   const [sessionId, setSessionId] = useState(() => newId("hermes-chat"));
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<JChatMessage[]>([]);
   const [draft, setDraft] = useState("");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [status, setStatus] = useState<"checking" | "ready" | "error">("checking");
@@ -312,7 +180,6 @@ function App() {
   const [chatSessions, setChatSessions] = useState<ChatSessionRow[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(false);
   const [sessionsError, setSessionsError] = useState("");
-  const scrollRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [voiceInputOn, setVoiceInputOn] = useState(false);
@@ -349,7 +216,7 @@ function App() {
   busyRef.current = busy;
   voiceInputOnRef.current = voiceInputOn;
 
-  const updateAssistant = useCallback((assistantId: string, apply: (message: ChatMessage) => ChatMessage) => {
+  const updateAssistant = useCallback((assistantId: string, apply: (message: JChatMessage) => JChatMessage) => {
     setMessages((current) => current.map((message) => (message.id === assistantId ? apply(message) : message)));
   }, []);
 
@@ -420,12 +287,12 @@ function App() {
 
       const quickOpen = userAttachments.length === 0 ? matchQuickDesktopOpen(trimmed) : null;
       if (quickOpen) {
-        const userMessage: ChatMessage = {
+        const userMessage: JChatMessage = {
           id: newId("user"),
           role: "user",
           content: trimmed,
         };
-        const assistantMessage: ChatMessage = {
+        const assistantMessage: JChatMessage = {
           id: newId("assistant"),
           role: "assistant",
           content: `Opened ${quickOpen.target}.`,
@@ -436,14 +303,14 @@ function App() {
         return;
       }
 
-      const userMessage: ChatMessage = {
+      const userMessage: JChatMessage = {
         id: newId("user"),
         role: "user",
         content: trimmed,
         attachments: userAttachments.length > 0 ? userAttachments : undefined,
       };
       const assistantId = newId("assistant");
-      const assistantMessage: ChatMessage = {
+      const assistantMessage: JChatMessage = {
         id: assistantId,
         role: "assistant",
         content: "",
@@ -495,7 +362,7 @@ function App() {
             const statusValue = parsed.status === "completed" ? "completed" : "running";
             updateAssistant(assistantId, (message) => {
               const existing = message.tools ?? [];
-              const nextTool: ToolEvent = {
+              const nextTool: JChatToolEvent = {
                 id: toolCallId,
                 tool: typeof parsed.tool === "string" ? parsed.tool : "tool",
                 emoji: typeof parsed.emoji === "string" ? parsed.emoji : undefined,
@@ -694,14 +561,14 @@ function App() {
             const trimmed = text.trim();
             if (!trimmed) return;
 
-            const userMessage: ChatMessage = {
+            const userMessage: JChatMessage = {
               id: newId("user"),
               role: "user",
               content: trimmed,
             };
             const assistantId = newId("assistant");
             s2sAssistantIdRef.current = assistantId;
-            const assistantMessage: ChatMessage = {
+            const assistantMessage: JChatMessage = {
               id: assistantId,
               role: "assistant",
               content: "",
@@ -797,10 +664,6 @@ function App() {
     if (!voiceInputOn) trayAudioLevelRef.current = 0;
     pushTrayVoiceState({ audioLevel: voiceInputOn ? trayAudioLevelRef.current : 0 });
   }, [voiceInputOn, s2sVoiceAvailable, pushTrayVoiceState]);
-
-  useEffect(() => {
-    scrollRef.current?.scrollIntoView({ block: "end" });
-  }, [messages]);
 
   /** Persona for the desk bubble (name + portrait). */
   useEffect(() => {
@@ -1093,79 +956,47 @@ function App() {
           </aside>
         )}
 
-        <section className="jchat-thread" aria-label="Chat thread">
-          <div className="jchat-messages">
-            {messages.length === 0 ? (
-              <p className="jchat-empty">
-                Start a fresh session with {identity.name}. Ask for research, mail, or attach an image.
-              </p>
-            ) : (
-              <>
-                <div className="jchat-day-sep">Today</div>
-                {messages.map((message) => (
-                  <MessageBubble key={message.id} message={message} />
-                ))}
-              </>
-            )}
-            <div ref={scrollRef} />
-          </div>
-
-          {attachments.length > 0 && (
-            <div className="jchat-attach-row" aria-label="Pending attachments">
-              {attachments.map((attachment) => (
-                <button
-                  type="button"
-                  key={attachment.id}
-                  className="jchat-attach-chip"
-                  onClick={() => setAttachments((current) => current.filter((item) => item.id !== attachment.id))}
-                  title="Remove"
-                >
-                  <img src={attachment.dataUrl} alt={attachment.name} />
-                  {attachment.name}
-                </button>
-              ))}
-            </div>
-          )}
-
-          <form
-            className="jchat-composer"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void sendMessage();
-            }}
-          >
-            <textarea
-              value={draft}
-              onChange={(event) => setDraft(event.target.value)}
-              placeholder="Type a message…"
-              rows={1}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" && !event.shiftKey) {
-                  event.preventDefault();
-                  void sendMessage();
-                }
-              }}
-            />
-            <button
-              type="submit"
-              className="jchat-send"
-              disabled={busy || status === "error" || (!draft.trim() && attachments.length === 0)}
-            >
-              {busy ? "…" : "Send"}
-            </button>
-          </form>
-          <input
-            ref={fileInputRef}
-            className="jchat-file-input"
-            type="file"
-            accept="image/*"
-            multiple
-            onChange={(event) => {
-              void addFiles(event.target.files);
-              event.currentTarget.value = "";
-            }}
-          />
-        </section>
+        <JChatThread
+          messages={messages}
+          draft={draft}
+          onDraftChange={setDraft}
+          onSend={() => void sendMessage()}
+          busy={busy}
+          disabled={status === "error"}
+          sendEnabled={!busy && status !== "error" && (draft.trim().length > 0 || attachments.length > 0)}
+          emptyText={`Start a fresh session with ${identity.name}. Ask for research, mail, or attach an image.`}
+          beforeComposer={
+            <>
+              {attachments.length > 0 ? (
+                <div className="jchat-attach-row" aria-label="Pending attachments">
+                  {attachments.map((attachment) => (
+                    <button
+                      type="button"
+                      key={attachment.id}
+                      className="jchat-attach-chip"
+                      onClick={() => setAttachments((current) => current.filter((item) => item.id !== attachment.id))}
+                      title="Remove"
+                    >
+                      <img src={attachment.dataUrl} alt={attachment.name} />
+                      {attachment.name}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+              <input
+                ref={fileInputRef}
+                className="jchat-file-input"
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={(event) => {
+                  void addFiles(event.target.files);
+                  event.currentTarget.value = "";
+                }}
+              />
+            </>
+          }
+        />
       </div>
     </main>
   );

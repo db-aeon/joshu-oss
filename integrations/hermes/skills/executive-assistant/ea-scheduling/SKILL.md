@@ -95,7 +95,7 @@ Then **`kanban_complete`** with `metadata={"action":"matched","matched_meeting_t
   "messageId": "<message_id from ingress body>",
   "sourcePath": "<source_path>",
   "subject": "Change tires",
-  "from": "Dan B <db@project-aeon.com>",
+  "from": "the owner <owner work email>",
   "timezone": "America/Los_Angeles"
 }
 ```
@@ -133,7 +133,7 @@ Response includes `task_id` on board **`ea-scheduling`**.
 
 Owner can delete or move events on their real Google calendar. **Never** infer owner availability from Nylas alone, from agent calendar mirrors, or from event titles on `list_events`.
 
-**Wrong calendar scope:** `items: ["primary"]` alone checks only the work calendar (`db@project-aeon.com`). Owner meetings often live on a personal Gmail calendar — FreeBusy returns `busy: []` on primary while the personal calendar is blocked. **Omit `items`** or include personal Gmail; always schedule from **`calendars.combined.free`**, not `primary.free` alone.
+**Wrong calendar scope:** `items: ["primary"]` alone checks only the work calendar (`owner work email`). Owner meetings often live on a personal Gmail calendar — FreeBusy returns `busy: []` on primary while the personal calendar is blocked. **Omit `items`** or include personal Gmail; always schedule from **`calendars.combined.free`**, not `primary.free` alone.
 
 **Transparent events:** Google events marked **Show as free** (`transparency: transparent`, `blocksAvailability: false`) — e.g. some recurring **Asteme** blocks — do **not** appear in FreeBusy `busy[]`. A visible calendar title does **not** mean the owner is unavailable. Only `google_calendar_find_free_slots` (or Composio `GOOGLECALENDAR_FIND_FREE_SLOTS` with the same args) determines bookable time.
 
@@ -161,7 +161,7 @@ Responses include **`timeAnchor`** (owner-local now) and per-event **`localDate`
 - When warning about overlaps, name the **weekday + date** (`Wed 6/17`) and use `relativeDay` when present (`tomorrow's wrap block`, not `today's` if `relativeDay` is `tomorrow`).
 - **Do not** infer today from event ISO strings alone — convert to owner timezone and compare to `timeAnchor.ownerLocalDate`.
 
-4. Optionally `nylas_list_events` same window — see holds Patrick already placed (avoid double-booking ledger).
+4. Optionally `nylas_list_events` same window — see holds the companion already placed (avoid double-booking ledger).
 5. Pick slots that are **free on live Google FreeBusy** and fit working hours.
 
 ### Workflow

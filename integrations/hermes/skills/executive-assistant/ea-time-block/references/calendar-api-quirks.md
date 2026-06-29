@@ -1,4 +1,4 @@
-# Calendar API quirks (Joshu / Dan's setup)
+# Calendar API quirks (Joshu / owner's setup)
 
 ## Event source of truth: `google_calendar_list_events` (Composio MCP)
 
@@ -21,10 +21,10 @@ GET /joshu/api/connectors/calendar/google/events?date=YYYY-MM-DD&timezone=Americ
 Explicit override when needed:
 
 ```text
-items: ['primary', 'dbenyamin@gmail.com']
+items: ['primary', 'owner personal Gmail calendar']
 ```
 
-**Legacy pitfall:** `items: ['primary']` alone checks only the work calendar (`db@project-aeon.com`). Dan's Asteme and most external meetings live on **`dbenyamin@gmail.com`** — FreeBusy returns `busy: []` on primary while the personal calendar is blocked.
+**Legacy pitfall:** `items: ['primary']` alone checks only the work calendar (`owner work email`). owner's Asteme and most external meetings live on **`owner personal Gmail calendar`** — FreeBusy returns `busy: []` on primary while the personal calendar is blocked.
 
 FreeBusy may return empty `busy[]` on a calendar even when events exist if the calendar ID is wrong. Do not trust empty `busy[]` as proof of an open schedule — cross-check with `google_calendar_list_events` or query both calendars.
 
@@ -39,5 +39,5 @@ For time-blocking: use **list_events** (or gather script) to discover what exist
 
 ## Calendar IDs on this setup
 
-- `primary` / `db@project-aeon.com` — Dan's primary workspace calendar
-- `dbenyamin@gmail.com` — Dan's personal Gmail calendar (Asteme, most external meetings)
+- `primary` / `owner work email` — owner's primary workspace calendar
+- `owner personal Gmail calendar` — owner's personal Gmail calendar (Asteme, most external meetings)
