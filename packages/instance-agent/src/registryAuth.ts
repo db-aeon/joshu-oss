@@ -136,7 +136,7 @@ export async function ensureRegistryLoginForUpdate(
   throw new Error(
     "GHCR login missing — no registryAuth on command, no /etc/joshu/secrets/ghcr-read.env, " +
       "and no ghcr.io entry in /root/.docker/config.json. " +
-      "Retry admin Update after control-plane deploy, or run scripts/refresh-vps-ghcr-login.sh on the host.",
+      "Retry admin Update after control-plane deploy, or refresh GHCR credentials on the host.",
   );
 }
 

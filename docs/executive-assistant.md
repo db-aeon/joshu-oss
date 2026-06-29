@@ -45,7 +45,7 @@ Skills must use live profile data, not example names:
 
 Day-1 setup: [`welcome-onboarding.md`](welcome-onboarding.md) — Welcome wizard seeds project folders and Hermes crons.
 
-Optional mail analysis: [`day0-cold-start.md`](day0-cold-start.md) (fleet boxes with control plane may use CP-driven cold start instead).
+Optional mail analysis: [`day0-cold-start.md`](day0-cold-start.md) — run **Analyze mail for setup (Day 0)** in Connectors after Gmail is connected.
 
 ## Time blocking
 
@@ -69,7 +69,3 @@ Enabled in [`integrations/hermes/skills-enabled.yaml`](../integrations/hermes/sk
 
 - `ea-playbook`, `ea-scheduling`, `ea-time-block`, `ea-morning-review`, `ea-shutdown`, `ea-project-kanban`
 - `joshu-brain`, `joshu-mail`, `excalidraw`, kanban tools
-
-## Fleet-only depth
-
-Operator SOPs, skill-evolution reviews, and customer-specific runbooks live in the **private** fleet monorepo — not in this public tree.

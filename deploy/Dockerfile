@@ -42,10 +42,9 @@ RUN git init "${HERMES_DIR}" \
     && npm run build \
     && rm -rf node_modules /root/.npm
 
-COPY scripts/hermes-langfuse-system-prompt.patch scripts/hermes-langfuse-user-id.patch scripts/hermes-langfuse-openrouter-cost.patch scripts/hermes-openrouter-usage-include.patch scripts/hermes-skill-evolution.patch scripts/hermes-content-filter.patch scripts/apply-hermes-langfuse-patches.sh scripts/apply-hermes-kanban-ws-base-path-patch.sh scripts/apply-hermes-skill-evolution-patch.sh scripts/apply-hermes-content-filter-patch.sh /tmp/joshu-hermes-patches/
+COPY scripts/hermes-langfuse-system-prompt.patch scripts/hermes-langfuse-user-id.patch scripts/hermes-langfuse-openrouter-cost.patch scripts/hermes-openrouter-usage-include.patch scripts/hermes-content-filter.patch scripts/apply-hermes-langfuse-patches.sh scripts/apply-hermes-kanban-ws-base-path-patch.sh scripts/apply-hermes-content-filter-patch.sh /tmp/joshu-hermes-patches/
 RUN HERMES_DIR="${HERMES_DIR}" bash /tmp/joshu-hermes-patches/apply-hermes-langfuse-patches.sh \
     && HERMES_DIR="${HERMES_DIR}" bash /tmp/joshu-hermes-patches/apply-hermes-kanban-ws-base-path-patch.sh \
-    && HERMES_DIR="${HERMES_DIR}" bash /tmp/joshu-hermes-patches/apply-hermes-skill-evolution-patch.sh \
     && HERMES_DIR="${HERMES_DIR}" bash /tmp/joshu-hermes-patches/apply-hermes-content-filter-patch.sh \
     && rm -rf "${HERMES_DIR}/.git" /root/.cache/pip /tmp/joshu-hermes-patches
 

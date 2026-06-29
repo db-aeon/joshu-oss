@@ -10,7 +10,7 @@ The **control plane** (managed provisioning, customer portal at `hello.joshu.me`
 | --- | --- |
 | [`../self-host.md`](../self-host.md) | Standalone Docker bootstrap |
 | [`runtime-topology.md`](runtime-topology.md) | How legacy assumptions map to Compose |
-| [`instance-agent-protocol.md`](instance-agent-protocol.md) | Optional fleet sidecar — heartbeats and signed commands |
+| [`instance-agent-protocol.md`](instance-agent-protocol.md) | Optional sidecar for managed hosting — heartbeats and signed commands |
 | [`control-plane.md`](control-plane.md) | Stub — points to proprietary CP repo |
 
 ## Code layout

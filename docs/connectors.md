@@ -7,7 +7,7 @@ Connector apps sync mail and calendar into **markdown under `joshu's files`**, i
 
 **Desktop app:** **Connectors** — canonical UI for OAuth (Composio), Gmail account management, and sync health. See [`docs/connectors-arozos-app.md`](connectors-arozos-app.md).
 
-**VPS / multi-box:** Composio OAuth is keyed by `COMPOSIO_USER_ID` (provisioned as the customer slug, e.g. `patrick`). ArozOS login stays `JOSHU_AROZ_USER` (owner email). Without per-slug `COMPOSIO_USER_ID`, every box with the same owner email shares the same Gmail connections in Composio cloud.
+**VPS / multi-box:** Composio OAuth is keyed by `COMPOSIO_USER_ID` (set a unique slug per box). ArozOS login stays `JOSHU_AROZ_USER` (owner email). Without per-slug `COMPOSIO_USER_ID`, every box with the same owner email shares the same Gmail connections in Composio cloud.
 
 **App-wide status:** `GET /joshu/api/connectors/status` returns Nylas + per-Gmail account sync/mirror stats and a `registry` object (also written to `.joshu/connectors-registry.json`). jMail, cron, and Hermes MCP use the same API.
 
@@ -250,7 +250,7 @@ curl -fsS http://127.0.0.1:8795/health
 curl -fsS --max-time 120 'http://127.0.0.1:8788/joshu/api/hermes-chat/status?after_mcp_boot=1'
 ```
 
-If tools are still missing, restart the stack or gateway. Open a **new** jChat session or Telegram turn after fix. Full write-up: [Partial MCP catalog](vps-sandbox/troubleshooting-and-lessons.md#partial-mcp-tool-catalog-jchat--telegram).
+If tools are still missing, restart the stack or gateway. Open a **new** jChat session or Telegram turn after fix. Nudge `GET /joshu/api/hermes-chat/status?after_mcp_boot=1` and confirm `:8795/health` before starting chat.
 
 ## MCP tool policy (hard agent blocks)
 
@@ -277,7 +277,7 @@ Configure in **Connectors → Overview → Owner 1:1 channel**. Stores `.joshu/o
 | Provider | Link | Approvals |
 |----------|------|-----------|
 | **Telegram** | Send `/start` to the action-guard bot, or paste chat ID | Inline Approve/Deny (Bot API or Composio send) |
-| **Slack** | Composio Slack OAuth + channel ID (`D…` self-DM or private `C…` e.g. `#patrick-approvals`) | Markdown prompt; owner replies **Y/N** in channel (polled via Composio). Signed URL decide links as fallback — see [`agent-safety.md` — Slack approval flow](agent-safety.md#slack-approval-flow-v1). |
+| **Slack** | Composio Slack OAuth + channel ID (`D…` self-DM or private `C…` e.g. `#my-approvals`) | Markdown prompt; owner replies **Y/N** in channel (polled via Composio). Signed URL decide links as fallback — see [`agent-safety.md` — Slack approval flow](agent-safety.md#slack-approval-flow-v1). |
 
 API: `GET/PUT /joshu/api/connectors/owner-channel`, `POST /joshu/api/owner-channel/await` (MCP proxy), `POST /joshu/api/owner-channel/test`.
 
@@ -447,7 +447,7 @@ Hermes agents call sends via **`mcp_joshu_connectors_nylas_send_message`**, whic
 | Confirm owner channel linked | `curl -fsS …/joshu/api/action-guard/status \| jq '.ownerChannelLinked, .ownerChannel'` |
 | Confirm Composio proxy | `curl -fsS http://127.0.0.1:8796/health` on box; Hermes config `mcp_servers.composio.url` → `:8796/mcp` |
 | Classify fixtures | `node scripts/test-action-guard-classify.mjs` |
-| Hotpatch live box | [`docs/vps-sandbox/hotpatch-running-box.md`](vps-sandbox/hotpatch-running-box.md) — Lane A (scripts) + Lane B3 (`dist/`) |
+| Update a running VPS | Rebuild and redeploy the Docker image from this repo (`npm run vps:build-image`) or `git pull` + `docker compose up -d --build` on the host |
 
 Example agent prompt: *“Send an email to db@example.com with subject ‘Action guard test’ and body ‘Testing approval gate.’”* Expect Telegram before send; Langfuse trace shows `mcp_composio_COMPOSIO_SEARCH_TOOLS` (ungated) then `mcp_joshu_connectors_nylas_send_message` (gated).
 

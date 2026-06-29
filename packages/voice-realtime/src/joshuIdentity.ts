@@ -17,10 +17,10 @@ export interface JoshuIdentity {
 
 const DEFAULTS: JoshuIdentity = {
   schemaVersion: 1,
-  name: "Patrick",
+  name: "Companion",
   imageUrl: null,
   voiceId: null,
-  owner: { displayName: "Dan" },
+  owner: { displayName: "Owner" },
 };
 
 function envTrim(name: string): string | undefined {

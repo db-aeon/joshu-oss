@@ -437,7 +437,7 @@ On each chat stream, Joshu calls `syncComposioHermesMcp` so the session/MCP bloc
 
 Composio **`user_id`** is **not** the jChat Hermes transcript id. Resolution order (`src/composioApi.ts`):
 
-1. **`COMPOSIO_USER_ID`** when set (VPS: customer slug at provision, e.g. `patrick`)
+1. **`COMPOSIO_USER_ID`** when set (VPS: unique slug per box, e.g. `mybox`)
 2. ArozOS desktop user from `AROZ_DATA/files/users/<email>/` → same as **`JOSHU_AROZ_USER`**
 3. Fallback `joshu-local`
 
@@ -446,7 +446,7 @@ Composio **`user_id`** is **not** the jChat Hermes transcript id. Resolution ord
 | VPS (current provision) | Customer slug | Owner email (`JOSHU_AROZ_USER`) |
 | Local dev | First non-`admin` user dir or `COMPOSIO_USER_ID` override | Your dev user |
 
-One **box** = one Composio `user_id` (slug). Reusing the same owner email on multiple boxes without `COMPOSIO_USER_ID` shares Gmail OAuth across boxes — see [connectors.md](connectors.md) and [troubleshooting — Connectors](vps-sandbox/troubleshooting-and-lessons.md#connectors-nylas-and-composio-on-vps).
+One **box** = one Composio `user_id` (slug). Reusing the same owner email on multiple boxes without `COMPOSIO_USER_ID` shares Gmail OAuth across boxes — see [connectors.md](connectors.md).
 
 **Not tied to ArozOS login:** Composio routes do not check desktop session cookies. Anyone
 who can reach `/joshu/api/hermes-chat/*` on the box can list/connect (same as other
@@ -490,7 +490,7 @@ You do **not** need to stay logged into ArozOS or keep jChat open for Hermes to 
 on later turns, cron jobs, or voice — as long as the gateway process can start and Composio
 still has the connection for that `user_id`.
 
-Provisioning tip: set `DEFAULT_COMPOSIO_API_KEY` and `DEFAULT_NYLAS_API_KEY` in control-plane `.env.local` (copied to each sandbox `instance.env`). `COMPOSIO_USER_ID` is set to the customer slug automatically. See [control-plane-schema — instance.env](vps-sandbox/control-plane-schema.md#provisioned-instanceenv-product-secrets).
+**VPS tip:** set `COMPOSIO_API_KEY`, `NYLAS_API_KEY`, and `COMPOSIO_USER_ID` in `/etc/joshu/instance.env` (or your compose env file). See [connectors.md](connectors.md) and [self-host.md](self-host.md).
 
 ### Troubleshooting Composio
 
@@ -501,7 +501,7 @@ Provisioning tip: set `DEFAULT_COMPOSIO_API_KEY` and `DEFAULT_NYLAS_API_KEY` in 
 | OAuth iframe / `chromewebdata` error | OAuth opened inside iframe | Use current jChat build (popup tab); allow pop-ups |
 | Pop-up blocked | Browser policy | Allow pop-ups for the ArozOS host; retry **Connect** |
 | Connected in UI but Hermes can’t use tools | Stale gateway MCP | Close OAuth tab (triggers sync) or `POST …/composio/sync` with `restartGateway: true` |
-| jChat shows 1–3 connectors tools; `project_kanban_*` missing | Partial MCP catalog at gateway boot | `:8795/health` OK but Hermes registered tools before MCP was ready — see [Partial MCP catalog](vps-sandbox/troubleshooting-and-lessons.md#partial-mcp-tool-catalog-jchat--telegram); nudge `GET …/hermes-chat/status?after_mcp_boot=1` or recreate stack; **new** jChat session after fix |
+| jChat shows 1–3 connectors tools; `project_kanban_*` missing | Partial MCP catalog at gateway boot | `:8795/health` OK but Hermes registered tools before MCP was ready — nudge `GET …/hermes-chat/status?after_mcp_boot=1` or recreate stack; **new** jChat session after fix |
 | Works until reboot | Missing persistent `composio-session.json` or wiped `~/.hermes` | Ensure `AROZ_DATA` / `joshu_hermes` volumes mount correctly on VPS |
 | Gmail still connected after “factory reset” | OAuth tokens live in **Composio cloud**, not only local `.joshu/` | Use **hard** factory reset ([`box-state.md`](box-state.md#hard-factory-reset)); or `npx tsx scripts/box-wipe-connectors.ts` |
 | Mail mirrors reappear ~10m after wipe | Connector cron + Composio still connected | Disconnect Composio accounts first (hard reset preflight) — see [`connectors.md`](connectors.md#hard-factory-reset) |

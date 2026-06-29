@@ -13,14 +13,10 @@ function hermesHome(): string {
   return process.env.HERMES_HOME?.trim() || path.join(process.env.HOME || "/root", ".hermes");
 }
 
-/** Resolve fleet-only scripts under proprietary/scripts/, then legacy scripts/. */
+/** Resolve bundled scripts under scripts/ only (AGPL tree). */
 function resolveScript(relativeScript: string): string | null {
-  const root = projectRoot();
-  const fleetPath = path.join(root, "proprietary/scripts", path.basename(relativeScript));
-  if (fs.existsSync(fleetPath)) return fleetPath;
-  const legacyPath = path.join(root, relativeScript);
-  if (fs.existsSync(legacyPath)) return legacyPath;
-  return null;
+  const scriptPath = path.join(projectRoot(), relativeScript);
+  return fs.existsSync(scriptPath) ? scriptPath : null;
 }
 
 async function runBashScript(
@@ -56,7 +52,7 @@ async function runBashScript(
   }
 }
 
-/** Seed writable skills, init GitHub git remote, apply evolution patch. Best-effort. */
+/** Seed writable Hermes skills from factory (merge or overwrite). Best-effort. */
 export async function bootstrapHermesLearning(opts?: {
   seedMode?: "merge" | "overwrite";
 }): Promise<void> {
@@ -65,6 +61,5 @@ export async function bootstrapHermesLearning(opts?: {
       ? { JOSHU_HERMES_SKILLS_SEED_MODE: "overwrite" }
       : undefined;
   await runBashScript("scripts/bootstrap-hermes-learning-skills.sh", seedEnv);
-  await runBashScript("scripts/apply-hermes-skill-evolution-patch.sh");
-  await runBashScript("scripts/lib/ensure-hermes-learning-git.sh");
+  await runBashScript("proprietary/scripts/hermes-learning-bootstrap.sh");
 }

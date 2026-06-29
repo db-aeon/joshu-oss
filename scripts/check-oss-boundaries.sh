@@ -70,21 +70,19 @@ should_skip() {
     README.md|CONTRIBUTING.md|README.oss.md|CONTRIBUTING.oss.md)
       return 0
       ;;
-    scripts/check-oss-boundaries.sh|scripts/prepare-oss-snapshot.sh|scripts/oss-doc-sanitize.sh|scripts/publish-oss-release.sh|scripts/sync-from-oss.sh)
+    scripts/check-oss-boundaries.sh|scripts/prepare-oss-snapshot.sh|scripts/oss-doc-sanitize.sh|scripts/publish-oss-release.sh)
       return 0
       ;;
   esac
   return 1
 }
 
-# Fleet runtime files may reference proprietary/ paths.
+# Fleet runtime files may reference proprietary/ paths (private fleet repo only).
 PROPRIETARY_REF_ALLOW=(
   deploy/scripts/vps-start.sh
   deploy/docker-compose.yml
+  scripts/install-proprietary-apps.sh
   src/hermesLearning.ts
-  src/hermesLearningGitCron.ts
-  scripts/update-hermes-agent.sh
-  scripts/sync-from-oss.sh
 )
 
 is_proprietary_ref_allowed() {
