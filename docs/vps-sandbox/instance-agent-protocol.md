@@ -137,7 +137,7 @@ Cloud-init runs `docker login ghcr.io` on the **host** (`/root/.docker/config.js
 
 `Instance.deployedImageRef` updates only on a successful update **ack**. Manual hotpatches and failed updates can leave admin showing an old tag (e.g. `0.1.13`) while heartbeat `releaseVersion` / `host.imageRef` report the running box (e.g. `0.1.18`).
 
-**Mitigation:** Heartbeat reconciles `deployedImageRef` from `host.imageRef` when the box is healthy and no update job is in flight (control-plane deploy required). See [troubleshooting §19c–19d](troubleshooting-and-lessons.md).
+**Mitigation:** Heartbeat reconciles `deployedImageRef` from `host.imageRef` when the box is healthy and no update job is in flight.
 
 ## Joshu instance health API
 
@@ -172,7 +172,7 @@ Cloud-init sets `JOSHU_INSTANCE_ID` and `INSTANCE_AGENT_TOKEN` in `/etc/joshu/in
 | --- | --- |
 | No heartbeat 5 min | Alert + mark `degraded` |
 | Update ack failed | Rollback command auto-queued |
-| Health 503 + `components.dist.status=drift` during/after update | Release state mismatch (`instance.env` vs `dist/` provenance vs image) — see [troubleshooting §19f](troubleshooting-and-lessons.md) |
+| Health 503 + `components.dist.status=drift` during/after update | Release state mismatch (`instance.env` vs `dist/` provenance vs image) — align `JOSHU_IMAGE_REF`, run `scripts/sync-dist-from-image.sh`, recreate stack |
 | `instance-agent` container `Created` or missing after update | Self-restart race during `prepareAgentThenRestart` — `compose up -d --no-deps instance-agent`; check `pending-release-update.json` |
 | Deprovision ack | `terminated`, delete DNS, release Twilio number |
-| Stack crash-loop after companion sync; `instance.env: line N: Last: command not found` | Owner display name unquoted in `instance.env` on boxes with pre-quote instance-agent — fix manually and redeploy agent image; see [troubleshooting](troubleshooting-and-lessons.md#admin-create-sandbox--companion--boot-pitfalls-2026-06) |
+| Stack crash-loop after companion sync; `instance.env: line N: Last: command not found` | Owner display name with spaces must be quoted in `instance.env` — fix the env file and recreate the stack |

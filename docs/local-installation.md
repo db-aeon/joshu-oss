@@ -108,7 +108,7 @@ Local checklist:
 
 **jChat traces:** Browser → ArozOS → Joshu `/api/hermes-chat/*` → Hermes gateway on `:8642`. Joshu owns the gateway process, not ArozOS.
 
-**Langfuse Users vs traces:** Traces can show in the UI without a **Users** row until `HERMES_LANGFUSE_USER_ID`, the user-id patch, and gateway env are correct — see [troubleshooting — Users vs jChat](vps-sandbox/troubleshooting-and-lessons.md#langfuse-users-vs-jchat-traces).
+**Langfuse Users vs traces:** Traces can show in the UI without a **Users** row until `HERMES_LANGFUSE_USER_ID`, the user-id patch, and gateway env are correct — set `HERMES_LANGFUSE_USER_ID` in `~/.hermes/.env` and restart the gateway.
 
 **What copies to VPS:** Your full `~/.hermes/config.yaml` does **not** ship in the sandbox image. Product settings (`skills.disabled`, model, plugins, Langfuse) come from the repo and `instance.env` — [hermes-integration — runtime config](hermes-integration.md#hermes-runtime-config-local-hermes-vs-vps--image). The denylist is **computed** at gateway sync from `skills-enabled.yaml` + bundled Hermes discovery (`HERMES_DIR` on VPS, `HERMES_BIN` walk-up locally). Refresh the allowlist with `npm run hermes:sync-skills-policy` after bumping the Hermes pin; verify with `npm run test:hermes-skills-policy`.
 
@@ -120,7 +120,7 @@ Local checklist:
 | Still 401 after URL fix | Stale gateway on `:8642` with old env | `hermes gateway stop` or restart Joshu (`dev:arozos` replaces orphans when env changes) |
 | `GET /hermes-chat/status` 503 ~30–90s | Gateway cold start | Wait for warm-up; Joshu allows up to ~90s on first start |
 | System prompt missing in **LLM call** | Anthropic `system` not in `messages` | Apply `scripts/apply-hermes-langfuse-system-patch.sh` until [upstream PR #32175](https://github.com/NousResearch/hermes-agent/pull/32175) is in your Hermes pin |
-| Hermes traces OK, no `joshu-app` traces | Joshu not restarted after keys; or VPS missing runtime Langfuse npm deps | Restart Joshu locally; on VPS cut image release after `deploy/runtime/package.json` bump — [hotpatch Lane C](vps-sandbox/hotpatch-running-box.md#lane-c--full-image-release-only) |
+| Hermes traces OK, no `joshu-app` traces | Joshu not restarted after keys; or VPS missing runtime Langfuse npm deps | Restart Joshu locally; on VPS rebuild the image after `deploy/runtime/package.json` changes |
 | Assistant replies in Chinese / `你好，我无法给到相关内容。` | OpenRouter `content_filter` from DeepSeek (or similar) with no Hermes retry | Ensure `scripts/apply-hermes-content-filter-patch.sh` ran (`_is_provider_content_filter_response` in Hermes `run_agent.py`); restart gateway — [content_filter handling](hermes-integration.md#provider-content_filter-handling) |
 | `Files: command not found` on start | Unquoted path with apostrophe in `~/.hermes/.env` | Let Joshu re-sync from `.env` (quoted paths) or quote `Joshu's Files` manually |
 
@@ -409,7 +409,7 @@ subservice is registered. Joshu Express is always available at
 `.local/arozos-data/subservice/joshu/.disabled` if present, then restart
 `npm run dev:arozos`.
 
-**Stopping the stack:** **Ctrl+C** in the `dev:arozos` terminal stops Joshu, ArozOS, Hindsight, voice-realtime, and gbrain (see [`scripts/dev-arozos.sh`](../scripts/dev-arozos.sh) `cleanup` trap). Connectors MCP (`:8795`), Composio guard (`:8796`), Hermes gateway, and Camofox Docker may keep running — usually fine for `npm run dev:arozos` again. For a full local teardown (reclaim workers, stop gateway, kill connectors MCP), see [troubleshooting — stopping dev:arozos](vps-sandbox/troubleshooting-and-lessons.md#local-dev--stopping-npm-run-devarozos-2026-06-23).
+**Stopping the stack:** **Ctrl+C** in the `dev:arozos` terminal stops Joshu, ArozOS, Hindsight, voice-realtime, and gbrain (see [`scripts/dev-arozos.sh`](../scripts/dev-arozos.sh) `cleanup` trap). Connectors MCP (`:8795`), Composio guard (`:8796`), Hermes gateway, and Camofox Docker may keep running — usually fine for `npm run dev:arozos` again. For a full local teardown, stop the Hermes gateway (`hermes gateway stop`), kill connectors MCP on `:8795`, and stop the Camofox container.
 
 **Camofox container:** `bash scripts/ensure-camofox-container.sh` creates or
 starts `camofox-hitl` (see `CAMOFOX_CONTAINER` in `.env`). The script patches
@@ -425,10 +425,10 @@ docker rm -f camofox-hitl
 bash scripts/ensure-camofox-container.sh
 ```
 
-Details: [`docs/vps-sandbox/troubleshooting-and-lessons.md`](vps-sandbox/troubleshooting-and-lessons.md#patch-pitfalls-maintainers).
+Details: [`hitl-camofox-notes.md`](hitl-camofox-notes.md#vnc-display-routing-and-troubleshooting).
 
 Full VNC / aspect-ratio / fingerprint notes:
-[`hitl-camofox-notes.md`](hitl-camofox-notes.md#vnc-display-routing-and-troubleshooting-resolved-may-2026).
+[`hitl-camofox-notes.md`](hitl-camofox-notes.md#vnc-display-routing-and-troubleshooting).
 
 ### UI / design system
 
@@ -447,8 +447,7 @@ Full VNC / aspect-ratio / fingerprint notes:
   `arozos/web-overlays-vanilla/`. Tango PNGs → `web/img/joshu/`, `web/img/desktop/`,
   `web/img/tango/`. Rebuild: [`docs/design/README.md`](design/README.md#tango-icon-pipeline).
 - **Desktop stuck / “Initializing” splash** on login: see
-  [`docs/design/README.md`](design/README.md#desktop-startup-splash) and
-  [`docs/vps-sandbox/troubleshooting-and-lessons.md`](vps-sandbox/troubleshooting-and-lessons.md#desktop-ui--stuck-clicks-and-init-splash).
+  [`docs/design/README.md`](design/README.md#desktop-startup-splash).
 - **Video / mute issues** on the ArozOS desktop (Media Player vs Video app, autoplay
   policy, `global_volume`): see [`docs/arozos-media-player.md`](arozos-media-player.md).
 - After editing tokens, overlay, or icons, see [`docs/design/README.md`](design/README.md) for

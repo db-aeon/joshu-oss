@@ -1,7 +1,7 @@
 # Joshu App Store — Architecture & Policy (Draft)
 
 This document describes how **desktop apps** are distributed on Joshu boxes: open
-source defaults, first-party proprietary fleet apps, third-party publishers, and
+source defaults, commercial first-party apps, third-party publishers, and
 (future) a signed catalog with free and paid offerings.
 
 It is a **product and legal outline**, not a contract. Engine licensing remains
@@ -16,9 +16,9 @@ Contact Project Aeon Inc.: **info@joshu.me** (catalog, OEM, publisher onboarding
 ## Goals
 
 1. **Self-hosters** can run the OSS engine and install apps manually (sideload).
-2. **Project Aeon** can ship AGPL default apps in [joshu-oss](https://github.com/db-aeon/joshu-oss) and proprietary apps via [`proprietary/`](../proprietary/README.md).
+2. **Project Aeon** ships AGPL default apps in [joshu-oss](https://github.com/db-aeon/joshu-oss). Commercial closed-source apps are distributed separately under [COMMERCIAL_LICENSE.md](../COMMERCIAL_LICENSE.md).
 3. **Third-party developers** can ship **free or paid** apps without open-sourcing them, when distributed as separate installable bundles (not merged into AGPL engine source).
-4. **Managed fleet** (`hello.joshu.me`) can offer a curated catalog, payments, and entitlements — control plane stays proprietary and out of the OSS snapshot.
+4. **Managed hosting** at [joshu.me](https://joshu.me) may offer a curated catalog with payments and entitlements — that control plane is not part of this repository.
 
 Naming and brand rules: [TRADEMARK.md](../TRADEMARK.md).
 
@@ -51,11 +51,11 @@ Apps appear on the ArozOS desktop via `.shortcut` files installed by
 | Tier | Who | Where it lives | OSS snapshot | Typical license |
 |------|-----|----------------|--------------|-----------------|
 | **Built-in OSS** | Project Aeon + community | `apps/` + `arozos/subservice/` | Yes (`joshu-oss`) | `AGPL-3.0` |
-| **First-party fleet** | Project Aeon | `proprietary/arozos/subservice/` | No | `proprietary` |
+| **Commercial first-party** | Project Aeon | Separate bundle / OEM agreement | No | `proprietary` or commercial license |
 | **Third-party sideload** | Any publisher | User drops bundle on box | N/A | Publisher choice |
-| **Official catalog** (future) | Project Aeon + approved publishers | Control plane + signed CDN | Catalog metadata only | Per listing |
+| **Official catalog** (future) | Project Aeon + approved publishers | Signed CDN + entitlement service | Catalog metadata only | Per listing |
 
-Fleet Docker images today: OSS engine + [`install-proprietary-apps.sh`](../scripts/install-proprietary-apps.sh) + optional JDL brand pack.
+OSS Docker images include the AGPL engine and built-in apps only.
 
 ---
 
@@ -110,7 +110,7 @@ my-app-1.2.0.joshu-app/
 2. `scripts/install-joshu-app.sh /path/to/my-app` rsyncs to `arozos/subservice/<id>/`, validates manifest, installs skills, updates app-skills registry.
 3. Restart `dev:arozos` or refresh subservices + desktop shortcut.
 
-Managed fleet may pull the same bundle from the control plane when entitlement checks pass (future).
+Managed hosting may pull the same bundle when entitlement checks pass (future).
 
 See [`app-sdk.md`](app-sdk.md#sideload-with-install-joshu-appsh) and [`platform-architecture.md`](platform-architecture.md).
 
@@ -165,7 +165,7 @@ Docs: [`platform-architecture.md`](platform-architecture.md), [`app-sdk.md`](app
 | `bundleSha256` | Integrity check for sideload |
 | `copyright` | `Copyright (c) …` line for About screen |
 
-Example proprietary fleet app (today):
+Example commercial (closed-source) app manifest:
 
 ```json
 {
@@ -186,11 +186,11 @@ Example proprietary fleet app (today):
 
 ## Free vs paid
 
-| Model | Self-host OSS | Managed fleet |
+| Model | Self-host OSS | Managed hosting |
 |-------|---------------|---------------|
 | **Free OSS app** | Ship source in `joshu-oss`; bundle optional | Preinstalled in image |
 | **Free third-party** | Sideload `.joshu-app`; publisher license applies | Catalog listing; no payment |
-| **Paid first-party** | Not in OSS; fleet/proprietary or sideload with license key | CP entitlement + Stripe |
+| **Paid first-party** | Sideload with license key or commercial agreement | Catalog entitlement + billing |
 | **Paid third-party** | Sideload + publisher license key (honor system or local key file) | CP rev-share; entitlement on box |
 
 **Engine** (Joshu + default apps in OSS) stays free under AGPL for self-host use.
@@ -234,13 +234,13 @@ should cover at least:
 6. **Privacy** — What data the app may access on a box (filesystem, mail, connectors).
 7. **AGPL boundary** — Publisher will not distribute proprietary code as part of the OSS engine repo without a separate license.
 
-Until that agreement exists, third-party distribution is **sideload at your own risk** on self-host; fleet catalog is **Project Aeon first-party only**.
+Until that agreement exists, third-party distribution is **sideload at your own risk** on self-host.
 
 ---
 
 ## Security (Phase 2)
 
-| Control | Self-host | Managed fleet |
+| Control | Self-host | Managed hosting |
 |---------|-----------|---------------|
 | SHA-256 of bundle | Recommended | Required |
 | Ed25519 publisher signature | Optional | Required for catalog |
@@ -254,7 +254,7 @@ Until that agreement exists, third-party distribution is **sideload at your own 
 
 | Phase | Deliverable | Status |
 |-------|-------------|--------|
-| **0** | OSS apps + `joshu.app.json` + proprietary fleet folder | **Done** |
+| **0** | OSS apps + `joshu.app.json` | **Done** |
 | **1** | `@joshu/platform-data`, `@joshu/app-sdk`, manifest v2, invoke API, docs | **Done** |
 | **1b** | `install-joshu-app.sh` sideload + MCP tool codegen script | **Done** (hash/signature verify pending) |
 | **2** | `.joshu-app` bundle signing + extended catalog manifest | Planned |
@@ -266,7 +266,6 @@ Until that agreement exists, third-party distribution is **sideload at your own 
 ## Related
 
 - [app-sdk.md](app-sdk.md) — build pipeline and manifest basics
-- [proprietary/README.md](../proprietary/README.md) — first-party closed apps
 - [COMMERCIAL_LICENSE.md](../COMMERCIAL_LICENSE.md) — engine commercial terms (notice)
 - [TRADEMARK.md](../TRADEMARK.md) — naming and wordmark
 - [THIRD_PARTY.md](THIRD_PARTY.md) — engine dependencies (not app catalog)

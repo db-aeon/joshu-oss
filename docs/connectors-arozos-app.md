@@ -44,7 +44,7 @@ Bundled into ArozOS template by `scripts/dev-arozos.sh` and VPS Docker image.
 | `COMPOSIO_USER_ID` | Customer slug at provision | Composio OAuth **per box**; ArozOS login unchanged |
 | `NYLAS_API_KEY` | `DEFAULT_NYLAS_API_KEY` in control plane | Agent mailbox row in Connectors overview |
 
-If Connectors shows **NYLAS_API_KEY not configured** or Gmail accounts from another sandbox, see [vps-sandbox/troubleshooting — Connectors](vps-sandbox/troubleshooting-and-lessons.md#connectors-nylas-and-composio-on-vps).
+If Connectors shows **NYLAS_API_KEY not configured** or Gmail accounts from another box, set keys in `/etc/joshu/instance.env` and recreate the stack — see [connectors.md](connectors.md).
 
 ## API (Composio)
 
@@ -77,7 +77,7 @@ Legacy jChat paths under `/joshu/api/hermes-chat/composio/*` still work (same ha
 | Provider | Setup |
 |----------|--------|
 | **Telegram** | Paste chat ID or send `/start` to the action-guard bot |
-| **Slack** | Connect Slack in **Connect apps**, then paste channel ID — self-DM (`D…`) or private channel (`C…`, e.g. `#patrick-approvals`) |
+| **Slack** | Connect Slack in **Connect apps**, then paste channel ID — self-DM (`D…`) or private channel (`C…`, e.g. `#my-approvals`) |
 
 Slack approvals use **Y/N replies** in that channel (not interactive Block Kit buttons). Approval messages show companion **avatar + name** in the message body via Block Kit. Full flow: [`agent-safety.md` — Slack approval flow](agent-safety.md#slack-approval-flow-v1).
 

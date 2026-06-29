@@ -18,7 +18,7 @@ NYLAS_API_KEY=nyk_v0_...
 NYLAS_API_URI=https://api.us.nylas.com   # or https://api.eu.nylas.com
 ```
 
-The operator laptop `.env` alone does **not** configure running VPS boxes. Patch existing droplets or reprovision — [troubleshooting — Connectors](vps-sandbox/troubleshooting-and-lessons.md#connectors-nylas-and-composio-on-vps).
+The operator laptop `.env` alone does **not** configure a remote VPS. Set `NYLAS_API_KEY` and related vars in the box env file (`/etc/joshu/instance.env` or compose env) and recreate the stack.
 
 ### Create the `nylas` connector (one-time per app)
 
@@ -82,7 +82,7 @@ Grant file: `${AROZ_DATA}/files/users/<user>/.joshu/nylas/agent.json` (`grantId`
 
 **Multi-recipient send:** `to` accepts a string or array; use **`cc`** / **`bcc`** for additional guests — do not put `"a@x.com, b@y.com"` in a single `to` string ([`src/nylas/recipients.ts`](../src/nylas/recipients.ts)).
 
-Outbound sends always use the provisioned agent address as `from`. The Joshu API **appends a branded HTML signature** on every send (companion name, `{owner}'s Joshu`, signup link) — built from instance identity at send time, inlined into the Nylas message `body`. See [control-plane-portal.md — Email signature](https://github.com/db-aeon/joshu-control-plane/blob/main/docs/control-plane-portal.md#email-signature-agent-outbound-mail).
+Outbound sends always use the provisioned agent address as `from`. The Joshu API **appends a branded HTML signature** on every send (companion name, `{owner}'s Joshu`, signup link) — built from instance identity at send time, inlined into the Nylas message `body`. Configure identity via Welcome / `identity.json` — see [self-host.md](self-host.md#identity-without-control-plane).
 
 **EA v2:** owner Gmail (Composio) and agent Nylas are **separate** polled mirrors — no forward-from-owner setup ([`ea-for-joshu.md`](executive-assistant.md)). Calendar CRUD uses the same Nylas grant as the agent mailbox.
 

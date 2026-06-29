@@ -169,13 +169,6 @@ apply_hermes_kanban_ws_patch() {
   HERMES_DIR="${HERMES_DIR}" bash "${script}" || echo "[vps-start] WARN: Kanban WebSocket base-path patch failed" >&2
 }
 
-apply_hermes_skill_evolution_patch() {
-  local script="${APP_DIR}/proprietary/scripts/apply-hermes-skill-evolution-patch.sh"
-  [[ -f "${script}" ]] || script="${APP_DIR}/scripts/apply-hermes-skill-evolution-patch.sh"
-  [[ -f "${script}" ]] || return 0
-  HERMES_DIR="${HERMES_DIR}" bash "${script}" || echo "[vps-start] WARN: skill evolution patch failed" >&2
-}
-
 apply_hermes_content_filter_patch() {
   local script="${APP_DIR}/scripts/apply-hermes-content-filter-patch.sh"
   [[ -f "${script}" ]] || return 0
@@ -188,30 +181,10 @@ bootstrap_hermes_learning_skills() {
   HERMES_HOME="${HERMES_HOME}" APP_DIR="${APP_DIR}" bash "${script}" || echo "[vps-start] WARN: hermes learning skills seed failed" >&2
 }
 
-# Learning GitHub sync uses deploy-key SSH; older images omitted openssh-client.
-ensure_openssh_client_for_learning_sync() {
-  if [[ -z "${JOSHU_HERMES_LEARNING_GITHUB_REPO:-}" && -z "${JOSHU_HERMES_LEARNING_GITHUB_REMOTE:-}" ]]; then
-    return 0
-  fi
-  command -v ssh >/dev/null 2>&1 && return 0
-  apt-get update -qq
-  DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends openssh-client \
-    || echo "[vps-start] WARN: openssh-client install failed (learning GitHub sync needs ssh)" >&2
-}
-
-ensure_hermes_learning_git() {
-  local script="${APP_DIR}/scripts/lib/ensure-hermes-learning-git.sh"
-  [[ -f "${script}" ]] || return 0
-  HERMES_HOME="${HERMES_HOME}" bash "${script}" || echo "[vps-start] WARN: hermes learning git init failed" >&2
-}
-
 apply_hermes_langfuse_patches
 apply_hermes_kanban_ws_patch
-apply_hermes_skill_evolution_patch
 apply_hermes_content_filter_patch
 bootstrap_hermes_learning_skills
-ensure_openssh_client_for_learning_sync
-ensure_hermes_learning_git
 ensure_hermes_runtime_config
 restart_hermes_gateway_if_running
 
@@ -677,5 +650,11 @@ start_connectors_mcp_watchdog
 start_composio_mcp_guard_watchdog
 wait_for_hermes_gateway || true
 verify_hermes_skills_denylist
+
+# Optional fleet layer (proprietary/scripts/vps-start-fleet.sh) — no-op in AGPL-only trees.
+if [[ -f "${APP_DIR}/proprietary/scripts/vps-start-fleet.sh" ]]; then
+  # shellcheck source=/dev/null
+  source "${APP_DIR}/proprietary/scripts/vps-start-fleet.sh"
+fi
 
 wait "${JOSHU_PID}"

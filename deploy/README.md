@@ -37,7 +37,7 @@ settings come from `instance.env`, `integrations/hermes/skills-enabled.yaml`, an
 Joshu startup (`src/hermesApi.ts`). Details:
 [hermes-integration.md](../docs/hermes-integration.md) and [local-installation.md](../docs/local-installation.md).
 
-CI: [`.github/workflows/joshu-sandbox-image.yml`](../.github/workflows/joshu-sandbox-image.yml)
+CI: [`.github/workflows/joshu-oss-image.yml`](../.github/workflows/joshu-oss-image.yml)
 — reads `HERMES_AGENT_REF` from `deploy/RELEASE.json` and passes it to `docker build`.
 
 ## Configure instance

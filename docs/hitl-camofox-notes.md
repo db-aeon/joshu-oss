@@ -19,7 +19,7 @@ Desktop shortcuts: [`arozos-desktop-shortcuts.md`](arozos-desktop-shortcuts.md).
 
 ## VNC display routing and troubleshooting
 
-See also [`vps-sandbox/troubleshooting-and-lessons.md`](vps-sandbox/troubleshooting-and-lessons.md).
+Use the Camofox container logs and `CAMOFOX_URL` health check when the noVNC iframe is blank. See [`self-host.md`](self-host.md) for Camofox env vars.
 
 ### Ports and URLs (local `npm run dev:arozos`)
 

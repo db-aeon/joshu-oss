@@ -2,8 +2,6 @@
 
 Docs for **self-hosting** the Joshu box stack, building ArozOS apps, and integrating Hermes.
 
-Fleet-specific runbooks, executive-assistant SOPs, and control-plane docs live in **private** Joshu repositories — not in this public tree.
-
 ## Desktop apps
 
 | Desktop label | Doc |
@@ -36,6 +34,7 @@ Shortcut format: [`arozos-desktop-shortcuts.md`](arozos-desktop-shortcuts.md).
 | Safety desktop app | [`safety-settings-arozos-app.md`](safety-settings-arozos-app.md) |
 | Nylas agent inbox | [`nylas-agent-mailbox.md`](nylas-agent-mailbox.md) |
 | **Executive assistant (GTD)** | [`executive-assistant.md`](executive-assistant.md) |
+| **Day 0 mail analysis** | [`day0-cold-start.md`](day0-cold-start.md) |
 | App SDK + `joshu.app.json` | [`app-sdk.md`](app-sdk.md) |
 | Platform architecture + `@joshu/platform-data` | [`platform-architecture.md`](platform-architecture.md) · [`platform-data.md`](platform-data.md) |
 | Platform smoke test | `npm run test:platform-architecture` |

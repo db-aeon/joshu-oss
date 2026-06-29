@@ -10,7 +10,6 @@ import { randomUUID } from "node:crypto";
 import { promisify } from "node:util";
 import YAML from "yaml";
 import { bootstrapHermesLearning } from "./hermesLearning.js";
-import { syncHermesLearningGitCron } from "./hermesLearningGitCron.js";
 import { loadProductSkillsPolicy } from "./hermesSkillsConfig.js";
 import { syncHermesContextFile } from "./hermesContextFile.js";
 import type { RunEvent, RunRecord, RunStatus } from "./types.js";
@@ -45,6 +44,21 @@ const APPLY_HERMES_CONTENT_FILTER_PATCH_SCRIPT = path.resolve(
 const MAX_HISTORY_MESSAGES = 12;
 const MAX_OBSERVATION_CHARS = 14_000;
 const DEFAULT_JOSHU_HERMES_SKILLS_DIR = path.resolve(process.cwd(), "integrations/hermes/skills");
+
+/** Fleet-only hourly learning GitHub sync — module absent in AGPL-only checkouts. */
+async function trySyncHermesLearningGitCron(): Promise<void> {
+  try {
+    const { syncHermesLearningGitCron } = await import("./hermesLearningGitCron.js");
+    const cronOutcome = await syncHermesLearningGitCron();
+    if (cronOutcome !== "skipped") {
+      console.log(`[hermes-api] Hermes learning GitHub cron ${cronOutcome}`);
+    }
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === "ERR_MODULE_NOT_FOUND") return;
+    console.warn(`[hermes-api] Hermes learning GitHub cron install skipped: ${(err as Error).message}`);
+  }
+}
 import {
   JOSHU_OPENROUTER_DEFAULT_MODEL,
   JOSHU_OPENROUTER_SESSION_SEARCH_MODEL,
@@ -1579,14 +1593,7 @@ export class HermesApiRunner extends EventEmitter {
     if (!this.learningBootstrapPromise) {
       this.learningBootstrapPromise = (async () => {
         await bootstrapHermesLearning();
-        try {
-          const cronOutcome = await syncHermesLearningGitCron();
-          if (cronOutcome !== "skipped") {
-            console.log(`[hermes-api] Hermes learning GitHub cron ${cronOutcome}`);
-          }
-        } catch (err) {
-          console.warn(`[hermes-api] Hermes learning GitHub cron install skipped: ${(err as Error).message}`);
-        }
+        await trySyncHermesLearningGitCron();
       })();
     }
     await this.learningBootstrapPromise;

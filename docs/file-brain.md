@@ -243,7 +243,7 @@ Implementation: [`scripts/lib/gbrain-desktop-git.mjs`](../scripts/lib/gbrain-des
 
 **VPS auto-recovery:** `deploy/scripts/vps-start.sh` runs `scripts/ensure-gbrain-indexed.sh` at **45s** (soft reindex) and **3m** (auto: soft then full sync if still empty). A **5m watchdog** (`GBRAIN_EMPTY_INDEX_WATCHDOG_SEC`, default 300) re-checks disk vs index; the MCP bridge also flags `${GBRAIN_HOME}/.joshu-gbrain-needs-full-sync` after repeated empty syncs. Full sync uses `GBRAIN_BOOT_QUICK=false` (cooldown `GBRAIN_FULL_SYNC_COOLDOWN_SEC`, default 30m).
 
-**VPS quick boot gap:** `deploy/scripts/vps-start.sh` sets `GBRAIN_BOOT_QUICK=true` by default so ArozOS listens before a full embed. On restart, File Brain can show **0 pages** until MCP background reindex or `ensure-gbrain-indexed.sh` succeeds — even when connector mirrors already exist on disk. Do not rely on `/joshu/api/instance/health` `gbrain.ok` alone; check **`gbrain.indexed_ok`** and **`page_count`**. See [Health vs indexed pages](#health-vs-indexed-pages-vps) and [troubleshooting incident](../vps-sandbox/troubleshooting-and-lessons.md#validated-incident-file-brain-zero-pages-2026-06-patrickboxjoshume).
+**VPS quick boot gap:** `deploy/scripts/vps-start.sh` sets `GBRAIN_BOOT_QUICK=true` by default so ArozOS listens before a full embed. On restart, File Brain can show **0 pages** until MCP background reindex or `ensure-gbrain-indexed.sh` succeeds — even when connector mirrors already exist on disk. Do not rely on `/joshu/api/instance/health` `gbrain.ok` alone; check **`gbrain.indexed_ok`** and **`page_count`**. See [Health vs indexed pages](#health-vs-indexed-pages-vps).
 
 ### Deprecated: gbrain `put_page`
 
@@ -486,13 +486,13 @@ See also [`docs/local-installation.md`](local-installation.md#file-brain-gbrain)
 | File Brain stale after code changes | Old `dist/file-brain-viewer` in ArozOS data | `npm run build:file-brain-viewer`; restart `dev:arozos`; hard refresh browser |
 | `gbrain MCP HTTP failed` on VPS boot | Script not executable or port in use | Image includes `start-gbrain-mcp-http.sh`; `bash scripts/stop-gbrain.sh` then restart stack |
 | Two Desktop folders (`Joshu's Files` + `joshu's files`) | macOS case-insensitive FS | Two-step rename: `mv "Joshu's Files" tmp && mv tmp "joshu's files"` |
-| VPS: `/usr/bin/env: bun: No such file` on boot | Stale `vps-start.sh` on host; Bun not on PATH before gbrain | `git pull` in `/opt/joshu`; image `0.1.7+`; see [troubleshooting](vps-sandbox/troubleshooting-and-lessons.md#host-clone-vs-image-critical) |
+| VPS: `/usr/bin/env: bun: No such file` on boot | Stale `vps-start.sh` on host; Bun not on PATH before gbrain | `git pull` in `/opt/joshu`; rebuild image from current `deploy/Dockerfile` |
 | VPS: files under `admin` | `JOSHU_AROZ_USER` ≠ login email | Owner email at provision; `rebind-gbrain-owner.sh` |
 | `instance/health` `gbrain.ok: false` | 15s doctor timeout during boot | Wait; `gbrain doctor --fast` in container |
 | **502** on `/joshu/api/brain/pages` after hard reset | `GBRAIN_HOME` wiped while MCP HTTP still held stale PGLite; or **`EBUSY`** if pre-0.1.14 tried to delete volume mount root | Image **0.1.14+** stops gbrain and wipes volume contents; or `stop-gbrain.sh` + `start-gbrain.sh` + `start-gbrain-mcp-http.sh`; restart stack |
 | File Brain list error `rows.slice is not a function` | MCP `/list` got error JSON instead of array (corrupt/missing brain) | Same as above — re-init gbrain at `GBRAIN_HOME` |
 | Mail mirrors return after “reset” | Composio OAuth still connected in cloud; cron re-synced | Use **hard** factory reset (disconnects Composio) — [`box-state.md`](box-state.md#hard-factory-reset) |
-| **`gbrain.ok: true` but Browse shows 0 pages** | Quick boot skipped initial sync; `sync_brain` failed; or embedding key not mapped for MCP | Check `gbrain.indexed_ok`; tail `gbrain-mcp-http.log`; `bash scripts/ensure-gbrain-indexed.sh`; see [VPS incident](../vps-sandbox/troubleshooting-and-lessons.md#validated-incident-file-brain-zero-pages-2026-06-patrickboxjoshume) |
+| **`gbrain.ok: true` but Browse shows 0 pages** | Quick boot skipped initial sync; `sync_brain` failed; or embedding key not mapped for MCP | Check `gbrain.indexed_ok`; tail `gbrain-mcp-http.log`; `bash scripts/ensure-gbrain-indexed.sh`; see [Health vs indexed pages](#health-vs-indexed-pages-vps) |
 | Connectors show mail on disk; brain `page_count: 0` | Git stage / Desktop `.git` / silent `sync_brain` / missing **`GOOGLE_GENERATIVE_AI_API_KEY`** on MCP boot | Verify `files/users/.git` and `Desktop/.git`; `git pull` on host `/opt/joshu`; `GBRAIN_MCP_VERBOSE=1`; `bash scripts/ensure-gbrain-indexed.sh` |
 | Sync log: `Google embedding requires GOOGLE_GENERATIVE_AI_API_KEY` | `HINDSIGHT_API_EMBEDDINGS_GEMINI_API_KEY` set in `instance.env` but not exported to gbrain MCP child | Image/script **0568cee+** maps Gemini key in `start-gbrain-mcp-http.sh`; restart MCP HTTP or run `ensure-gbrain-indexed.sh --full` |
 | `/brain/pages` **502** after reindex | MCP `get_recent_salience` timed out (~30s) during heavy `sync_brain` | Retry; check MCP log for `sync_brain failed`; ensure single PGLite holder (no second `start-gbrain.sh`) |
@@ -540,6 +540,6 @@ When `JOSHU_READ_API_KEY` is set (VPS: same value as `HERMES_API_KEY` from contr
 - [box-state.md](box-state.md#hard-factory-reset) — personal wipe including Composio + gbrain reinit
 - [vps-sandbox/voice-realtime.md](vps-sandbox/voice-realtime.md) — speech-to-speech phone voice
 - [local-installation.md](local-installation.md)
-- [vps-sandbox/troubleshooting-and-lessons.md](vps-sandbox/troubleshooting-and-lessons.md) — file-brain row in ops table
+- [self-host.md](self-host.md) — VPS deploy and health checks
 - [vps-sandbox/runtime-topology.md](vps-sandbox/runtime-topology.md)
 - EA filing templates: [`templates/ea/`](../templates/ea/)

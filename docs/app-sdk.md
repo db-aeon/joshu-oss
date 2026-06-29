@@ -54,7 +54,7 @@ Example (`hermes-chat`):
 |-----------|---------|
 | `AGPL-3.0` | Open source (default for Joshu apps today) |
 | `MIT` | Permissive third-party app |
-| `proprietary` | Fleet / paid apps in [`proprietary/`](../proprietary/README.md) — not in joshu-oss |
+| `proprietary` | Closed-source / commercial apps (not shipped in this repo) — see [APP_STORE.md](APP_STORE.md) |
 
 Extended manifest fields (catalog, binaries, pricing): [APP_STORE.md](APP_STORE.md).
 
@@ -188,17 +188,16 @@ See [`platform-architecture.md`](platform-architecture.md#app-invoke-api).
 
 ---
 
-## Proprietary apps (fleet only)
+## Closed-source and commercial apps
 
-See [`proprietary/README.md`](../proprietary/README.md). Installed via `scripts/install-proprietary-apps.sh` during `dev:arozos` and fleet Docker builds.
+Self-hosters run AGPL apps from this repository. Closed-source or paid apps are distributed as separate bundles (see [COMMERCIAL_LICENSE.md](../COMMERCIAL_LICENSE.md) and [APP_STORE.md](APP_STORE.md)). `scripts/install-proprietary-apps.sh` is a no-op unless you add a commercial app tree locally.
 
 ---
 
 ## Sideload / marketplace
 
 Manual `.joshu-app` bundles: [`scripts/install-joshu-app.sh`](../scripts/install-joshu-app.sh) (see [Sideload](#sideload-with-install-joshu-appsh) above).
-Official catalog and paid entitlements: control plane (proprietary). Full policy:
-[APP_STORE.md](APP_STORE.md).
+Paid catalog entitlements (if offered) are outside this open-source tree. Full policy: [APP_STORE.md](APP_STORE.md).
 
 ---
 

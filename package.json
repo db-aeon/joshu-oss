@@ -50,7 +50,6 @@
     "test:hermes-skills-policy": "npm run build && node scripts/check-hermes-skills-policy.mjs",
     "test:platform-architecture": "npm run build && node scripts/smoke-platform-architecture.mjs",
     "check:oss-boundaries": "bash scripts/check-oss-boundaries.sh",
-    "sync:from-oss": "bash scripts/sync-from-oss.sh",
     "hindsight:smoke": "bash scripts/hindsight-smoke-test.sh",
     "gbrain:install": "bash scripts/install-gbrain.sh",
     "joshu-files:import": "bash scripts/import-joshu-files-zip.sh",
