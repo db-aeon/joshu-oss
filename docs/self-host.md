@@ -10,18 +10,30 @@ Managed hosting with zero-touch provisioning: [joshu.me](https://joshu.me).
 
 ## Quick start
 
-### Option A — bootstrap script (Linux VPS)
+### Option A — Hetzner / Ubuntu VPS (recommended)
+
+Full numbered walkthrough: [vps-sandbox/hetzner-quickstart.md](vps-sandbox/hetzner-quickstart.md) (create server → DNS → `git clone` → configure → bootstrap).
+
+```bash
+# On the VPS as root — see quickstart for every step
+git clone --depth 1 --branch main https://github.com/db-aeon/joshu-oss.git /opt/joshu
+cp /opt/joshu/deploy/.env.vps.example /etc/joshu/instance.env
+# edit /etc/joshu/instance.env (JOSHU_STANDALONE=1, domain, keys)
+cd /opt/joshu && ENV_FILE=/etc/joshu/instance.env bash deploy/scripts/bootstrap-vps.sh
+```
+
+### Option B — bootstrap script (same host as clone)
 
 ```bash
 git clone https://github.com/db-aeon/joshu-oss.git
-cd joshu
+cd joshu-oss
 sudo bash scripts/bootstrap-self-host.sh
 ```
 
 Edit `/etc/joshu/instance.env` — set `CUSTOMER_DOMAIN`, API keys, and identity
 fields (`JOSHU_NAME`, `JOSHU_OWNER_EMAIL`, etc.).
 
-### Option B — Docker Compose
+### Option C — Docker Compose
 
 ```bash
 cp deploy/.env.vps.example /etc/joshu/instance.env

@@ -33,8 +33,15 @@ if [[ -f "${ENV_FILE}" ]]; then
   set +a
 fi
 
-# Build sandbox image on host (or pull from registry in production)
-docker build -f deploy/Dockerfile -t "${JOSHU_IMAGE_REF:-ghcr.io/your-org/joshu-sandbox:latest}" .
+# Pull prebuilt image (OSS default) or build on host when JOSHU_BUILD_IMAGE=1
+IMAGE_REF="${JOSHU_IMAGE_REF:-ghcr.io/your-org/joshu-oss:latest}"
+if [[ "${JOSHU_BUILD_IMAGE:-0}" == "1" ]]; then
+  echo "[bootstrap-vps] building ${IMAGE_REF} from Dockerfile"
+  docker build -f deploy/Dockerfile -t "${IMAGE_REF}" .
+else
+  echo "[bootstrap-vps] pulling ${IMAGE_REF}"
+  docker pull "${IMAGE_REF}"
+fi
 
 # Caddy site — render from instance.env (main site + optional Hermes admin vhost)
 bash deploy/scripts/render-caddyfile.sh "${ENV_FILE}"
