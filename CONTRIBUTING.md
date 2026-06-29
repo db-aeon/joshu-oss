@@ -17,6 +17,10 @@ you agree that your contributions may be used under **both** licenses.
 
 See [CLA.md](CLA.md) for the full text.
 
+**Maintainers:** branch protection on `main` must require status checks **`check`**
+(oss-boundaries) and **`cla`** (CLA signature) before merge. Org members with
+write access are exempt from the CLA check; outside contributors are not.
+
 ---
 
 ## Development setup

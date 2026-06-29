@@ -1,0 +1,43 @@
+# Required status check for external PRs — verifies CLA signature in signatures/cla.json.
+# Org members/collaborators are exempt (in-repo contributions).
+name: cla
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  cla:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify CLA (external contributors)
+        env:
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+          ASSOC: ${{ github.event.pull_request.author_association }}
+        run: |
+          set -euo pipefail
+          case "${ASSOC}" in
+            OWNER|MEMBER|COLLABORATOR)
+              echo "CLA not required for ${AUTHOR} (${ASSOC})"
+              exit 0
+              ;;
+          esac
+          if [[ "${AUTHOR}" == "dependabot[bot]" ]]; then
+            echo "Dependabot exempt"
+            exit 0
+          fi
+          if jq -e --arg u "${AUTHOR}" '
+              (.signedContributors[]? | select(.name == $u))
+              // (.[]? | select(.login == $u or .user == $u))
+            ' signatures/cla.json >/dev/null; then
+            echo "CLA signed by ${AUTHOR}"
+            exit 0
+          fi
+          echo "::error::CLA not signed for ${AUTHOR}. Comment on the PR: I have read the CLA Document and I hereby sign the CLA"
+          exit 1

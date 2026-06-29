@@ -11,7 +11,7 @@
 
 | | |
 |--|--|
-| **License** | [AGPL-3.0 OR Commercial](LICENSE) — [COMMERCIAL_LICENSE.md](COMMERCIAL_LICENSE.md) |
+| **License** | [AGPL-3.0](AGPL-3.0.txt) OR [Commercial](COMMERCIAL_LICENSE.md) — see [LICENSE](LICENSE) |
 | **Self-host** | [docs/self-host.md](docs/self-host.md) |
 | **Contributing** | [CONTRIBUTING.md](CONTRIBUTING.md) — PRs to **this repository** |
 

@@ -1,9 +1,9 @@
 # Joshu Commercial License — Notice
 
 The Joshu box stack is dual-licensed. Community use is available under
-[AGPL-3.0](LICENSE). This file is an **informational notice** about the
-commercial license option — **not** the full license text, and **not** an
-exhaustive list of rights, restrictions, or use cases.
+[AGPL-3.0](AGPL-3.0.txt) (see also [LICENSE](LICENSE)). This file is an
+**informational notice** about the commercial license option — **not** the full
+license text, and **not** an exhaustive list of rights, restrictions, or use cases.
 
 **To obtain a commercial license**, contact **info@joshu.me**. Terms are
 negotiated in a written agreement with Project Aeon Inc.; nothing in this
@@ -11,7 +11,11 @@ notice grants commercial rights by itself.
 
 ---
 
-## What a commercial license may cover
+## What a commercial license covers — and what it does not
+
+> **A Joshu commercial license covers Project Aeon-owned Joshu code and
+> brand/design rights where applicable. It does not relicense third-party GPL,
+> AGPL, MIT, Apache, or other upstream components.**
 
 Executed commercial agreements may grant rights to **copyright owned by
 Project Aeon Inc.** in this repository, including (non-exhaustive):
@@ -23,9 +27,17 @@ Project Aeon Inc.** in this repository, including (non-exhaustive):
 - `patches/arozos/*` — Joshu patches to ArozOS (still subject to GPLv3 when distributed with ArozOS)
 - `integrations/hermes/skills/*` — Joshu Hermes skills (subject to Hermes upstream terms)
 
-The commercial license does **not** include the **control plane** (`hello.joshu.me`
-provisioning, portal, fleet admin). That software is proprietary and is not
-licensed for redistribution.
+A commercial license does **not** include:
+
+- The **control plane** (`hello.joshu.me` provisioning, portal, fleet admin) —
+  proprietary and not licensed for redistribution
+- **ArozOS** or other upstream GPL/AGPL/MIT/Apache components — each retains its
+  own license when distributed
+- Rights to imply **official Joshu managed hosting** without permission — see
+  [TRADEMARK.md](TRADEMARK.md)
+
+The combined Docker image is an **aggregate** of separately licensed components.
+See [NOTICE](NOTICE) and [docs/THIRD_PARTY.md](docs/THIRD_PARTY.md).
 
 ---
 
@@ -43,6 +55,10 @@ Commercial license value is for **Joshu-owned layers** (closed-source modificati
 enterprise legal comfort, JDL brand pack, support/SLA) — **not** exemption from
 upstream GPL on the desktop engine core.
 
+**Have counsel review** the GPL/ArozOS boundary for your distribution model —
+especially patches, Docker images, and whether your product is an aggregate or
+a combined/derivative work.
+
 ---
 
 ## Permitted use without a commercial license (AGPL)
@@ -53,9 +69,15 @@ Under AGPL-3.0, **no payment is required** for:
 |----------|---------|
 | Personal hobby / learning | Yes |
 | Freelancer or solo operator — **your own** box for **your own** work | Yes |
-| Any organization — boxes used **only by employees** (internal tool) | Yes |
+| Organization internal use — boxes used **only by employees** as an internal tool | Yes — **if you comply with AGPL-3.0**, including source-code obligations for modified versions made available over a network |
 | Self-host with Vanilla theme from the public repository | Yes |
 | Forking and modifying — if you comply with AGPL (publish changes when required) | Yes |
+
+**Internal use does not require payment or a commercial license**, provided you
+comply with AGPL-3.0, including source-code obligations for modified versions
+made available over a network. AGPL compliance is still required — a commercial
+license is only needed when you want non-AGPL terms for Joshu-owned code or other
+rights listed below.
 
 ---
 
@@ -69,9 +91,6 @@ This table is illustrative, not complete. When in doubt, contact **info@joshu.me
 | Closed-source modifications of **Joshu-owned** code without AGPL compliance | Commercial license — contact **info@joshu.me** |
 | Full **Joshu Design License (JDL)** brand pack (paper-shell, official icons) at scale | Commercial license or official fleet image — contact **info@joshu.me** |
 | Implying **official Joshu hosting** without permission | Prohibited — see TRADEMARK.md |
-
-**Internal commercial use** (your company runs boxes for employees only) does
-**not** require a commercial license.
 
 ---
 
@@ -91,8 +110,9 @@ Contact **info@joshu.me** to discuss options.
 ## Disclaimer
 
 This notice summarizes product licensing posture for convenience. It is **not**
-a legal contract and does **not** replace the AGPL-3.0 text in [LICENSE](LICENSE)
-or any executed commercial agreement with Project Aeon Inc. Only a signed
-agreement grants commercial rights. Have your counsel review before signing.
+a legal contract and does **not** replace the AGPL-3.0 text in
+[AGPL-3.0.txt](AGPL-3.0.txt) or any executed commercial agreement with Project
+Aeon Inc. Only a signed agreement grants commercial rights. Have your counsel
+review before signing.
 
 For commercial licensing inquiries: **info@joshu.me**

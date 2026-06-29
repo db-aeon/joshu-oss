@@ -30,12 +30,12 @@ Current stable pin: [`deploy/RELEASE.json`](RELEASE.json) (**`0.1.24`**).
 
 After `npm run hermes:update`, `npm run vps:sync-hermes-pin` runs automatically (also invoked by `vps:build-image`).
 
-See [docs/vps-sandbox/control-plane-local-provisioning.md](../docs/vps-sandbox/control-plane-local-provisioning.md) for how image tags, provision snapshots, and Hermes versions relate.
+Image tags and Hermes pins live in [`deploy/RELEASE.json`](RELEASE.json). See [runtime-topology — Image build](../docs/vps-sandbox/runtime-topology.md#image-build) for how they flow into the Docker image.
 
 **Hermes config:** The image does not include your laptop `~/.hermes/config.yaml`. Product
 settings come from `instance.env`, `integrations/hermes/skills-enabled.yaml`, and
 Joshu startup (`src/hermesApi.ts`). Details:
-[docs/hermes-integration.md](../docs/hermes-integration.md#hermes-runtime-config-local-hermes-vs-vps--image).
+[hermes-integration.md](../docs/hermes-integration.md) and [local-installation.md](../docs/local-installation.md).
 
 CI: [`.github/workflows/joshu-sandbox-image.yml`](../.github/workflows/joshu-sandbox-image.yml)
 — reads `HERMES_AGENT_REF` from `deploy/RELEASE.json` and passes it to `docker build`.
@@ -61,7 +61,7 @@ Required runtime secrets:
 - Files referenced by secret env vars should live under `/etc/joshu/secrets`;
   that directory is mounted read-only into `joshu-stack`.
 
-**Runtime npm deps:** Container `node_modules` come from [`deploy/runtime/package.json`](runtime/package.json) at image build (not from host git). Adding deps there (e.g. `@langfuse/tracing` for Joshu deterministic Langfuse) requires a **new image tag** — dist-only hotpatch is not enough. See [hotpatch — Lane C](../docs/vps-sandbox/hotpatch-running-box.md#lane-c--full-image-release-only).
+**Runtime npm deps:** Container `node_modules` come from [`deploy/runtime/package.json`](runtime/package.json) at image build (not from host git). Adding deps there (e.g. `@langfuse/tracing` for Joshu deterministic Langfuse) requires a **new image** — rebuild, push a new tag, pull on the host, then sync `dist/`. Dist-only updates cannot change `node_modules` inside the image.
 
 ## Run
 
@@ -105,7 +105,7 @@ docker logs deploy-joshu-stack-1 2>&1 | rg 'Hermes skills policy|skills.disabled
 
 If count is near zero after image upgrade: confirm `HERMES_DIR=/opt/hermes-agent` in the container (`docker exec … env | rg HERMES`), restart the stack, or `curl -fsS http://127.0.0.1:8788/joshu/api/hermes-chat/status` from inside the container. Start a **new jChat** session — Hermes caches the skill catalog per session.
 
-See [hermes-customizations — Disabled skills](../docs/hermes-integration.md#disabled-skills-product-denylist) and [box-state — hard reset](../docs/box-state.md#hard-factory-reset).
+See [Hermes skills denylist (after upgrade)](#hermes-skills-denylist-after-upgrade) above and [local-installation.md](../docs/local-installation.md) (factory reset).
 
 **Connectors MCP (`:8795`):** EA summary sends and connector sync actions. On boot, `vps-start.sh` starts it and runs a 60s health watchdog.
 
@@ -140,7 +140,15 @@ Cloud-init (control-plane provision) runs `bootstrap-vps.sh`, which clones the r
 | `templates/ea/` | `/opt/joshu/templates/ea/` | A — EA filesystem seeds |
 | `deploy/scripts/vps-start.sh`, selected `scripts/` | `/opt/joshu/scripts/` | A — boot / MCP |
 
-`git pull` alone does not refresh `dist/`. See **[Hotpatching a running box](../docs/vps-sandbox/hotpatch-running-box.md)** for git vs dist vs image lanes, skills re-seed, and verify commands.
+`git pull` alone does not refresh `dist/` — the host bind-mount shadows the image copy. Match the update path to what you changed:
+
+| You changed | Update path |
+| --- | --- |
+| Skills, MCP scripts, `vps-start.sh`, templates (bind-mounted paths) | `git pull` on host → recreate `joshu-stack` |
+| Compiled Joshu API (`src/` → `dist/`) | Sync host `dist/` from image (below) → recreate |
+| `deploy/Dockerfile`, Hermes pin, `deploy/runtime/package.json` | New image tag → pull → dist sync → recreate |
+
+Fleet boxes with the optional instance-agent may automate dist sync — see [instance-agent-protocol.md](../docs/vps-sandbox/instance-agent-protocol.md).
 
 Quick dist recovery after a release image pull:
 
@@ -178,12 +186,12 @@ curl -fsS -u admin:<JOSHU_HERMES_DASHBOARD_PASSWORD> \
   https://hermes-admin.<customer-hostname>/
 ```
 
-Expect **200** and HTML (not `Invalid Host header`). Caddy rewrites upstream `Host` to `127.0.0.1:9119` — see [hermes-integration.md](../docs/hermes-integration.md#hermes-web-dashboard).
+Expect **200** and HTML (not `Invalid Host header`). Caddy rewrites upstream `Host` to `127.0.0.1:9119` — see [hermes-integration.md](../docs/hermes-integration.md).
 
 ## Architecture docs
 
-- [docs/vps-sandbox/README.md](../docs/vps-sandbox/README.md)
-- [docs/vps-sandbox/zero-touch-provisioning.md](../docs/vps-sandbox/zero-touch-provisioning.md) — provision checklist
-- [docs/vps-sandbox/troubleshooting-and-lessons.md](../docs/vps-sandbox/troubleshooting-and-lessons.md) — failures, diagnostics, hardening
-- [docs/vps-sandbox/runtime-topology.md](../docs/vps-sandbox/runtime-topology.md)
-- [docs/vps-sandbox/first-provisioning-notes.md](../docs/vps-sandbox/first-provisioning-notes.md)
+- [docs/self-host.md](../docs/self-host.md) — standalone bootstrap
+- [docs/vps-sandbox/README.md](../docs/vps-sandbox/README.md) — VPS / Docker index
+- [docs/vps-sandbox/runtime-topology.md](../docs/vps-sandbox/runtime-topology.md) — process layout, paths, boot order
+- [docs/vps-sandbox/instance-agent-protocol.md](../docs/vps-sandbox/instance-agent-protocol.md) — optional fleet sidecar (heartbeats, release updates)
+- [docs/vps-sandbox/control-plane.md](../docs/vps-sandbox/control-plane.md) — proprietary managed hosting (not in this repo)

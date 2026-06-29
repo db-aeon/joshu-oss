@@ -119,4 +119,21 @@ if [[ "${FAILED}" -eq 1 ]]; then
   exit 1
 fi
 
+# License layout: full AGPL text in AGPL-3.0.txt; LICENSE is a short dual-license selector.
+if [[ ! -f "${ROOT_DIR}/AGPL-3.0.txt" ]]; then
+  echo "[check-oss-boundaries] FAIL: missing AGPL-3.0.txt (full AGPL license text)" >&2
+  FAILED=1
+elif [[ "$(wc -l < "${ROOT_DIR}/AGPL-3.0.txt")" -lt 600 ]]; then
+  echo "[check-oss-boundaries] FAIL: AGPL-3.0.txt looks truncated (expected full GPLv3/AGPL text)" >&2
+  FAILED=1
+fi
+if rg -q 'GNU AFFERO GENERAL PUBLIC LICENSE' "${ROOT_DIR}/LICENSE" 2>/dev/null; then
+  echo "[check-oss-boundaries] FAIL: LICENSE must be a short dual-license selector — full AGPL belongs in AGPL-3.0.txt" >&2
+  FAILED=1
+fi
+
+if [[ "${FAILED}" -eq 1 ]]; then
+  exit 1
+fi
+
 echo "[check-oss-boundaries] OK — no fleet-specific leaks in AGPL paths."

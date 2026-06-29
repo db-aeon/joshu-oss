@@ -2,7 +2,7 @@
 
 Run the Joshu box stack on your own hardware **without** the proprietary control
 plane (`hello.joshu.me`). Personal use, freelancers, and **internal commercial
-use** are free under [AGPL-3.0](../LICENSE).
+use** are free under [AGPL-3.0](../AGPL-3.0.txt) (see [LICENSE](../LICENSE)).
 
 Managed hosting with zero-touch provisioning: [joshu.me](https://joshu.me).
 
@@ -80,7 +80,11 @@ See [local-installation.md](local-installation.md) and `npm run dev:arozos`.
 
 Hosting Joshu as a **product or service for other organizations** requires a
 commercial license from Project Aeon Inc. — contact **info@joshu.me** (see
-[COMMERCIAL_LICENSE.md](../COMMERCIAL_LICENSE.md) notice). Internal employee use does not.
+[COMMERCIAL_LICENSE.md](../COMMERCIAL_LICENSE.md) notice).
+
+**Internal employee use** does not require payment or a commercial license,
+provided you comply with AGPL-3.0, including source-code obligations for
+modified versions made available over a network.
 
 ---
 

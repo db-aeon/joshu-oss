@@ -1,7 +1,8 @@
 Joshu Box Stack
 Copyright (c) 2025–2026 Project Aeon Inc. and contributors
 
-Licensed under AGPL-3.0 OR Joshu Commercial License — see LICENSE and COMMERCIAL_LICENSE.md (notice).
+Licensed under AGPL-3.0 OR Joshu Commercial License — see LICENSE, AGPL-3.0.txt,
+and COMMERCIAL_LICENSE.md (notice).
 
 ---
 
@@ -26,3 +27,7 @@ docs/THIRD_PARTY.md for the full list. Key components:
 
 The combined Docker image is an aggregate of separately licensed components.
 Joshu-owned application code is offered as subservices loaded into ArozOS.
+
+A Joshu commercial license (if any) covers Project Aeon-owned Joshu code and
+brand/design rights where applicable. It does not relicense third-party GPL,
+AGPL, MIT, Apache, or other upstream components.

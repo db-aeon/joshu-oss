@@ -5,7 +5,7 @@ source defaults, first-party proprietary fleet apps, third-party publishers, and
 (future) a signed catalog with free and paid offerings.
 
 It is a **product and legal outline**, not a contract. Engine licensing remains
-[AGPL-3.0](../LICENSE) / [COMMERCIAL_LICENSE.md](../COMMERCIAL_LICENSE.md).
+[AGPL-3.0](../AGPL-3.0.txt) / [COMMERCIAL_LICENSE.md](../COMMERCIAL_LICENSE.md).
 Third-party apps are licensed **by their publisher** under the terms declared in
 `joshu.app.json`.
 
