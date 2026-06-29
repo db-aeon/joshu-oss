@@ -1,10 +1,14 @@
 # Required status check for external PRs — verifies CLA signature in signatures/cla.json.
+# Also runs on push to main so the job name appears in branch protection settings.
 # Org members/collaborators are exempt (in-repo contributions).
 name: cla
 
 on:
+  push:
+    branches: [main]
   pull_request:
     types: [opened, synchronize, reopened]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -16,7 +20,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Register check (push / manual)
+        if: github.event_name != 'pull_request'
+        run: echo "CLA check registered; enforcement runs on pull_request only."
+
       - name: Verify CLA (external contributors)
+        if: github.event_name == 'pull_request'
         env:
           AUTHOR: ${{ github.event.pull_request.user.login }}
           ASSOC: ${{ github.event.pull_request.author_association }}
