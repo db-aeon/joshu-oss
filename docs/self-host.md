@@ -18,7 +18,7 @@ Full numbered walkthrough: [vps-sandbox/hetzner-quickstart.md](vps-sandbox/hetzn
 # On the VPS as root — see quickstart for every step
 git clone --depth 1 --branch main https://github.com/db-aeon/joshu-oss.git /opt/joshu
 cp /opt/joshu/deploy/.env.vps.example /etc/joshu/instance.env
-# edit /etc/joshu/instance.env (JOSHU_STANDALONE=1, domain, keys)
+# edit /etc/joshu/instance.env (CUSTOMER_DOMAIN, ACME_EMAIL, image pin — see quickstart)
 cd /opt/joshu && ENV_FILE=/etc/joshu/instance.env bash deploy/scripts/bootstrap-vps.sh
 ```
 

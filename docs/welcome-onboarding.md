@@ -7,11 +7,12 @@ Human SOP: [`executive-assistant.md`](executive-assistant.md). Welcome seeds pro
 ## User flow
 
 1. On first login, **Welcome** auto-opens once per browser session when onboarding is incomplete (see [`arozos/web-overlays-vanilla/aroz-onboarding-launch.js`](../arozos/web-overlays-vanilla/aroz-onboarding-launch.js)).
-2. **Optional Day 0:** After Gmail is connected, run **Analyze mail for setup (Day 0)** in **Connectors → Connect apps** to pre-fill the draft from 30 days of mail + calendar. See [`day0-cold-start.md`](day0-cold-start.md).
-3. Seven-step wizard captures priorities, communication (with contact details), online tools, and optional VIPs.
-3. Progress auto-saves on each **Continue** via `PUT /joshu/api/onboarding/draft`.
-4. **Finish setup** writes workspace markdown + `.joshu` profile JSON; **ea-playbook** reads those files on every operational run.
-5. After completion, reopen **Welcome** anytime to edit in the same form — header becomes **Your Joshu profile**, review button **Save changes**. Draft JSON is retained for re-editing.
+2. **Standalone self-host only:** if no OpenRouter key is configured, Welcome shows **Connect AI** (step 2) to save an API key to `.joshu/box-secrets/local-env.json`. **Control-plane managed boxes skip this** — keys are already in `/etc/joshu/instance.env` at provision time.
+3. **Optional Day 0:** After Gmail is connected, run **Analyze mail for setup (Day 0)** in **Connectors → Connect apps** to pre-fill the draft from 30 days of mail + calendar. See [`day0-cold-start.md`](day0-cold-start.md).
+4. Seven-step wizard captures priorities, communication (with contact details), online tools, and optional VIPs.
+5. Progress auto-saves on each **Continue** via `PUT /joshu/api/onboarding/draft`.
+6. **Finish setup** writes workspace markdown + `.joshu` profile JSON; **ea-playbook** reads those files on every operational run.
+7. After completion, reopen **Welcome** anytime to edit in the same form — header becomes **Your Joshu profile**, review button **Save changes**. Draft JSON is retained for re-editing.
 
 **Dismiss without completing:** **Finish later** sets `sessionStorage.joshu-onboarding-dismissed` so auto-launch does not reopen until the next browser session.
 
@@ -22,12 +23,15 @@ Human SOP: [`executive-assistant.md`](executive-assistant.md). Welcome seeds pro
 | # | Step | What the user provides |
 |---|------|------------------------|
 | 0 | Welcome | Intro (or “Review or update” if already completed) |
-| 1 | You & your assistant | Principal name, assistant persona name |
-| 2 | Big picture | Multi-select priorities + optional notes |
-| 3 | Communication | Channel checkboxes **with contact fields** + schedule/rhythm |
-| 4 | Online tools | App checkboxes + notes, do-not-access, optional Nylas agent mailbox |
-| 5 | Key people | Optional VIP rows |
-| 6 | Review | Summary → **Finish setup** or **Save changes** |
+| 1 | Connect AI | OpenRouter API key (**standalone only**, when not provisioned) |
+| 2 | You & your assistant | Principal name, assistant persona name |
+| 3 | Big picture | Multi-select priorities + optional notes |
+| 4 | Communication | Channel checkboxes **with contact fields** + schedule/rhythm |
+| 5 | Online tools | App checkboxes + notes, do-not-access, optional Nylas agent mailbox |
+| 6 | Key people | Optional VIP rows |
+| 7 | Review | Summary → **Finish setup** or **Save changes** |
+
+Step **Connect AI** is omitted when `GET /joshu/api/box-secrets/status` reports `needsConnectAi: false` (fleet / CP boxes with provisioned `OPENROUTER_API_KEY`, or after the key is saved).
 
 ### Big picture (step 2)
 
@@ -119,6 +123,13 @@ Mounted under `PUBLIC_BASE_PATH` (default `/joshu`). JSON body routes require `e
 | `PUT` | `/joshu/api/onboarding/draft` | Save partial progress (`ownerName` + `assistantName` required) |
 | `POST` | `/joshu/api/onboarding/complete` | Seed Projects + mark complete; `timezone` required |
 
+### Box secrets (Connect AI)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/joshu/api/box-secrets/status` | `needsConnectAi`, `standalone`, per-field `provision` / `local` source |
+| `PUT` | `/joshu/api/box-secrets` | Save `OPENROUTER_API_KEY` to `.joshu/box-secrets/local-env.json`; sync Hermes; restart gateway |
+
 `POST /complete` is idempotent for updates: re-running refreshes markdown/profile without a second running-log entry.
 
 ## Factory reset
@@ -136,6 +147,8 @@ Mounted under `PUBLIC_BASE_PATH` (default `/joshu`). JSON body routes require `e
 | Types, paths | [`src/onboarding/types.ts`](../src/onboarding/types.ts), [`src/onboarding/paths.ts`](../src/onboarding/paths.ts) |
 | Markdown writer | [`src/onboarding/workspaceWriter.ts`](../src/onboarding/workspaceWriter.ts) |
 | HTTP routes | [`src/onboardingApi.ts`](../src/onboardingApi.ts) |
+| Box secrets API | [`src/boxSecrets/`](../src/boxSecrets/) |
+| Bootstrap auto-secrets | [`deploy/scripts/ensure-instance-env-secrets.sh`](../../deploy/scripts/ensure-instance-env-secrets.sh) |
 | React UI | [`apps/welcome/`](../apps/welcome/) (imports options via Vite alias `@joshu/onboarding`) |
 | ArozOS subservice | [`arozos/subservice/welcome/`](../arozos/subservice/welcome/) → `dist/welcome/` |
 | Auto-launch overlay | [`arozos/web-overlays-vanilla/aroz-onboarding-launch.js`](../arozos/web-overlays-vanilla/aroz-onboarding-launch.js) |

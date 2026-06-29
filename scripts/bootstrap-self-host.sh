@@ -26,10 +26,12 @@ chmod 700 /etc/joshu/secrets
 if [[ ! -f "${ENV_FILE}" ]]; then
   cp "${ROOT_DIR}/deploy/.env.vps.example" "${ENV_FILE}"
   chmod 600 "${ENV_FILE}"
-  echo "[bootstrap-self-host] created ${ENV_FILE} — edit identity and API keys before starting"
+  echo "[bootstrap-self-host] created ${ENV_FILE} from template"
 fi
 
-# Standalone: no control plane agent registration
+bash "${ROOT_DIR}/deploy/scripts/ensure-instance-env-secrets.sh" "${ENV_FILE}"
+
+# Standalone: no control plane agent registration (ensure script may already set this)
 if ! grep -q '^JOSHU_STANDALONE=' "${ENV_FILE}" 2>/dev/null; then
   echo "JOSHU_STANDALONE=1" >> "${ENV_FILE}"
 fi
@@ -53,5 +55,6 @@ echo "[bootstrap-self-host] starting stack (no fleet profile — instance agent 
 docker compose -f "${COMPOSE_FILE}" --env-file "${ENV_FILE}" up -d
 
 echo "[bootstrap-self-host] done"
-echo "[bootstrap-self-host] set CUSTOMER_DOMAIN and secrets in ${ENV_FILE}"
+echo "[bootstrap-self-host] set CUSTOMER_DOMAIN in ${ENV_FILE} if not already"
+echo "[bootstrap-self-host] add OpenRouter in Welcome after first login (standalone)"
 echo "[bootstrap-self-host] health: curl -fsS http://127.0.0.1:8788/joshu/api/instance/health"

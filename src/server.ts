@@ -28,6 +28,7 @@ import { registerInstanceHealthRoutes } from "./instanceHealth.js";
 import { readHermesGatewayPreference, writeHermesGatewayPreference } from "./hermesGatewayPreference.js";
 import { syncCompanionIdentityFromEnv } from "./companionIdentitySync.js";
 import { registerBoxStateRoutes } from "./boxStateApi.js";
+import { registerBoxSecretsRoutes } from "./boxSecrets/routes.js";
 import { registerOnboardingRoutes } from "./onboardingApi.js";
 import { registerDay0Routes } from "./day0/day0Api.js";
 import { registerHermesCronRoutes } from "./hermesCronApi.js";
@@ -437,6 +438,7 @@ function buildAppRouter(): {
     onHardResetComplete: () => runner.resyncHermesAfterBoxHardReset(),
   });
   registerOnboardingRoutes(router, { projectRoot: PROJECT_ROOT });
+  registerBoxSecretsRoutes(router, { projectRoot: PROJECT_ROOT, runner });
   registerDay0Routes(router, { projectRoot: PROJECT_ROOT });
 
   registerHermesCronRoutes(router);
