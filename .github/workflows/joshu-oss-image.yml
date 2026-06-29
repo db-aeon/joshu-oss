@@ -31,6 +31,11 @@ jobs:
         id: hermes
         run: echo "ref=$(node scripts/sync-vps-hermes-pin.mjs --print)" >> "$GITHUB_OUTPUT"
 
+      - name: Resolve release version
+        id: release
+        run: |
+          echo "version=$(node -e "console.log(JSON.parse(require('fs').readFileSync('deploy/RELEASE.json','utf8')).version)")" >> "$GITHUB_OUTPUT"
+
       - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
@@ -48,4 +53,16 @@ jobs:
             HERMES_AGENT_REF=${{ steps.hermes.outputs.ref }}
           tags: |
             ghcr.io/${{ github.repository_owner }}/joshu-oss:${{ github.ref_name }}
+            ghcr.io/${{ github.repository_owner }}/joshu-oss:${{ steps.release.outputs.version }}
             ghcr.io/${{ github.repository_owner }}/joshu-oss:latest
+
+      - name: Build and push joshu-voice-realtime
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/Dockerfile.voice-realtime
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/joshu-voice-realtime:${{ github.ref_name }}
+            ghcr.io/${{ github.repository_owner }}/joshu-voice-realtime:${{ steps.release.outputs.version }}
+            ghcr.io/${{ github.repository_owner }}/joshu-voice-realtime:latest

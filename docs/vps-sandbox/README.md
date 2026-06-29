@@ -8,6 +8,7 @@ The **control plane** (managed provisioning, customer portal at `hello.joshu.me`
 
 | Doc | Purpose |
 | --- | --- |
+| [`hetzner-quickstart.md`](hetzner-quickstart.md) | **Hetzner Ubuntu** self-host walkthrough (example build) |
 | [`../self-host.md`](../self-host.md) | Standalone Docker bootstrap |
 | [`runtime-topology.md`](runtime-topology.md) | How legacy assumptions map to Compose |
 | [`instance-agent-protocol.md`](instance-agent-protocol.md) | Optional sidecar for managed hosting — heartbeats and signed commands |
@@ -23,6 +24,10 @@ The **control plane** (managed provisioning, customer portal at `hello.joshu.me`
 
 ## Quick start
 
+**Hetzner / Ubuntu VPS:** [hetzner-quickstart.md](hetzner-quickstart.md) (recommended — installs Docker, pulls GHCR image).
+
+**Same machine as git clone:**
+
 ```bash
 sudo bash scripts/bootstrap-self-host.sh
 ```
@@ -31,4 +36,7 @@ Or see [`../self-host.md`](../self-host.md).
 
 ## Image
 
-Public OSS image: `ghcr.io/db-aeon/joshu-oss:latest` (Vanilla theme). Pin tags in `deploy/RELEASE.json` when building from source.
+Public OSS images (pin tags in `deploy/RELEASE.json`):
+
+- `ghcr.io/db-aeon/joshu-oss:latest` — main stack (Vanilla theme)
+- `ghcr.io/db-aeon/joshu-voice-realtime:latest` — voice sidecar (optional `voice-rt` profile)

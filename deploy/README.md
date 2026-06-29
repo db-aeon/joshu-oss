@@ -24,7 +24,7 @@ npm run vps:build-image
 JOSHU_IMAGE_TAG=0.1.14 JOSHU_IMAGE_REPO=ghcr.io/YOUR_ORG/joshu-sandbox JOSHU_IMAGE_PUSH=1 npm run vps:build-image
 ```
 
-Pushes **`ghcr.io/YOUR_ORG/joshu-sandbox:<tag>`** and **`ghcr.io/YOUR_ORG/joshu-voice-realtime:<tag>`** (override with `JOSHU_VOICE_IMAGE_REPO` / `JOSHU_VOICE_IMAGE_REF`).
+Pushes **`ghcr.io/YOUR_ORG/joshu-oss:<tag>`** and **`ghcr.io/YOUR_ORG/joshu-voice-realtime:<tag>`** (override with `JOSHU_VOICE_IMAGE_REPO` / `JOSHU_VOICE_IMAGE_REF`).
 
 Current stable pin: [`deploy/RELEASE.json`](RELEASE.json) (**`0.1.24`**).
 
@@ -38,7 +38,7 @@ Joshu startup (`src/hermesApi.ts`). Details:
 [hermes-integration.md](../docs/hermes-integration.md) and [local-installation.md](../docs/local-installation.md).
 
 CI: [`.github/workflows/joshu-oss-image.yml`](../.github/workflows/joshu-oss-image.yml)
-— reads `HERMES_AGENT_REF` from `deploy/RELEASE.json` and passes it to `docker build`.
+— builds **joshu-oss** and **joshu-voice-realtime**; reads `HERMES_AGENT_REF` from `deploy/RELEASE.json`.
 
 ## Configure instance
 
@@ -160,11 +160,13 @@ cd /opt/joshu/deploy && docker compose -f docker-compose.yml --env-file /etc/jos
 curl -fsS http://127.0.0.1:8788/joshu/api/instance/health | jq '.components.dist'
 ```
 
-Manual bootstrap on an empty VPS:
+Manual bootstrap on an empty VPS (pulls `JOSHU_IMAGE_REF` by default; set `JOSHU_BUILD_IMAGE=1` to build locally):
 
 ```bash
 sudo bash deploy/scripts/bootstrap-vps.sh
 ```
+
+See [hetzner-quickstart.md](../docs/vps-sandbox/hetzner-quickstart.md) for a full Hetzner Ubuntu walkthrough.
 
 ## Smoke checks
 
