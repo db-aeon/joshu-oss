@@ -104,7 +104,7 @@ services:
 
 
   voice-realtime:
-    image: ${JOSHU_VOICE_IMAGE_REF:-ghcr.io/your-org/joshu-voice-realtime:latest}
+    image: ${JOSHU_VOICE_IMAGE_REF:-ghcr.io/your-org/joshu-oss-voice-realtime:latest}
     build:
       context: ..
       dockerfile: deploy/Dockerfile.voice-realtime

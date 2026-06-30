@@ -12,7 +12,7 @@ GBRAIN_REF="$(node -e "console.log(JSON.parse(require('fs').readFileSync('deploy
 IMAGE_TAG="${JOSHU_IMAGE_TAG:-local}"
 IMAGE_REPO="${JOSHU_IMAGE_REPO:-ghcr.io/${GITHUB_REPOSITORY_OWNER:-your-org}/joshu-oss}"
 IMAGE_REF="${JOSHU_IMAGE_REF:-${IMAGE_REPO}:${IMAGE_TAG}}"
-VOICE_IMAGE_REPO="${JOSHU_VOICE_IMAGE_REPO:-ghcr.io/${GITHUB_REPOSITORY_OWNER:-your-org}/joshu-voice-realtime}"
+VOICE_IMAGE_REPO="${JOSHU_VOICE_IMAGE_REPO:-ghcr.io/${GITHUB_REPOSITORY_OWNER:-your-org}/joshu-oss-voice-realtime}"
 VOICE_IMAGE_REF="${JOSHU_VOICE_IMAGE_REF:-${VOICE_IMAGE_REPO}:${IMAGE_TAG}}"
 PUSH="${JOSHU_IMAGE_PUSH:-0}"
 

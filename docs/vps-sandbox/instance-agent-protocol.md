@@ -115,7 +115,7 @@ Agent rejects commands with skewed `issuedAt` > 5 minutes or invalid signature.
 | `repoRef` | Git ref to checkout (default: control-plane `JOSHU_REPO_REF`, usually `main`) |
 | `requiresSnap` | When `true` (default) and `JOSHU_SNAPSHOT_GCS_BUCKET` is set, agent POSTs `/joshu/api/box/snap` before pulling the image |
 | `changelog` | Operator notes (not consumed by agent) |
-| `voiceImageRef` | Optional explicit GHCR ref; default derives `joshu-sandbox:tag` → `joshu-voice-realtime:tag` |
+| `voiceImageRef` | Optional explicit GHCR ref; default derives `joshu-oss:tag` → `joshu-oss-voice-realtime:tag` |
 
 ### Rollback
 

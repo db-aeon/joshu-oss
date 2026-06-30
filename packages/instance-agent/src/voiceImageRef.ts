@@ -8,6 +8,9 @@ export function voiceImageRefFromSandbox(
   if (explicit) return explicit;
 
   const trimmed = sandboxImageRef.trim();
+  if (trimmed.includes("/joshu-oss:")) {
+    return trimmed.replace("/joshu-oss:", "/joshu-oss-voice-realtime:");
+  }
   if (trimmed.includes("/joshu-sandbox:")) {
     return trimmed.replace("/joshu-sandbox:", "/joshu-voice-realtime:");
   }
