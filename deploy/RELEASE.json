@@ -1,11 +1,11 @@
 {
-  "version": "0.1.30",
+  "version": "0.1.31",
   "channel": "stable",
-  "imageRef": "ghcr.io/db-aeon/joshu-oss:0.1.30",
-  "voiceImageRef": "ghcr.io/db-aeon/joshu-oss-voice-realtime:0.1.30",
+  "imageRef": "ghcr.io/db-aeon/joshu-oss:0.1.31",
+  "voiceImageRef": "ghcr.io/db-aeon/joshu-oss-voice-realtime:0.1.31",
   "hermesRef": "a91a57fa5a13d516c38b07a141a9ce8a3daabeb0",
   "gbrainRef": "fa2c7a6990a7a57b251979ef6e1988ff09529021",
   "camofoxBase": "ghcr.io/jo-inc/camofox-browser@sha256:3ab61b4742105922aab6f8c99460f55563b6f93e906975383ddce16ec8917f3f",
-  "builtAt": "2026-06-30T16:30:00.000Z",
-  "notes": "Vanilla desktop chrome, email-signature bootstrap fix, Camofox viewport patch idempotency"
+  "builtAt": "2026-06-30T20:00:00.000Z",
+  "notes": "Joshu auth branding, System Settings About/Joshu tabs, joshu-public favicon, Vendor tab removed, VPS overlay bind-mounts"
 }

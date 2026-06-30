@@ -15,7 +15,7 @@ No proprietary control plane — this is **standalone self-host** only. Control-
 | --- | --- |
 | VPS public IP | `203.0.113.50` |
 | Hostname | `mybox.example.com` |
-| Release image | `ghcr.io/db-aeon/joshu-oss:0.1.29` (see [`deploy/RELEASE.json`](../../deploy/RELEASE.json)) |
+| Release image | `ghcr.io/db-aeon/joshu-oss:0.1.31` (see [`deploy/RELEASE.json`](../../deploy/RELEASE.json)) |
 
 ---
 
@@ -23,7 +23,7 @@ No proprietary control plane — this is **standalone self-host** only. Control-
 
 1. Open [Hetzner Cloud Console](https://console.hetzner.cloud/) → your project → **Add server**.
 2. **Image:** Ubuntu **24.04**
-3. **Type:** **CPX31** (8 GB RAM) or larger
+3. **Type:** **CPX31** (8 GB RAM) or larger — **2 GB plans OOM** under Postgres + Hermes + Camofox
 4. **Location:** pick a region close to you (`ash` US, `nbg1` / `fsn1` EU)
 5. **SSH key:** add your public key (so you can `ssh root@…`)
 6. **Firewall (recommended):** allow inbound **22**, **80**, **443**
@@ -95,13 +95,16 @@ CUSTOMER_DOMAIN=mybox.example.com
 VPS_IPV4=203.0.113.50
 ACME_EMAIL=you@example.com
 
-JOSHU_RELEASE_VERSION=0.1.29
-JOSHU_IMAGE_REF=ghcr.io/db-aeon/joshu-oss:0.1.29
+JOSHU_RELEASE_VERSION=0.1.31
+JOSHU_IMAGE_REF=ghcr.io/db-aeon/joshu-oss:0.1.31
+JOSHU_VOICE_IMAGE_REF=ghcr.io/db-aeon/joshu-oss-voice-realtime:0.1.31
 ```
 
 Save: **Ctrl+O** Enter, **Ctrl+X**.
 
 You do **not** need to set `OPENROUTER_API_KEY`, `HERMES_API_KEY`, or `API_SERVER_KEY` here — bootstrap generates gateway secrets; Welcome collects OpenRouter after login.
+
+Pin versions from [`deploy/RELEASE.json`](../../deploy/RELEASE.json) when upgrading an existing box.
 
 ---
 
@@ -114,9 +117,10 @@ ENV_FILE=/etc/joshu/instance.env bash deploy/scripts/bootstrap-vps.sh
 
 Bootstrap will:
 
-1. Install Docker
+1. Install Docker (if missing)
 2. Generate `HERMES_API_KEY`, `API_SERVER_KEY`, and `JOSHU_HERMES_DASHBOARD_PASSWORD` if missing
-3. Pull the Joshu image and start the stack
+3. Pull `JOSHU_IMAGE_REF` and start the stack
+4. Sync `dist/` from the image when the host clone has no local build
 
 First run takes **10–20 minutes**.
 
@@ -141,6 +145,15 @@ Health check (laptop):
 ```bash
 curl -fsS https://mybox.example.com/joshu/api/instance/health
 ```
+
+**Branding checks (0.1.31+):** login page says **Joshu**, favicon is the hand icon, System Settings → ☰ → **About** shows **About** + **Joshu** tabs (no Vendor tab). Hard-refresh (`Cmd+Shift+R`) if the browser cached an old favicon.
+
+```bash
+curl -fsSI https://mybox.example.com/img/public/joshu-icon.svg
+curl -fsSI https://mybox.example.com/aroz-vanilla-shell.css
+```
+
+Both should return `200`.
 
 ---
 
@@ -219,55 +232,69 @@ Log in at `https://mybox.example.com/` with the new password.
 
 ---
 
+## Upgrade or reinstall (existing VPS)
+
+To move to a newer image (e.g. `0.1.31`):
+
+```bash
+cd /opt/joshu && git pull origin main
+nano /etc/joshu/instance.env   # bump JOSHU_RELEASE_VERSION + JOSHU_IMAGE_REF (+ voice ref)
+bash scripts/sync-dist-from-image.sh
+cd deploy
+docker compose -f docker-compose.yml --env-file /etc/joshu/instance.env pull joshu-stack voice-rt 2>/dev/null || true
+docker compose -f docker-compose.yml --env-file /etc/joshu/instance.env up -d --force-recreate
+```
+
+**Full wipe** (factory-fresh data — destroys desktop files, Postgres, Hermes state):
+
+```bash
+cd /opt/joshu/deploy
+docker compose -f docker-compose.yml --env-file /etc/joshu/instance.env down -v
+cd / && rm -rf /opt/joshu
+# keep /etc/joshu/instance.env — update image pins, then repeat Steps 4–6
+```
+
+---
+
 ## Common problems
 
 | Problem | What to check |
 | --- | --- |
-| `docker pull` → `registry: denied` | Image tag not published yet, or GHCR package still private. Confirm tag in [`deploy/RELEASE.json`](../../deploy/RELEASE.json). After a release build, `docker pull` should work without login. If building from source instead: run `bash scripts/ensure-vendor-for-build.sh` first (OSS clone has no `vendor/`). |
+| `docker pull` → `registry: denied` | Image tag not published yet, or GHCR package still private. Confirm tag in [`deploy/RELEASE.json`](../../deploy/RELEASE.json). After a release build, `docker pull` should work without login. |
 | Certificate error in browser | DNS not pointing at VPS yet |
 | Health `curl` fails | Ports 80/443 open; wait a few minutes after bootstrap |
 | Chat empty / 401 | Add OpenRouter in **Welcome → Connect AI**, or check gateway keys in `instance.env` |
-| Desktop icons broken (placeholder images) | `img/joshu/*.png` missing from ArozOS `web/` — re-run theme apply + icon copy (image **0.1.30+** or host `git pull` + restart). See below. |
-| Desktop has icons but no window chrome | `aroz-vanilla-shell.css` not applied — same fix; hard-refresh after restart |
-| Site works then **502** / box “down” for minutes | Usually **not** Hetzner sleep — `joshu-stack` crash loop (failed healthcheck). Check `docker compose logs joshu-stack` and restart count. Common on **0.1.29** without host `git pull`: missing `packages/email-signature/dist` bind mount + broken Camofox `server.js`. Fix below. |
+| Desktop icons broken (placeholder images) | Image **&lt; 0.1.30** or theme not applied — `git pull` + restart stack. **0.1.31+** bakes icons + vanilla chrome at build and re-applies on boot. |
+| Desktop has icons but no window chrome | Same — ensure `aroz-vanilla-shell.css` returns `200` (see Step 7) |
+| Site works then **502** / box “down” for minutes | `joshu-stack` crash loop — `docker compose logs joshu-stack`. Use **CPX31 (8 GB)** or larger; 2 GB hosts OOM. |
 | Locked out of ArozOS login | No email reset — use SSH script or admin temporary password. See [Forgot ArozOS password](#forgot-arozos-password-self-host). |
-| Hermes Admin **Cannot GET /joshu/hermes-admin/** | VPS uses **direct mode** — open `https://hermes-admin.mybox.example.com/` (not `/joshu/`). Add DNS **A** record ([Step 2](#step-2--point-dns-at-the-server)). See [Hermes Admin](#hermes-admin-desktop-shortcut). |
+| Hermes Admin **Cannot GET /joshu/hermes-admin/** | VPS uses **direct mode** — open `https://hermes-admin.mybox.example.com/` (not `/joshu/`). Add DNS **A** record ([Step 2](#step-2--point-dns-at-the-server)). |
+| System Settings still shows imuslab / old About tab | Close Settings window entirely, hard-refresh desktop. On **0.1.31+** branding is in the image; host bind-mounts `web-overlays-vanilla/` for faster iteration without rebuild. |
 | `git clone` fails | Outbound HTTPS from VPS |
 
 ### Stack crash loop (502 / intermittent outage)
 
 Hetzner VPS instances do **not** sleep like a laptop. Intermittent **502** from Caddy almost always means `joshu-stack` is restarting (`docker inspect deploy-joshu-stack-1 --format '{{.RestartCount}}'`).
 
-After `git pull` on `/opt/joshu` (needs **main** with email-signature mount fix + vanilla theme):
-
 ```bash
-cd /opt/joshu
-git pull origin main
-source /etc/joshu/instance.env
-bash scripts/sync-dist-from-image.sh
-cd deploy
-docker compose -f docker-compose.yml --env-file /etc/joshu/instance.env up -d --force-recreate joshu-stack
+docker compose -f /opt/joshu/deploy/docker-compose.yml --env-file /etc/joshu/instance.env logs joshu-stack --tail 80
+curl -fsS http://127.0.0.1:8788/joshu/api/instance/health | head -c 200
 ```
-
-Wait for health: `curl -fsS http://127.0.0.1:8788/joshu/api/instance/health | head -c 200`
 
 Use **CPX31 (8 GB RAM)** or larger — CX/2 GB hosts OOM under Postgres + Hermes + Camofox.
 
-### Desktop icons or missing chrome
+### Desktop icons or missing chrome (older images only)
 
-On older images, vanilla theme did not copy module icons into `web/img/joshu/`. After `git pull` on `/opt/joshu`:
+On **0.1.31+** this should not be needed after a fresh bootstrap. For older boxes after `git pull`:
 
 ```bash
 cd /opt/joshu/deploy
-docker compose -f docker-compose.yml --env-file /etc/joshu/instance.env exec joshu-stack bash -c '
+docker compose -f docker-compose.yml --env-file /etc/joshu/instance.env exec joshu-stack \
   python3 /opt/joshu/scripts/apply_arozos_joshu_theme.py /var/lib/arozos/web/
-  mkdir -p /var/lib/arozos/web/img/joshu
-  cp -a /opt/joshu/arozos/icons/*.png /var/lib/arozos/web/img/joshu/ 2>/dev/null || true
-'
 docker compose -f docker-compose.yml --env-file /etc/joshu/instance.env restart joshu-stack
 ```
 
-Hard-refresh the browser (Cmd+Shift+R). Confirm: `curl -fsSI https://YOUR_DOMAIN/img/joshu/chat.png` and `curl -fsSI https://YOUR_DOMAIN/aroz-vanilla-shell.css` return `200`.
+Hard-refresh the browser (Cmd+Shift+R).
 
 ---
 
