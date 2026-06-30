@@ -49,11 +49,23 @@ jobs:
         if: inputs.images != 'voice-only'
       - run: npm run vps:sync-hermes-pin
         if: inputs.images != 'voice-only'
+      - run: npm run vps:sync-camofox-pin
+        if: inputs.images != 'voice-only'
 
       - name: Resolve Hermes pin
         id: hermes
         if: inputs.images != 'voice-only'
         run: echo "ref=$(node scripts/sync-vps-hermes-pin.mjs --print)" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve Camofox pin
+        id: camofox
+        if: inputs.images != 'voice-only'
+        run: echo "ref=$(node scripts/sync-vps-camofox-pin.mjs --print)" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve gbrain pin
+        id: gbrain
+        if: inputs.images != 'voice-only'
+        run: echo "ref=$(node -e \"console.log(JSON.parse(require('fs').readFileSync('deploy/RELEASE.json','utf8')).gbrainRef)\")" >> "$GITHUB_OUTPUT"
 
       - name: Resolve release version
         id: release
@@ -76,6 +88,8 @@ jobs:
           push: true
           build-args: |
             HERMES_AGENT_REF=${{ steps.hermes.outputs.ref }}
+            CAMOFOX_BASE=${{ steps.camofox.outputs.ref }}
+            GBRAIN_REF=${{ steps.gbrain.outputs.ref }}
           tags: |
             ghcr.io/${{ github.repository_owner }}/joshu-oss:${{ github.ref_name }}
             ghcr.io/${{ github.repository_owner }}/joshu-oss:${{ steps.release.outputs.version }}

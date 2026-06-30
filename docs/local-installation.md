@@ -412,7 +412,8 @@ subservice is registered. Joshu Express is always available at
 **Stopping the stack:** **Ctrl+C** in the `dev:arozos` terminal stops Joshu, ArozOS, Hindsight, voice-realtime, and gbrain (see [`scripts/dev-arozos.sh`](../scripts/dev-arozos.sh) `cleanup` trap). Connectors MCP (`:8795`), Composio guard (`:8796`), Hermes gateway, and Camofox Docker may keep running — usually fine for `npm run dev:arozos` again. For a full local teardown, stop the Hermes gateway (`hermes gateway stop`), kill connectors MCP on `:8795`, and stop the Camofox container.
 
 **Camofox container:** `bash scripts/ensure-camofox-container.sh` creates or
-starts `camofox-hitl` (see `CAMOFOX_CONTAINER` in `.env`). The script patches
+starts `camofox-hitl` (see `CAMOFOX_CONTAINER` in `.env`). Image ref comes from
+`deploy/RELEASE.json` → `camofoxBase` (digest pin). The script patches
 `/app/server.js` on **every container start** (repo mounted at `/opt/joshu`).
 
 Recreate the container (not just `docker start`) when changing `VNC_RESOLUTION`,

@@ -33,6 +33,18 @@ See [hermes-integration.md](hermes-integration.md) for the patch inventory.
 
 ---
 
+## Camofox browser (HITL)
+
+| | |
+|--|--|
+| **Upstream** | [jo-inc/camofox-browser](https://github.com/jo-inc/camofox-browser) (GHCR) |
+| **Pin** | `camofoxBase` digest in `deploy/RELEASE.json` |
+| **Joshu changes** | `scripts/patch-camofox-single-tab.mjs` applied at image build and local container create |
+
+See [hitl-camofox-notes.md](hitl-camofox-notes.md).
+
+---
+
 ## Excalidraw (jWhiteboard)
 
 | | |

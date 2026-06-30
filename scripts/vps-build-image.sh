@@ -6,7 +6,9 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${ROOT_DIR}"
 
 node scripts/sync-vps-hermes-pin.mjs
+node scripts/sync-vps-camofox-pin.mjs
 HERMES_AGENT_REF="$(node scripts/sync-vps-hermes-pin.mjs --print)"
+CAMOFOX_BASE="$(node scripts/sync-vps-camofox-pin.mjs --print)"
 GBRAIN_REF="$(node -e "console.log(JSON.parse(require('fs').readFileSync('deploy/RELEASE.json','utf8')).gbrainRef)")"
 
 IMAGE_TAG="${JOSHU_IMAGE_TAG:-local}"
@@ -17,6 +19,7 @@ VOICE_IMAGE_REF="${JOSHU_VOICE_IMAGE_REF:-${VOICE_IMAGE_REPO}:${IMAGE_TAG}}"
 PUSH="${JOSHU_IMAGE_PUSH:-0}"
 
 echo "[vps-build] HERMES_AGENT_REF=${HERMES_AGENT_REF}"
+echo "[vps-build] CAMOFOX_BASE=${CAMOFOX_BASE}"
 echo "[vps-build] GBRAIN_REF=${GBRAIN_REF}"
 echo "[vps-build] sandbox=${IMAGE_REF}"
 echo "[vps-build] voice-realtime=${VOICE_IMAGE_REF} push=${PUSH}"
@@ -25,6 +28,7 @@ SANDBOX_BUILD_ARGS=(
   --platform linux/amd64
   -f deploy/Dockerfile
   --build-arg "HERMES_AGENT_REF=${HERMES_AGENT_REF}"
+  --build-arg "CAMOFOX_BASE=${CAMOFOX_BASE}"
   --build-arg "GBRAIN_REF=${GBRAIN_REF}"
   -t "${IMAGE_REF}"
 )

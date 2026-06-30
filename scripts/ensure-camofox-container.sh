@@ -6,6 +6,19 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CAMOFOX_CONTAINER="${CAMOFOX_CONTAINER:-camofox-hitl}"
 CAMOFOX_URL="${CAMOFOX_URL:-http://127.0.0.1:9377}"
 
+# Pin matches deploy/RELEASE.json camofoxBase (override with CAMOFOX_BASE for experiments).
+read_camofox_base() {
+  if [[ -n "${CAMOFOX_BASE:-}" ]]; then
+    printf '%s' "${CAMOFOX_BASE}"
+    return
+  fi
+  node -e "
+    const r = JSON.parse(require('fs').readFileSync('${ROOT_DIR}/deploy/RELEASE.json', 'utf8'));
+    if (!r.camofoxBase) throw new Error('deploy/RELEASE.json missing camofoxBase');
+    process.stdout.write(r.camofoxBase);
+  "
+}
+
 load_root_env() {
   if [[ -f "${ROOT_DIR}/.env" ]]; then
     set -a
@@ -64,7 +77,8 @@ if docker ps -a --format '{{.Names}}' | grep -qx "${CAMOFOX_CONTAINER}"; then
   echo "[ensure-camofox] starting existing container ${CAMOFOX_CONTAINER}"
   docker start "${CAMOFOX_CONTAINER}" >/dev/null
 else
-  echo "[ensure-camofox] creating container ${CAMOFOX_CONTAINER}"
+  CAMOFOX_IMAGE="$(read_camofox_base)"
+  echo "[ensure-camofox] creating container ${CAMOFOX_CONTAINER} (${CAMOFOX_IMAGE})"
   docker run -d --name "${CAMOFOX_CONTAINER}" \
     --restart unless-stopped \
     -p 127.0.0.1:9377:9377 \
@@ -83,7 +97,7 @@ else
     "${PROXY_DOCKER_ARGS[@]}" \
     -v "${ROOT_DIR}:/opt/joshu:ro" \
     --entrypoint /bin/sh \
-    ghcr.io/jo-inc/camofox-browser:latest \
+    "${CAMOFOX_IMAGE}" \
     -lc 'node /opt/joshu/scripts/patch-camofox-single-tab.mjs /app/server.js && cd /app && node server.js' >/dev/null
 fi
 
