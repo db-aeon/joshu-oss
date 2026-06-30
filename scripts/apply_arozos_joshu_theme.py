@@ -30,7 +30,7 @@ def _resolve_theme_paths(root: Path) -> tuple[Path, str, Path, bool]:
     return overlay, VANILLA_THEME_FILE, root, False
 
 
-OVERLAY_VERSION = "20260621e"
+OVERLAY_VERSION = "20260629a"
 FOLDER_ICON_VERSION = "2"
 FWCSS_NEEDLE = '<link id="fwcss" rel="stylesheet" href="./script/ao.css">'
 SHELL_SCRIPTS = (
@@ -380,7 +380,7 @@ def main() -> None:
     if obsolete_js.is_file():
         obsolete_js.unlink()
 
-    text = _patch_desktop_tango_folder_icons(text) if branded else text
+    text = _patch_desktop_tango_folder_icons(text)
     text = _refresh_desktop_overlay_links(text, theme_file, theme_link)
 
     for script_name in SHELL_SCRIPTS:
