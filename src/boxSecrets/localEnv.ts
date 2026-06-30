@@ -6,6 +6,7 @@ import { joshuConfigDir } from "../nylas/paths.js";
 export const BOX_SECRETS_UI_KEYS = [
   "OPENROUTER_API_KEY",
   "HINDSIGHT_API_LLM_API_KEY",
+  "GEMINI_API_KEY",
 ] as const;
 
 export type BoxSecretsUiKey = (typeof BOX_SECRETS_UI_KEYS)[number];

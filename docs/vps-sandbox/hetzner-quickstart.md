@@ -125,9 +125,9 @@ grep JOSHU_HERMES_DASHBOARD_PASSWORD /etc/joshu/instance.env
 
 In a browser: `https://mybox.example.com/`
 
-Log in to ArozOS. **Welcome** opens automatically and asks for your **OpenRouter** API key (Connect AI step). Paste a key from [openrouter.ai/keys](https://openrouter.ai/keys) to enable jChat.
+Log in to ArozOS. **Welcome** opens automatically and asks for your **OpenRouter** API key (Connect AI step). Paste a key from [openrouter.ai/keys](https://openrouter.ai/keys) to enable jChat. On the same step you can optionally add a [Gemini API key](https://aistudio.google.com/apikey) for the microphone in jChat (voice uses Gemini Live, not OpenAI).
 
-You can skip Connect AI and add the key later by reopening **Welcome** from the desktop.
+You can skip Connect AI and add keys later by reopening **Welcome** from the desktop (Review step shows Gemini if you skipped voice).
 
 Health check (laptop):
 
@@ -137,22 +137,11 @@ curl -fsS https://mybox.example.com/joshu/api/instance/health
 
 ---
 
-## Optional — enable voice
+## Optional — voice in jChat
 
-After the box is healthy, edit `/etc/joshu/instance.env`:
+Voice is **on by default** for OSS self-host when `JOSHU_VOICE_IMAGE_REF` is set in `deploy/.env.vps.example` (bootstrap enables `voice-rt` automatically). You only need a **Gemini API key** — add it in **Welcome → Connect AI** (optional field) or on the **Review** step if you skipped it earlier. No manual `instance.env` edits required.
 
-```dotenv
-JOSHU_VOICE_IMAGE_REF=ghcr.io/db-aeon/joshu-oss-voice-realtime:0.1.29
-JOSHU_VOICE_MODE=realtime_s2s
-JOSHU_WEB_VOICE_ENABLED=true
-OPENAI_API_KEY=sk-...
-```
-
-```bash
-cd /opt/joshu/deploy
-export COMPOSE_PROFILES=voice-rt
-docker compose -f docker-compose.yml --env-file /etc/joshu/instance.env up -d --force-recreate
-```
+If you disabled voice or run an older box, see [`deploy/README.md`](../../deploy/README.md) for compose profile `voice-rt`.
 
 ---
 

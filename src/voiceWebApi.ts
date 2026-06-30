@@ -3,25 +3,22 @@
  */
 
 import type { Request, Response, Router } from "express";
+import { provisionEnvTrim } from "./provisionInstanceEnv.js";
+import { resolveBoxSecret } from "./boxSecrets/resolve.js";
 
 function envTrim(name: string, fallback = ""): string {
   return process.env[name]?.trim() ?? fallback;
 }
 
 function voiceS2sProvider(): "openai" | "gemini_live" {
-  return envTrim("JOSHU_VOICE_PROVIDER", "openai") === "gemini_live" ? "gemini_live" : "openai";
-}
-
-function resolveOpenAiKey(): string {
-  return (
-    envTrim("OPENAI_API_KEY") ||
-    envTrim("VOICE_TOOLS_OPENAI_KEY") ||
-    envTrim("HINDSIGHT_API_LLM_API_KEY")
-  );
+  const fromFile = provisionEnvTrim("JOSHU_VOICE_PROVIDER");
+  const raw = fromFile || envTrim("JOSHU_VOICE_PROVIDER", "openai");
+  return raw === "gemini_live" ? "gemini_live" : "openai";
 }
 
 function resolveGeminiKey(): string {
   return (
+    resolveBoxSecret("GEMINI_API_KEY") ||
     envTrim("GEMINI_API_KEY") ||
     envTrim("GOOGLE_API_KEY") ||
     envTrim("GOOGLE_GENAI_API_KEY")
@@ -52,8 +49,22 @@ function resolveVoiceToken(): string {
   );
 }
 
+function resolveOpenAiKey(): string {
+  return (
+    envTrim("OPENAI_API_KEY") ||
+    envTrim("VOICE_TOOLS_OPENAI_KEY") ||
+    envTrim("HINDSIGHT_API_LLM_API_KEY")
+  );
+}
+
+function webVoiceEnabledFlag(): boolean {
+  const fromFile = provisionEnvTrim("JOSHU_WEB_VOICE_ENABLED");
+  const raw = fromFile || envTrim("JOSHU_WEB_VOICE_ENABLED", "true");
+  return raw.toLowerCase() !== "false";
+}
+
 function webVoiceConfigured(): boolean {
-  if (envTrim("JOSHU_WEB_VOICE_ENABLED").toLowerCase() === "false") return false;
+  if (!webVoiceEnabledFlag()) return false;
   const hermesKey = envTrim("HERMES_API_KEY") || envTrim("API_SERVER_KEY");
   return Boolean(resolveVoiceToken() && hermesKey && resolveVoiceApiKey());
 }

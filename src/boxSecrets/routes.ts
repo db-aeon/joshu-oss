@@ -17,8 +17,8 @@ function readUpdateBody(body: unknown): Partial<Record<BoxSecretsUiKey, string>>
     const raw = o[key];
     if (typeof raw === "string" && raw.trim()) out[key] = raw.trim();
   }
-  if (!out.OPENROUTER_API_KEY) return null;
-  if (!out.HINDSIGHT_API_LLM_API_KEY) {
+  if (!out.OPENROUTER_API_KEY && !out.GEMINI_API_KEY) return null;
+  if (out.OPENROUTER_API_KEY && !out.HINDSIGHT_API_LLM_API_KEY) {
     out.HINDSIGHT_API_LLM_API_KEY = out.OPENROUTER_API_KEY;
   }
   return out;
@@ -41,7 +41,7 @@ export function registerBoxSecretsRoutes(
   router.put("/api/box-secrets", async (req: Request, res: Response) => {
     const updates = readUpdateBody(req.body);
     if (!updates) {
-      res.status(400).json({ error: "OPENROUTER_API_KEY required" });
+      res.status(400).json({ error: "OPENROUTER_API_KEY or GEMINI_API_KEY required" });
       return;
     }
     for (const key of BOX_SECRETS_UI_KEYS) {
@@ -63,7 +63,9 @@ export function registerBoxSecretsRoutes(
         ok: true,
         status: readBoxSecretsStatus(projectRoot),
         gateway,
-        message: "AI keys saved. Hermes gateway restarted.",
+        message: updates.GEMINI_API_KEY
+          ? "AI keys saved. Voice uses Gemini Live when the voice container is running."
+          : "AI keys saved. Hermes gateway restarted.",
       });
     } catch (err) {
       res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
@@ -75,6 +77,7 @@ export function registerBoxSecretsRoutes(
       const local = readBoxSecretsOverrides(projectRoot);
       res.json({
         openRouterConfigured: Boolean(local.OPENROUTER_API_KEY),
+        geminiConfigured: Boolean(local.GEMINI_API_KEY),
         // Never return secret values — UI uses password fields only.
       });
     } catch (err) {

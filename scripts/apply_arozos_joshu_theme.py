@@ -290,9 +290,8 @@ def _copy_joshu_chat_portrait(web: Path, root: Path, branded: bool) -> None:
     shutil.copyfile(src, dest_dir / "chat-portrait.jpg")
 
 
-def _copy_joshu_icons(web: Path, asset_root: Path, branded: bool) -> None:
-    if not branded:
-        return
+def _copy_joshu_icons(web: Path, asset_root: Path, _branded: bool) -> None:
+    """Module + folder PNGs — required in OSS vanilla too (desktop shortcuts use img/joshu/)."""
     icons_src = asset_root / "arozos" / "icons"
     if not icons_src.is_dir():
         return
