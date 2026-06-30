@@ -142,7 +142,7 @@ curl -fsS https://mybox.example.com/joshu/api/instance/health
 After the box is healthy, edit `/etc/joshu/instance.env`:
 
 ```dotenv
-JOSHU_VOICE_IMAGE_REF=ghcr.io/db-aeon/joshu-voice-realtime:0.1.29
+JOSHU_VOICE_IMAGE_REF=ghcr.io/db-aeon/joshu-oss-voice-realtime:0.1.29
 JOSHU_VOICE_MODE=realtime_s2s
 JOSHU_WEB_VOICE_ENABLED=true
 OPENAI_API_KEY=sk-...

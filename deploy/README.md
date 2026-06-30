@@ -24,7 +24,7 @@ npm run vps:build-image
 JOSHU_IMAGE_TAG=0.1.14 JOSHU_IMAGE_REPO=ghcr.io/YOUR_ORG/joshu-sandbox JOSHU_IMAGE_PUSH=1 npm run vps:build-image
 ```
 
-Pushes **`ghcr.io/YOUR_ORG/joshu-oss:<tag>`** and **`ghcr.io/YOUR_ORG/joshu-voice-realtime:<tag>`** (override with `JOSHU_VOICE_IMAGE_REPO` / `JOSHU_VOICE_IMAGE_REF`).
+Pushes **`ghcr.io/YOUR_ORG/joshu-oss:<tag>`** and **`ghcr.io/YOUR_ORG/joshu-oss-voice-realtime:<tag>`** (override with `JOSHU_VOICE_IMAGE_REPO` / `JOSHU_VOICE_IMAGE_REF`).
 
 Current stable pin: [`deploy/RELEASE.json`](RELEASE.json) (**`0.1.24`**).
 
@@ -38,7 +38,7 @@ Joshu startup (`src/hermesApi.ts`). Details:
 [hermes-integration.md](../docs/hermes-integration.md) and [local-installation.md](../docs/local-installation.md).
 
 CI: [`.github/workflows/joshu-oss-image.yml`](../.github/workflows/joshu-oss-image.yml)
-— builds **joshu-oss** and **joshu-voice-realtime**; reads `HERMES_AGENT_REF` from `deploy/RELEASE.json`.
+— builds **joshu-oss** and **joshu-oss-voice-realtime**; reads `HERMES_AGENT_REF` from `deploy/RELEASE.json`.
 
 ## Configure instance
 

@@ -39,7 +39,7 @@ Key topics: [local installation](docs/local-installation.md) · [executive assis
 Tag `v*-oss` on this repo to build and push to GHCR:
 
 - `ghcr.io/db-aeon/joshu-oss:<version>` (+ `:latest`)
-- `ghcr.io/db-aeon/joshu-voice-realtime:<version>` (+ `:latest`)
+- `ghcr.io/db-aeon/joshu-oss-voice-realtime:<version>` (+ `:latest`)
 
 Vanilla theme on the main image. Pins live in [`deploy/RELEASE.json`](deploy/RELEASE.json).
 

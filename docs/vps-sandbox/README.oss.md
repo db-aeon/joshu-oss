@@ -37,4 +37,4 @@ Or see [`../self-host.md`](../self-host.md).
 Public OSS images (pin tags in `deploy/RELEASE.json`):
 
 - `ghcr.io/db-aeon/joshu-oss:latest` — main stack (Vanilla theme)
-- `ghcr.io/db-aeon/joshu-voice-realtime:latest` — voice sidecar (optional `voice-rt` profile)
+- `ghcr.io/db-aeon/joshu-oss-voice-realtime:latest` — voice sidecar (optional `voice-rt` profile)

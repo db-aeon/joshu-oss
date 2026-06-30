@@ -67,20 +67,6 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Link joshu-voice-realtime package to this repository
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          pkg="joshu-voice-realtime"
-          repo_id="${{ github.event.repository.id }}"
-          if gh api "user/packages/container/${pkg}" >/dev/null 2>&1; then
-            echo "[ghcr] linking ${pkg} to ${{ github.repository }} (repo id ${repo_id})"
-            gh api --method PUT "user/packages/container/${pkg}/repositories/${repo_id}"
-          else
-            echo "[ghcr] ${pkg} not found yet — first push will create and link it"
-          fi
-
       - name: Build and push joshu-oss (Vanilla theme)
         if: inputs.images != 'voice-only'
         uses: docker/build-push-action@v6
@@ -95,7 +81,7 @@ jobs:
             ghcr.io/${{ github.repository_owner }}/joshu-oss:${{ steps.release.outputs.version }}
             ghcr.io/${{ github.repository_owner }}/joshu-oss:latest
 
-      - name: Build and push joshu-voice-realtime
+      - name: Build and push joshu-oss-voice-realtime
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -106,15 +92,15 @@ jobs:
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
           tags: |
-            ghcr.io/${{ github.repository_owner }}/joshu-voice-realtime:${{ github.ref_name }}
-            ghcr.io/${{ github.repository_owner }}/joshu-voice-realtime:${{ steps.release.outputs.version }}
-            ghcr.io/${{ github.repository_owner }}/joshu-voice-realtime:latest
+            ghcr.io/${{ github.repository_owner }}/joshu-oss-voice-realtime:${{ github.ref_name }}
+            ghcr.io/${{ github.repository_owner }}/joshu-oss-voice-realtime:${{ steps.release.outputs.version }}
+            ghcr.io/${{ github.repository_owner }}/joshu-oss-voice-realtime:latest
 
       - name: Make GHCR packages public (self-host pull without login)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          for pkg in joshu-oss joshu-voice-realtime; do
+          for pkg in joshu-oss joshu-oss-voice-realtime; do
             gh api --method PATCH "/users/${{ github.repository_owner }}/packages/container/${pkg}" \
               -f visibility=public \
               || echo "[ghcr] visibility unchanged for ${pkg} (may need manual publish settings)"
