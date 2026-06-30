@@ -24,6 +24,36 @@ index 5b6e1194..24f772f9 100644
  	}
  }
  
+diff --git a/src/setting_joshu.go b/src/setting_joshu.go
+new file mode 100644
+index 00000000..17a58677
+--- /dev/null
++++ b/src/setting_joshu.go
+@@ -0,0 +1,24 @@
++package main
++
++/*
++	Joshu System Setting pages (box snapshots, factory profile).
++*/
++
++func JoshuSettingInit() {
++	registerSetting(settingModule{
++		Name:         "Hermes Gateway",
++		Desc:         "Start or stop the Hermes agent gateway on this box",
++		IconPath:     "img/joshu/chat.png",
++		Group:        "Joshu",
++		StartDir:     "SystemAO/joshu/hermes-gateway.html",
++		RequireAdmin: true,
++	})
++	registerSetting(settingModule{
++		Name:         "Box State",
++		Desc:         "Snapshot, restore, and factory reset for this Joshu box",
++		IconPath:     "img/joshu/chat.png",
++		Group:        "Joshu",
++		StartDir:     "SystemAO/joshu/box-state.html",
++		RequireAdmin: true,
++	})
++}
 diff --git a/src/startup.go b/src/startup.go
 index 2f3b8bc9..76dce430 100644
 --- a/src/startup.go
