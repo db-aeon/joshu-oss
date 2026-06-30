@@ -26,7 +26,7 @@ npm ci
 npm run dev:arozos
 ```
 
-Self-host on a VPS: [docs/self-host.md](docs/self-host.md).
+Self-host on a VPS: [docs/self-host.md](docs/self-host.md) · [Hetzner quickstart](docs/vps-sandbox/hetzner-quickstart.md).
 
 ## Documentation
 

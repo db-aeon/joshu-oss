@@ -153,7 +153,25 @@ If you disabled voice or run an older box, see [`deploy/README.md`](../../deploy
 | Certificate error in browser | DNS not pointing at VPS yet |
 | Health `curl` fails | Ports 80/443 open; wait a few minutes after bootstrap |
 | Chat empty / 401 | Add OpenRouter in **Welcome → Connect AI**, or check gateway keys in `instance.env` |
+| Desktop icons broken (placeholder images) | `img/joshu/*.png` missing from ArozOS `web/` — re-run theme apply + icon copy (image **0.1.30+** or host `git pull` + restart). See below. |
+| Desktop has icons but no window chrome | `aroz-vanilla-shell.css` not applied — same fix; hard-refresh after restart |
 | `git clone` fails | Outbound HTTPS from VPS |
+
+### Desktop icons or missing chrome
+
+On older images, vanilla theme did not copy module icons into `web/img/joshu/`. After `git pull` on `/opt/joshu`:
+
+```bash
+cd /opt/joshu/deploy
+docker compose -f docker-compose.yml --env-file /etc/joshu/instance.env exec joshu-stack bash -c '
+  python3 /opt/joshu/scripts/apply_arozos_joshu_theme.py /var/lib/arozos/web/
+  mkdir -p /var/lib/arozos/web/img/joshu
+  cp -a /opt/joshu/arozos/icons/*.png /var/lib/arozos/web/img/joshu/ 2>/dev/null || true
+'
+docker compose -f docker-compose.yml --env-file /etc/joshu/instance.env restart joshu-stack
+```
+
+Hard-refresh the browser (Cmd+Shift+R). Confirm: `curl -fsSI https://YOUR_DOMAIN/img/joshu/chat.png` and `curl -fsSI https://YOUR_DOMAIN/aroz-vanilla-shell.css` return `200`.
 
 ---
 

@@ -436,13 +436,15 @@ Full VNC / aspect-ratio / fingerprint notes:
   `@joshu/design-system` (tokens, typography, base CSS).
 - ArozOS desktop chrome is overlaid by **`aroz-paper-shell.css`** from the private
   **`joshu-design`** pack when `JOSHU_DESIGN_PACK` is set (see below). OSS / missing
-  design pack falls back to **`aroz-vanilla-shell.css`** (minimal chrome).
+  design pack falls back to **`aroz-vanilla-shell.css`** (silver taskbar, pinstripe window
+  title bars, neutral menus — not the JDL peach/paper brand).
 - `dev-arozos.sh` runs [`scripts/apply_arozos_joshu_theme.py`](../scripts/apply_arozos_joshu_theme.py)
   on the template `web/` tree after syncing upstream ArozOS, and again on
   `.local/arozos-data/web/` so `desktop.html` always links the shell stylesheet.
 - **`JOSHU_DESIGN_PACK`:** fleet builds set this explicitly. Local dev **auto-detects**
   a sibling `../joshu-design` checkout when the env var is unset (`scripts/dev-arozos.sh`).
-  Without the design pack, you get vanilla shell (black desktop, system fonts) — not a bug.
+  Without the design pack you get **vanilla OSS chrome** (black init splash wallpaper is
+  normal; open a float window to confirm title-bar styling).
 - Shell assets (branded): `joshu-design/arozos/web-overlays-vanilla/`; OSS fallback:
   `arozos/web-overlays-vanilla/`. Tango PNGs → `web/img/joshu/`, `web/img/desktop/`,
   `web/img/tango/`. Rebuild: [`docs/design/README.md`](design/README.md#tango-icon-pipeline).
