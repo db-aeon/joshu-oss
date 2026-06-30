@@ -160,6 +160,7 @@ docker compose -f docker-compose.yml --env-file /etc/joshu/instance.env up -d --
 
 | Problem | What to check |
 | --- | --- |
+| `docker pull` → `registry: denied` | Image tag not published yet, or GHCR package still private. Confirm tag exists: [`deploy/RELEASE.json`](../../deploy/RELEASE.json). Retry bootstrap after a release build finishes. Temporary workaround: `JOSHU_BUILD_IMAGE=1` on a full git clone with submodules (slow). |
 | Certificate error in browser | DNS not pointing at VPS yet |
 | Health `curl` fails | Ports 80/443 open; wait a few minutes after bootstrap |
 | Chat empty / 401 | Add OpenRouter in **Welcome → Connect AI**, or check gateway keys in `instance.env` |
