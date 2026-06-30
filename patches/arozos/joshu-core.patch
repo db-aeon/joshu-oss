@@ -1,5 +1,5 @@
 diff --git a/.gitignore b/.gitignore
-index 0f6a724..8f21039 100644
+index 0f6a7244..8f210393 100644
 --- a/.gitignore
 +++ b/.gitignore
 @@ -31,3 +31,4 @@ src/system/bridge.json
@@ -7,11 +7,40 @@ index 0f6a724..8f21039 100644
  src/system/smtp_conf.json
  /src/web/FFmpeg Factory
 +.DS_Store
+diff --git a/src/setting.go b/src/setting.go
+index 5b6e1194..24f772f9 100644
+--- a/src/setting.go
++++ b/src/setting.go
+@@ -111,6 +111,12 @@ func system_setting_getSettingGroups() []settingGroup {
+ 			IconPath: "SystemAO/system_setting/img/info.svg",
+ 			Desc:     "Information of the current running ArOZ Online System",
+ 		},
++		{
++			Name:     "Joshu",
++			Group:    "Joshu",
++			IconPath: "img/joshu/chat.png",
++			Desc:     "Joshu box snapshots and factory profile",
++		},
+ 	}
+ }
+ 
+diff --git a/src/startup.go b/src/startup.go
+index 2f3b8bc9..76dce430 100644
+--- a/src/startup.go
++++ b/src/startup.go
+@@ -96,6 +96,7 @@ func RunStartup() {
+ 	SystemIDInit()            //System UUID Manager
+ 	AuthSettingsInit()        //Authentication Settings Handler, must be start after user Handler
+ 	AdvanceSettingInit()      //System Advance Settings
++	JoshuSettingInit()        //Joshu box state (snapshots / factory)
+ 	StartupFlagsInit()        //System BootFlag settibg
+ 	HardwarePowerInit()       //Start host power manager
+ 	RegisterStorageSettings() //Storage Settings
 diff --git a/src/system.go b/src/system.go
-index 0000000..0000000 100644
+index 18575104..46c70f37 100644
 --- a/src/system.go
 +++ b/src/system.go
-@@ -62,16 +62,6 @@ func SystemIDInit() {
+@@ -62,17 +62,6 @@ func SystemIDInit() {
  		StartDir: "SystemAO/info/srcLicense.html",
  	})
  
@@ -29,74 +58,14 @@ index 0000000..0000000 100644
  	http.HandleFunc("/system/info/license", systemHandleListLicense)
  
  	//Handle health check ping
-diff --git a/src/setting.go b/src/setting.go
-index 5b6e119..24f772f 100644
---- a/src/setting.go
-+++ b/src/setting.go
-@@ -111,6 +111,6 @@ func system_setting_getSettingGroups() []settingGroup {
- 			IconPath: "SystemAO/system_setting/img/info.svg",
- 			Desc:     "Information of the current running ArOZ Online System",
- 		},
--		{
--			Name:     "Joshu",
--			Group:    "Joshu",
--			IconPath: "img/joshu/chat.png",
--			Desc:     "Joshu box snapshots and factory profile",
--		},
- 	}
- }
- 
-diff --git a/src/setting_joshu.go b/src/setting_joshu.go
-new file mode 100644
-index 0000000..17a5867
---- /dev/null
-+++ b/src/setting_joshu.go
-@@ -0,0 +1,24 @@
-+package main
-+
-+/*
-+	Joshu System Setting pages (box snapshots, factory profile).
-+*/
-+
-+func JoshuSettingInit() {
-+	registerSetting(settingModule{
-+		Name:         "Joshu",
-+		Desc:         "Joshu box snapshots and factory profile",
-+		IconPath:     "img/joshu/chat.png",
-+		Group:        "About",
-+		StartDir:     "SystemAO/joshu/box-state.html",
-+		RequireAdmin: true,
-+	})
-+	registerSetting(settingModule{
-+		Name:         "Hermes Gateway",
-+		Desc:         "Start or stop the Hermes agent gateway on this box",
-+		IconPath:     "img/joshu/chat.png",
-+		Group:        "About",
-+		StartDir:     "SystemAO/joshu/hermes-gateway.html",
-+		RequireAdmin: true,
-+	})
-+}
-diff --git a/src/startup.go b/src/startup.go
-index 2f3b8bc..76dce43 100644
---- a/src/startup.go
-+++ b/src/startup.go
-@@ -96,6 +96,7 @@ func RunStartup() {
- 	SystemIDInit()            //System UUID Manager
- 	AuthSettingsInit()        //Authentication Settings Handler, must be start after user Handler
- 	AdvanceSettingInit()      //System Advance Settings
-+	JoshuSettingInit()        //Joshu box state (snapshots / factory)
- 	StartupFlagsInit()        //System BootFlag settibg
- 	HardwarePowerInit()       //Start host power manager
- 	RegisterStorageSettings() //Storage Settings
 diff --git a/src/web/SystemAO/locale/system_settings.json b/src/web/SystemAO/locale/system_settings.json
-index e9d947e..7c658a5 100644
+index e9d947e5..7c658a5d 100644
 --- a/src/web/SystemAO/locale/system_settings.json
 +++ b/src/web/SystemAO/locale/system_settings.json
 @@ -428,8 +428,9 @@
                  "menu/group/Security & Auth": "Security & Auth",
                  "menu/group/Developer Options": "Developer Options",
                  "menu/group/About ArOZ": "About ArozOS",
-                "menu/group/About": "About",
 -                
 -                "tab/info/Overview": "Overview",
 +                "menu/group/Joshu": "Joshu",
@@ -120,7 +89,7 @@ index e9d947e..7c658a5 100644
                  "Connected clients and IoT devices": "Clients and IoT Devices",
                  "List of modules loaded in the system": "System Modules and Subservices",
 diff --git a/src/web/SystemAO/utilities/mediaPlayer.html b/src/web/SystemAO/utilities/mediaPlayer.html
-index 412a64a..1235354 100644
+index 412a64a4..12353540 100644
 --- a/src/web/SystemAO/utilities/mediaPlayer.html
 +++ b/src/web/SystemAO/utilities/mediaPlayer.html
 @@ -46,6 +46,28 @@
@@ -236,7 +205,7 @@ index 412a64a..1235354 100644
  
  		function hideMenu(){
 diff --git a/src/web/Video/embedded.html b/src/web/Video/embedded.html
-index 53b6ed7..e3adfb8 100644
+index 53b6ed74..e3adfb89 100644
 --- a/src/web/Video/embedded.html
 +++ b/src/web/Video/embedded.html
 @@ -39,10 +39,14 @@
@@ -270,7 +239,7 @@ index 53b6ed7..e3adfb8 100644
                          url: videoURL
                      },
 diff --git a/src/web/desktop.html b/src/web/desktop.html
-index 32478b7..b6dd679 100644
+index 32478b70..b6dd6796 100644
 --- a/src/web/desktop.html
 +++ b/src/web/desktop.html
 @@ -20,7 +20,8 @@
