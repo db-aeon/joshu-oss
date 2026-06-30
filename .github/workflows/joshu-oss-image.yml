@@ -65,7 +65,8 @@ jobs:
       - name: Resolve gbrain pin
         id: gbrain
         if: inputs.images != 'voice-only'
-        run: echo "ref=$(node -e \"console.log(JSON.parse(require('fs').readFileSync('deploy/RELEASE.json','utf8')).gbrainRef)\")" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "ref=$(node -e "console.log(JSON.parse(require('fs').readFileSync('deploy/RELEASE.json','utf8')).gbrainRef)")" >> "$GITHUB_OUTPUT"
 
       - name: Resolve release version
         id: release
