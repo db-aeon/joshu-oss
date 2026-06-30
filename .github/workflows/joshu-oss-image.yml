@@ -4,6 +4,15 @@ on:
   push:
     tags: ["v*-oss", "v1.0.0-oss"]
   workflow_dispatch:
+    inputs:
+      images:
+        description: Which images to build and push
+        required: false
+        default: all
+        type: choice
+        options:
+          - all
+          - voice-only
 
 permissions:
   contents: read
@@ -12,28 +21,38 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
 
       - name: Ensure vendor trees (OSS snapshot omits vendor/)
+        if: inputs.images != 'voice-only'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: bash scripts/ensure-vendor-for-build.sh
 
       - uses: actions/setup-node@v4
+        if: inputs.images != 'voice-only'
         with:
           node-version: "22"
           cache: npm
 
       - run: npm ci
+        if: inputs.images != 'voice-only'
       - run: npm run check:oss-boundaries
+        if: inputs.images != 'voice-only'
       - run: npm run build:deploy
+        if: inputs.images != 'voice-only'
       - run: npm run vps:sync-hermes-pin
+        if: inputs.images != 'voice-only'
 
       - name: Resolve Hermes pin
         id: hermes
+        if: inputs.images != 'voice-only'
         run: echo "ref=$(node scripts/sync-vps-hermes-pin.mjs --print)" >> "$GITHUB_OUTPUT"
 
       - name: Resolve release version
@@ -48,7 +67,22 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Link joshu-voice-realtime package to this repository
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          pkg="joshu-voice-realtime"
+          repo_id="${{ github.event.repository.id }}"
+          if gh api "user/packages/container/${pkg}" >/dev/null 2>&1; then
+            echo "[ghcr] linking ${pkg} to ${{ github.repository }} (repo id ${repo_id})"
+            gh api --method PUT "user/packages/container/${pkg}/repositories/${repo_id}"
+          else
+            echo "[ghcr] ${pkg} not found yet — first push will create and link it"
+          fi
+
       - name: Build and push joshu-oss (Vanilla theme)
+        if: inputs.images != 'voice-only'
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -67,6 +101,10 @@ jobs:
           context: .
           file: deploy/Dockerfile.voice-realtime
           push: true
+          build-args: |
+            IMAGE_SOURCE=https://github.com/${{ github.repository }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
           tags: |
             ghcr.io/${{ github.repository_owner }}/joshu-voice-realtime:${{ github.ref_name }}
             ghcr.io/${{ github.repository_owner }}/joshu-voice-realtime:${{ steps.release.outputs.version }}
