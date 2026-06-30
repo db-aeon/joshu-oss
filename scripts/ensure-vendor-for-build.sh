@@ -10,17 +10,24 @@ clone_if_missing() {
   local dest="$1"
   local url="$2"
   local branch="${3:-}"
+  local marker="${4:-}"
 
-  if [[ -e "${dest}/.git" ]] || [[ -n "${4:-}" && -e "${dest}/${4}" ]]; then
+  if [[ -e "${dest}/.git" ]] || [[ -n "${marker}" && -e "${dest}/${marker}" ]]; then
     return 0
+  fi
+
+  local clone_url="${url}"
+  # Private forks in the same org (e.g. db-aeon/excalidraw) need a token in CI.
+  if [[ -n "${GITHUB_TOKEN:-}" ]] && [[ "${url}" == https://github.com/* ]]; then
+    clone_url="https://x-access-token:${GITHUB_TOKEN}@${url#https://}"
   fi
 
   echo "[ensure-vendor-for-build] cloning ${url} -> ${dest}"
   mkdir -p "$(dirname "${dest}")"
   if [[ -n "${branch}" ]]; then
-    git clone --depth 1 --branch "${branch}" "${url}" "${dest}"
+    git clone --depth 1 --branch "${branch}" "${clone_url}" "${dest}"
   else
-    git clone --depth 1 "${url}" "${dest}"
+    git clone --depth 1 "${clone_url}" "${dest}"
   fi
 }
 
