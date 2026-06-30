@@ -113,7 +113,7 @@ After shortcut changes: **hard-refresh** the desktop (Cmd+Shift+R) or re-login. 
 1. **`moduleInfo.json`** — set `"Name"` (Joshu subservices only).
 2. **`scripts/dev-arozos.sh` and `deploy/scripts/vps-start.sh`** — update `*_SHORTCUT_CONTENT` and the matching `install_*_shortcuts` function (path, `rm` old files).
 3. **App bundle** — `apps/<app>/index.html` and in-app title if shown.
-4. **Icons** — optional; `IconPath` / fourth shortcut line / `arozos/icons/` → `web/img/joshu/` via `apply_arozos_joshu_theme.py`. Full Tango library (unused icons included): `arozos/tango-icons/` → `web/img/tango/`. See [Tango icon pipeline](design/README.md#tango-icon-pipeline).
+4. **Icons** — `arozos/icons/` → `web/img/joshu/` via `apply_arozos_joshu_theme.py` (required for Joshu desktop shortcuts). Full Tango library (unused icons included): `arozos/tango-icons/` → `web/img/tango/`. See [Tango icon pipeline](design/README.md#tango-icon-pipeline).
 5. **Docs / README** — user-facing names.
 6. **Restart** — `npm run dev:arozos`; confirm boot log `Subservice Registered: <Name>`.
 7. **Verify** — double-click opens the app; label matches line 2 of the shortcut file on disk.

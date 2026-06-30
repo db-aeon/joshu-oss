@@ -127,8 +127,8 @@ Mounted under `PUBLIC_BASE_PATH` (default `/joshu`). JSON body routes require `e
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/joshu/api/box-secrets/status` | `needsConnectAi`, `standalone`, per-field `provision` / `local` source |
-| `PUT` | `/joshu/api/box-secrets` | Save `OPENROUTER_API_KEY` to `.joshu/box-secrets/local-env.json`; sync Hermes; restart gateway |
+| `GET` | `/joshu/api/box-secrets/status` | `needsConnectAi`, `needsOpenRouter`, `needsGeminiVoice`, `voiceOffered`, `geminiConfigured`, `standalone`, per-field source |
+| `PUT` | `/joshu/api/box-secrets` | Save `OPENROUTER_API_KEY` and/or `GEMINI_API_KEY` to `.joshu/box-secrets/local-env.json`; sync Hermes; restart gateway when OpenRouter changes |
 
 `POST /complete` is idempotent for updates: re-running refreshes markdown/profile without a second running-log entry.
 
