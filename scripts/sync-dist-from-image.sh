@@ -8,9 +8,10 @@ IMAGE_REF="${JOSHU_IMAGE_REF:?Set JOSHU_IMAGE_REF}"
 VERSION="${JOSHU_RELEASE_VERSION:-$(echo "$IMAGE_REF" | awk -F: '{print $NF}')}"
 DIST_DIR="${INSTALL_DIR}/dist"
 BOX_STATE_DIST="${INSTALL_DIR}/packages/box-state/dist"
+EMAIL_SIG_DIST="${INSTALL_DIR}/packages/email-signature/dist"
 PROVENANCE="${DIST_DIR}/.release-provenance.json"
 
-mkdir -p "$DIST_DIR" "$BOX_STATE_DIST"
+mkdir -p "$DIST_DIR" "$BOX_STATE_DIST" "$EMAIL_SIG_DIST"
 
 echo "[sync-dist-from-image] pulling ${IMAGE_REF}"
 docker pull "$IMAGE_REF"
@@ -25,6 +26,12 @@ if docker cp "${CID}:/opt/joshu/packages/box-state/dist/." "$BOX_STATE_DIST/" 2>
   echo "[sync-dist-from-image] box-state dist synced"
 else
   echo "[sync-dist-from-image] box-state dist not in image (skipped)"
+fi
+
+if docker cp "${CID}:/opt/joshu/packages/email-signature/dist/." "$EMAIL_SIG_DIST/" 2>/dev/null; then
+  echo "[sync-dist-from-image] email-signature dist synced"
+else
+  echo "[sync-dist-from-image] email-signature dist not in image (skipped)"
 fi
 
 GIT_REF=""

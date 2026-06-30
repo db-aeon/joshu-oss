@@ -35,7 +35,7 @@ services:
       - ../dist:/opt/joshu/dist:ro
       # dist/ is synced from pulled image by instance-agent (syncDistFromImage) — not updated by git pull.
       - ../packages/box-state/dist:/opt/joshu/packages/box-state/dist:ro
-      - ../packages/email-signature:/opt/joshu/packages/email-signature:ro
+      - ../packages/email-signature/dist:/opt/joshu/packages/email-signature/dist:ro
       - ../integrations/hermes/skills-enabled.yaml:/opt/joshu/integrations/hermes/skills-enabled.yaml:ro
       - ../integrations/hermes/skills:/opt/joshu/integrations/hermes/skills:ro
       - ../factory/manifest.yaml:/opt/joshu/factory/manifest.yaml:ro
