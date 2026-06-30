@@ -17,6 +17,9 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Ensure vendor trees (OSS snapshot omits vendor/)
+        run: bash scripts/ensure-vendor-for-build.sh
+
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
