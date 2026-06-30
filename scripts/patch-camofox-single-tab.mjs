@@ -244,12 +244,30 @@ if (source.includes(createPatch)) {
   source = source.replace(createPatch, createNeedle);
 }
 
-const beforeLimitNeedle = "      const session = await getSession(userId, { trace: !!trace });\n      \n      let totalTabs = 0;";
-const beforeLimitPatch =
-  "      const session = await getSession(userId, { trace: !!trace });\n      await __hitlCloseExistingTabsForSession(session, userId, req.reqId, 'hitl_single_visible_page_create_before_limits');\n      \n      let totalTabs = 0;";
-if (source.includes(beforeLimitNeedle) && !source.includes("hitl_single_visible_page_create_before_limits")) {
-  source = source.replace(beforeLimitNeedle, beforeLimitPatch);
-} else if (
+const beforeLimitVariants = [
+  {
+    needle:
+      "      const session = await getSession(userId, { trace: !!trace });\n      \n      let totalTabs = 0;",
+    patch:
+      "      const session = await getSession(userId, { trace: !!trace });\n      await __hitlCloseExistingTabsForSession(session, userId, req.reqId, 'hitl_single_visible_page_create_before_limits');\n      \n      let totalTabs = 0;",
+  },
+  {
+    needle:
+      "      let session = await getSession(userId, { trace: !!trace });\n      \n      let totalTabs = 0;",
+    patch:
+      "      let session = await getSession(userId, { trace: !!trace });\n      await __hitlCloseExistingTabsForSession(session, userId, req.reqId, 'hitl_single_visible_page_create_before_limits');\n      \n      let totalTabs = 0;",
+  },
+];
+let beforeLimitApplied = false;
+for (const { needle, patch } of beforeLimitVariants) {
+  if (source.includes(needle) && !source.includes("hitl_single_visible_page_create_before_limits")) {
+    source = source.replace(needle, patch);
+    beforeLimitApplied = true;
+    break;
+  }
+}
+if (
+  !beforeLimitApplied &&
   !source.includes("hitl_single_visible_page_create_before_limits") &&
   !source.includes("__hitlCloseExistingTabsForSession(session, userId")
 ) {
