@@ -76,9 +76,9 @@ are skipped when standalone.
 
 ## Theme
 
-Public builds ship the **Vanilla Box Stack** (unbranded). Official Joshu fleet
-images inject the branded design pack from private `joshu-design` via
-`JOSHU_DESIGN_PACK` at build time.
+Public builds ship the **Vanilla Box Stack** shell: silver taskbar, classic pinstripe window
+title bars, and neutral menus (not the private Joshu paper-shell brand pack). Official fleet
+images inject branded chrome from private `joshu-design` via `JOSHU_DESIGN_PACK` at build time.
 
 ---
 
