@@ -7,10 +7,10 @@ import WebSocket from "ws";
 
 import { mulaw8kB64ToPcm16k, pcm24kB64ToMulaw8kB64, pcm24kB64ToPcm16k } from "./audioResample.js";
 import {
-  GEMINI_API_KEY,
   GEMINI_LIVE_MODEL,
   GEMINI_LIVE_VOICE,
   PHONE_SYSTEM_PROMPT,
+  resolveGeminiApiKey,
 } from "./config.js";
 import { geminiToolDefinitions } from "./realtimeTools.js";
 import { injectHermesResultUserText, type InjectPresentation } from "./speechPresentation.js";
@@ -64,7 +64,8 @@ export class GeminiLiveClient implements VoiceS2sClient {
   }
 
   connect(): void {
-    const url = `${GEMINI_WS_URL}?key=${encodeURIComponent(GEMINI_API_KEY)}`;
+    const apiKey = resolveGeminiApiKey();
+    const url = `${GEMINI_WS_URL}?key=${encodeURIComponent(apiKey)}`;
     this.ws = new WebSocket(url);
 
     this.ws.on("open", () => this.sendSetup());

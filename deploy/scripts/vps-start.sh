@@ -50,7 +50,7 @@ import json, sys
 path = sys.argv[1]
 with open(path) as f:
     data = json.load(f)
-for key in ("OPENROUTER_API_KEY", "HINDSIGHT_API_LLM_API_KEY"):
+for key in ("OPENROUTER_API_KEY", "HINDSIGHT_API_LLM_API_KEY", "GEMINI_API_KEY"):
     val = (data.get(key) or "").strip()
     if val:
         print(f"{key}={val}")
@@ -578,6 +578,11 @@ if [[ "${AROZOS_ENABLED:-false}" =~ ^(1|true|yes)$ ]]; then
   fi
   install_all_joshu_desktop_shortcuts
   python3 "${APP_DIR}/scripts/apply_arozos_joshu_theme.py" "${AROZ_DATA}/web/" || true
+  # OSS vanilla apply used to skip img/joshu/ — keep shortcuts working even on older images.
+  if [[ -d "${APP_DIR}/arozos/icons" ]]; then
+    mkdir -p "${AROZ_DATA}/web/img/joshu"
+    cp -a "${APP_DIR}/arozos/icons/"*.png "${AROZ_DATA}/web/img/joshu/" 2>/dev/null || true
+  fi
   echo "[vps-start] ArozOS :${PUBLIC_AROZ_PORT} (tmp-root=${AROZ_TMP_ROOT})"
   ( cd "${AROZ_DATA}" && "${AROZ_TEMPLATE}/arozos" -port="${PUBLIC_AROZ_PORT}" -disable_ip_resolver=true \
     -hostname="${AROZ_HOSTNAME:-Joshu}" -tmp="${AROZ_TMP_ROOT}" -root="${AROZ_DATA}/files" ) &

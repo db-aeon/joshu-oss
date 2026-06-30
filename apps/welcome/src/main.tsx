@@ -221,7 +221,12 @@ function formatList(items: string[]): string {
 function App() {
   const [step, setStep] = useState(0);
   const [needsConnectAi, setNeedsConnectAi] = useState(false);
+  const [needsOpenRouter, setNeedsOpenRouter] = useState(true);
+  const [needsGeminiVoice, setNeedsGeminiVoice] = useState(false);
+  const [voiceOffered, setVoiceOffered] = useState(false);
+  const [geminiConfigured, setGeminiConfigured] = useState(false);
   const [openRouterKey, setOpenRouterKey] = useState("");
+  const [geminiKey, setGeminiKey] = useState("");
   const [draft, setDraft] = useState<Draft>(emptyDraft);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -260,8 +265,18 @@ function App() {
     setAlreadyCompleted(Boolean(status.completed));
     setNylasProvisioned(Boolean(status.nylasProvisioned));
     if (status.assistantEmail) setAssistantEmail(status.assistantEmail);
-    const secrets = (await secretsRes.json()) as { needsConnectAi?: boolean };
+    const secrets = (await secretsRes.json()) as {
+      needsConnectAi?: boolean;
+      needsOpenRouter?: boolean;
+      needsGeminiVoice?: boolean;
+      voiceOffered?: boolean;
+      geminiConfigured?: boolean;
+    };
     setNeedsConnectAi(Boolean(secrets.needsConnectAi));
+    setNeedsOpenRouter(secrets.needsOpenRouter !== false);
+    setNeedsGeminiVoice(Boolean(secrets.needsGeminiVoice));
+    setVoiceOffered(Boolean(secrets.voiceOffered));
+    setGeminiConfigured(Boolean(secrets.geminiConfigured));
     const draftBody = (await draftRes.json()) as {
       draft?: Partial<Draft> & { primaryWorkEmail?: string; personalEmail?: string } | null;
     };
@@ -329,25 +344,63 @@ function App() {
   const patch = (partial: Partial<Draft>) => setDraft((d) => ({ ...d, ...partial }));
 
   const saveConnectAi = async () => {
+    const payload: Record<string, string> = {};
+    if (openRouterKey.trim()) payload.OPENROUTER_API_KEY = openRouterKey.trim();
+    if (geminiKey.trim()) payload.GEMINI_API_KEY = geminiKey.trim();
     const res = await fetch(BOX_SECRETS_API, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ OPENROUTER_API_KEY: openRouterKey.trim() }),
+      body: JSON.stringify(payload),
     });
     if (!res.ok) {
       const data = (await res.json().catch(() => ({}))) as { error?: string };
-      throw new Error(data.error ?? "Could not save API key");
+      throw new Error(data.error ?? "Could not save API keys");
     }
-    setNeedsConnectAi(false);
+    const data = (await res.json()) as {
+      status?: {
+        needsConnectAi?: boolean;
+        needsOpenRouter?: boolean;
+        needsGeminiVoice?: boolean;
+        geminiConfigured?: boolean;
+      };
+    };
+    const status = data.status;
+    setNeedsConnectAi(Boolean(status?.needsConnectAi));
+    setNeedsOpenRouter(status?.needsOpenRouter !== false);
+    setNeedsGeminiVoice(Boolean(status?.needsGeminiVoice));
+    setGeminiConfigured(Boolean(status?.geminiConfigured));
     setOpenRouterKey("");
+    setGeminiKey("");
+  };
+
+  const saveGeminiKey = async () => {
+    if (!geminiKey.trim()) return;
+    const res = await fetch(BOX_SECRETS_API, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ GEMINI_API_KEY: geminiKey.trim() }),
+    });
+    if (!res.ok) {
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      throw new Error(data.error ?? "Could not save Gemini API key");
+    }
+    const data = (await res.json()) as { status?: { geminiConfigured?: boolean; needsGeminiVoice?: boolean } };
+    setGeminiConfigured(Boolean(data.status?.geminiConfigured));
+    setNeedsGeminiVoice(Boolean(data.status?.needsGeminiVoice));
+    setGeminiKey("");
+    setSavedFlash("Gemini key saved — voice mic in jChat is enabled.");
   };
 
   const next = async () => {
     setError("");
     setSavedFlash("");
     if (stepId === "connect-ai") {
-      if (!openRouterKey.trim()) {
+      if (needsOpenRouter && !openRouterKey.trim()) {
         setError("Paste your OpenRouter API key to enable chat.");
+        return;
+      }
+      if (!openRouterKey.trim() && !geminiKey.trim()) {
+        setError("Enter at least one API key, or choose Skip for now.");
         return;
       }
       setBusy(true);
@@ -480,22 +533,45 @@ function App() {
             <>
               <h2>Connect AI</h2>
               <p className="welcome-hint">
-                jChat and your assistant need an{" "}
+                jChat needs an{" "}
                 <a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer">
                   OpenRouter
                 </a>{" "}
-                API key. Create one on openrouter.ai, then paste it here. It is stored on your box
-                (not sent to Joshu).
+                API key for chat. Keys are stored on your box (not sent to Joshu).
               </p>
-              <Field label="OpenRouter API key" hint="Starts with sk-or-v1-">
-                <input
-                  type="password"
-                  autoComplete="off"
-                  value={openRouterKey}
-                  onChange={(e) => setOpenRouterKey(e.target.value)}
-                  placeholder="sk-or-v1-…"
-                />
-              </Field>
+              {needsOpenRouter ? (
+                <Field label="OpenRouter API key" hint="Starts with sk-or-v1-">
+                  <input
+                    type="password"
+                    autoComplete="off"
+                    value={openRouterKey}
+                    onChange={(e) => setOpenRouterKey(e.target.value)}
+                    placeholder="sk-or-v1-…"
+                  />
+                </Field>
+              ) : (
+                <p className="welcome-hint">OpenRouter is already connected.</p>
+              )}
+              {voiceOffered ? (
+                <>
+                  <p className="welcome-hint" style={{ marginTop: "1rem" }}>
+                    Optional: add a{" "}
+                    <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer">
+                      Google Gemini
+                    </a>{" "}
+                    API key to enable the microphone in jChat (Gemini Live voice).
+                  </p>
+                  <Field label="Gemini API key (voice)" hint="Optional — enables mic in jChat">
+                    <input
+                      type="password"
+                      autoComplete="off"
+                      value={geminiKey}
+                      onChange={(e) => setGeminiKey(e.target.value)}
+                      placeholder="AIza…"
+                    />
+                  </Field>
+                </>
+              ) : null}
             </>
           )}
 
@@ -739,7 +815,40 @@ function App() {
                 <dd>{draft.urgentChannel || "—"}</dd>
                 <dt>Mailbox</dt>
                 <dd>{nylasProvisioned ? assistantEmail : "Not yet — you can set up in jMail later"}</dd>
+                {voiceOffered ? (
+                  <>
+                    <dt>Voice (jChat mic)</dt>
+                    <dd>{geminiConfigured ? "Gemini Live connected" : "Not set — add a key below"}</dd>
+                  </>
+                ) : null}
               </dl>
+              {voiceOffered && needsGeminiVoice ? (
+                <div style={{ marginTop: "1rem" }}>
+                  <Field label="Gemini API key (voice)" hint="From aistudio.google.com/apikey">
+                    <input
+                      type="password"
+                      autoComplete="off"
+                      value={geminiKey}
+                      onChange={(e) => setGeminiKey(e.target.value)}
+                      placeholder="AIza…"
+                    />
+                  </Field>
+                  <button
+                    type="button"
+                    className="secondary"
+                    disabled={busy || !geminiKey.trim()}
+                    onClick={() => {
+                      setError("");
+                      setBusy(true);
+                      void saveGeminiKey()
+                        .catch((e) => setError((e as Error).message))
+                        .finally(() => setBusy(false));
+                    }}
+                  >
+                    Save Gemini key
+                  </button>
+                </div>
+              ) : null}
             </>
           )}
 

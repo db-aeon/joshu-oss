@@ -49,3 +49,20 @@ if is_placeholder "$(get_env JOSHU_HERMES_DASHBOARD_PASSWORD)"; then
   upsert_env JOSHU_HERMES_DASHBOARD_PASSWORD "${dashboard_pw}"
   echo "[ensure-instance-env-secrets] generated JOSHU_HERMES_DASHBOARD_PASSWORD"
 fi
+
+# OSS self-host: when a voice image is pinned, enable Gemini Live stack defaults (key from Welcome).
+voice_image="$(get_env JOSHU_VOICE_IMAGE_REF)"
+if [[ -n "${voice_image}" && "${voice_image}" != *your-org* ]]; then
+  if [[ "$(get_env JOSHU_VOICE_MODE)" == "legacy" || -z "$(get_env JOSHU_VOICE_MODE)" ]]; then
+    upsert_env JOSHU_VOICE_MODE realtime_s2s
+    echo "[ensure-instance-env-secrets] set JOSHU_VOICE_MODE=realtime_s2s (voice image pinned)"
+  fi
+  if [[ "$(get_env JOSHU_WEB_VOICE_ENABLED)" != "true" ]]; then
+    upsert_env JOSHU_WEB_VOICE_ENABLED true
+    echo "[ensure-instance-env-secrets] set JOSHU_WEB_VOICE_ENABLED=true"
+  fi
+  if [[ -z "$(get_env JOSHU_VOICE_PROVIDER)" ]]; then
+    upsert_env JOSHU_VOICE_PROVIDER gemini_live
+    echo "[ensure-instance-env-secrets] set JOSHU_VOICE_PROVIDER=gemini_live"
+  fi
+fi

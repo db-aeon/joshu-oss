@@ -1,3 +1,4 @@
+import { readBoxSecret } from "./boxSecrets.js";
 import { buildVoiceSystemPrompt, resolveJoshuIdentity } from "./joshuIdentity.js";
 
 export function envTrim(name: string, fallback = ""): string {
@@ -27,10 +28,17 @@ export const OPENAI_REALTIME_MODEL = envTrim("OPENAI_REALTIME_MODEL", "gpt-realt
 export const OPENAI_REALTIME_VOICE =
   resolvedIdentity.voiceId || envTrim("OPENAI_REALTIME_VOICE", "alloy");
 
-export const GEMINI_API_KEY =
-  envTrim("GEMINI_API_KEY") ||
-  envTrim("GOOGLE_API_KEY") ||
-  envTrim("GOOGLE_GENAI_API_KEY");
+export function resolveGeminiApiKey(): string {
+  return (
+    envTrim("GEMINI_API_KEY") ||
+    envTrim("GOOGLE_API_KEY") ||
+    envTrim("GOOGLE_GENAI_API_KEY") ||
+    readBoxSecret("GEMINI_API_KEY")
+  );
+}
+
+/** @deprecated Prefer resolveGeminiApiKey() — reads box-secrets at call time. */
+export const GEMINI_API_KEY = resolveGeminiApiKey();
 export const GEMINI_LIVE_MODEL = envTrim("GEMINI_LIVE_MODEL", "gemini-3.1-flash-live-preview");
 export const GEMINI_LIVE_VOICE =
   resolvedIdentity.voiceId || envTrim("GEMINI_LIVE_VOICE", "Kore");
@@ -86,7 +94,7 @@ export const WEB_SYSTEM_PROMPT = envTrim(
 );
 
 export function geminiLiveConfigured(): boolean {
-  return Boolean(GEMINI_API_KEY);
+  return Boolean(resolveGeminiApiKey());
 }
 
 export function voiceS2sApiConfigured(): boolean {

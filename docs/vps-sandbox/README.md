@@ -20,7 +20,7 @@ The **control plane** (managed provisioning, customer portal at `hello.joshu.me`
 | --- | --- |
 | [`deploy/`](../../deploy/) | Docker Compose, Caddy, `vps-start.sh` |
 | [`packages/instance-agent/`](../../packages/instance-agent/) | Optional sidecar (`docker compose --profile fleet`) |
-| [`packages/voice-realtime/`](../../packages/voice-realtime/) | OpenAI Realtime speech-to-speech (optional profile) |
+| [`packages/voice-realtime/`](../../packages/voice-realtime/) | Gemini Live speech-to-speech (optional profile) |
 
 ## Quick start
 

@@ -30,11 +30,34 @@ export function isLlmConfigured(projectRoot = process.cwd()): boolean {
   return Boolean(resolveBoxSecret("OPENROUTER_API_KEY", projectRoot));
 }
 
-/** Standalone boxes without a provisioned OpenRouter key should collect it in Welcome. */
-export function needsConnectAiInWelcome(projectRoot = process.cwd()): boolean {
+export function isGeminiConfigured(projectRoot = process.cwd()): boolean {
+  return Boolean(resolveBoxSecret("GEMINI_API_KEY", projectRoot));
+}
+
+/** True when the release pins a voice-realtime image (OSS self-host default in .env.vps.example). */
+export function isVoiceOffered(): boolean {
+  const ref = provisionEnvTrim("JOSHU_VOICE_IMAGE_REF");
+  if (!ref) return false;
+  return !ref.includes("your-org/");
+}
+
+export function needsOpenRouterInWelcome(projectRoot = process.cwd()): boolean {
   if (!isStandaloneSelfHost()) return false;
   if (isProvisionLockedSecret("OPENROUTER_API_KEY")) return false;
   return !isLlmConfigured(projectRoot);
+}
+
+/** Standalone boxes with voice image but no Gemini key yet — collect in Welcome Connect AI. */
+export function needsGeminiVoiceInWelcome(projectRoot = process.cwd()): boolean {
+  if (!isStandaloneSelfHost()) return false;
+  if (!isVoiceOffered()) return false;
+  if (isProvisionLockedSecret("GEMINI_API_KEY")) return false;
+  return !isGeminiConfigured(projectRoot);
+}
+
+/** Standalone boxes without a provisioned OpenRouter key should collect it in Welcome. */
+export function needsConnectAiInWelcome(projectRoot = process.cwd()): boolean {
+  return needsOpenRouterInWelcome(projectRoot);
 }
 
 export function readBoxSecretsStatus(projectRoot = process.cwd()) {
@@ -44,6 +67,7 @@ export function readBoxSecretsStatus(projectRoot = process.cwd()) {
   > = {
     OPENROUTER_API_KEY: { configured: false, source: "unset", locked: false },
     HINDSIGHT_API_LLM_API_KEY: { configured: false, source: "unset", locked: false },
+    GEMINI_API_KEY: { configured: false, source: "unset", locked: false },
   };
 
   for (const key of BOX_SECRETS_UI_KEYS) {
@@ -65,7 +89,11 @@ export function readBoxSecretsStatus(projectRoot = process.cwd()) {
   return {
     standalone: isStandaloneSelfHost(),
     needsConnectAi: needsConnectAiInWelcome(projectRoot),
+    needsOpenRouter: needsOpenRouterInWelcome(projectRoot),
+    needsGeminiVoice: needsGeminiVoiceInWelcome(projectRoot),
+    voiceOffered: isVoiceOffered(),
     llmConfigured: isLlmConfigured(projectRoot),
+    geminiConfigured: isGeminiConfigured(projectRoot),
     fields,
   };
 }

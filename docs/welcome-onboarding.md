@@ -7,7 +7,7 @@ Human SOP: [`executive-assistant.md`](executive-assistant.md). Welcome seeds pro
 ## User flow
 
 1. On first login, **Welcome** auto-opens once per browser session when onboarding is incomplete (see [`arozos/web-overlays-vanilla/aroz-onboarding-launch.js`](../arozos/web-overlays-vanilla/aroz-onboarding-launch.js)).
-2. **Standalone self-host only:** if no OpenRouter key is configured, Welcome shows **Connect AI** (step 2) to save an API key to `.joshu/box-secrets/local-env.json`. **Control-plane managed boxes skip this** — keys are already in `/etc/joshu/instance.env` at provision time.
+2. **Standalone self-host only:** if no OpenRouter key is configured, Welcome shows **Connect AI** (step 2) to save API keys to `.joshu/box-secrets/local-env.json`. On the same step you can optionally add a **Gemini** key for the jChat microphone (Gemini Live). **Control-plane managed boxes skip this** — keys are already in `/etc/joshu/instance.env` at provision time.
 3. **Optional Day 0:** After Gmail is connected, run **Analyze mail for setup (Day 0)** in **Connectors → Connect apps** to pre-fill the draft from 30 days of mail + calendar. See [`day0-cold-start.md`](day0-cold-start.md).
 4. Seven-step wizard captures priorities, communication (with contact details), online tools, and optional VIPs.
 5. Progress auto-saves on each **Continue** via `PUT /joshu/api/onboarding/draft`.
@@ -23,7 +23,7 @@ Human SOP: [`executive-assistant.md`](executive-assistant.md). Welcome seeds pro
 | # | Step | What the user provides |
 |---|------|------------------------|
 | 0 | Welcome | Intro (or “Review or update” if already completed) |
-| 1 | Connect AI | OpenRouter API key (**standalone only**, when not provisioned) |
+| 1 | Connect AI | OpenRouter API key (**standalone only**, when not provisioned); optional Gemini key for jChat voice |
 | 2 | You & your assistant | Principal name, assistant persona name |
 | 3 | Big picture | Multi-select priorities + optional notes |
 | 4 | Communication | Channel checkboxes **with contact fields** + schedule/rhythm |
