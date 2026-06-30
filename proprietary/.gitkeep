@@ -1,0 +1,2 @@
+# Fleet-only apps and scripts live in the private joshu repo.
+# AGPL images ship with an empty proprietary/ tree (Dockerfile COPY).
