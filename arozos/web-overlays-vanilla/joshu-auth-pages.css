@@ -1,0 +1,144 @@
+/**
+ * Joshu login + first-account setup (OSS Vanilla Box Stack).
+ * Loaded on login.html and user.html — not under /joshu/* (see TRADEMARK / path rules).
+ */
+@import url("https://fonts.googleapis.com/css2?family=Work+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap");
+
+:root {
+  --jp-auth-bg: #ece9e4;
+  --jp-auth-panel: #ffffff;
+  --jp-auth-ink: #1a1a1a;
+  --jp-auth-muted: #5c5c5c;
+  --jp-auth-accent: #2563eb;
+  --jp-auth-accent-hover: #1d4ed8;
+  --jp-auth-accent-dim: #1e40af;
+  --jp-auth-border: rgba(26, 26, 26, 0.14);
+  --jp-auth-font: "Work Sans", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+html,
+body {
+  font-family: var(--jp-auth-font);
+  color: var(--jp-auth-ink);
+}
+
+/* —— login.html —— */
+.leftPictureFrame {
+  background-color: var(--jp-auth-bg) !important;
+  background-image: linear-gradient(135deg, #e8e4de 0%, #ece9e4 45%, #d4e4ff 100%) !important;
+  background-position: center !important;
+}
+
+.rightLoginFrame {
+  background: var(--jp-auth-panel) !important;
+  border-left: 1px solid var(--jp-auth-border);
+  box-shadow: -8px 0 24px rgba(26, 26, 26, 0.06);
+}
+
+@media (min-width: 600px) {
+  @supports (backdrop-filter: blur(10px)) {
+    .rightLoginFrame {
+      border: 1px solid var(--jp-auth-border);
+      box-shadow: 0 12px 40px rgba(26, 26, 26, 0.1);
+    }
+  }
+}
+
+:root {
+  --main_theme_color: var(--jp-auth-accent);
+  --secondary_theme_color: var(--jp-auth-accent-hover);
+  --dimmer_theme_color: var(--jp-auth-accent-dim);
+  --inverse_theme_color: #e8f0fe;
+}
+
+.loginLogo {
+  max-width: 168px;
+  height: auto;
+  margin-top: 2.5em !important;
+}
+
+#loginInterface .ui.borderless.basic.segment > p {
+  color: var(--jp-auth-muted);
+  font-size: 0.95rem;
+  line-height: 1.45;
+}
+
+#loginInterface .hostname {
+  color: var(--jp-auth-ink);
+  font-weight: 600;
+}
+
+.joshu-auth-footer {
+  font-size: 0.82rem;
+  color: var(--jp-auth-muted);
+  line-height: 1.5;
+}
+
+.joshu-auth-footer strong {
+  color: var(--jp-auth-ink);
+  font-weight: 600;
+}
+
+.joshu-auth-version {
+  display: inline-block;
+  margin-top: 0.35rem;
+  padding: 0.15rem 0.45rem;
+  border: 1px solid var(--jp-auth-border);
+  border-radius: 3px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--jp-auth-ink);
+  background: rgba(255, 255, 255, 0.65);
+}
+
+.inversehighlight {
+  background-color: rgba(37, 99, 235, 0.1) !important;
+  color: var(--jp-auth-ink) !important;
+}
+
+.bottombar a {
+  color: var(--jp-auth-accent);
+}
+
+/* —— user.html (first account) —— */
+body.jp-user-setup {
+  background: var(--jp-auth-bg) !important;
+}
+
+.jp-user-setup .themebackground {
+  background: linear-gradient(135deg, #d4e4ff 0%, var(--jp-auth-bg) 55%, #ffffff 100%) !important;
+  background-image: none !important;
+  color: var(--jp-auth-ink) !important;
+  border-bottom: 1px solid var(--jp-auth-border);
+}
+
+.jp-user-setup .themebackground .header {
+  font-weight: 600 !important;
+  color: var(--jp-auth-ink) !important;
+}
+
+.jp-user-setup .themebackground .description {
+  color: var(--jp-auth-muted) !important;
+  margin-top: 0.35rem;
+  display: block;
+}
+
+.jp-user-setup .ui.container {
+  max-width: 720px;
+}
+
+.jp-user-setup .ui.primary.button {
+  background-color: var(--jp-auth-accent) !important;
+}
+
+.jp-user-setup .ui.primary.button:hover {
+  background-color: var(--jp-auth-accent-hover) !important;
+}
+
+.jp-user-setup .joshu-auth-version-bar {
+  text-align: center;
+  padding: 1.25rem 1rem 2rem;
+  color: var(--jp-auth-muted);
+  font-size: 0.82rem;
+}

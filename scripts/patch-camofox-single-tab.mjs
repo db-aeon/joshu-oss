@@ -319,7 +319,8 @@ function replaceViewportRouteBlock(src) {
       depth--;
       if (depth === 0) {
         end = i + 1;
-        while (end < src.length && (src[end] === ";" || src[end] === "\r" || src[end] === "\n")) end++;
+        // Upstream route closes with `});` — must consume `)` as well as `;`, or re-patch leaves `}););`.
+        while (end < src.length && /[);\r\n\s]/.test(src[end])) end++;
         break;
       }
     }

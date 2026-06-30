@@ -30,7 +30,7 @@ def _resolve_theme_paths(root: Path) -> tuple[Path, str, Path, bool]:
     return overlay, VANILLA_THEME_FILE, root, False
 
 
-OVERLAY_VERSION = "20260629a"
+OVERLAY_VERSION = "20260630j"
 FOLDER_ICON_VERSION = "2"
 FWCSS_NEEDLE = '<link id="fwcss" rel="stylesheet" href="./script/ao.css">'
 SHELL_SCRIPTS = (
@@ -40,6 +40,13 @@ SHELL_SCRIPTS = (
     "aroz-onboarding-launch.js",
     "aroz-jchat-tray.js",
 )
+AUTH_PAGE_FILES = ("login.html", "user.html")
+AUTH_ASSET_FILES = ("joshu-auth-pages.css", "joshu-wordmark.svg")
+RESET_TEMPLATE_FILES = ("resetCodeTemplate.html", "resetPasswordTemplate.html")
+# login.html / user.html are shown before auth — assets must live on public ArozOS paths.
+AUTH_CSS_WEB_PATH = "script/joshu-auth-pages.css"
+AUTH_WORDMARK_WEB_PATH = "img/public/joshu-wordmark.svg"
+AUTH_ICON_WEB_PATH = "img/public/joshu-icon.svg"
 OLD_LINK_PATTERNS = (
     r'<link rel="stylesheet" href="\./joshu-desktop-theme\.css">\s*',
     r'<link rel="stylesheet" href="\./joshu-desktop-theme\.css">',
@@ -48,6 +55,55 @@ FILE_EXPLORER_TANGO_MARKER = "<!-- joshu-file-explorer-tango-icons -->"
 DESKTOP_FOLDER_MARKER = "<!-- joshu-desktop-tango-folder-icons -->"
 FOLDER_EMPTY_PATH = f"img/joshu/folder.png?v={FOLDER_ICON_VERSION}"
 FOLDER_OPEN_PATH = f"img/joshu/folder-open.png?v={FOLDER_ICON_VERSION}"
+JOSHU_FAVICON_PATH = f"{AUTH_ICON_WEB_PATH}?v={OVERLAY_VERSION}"
+
+
+def _joshu_favicon_link() -> str:
+    return f'<link rel="icon" href="{JOSHU_FAVICON_PATH}" type="image/svg+xml">'
+
+
+def _patch_favicon_link(text: str) -> str:
+    """Point browser tab icon at the Joshu app icon (icon.svg)."""
+    link = _joshu_favicon_link()
+    if 'rel="icon"' in text:
+        return re.sub(r'<link rel="icon" href="[^"]*"(?: type="[^"]*")?>', link, text, count=1)
+    return text.replace("<head>", f"<head>\n    {link}", 1)
+
+
+def _copy_joshu_app_icon(web: Path, asset_root: Path) -> None:
+    """Deploy canonical Joshu favicon (joshu-public app/icon.svg)."""
+    for src in (
+        asset_root / "arozos" / "icons" / "icon.svg",
+        asset_root / "arozos" / "web-overlays-vanilla" / "icon.svg",
+    ):
+        if src.is_file():
+            dest = web / AUTH_ICON_WEB_PATH
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(src, dest)
+            return
+
+
+def _remove_vendor_setting_tab(web: Path) -> None:
+    """Drop imuslab vendor page so ArozOS does not register a Vendor About tab on restart."""
+    vendor_index = web / "SystemAO" / "vendor" / "index.html"
+    if vendor_index.is_file():
+        vendor_index.unlink()
+
+
+def _patch_hide_vendor_setting_tab(text: str) -> str:
+    """Hide Vendor tab until next process restart (module list is built at boot)."""
+    if 'thisModuleInfo.Name === "Vendor"' in text:
+        return text
+    return text.replace(
+        "for (var i =0; i < moduleListInReverse.length; i ++){\n"
+        "                    var thisModuleInfo = moduleListInReverse[i];",
+        "for (var i =0; i < moduleListInReverse.length; i ++){\n"
+        "                    var thisModuleInfo = moduleListInReverse[i];\n"
+        '                    if (thisModuleInfo.Name === "Vendor") {\n'
+        "                        continue;\n"
+        "                    }",
+        1,
+    )
 
 
 def _has_theme_link(html: str, theme_file: str) -> bool:
@@ -193,7 +249,197 @@ def _merge_joshu_system_settings_locale(web: Path, asset_root: Path) -> None:
             keys[lang].setdefault(section, {})
             keys[lang][section].update(section_patch)
 
+    # applocale uses navigator.language.toLowerCase() → "en-us"; keep alias in sync with en-US.
+    if "en-US" in keys:
+        keys["en-us"] = json.loads(json.dumps(keys["en-US"]))
+
     locale_path.write_text(json.dumps(data, indent=4, ensure_ascii=False) + "\n", encoding="utf-8")
+
+
+SYSTEM_SETTINGS_BRANDING_MARKER_PREFIX = "joshu-settings-branding-"
+
+
+def _system_settings_branding_marker() -> str:
+    return f"{SYSTEM_SETTINGS_BRANDING_MARKER_PREFIX}{OVERLAY_VERSION}"
+
+
+def _copy_joshu_settings_banner_assets(web: Path, overlay: Path) -> None:
+    """Replace stock banner.png ('powered by ArozOS core') even when index.html is cached."""
+    banner_dir = web / "SystemAO" / "system_setting" / "img"
+    banner_dir.mkdir(parents=True, exist_ok=True)
+    wordmark_src = overlay / "joshu-wordmark.svg"
+    if wordmark_src.is_file():
+        shutil.copyfile(wordmark_src, banner_dir / "joshu-wordmark.svg")
+        public_dir = web / "img" / "public"
+        public_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(wordmark_src, public_dir / "joshu-wordmark.svg")
+    # Stale iframes may still request img/banner.png — overwrite the file on disk.
+    for candidate in (
+        web / "img" / "joshu" / "system-setting.png",
+        web / "img" / "joshu" / "chat.png",
+    ):
+        if candidate.is_file():
+            shutil.copyfile(candidate, banner_dir / "banner.png")
+            return
+
+
+def _copy_system_settings_info_pages(web: Path, overlay: Path, release_version: str) -> None:
+    """Joshu About + Overview pages (replace imuslab vendor graphics)."""
+    info_overlay = overlay / "SystemAO" / "info"
+    if not info_overlay.is_dir():
+        return
+    dest_info = web / "SystemAO" / "info"
+    dest_info.mkdir(parents=True, exist_ok=True)
+    substitutions = {
+        "{{joshu_release_version}}": release_version,
+        "{{joshu_overlay_version}}": OVERLAY_VERSION,
+    }
+    for name in ("about.html", "overview.html"):
+        src = info_overlay / name
+        if not src.is_file():
+            continue
+        text = src.read_text(encoding="utf-8")
+        for needle, repl in substitutions.items():
+            text = text.replace(needle, repl)
+        (dest_info / name).write_text(text, encoding="utf-8")
+
+
+def _patch_system_settings_branding(web: Path, overlay: Path, release_version: str) -> None:
+    """Joshu System Settings: wordmark, About labels, about page copy."""
+    _copy_joshu_settings_banner_assets(web, overlay)
+    _copy_system_settings_info_pages(web, overlay, release_version)
+
+    index_path = web / "SystemAO" / "system_setting" / "index.html"
+    if not index_path.is_file():
+        return
+    text = index_path.read_text(encoding="utf-8")
+    marker = _system_settings_branding_marker()
+    text = re.sub(r"<!-- joshu-settings-branding-[^>]+ -->\n?", "", text)
+
+    # Always refresh locale cache-bust when overlay version bumps.
+    text = re.sub(
+        r'applocale\.init\("\.\./locale/system_settings\.json(?:\?v=[^"]*)?", function\(\)\{',
+        f'applocale.init("../locale/system_settings.json?v={OVERLAY_VERSION}", function(){{',
+        text,
+        count=1,
+    )
+    text = _patch_hide_vendor_setting_tab(text)
+    text = _patch_favicon_link(text)
+
+    branding_complete = (
+        "loadJoshuAboutSettingTab" in text
+        and 'settingGroupName === "About ArOZ"' in text
+        and "joshu-wordmark.svg" in text
+    )
+    if branding_complete:
+        if marker not in text:
+            text = text.replace("</head>", f"    <!-- {marker} -->\n    </head>", 1)
+        index_path.write_text(text, encoding="utf-8")
+        return
+    if '<meta http-equiv="Cache-Control"' not in text:
+        text = text.replace(
+            "<head>",
+            '<head>\n    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">',
+            1,
+        )
+
+    new_banner = (
+        '<img class="ui image" src="img/joshu-wordmark.svg" '
+        'alt="Joshu" style="max-height:44px;width:auto;margin:0.25em auto;">'
+    )
+    if "img/banner.png" in text or "joshu-wordmark.svg" in text:
+        text = re.sub(
+            r'<img class="ui image" src="(?:img/banner\.png|\.\./\.\./img/public/joshu-wordmark\.svg|img/joshu-wordmark\.svg)"[^>]*>',
+            new_banner,
+            text,
+            count=1,
+        )
+    else:
+        text = text.replace(
+            '<img class="ui image" src="img/banner.png">',
+            new_banner,
+            1,
+        )
+
+    if 'system_settings.json?v=' not in text:
+        text = text.replace(
+            'applocale.init("../locale/system_settings.json", function(){',
+            f'applocale.init("../locale/system_settings.json?v={OVERLAY_VERSION}", function(){{',
+            1,
+        )
+
+    if 'settingGroupName === "About ArOZ"' not in text:
+        menu_patch = (
+            'settingGroupName = applocale.getString("menu/group/" + settingGroupName, settingGroupName);\n'
+            '                        if (settingGroupName === "About ArOZ" || settingGroupName === "About ArozOS") {\n'
+            '                            settingGroupName = "About";\n'
+            '                        }'
+        )
+        text = text.replace(
+            'settingGroupName = applocale.getString("menu/group/" + settingGroupName, settingGroupName);',
+            menu_patch,
+            1,
+        )
+
+    if 'thisModuleInfo.Name === "ArozOS"' not in text:
+        tab_patch = (
+            'let displayTabName = applocale.getString(localeGroupKey, thisModuleInfo.Name)\n'
+            '                    if (groupName.toLowerCase() === "about" && thisModuleInfo.Name === "ArozOS") {\n'
+            '                        displayTabName = "About";\n'
+            '                    }'
+        )
+        text = text.replace(
+            'let displayTabName = applocale.getString(localeGroupKey, thisModuleInfo.Name)',
+            tab_patch,
+            1,
+        )
+
+    if "loadJoshuAboutSettingTab" not in text:
+        joshu_tab_hook = (
+            "                applocale.translate();\n"
+            "                if (groupName.toLowerCase() === \"about\") {\n"
+            "                    let hasJoshuTab = currentSettingModuleList.some(function(m) { return m.Name === \"Joshu\"; });\n"
+            "                    if (!hasJoshuTab && $(\".joshu-about-tab\").length === 0) {\n"
+            "                        $(\"#toolbarBtn\").after('<a class=\"item settingTab joshu-about-tab\" title=\"Joshu box snapshots and factory profile\" onclick=\"loadJoshuAboutSettingTab();\">Joshu</a>');\n"
+            "                    }\n"
+            "                }\n"
+            "            \n"
+            "              }"
+        )
+        text = text.replace(
+            "                applocale.translate();\n            \n              }",
+            joshu_tab_hook,
+            1,
+        )
+        joshu_menu_hide = (
+            "                    applocale.translate();\n"
+            "                    $(\"#mainSideMenu a.item[group=\\\"Joshu\\\"]\").remove();"
+        )
+        text = text.replace(
+            "                    applocale.translate();\n                    ",
+            joshu_menu_hide + "\n                    ",
+            1,
+        )
+        joshu_loader = (
+            "              function loadJoshuAboutSettingTab(){\n"
+            "                $(\".settingTab.active\").removeClass(\"active\");\n"
+            "                $(\".joshu-about-tab\").addClass(\"active\");\n"
+            "                updateWindowHash(\"About\", \"Joshu\");\n"
+            "                $(\"#settingContentLoader\").html(\"\");\n"
+            "                $(\"#settingContentLoader\").load(\"../../SystemAO/joshu/box-state.html\", function(){\n"
+            "                    injectIMEToLoadedConetentFrame();\n"
+            "                });\n"
+            "              }\n\n"
+            "              function loadSettingModuleFromTab(object){"
+        )
+        text = text.replace(
+            "              function loadSettingModuleFromTab(object){",
+            joshu_loader,
+            1,
+        )
+
+    text = text.replace("</head>", f"    <!-- {marker} -->\n    </head>", 1)
+    index_path.write_text(text, encoding="utf-8")
 
 
 def _patch_file_explorer_tango_icons(web: Path) -> None:
@@ -330,6 +576,83 @@ def _inject_before_body_close(html: str, snippet: str, marker: str) -> str:
     return html.replace("</body>", snippet + "\n</body>", 1)
 
 
+def _read_release_version(root: Path) -> str:
+    """Box stack version shown on login / first-account screens."""
+    release = root / "deploy" / "RELEASE.json"
+    if not release.is_file():
+        return "dev"
+    try:
+        data = json.loads(release.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return "dev"
+    version = str(data.get("version", "")).strip()
+    return version or "dev"
+
+
+def _resolve_auth_page_src(name: str, overlay: Path, root: Path) -> Path | None:
+    """Branded overlay may override; otherwise OSS vanilla templates."""
+    branded = overlay / name
+    if branded.is_file():
+        return branded
+    vanilla = root / "arozos" / "web-overlays-vanilla" / name
+    return vanilla if vanilla.is_file() else None
+
+
+def _apply_auth_pages(web: Path, overlay: Path, root: Path, version: str) -> None:
+    """Replace ArozOS login + first-user setup with Joshu-branded pages."""
+    substitutions = {
+        "{{joshu_release_version}}": version,
+        "{{joshu_overlay_version}}": OVERLAY_VERSION,
+    }
+    for asset in AUTH_ASSET_FILES:
+        src = overlay / asset
+        if not src.is_file():
+            src = root / "arozos" / "web-overlays-vanilla" / asset
+        if not src.is_file():
+            continue
+        if asset == "joshu-wordmark.svg":
+            dest = web / AUTH_WORDMARK_WEB_PATH
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(src, dest)
+        elif asset == "joshu-auth-pages.css":
+            dest = web / AUTH_CSS_WEB_PATH
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(src, dest)
+
+    for page in AUTH_PAGE_FILES:
+        src = _resolve_auth_page_src(page, overlay, root)
+        if not src:
+            print(f"[joshu] auth page template missing: {page}", file=sys.stderr)
+            continue
+        text = src.read_text(encoding="utf-8")
+        for needle, repl in substitutions.items():
+            text = text.replace(needle, repl)
+        (web / page).write_text(text, encoding="utf-8")
+    print(f"[joshu] applied auth branding (login + user setup) v{version} -> {web}")
+
+
+def _apply_reset_templates(web: Path, overlay: Path, root: Path, version: str) -> None:
+    """Joshu-branded ArozOS password reset templates (served from system/reset/)."""
+    substitutions = {
+        "{{joshu_release_version}}": version,
+        "{{joshu_overlay_version}}": OVERLAY_VERSION,
+    }
+    dest_dir = web.parent / "system" / "reset"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    for name in RESET_TEMPLATE_FILES:
+        src = overlay / "system" / "reset" / name
+        if not src.is_file():
+            src = root / "arozos" / "web-overlays-vanilla" / "system" / "reset" / name
+        if not src.is_file():
+            print(f"[joshu] reset template missing: {name}", file=sys.stderr)
+            continue
+        text = src.read_text(encoding="utf-8")
+        for needle, repl in substitutions.items():
+            text = text.replace(needle, repl)
+        (dest_dir / name).write_text(text, encoding="utf-8")
+    print(f"[joshu] applied reset templates -> {dest_dir}")
+
+
 def main() -> None:
     if len(sys.argv) != 2:
         print("usage: apply_arozos_joshu_theme.py <web-root>", file=sys.stderr)
@@ -341,6 +664,7 @@ def main() -> None:
 
     root = Path(__file__).resolve().parent.parent
     overlay, theme_file, asset_root, branded = _resolve_theme_paths(root)
+    release_version = _read_release_version(root)
     theme_link = f'<link rel="stylesheet" href="./{theme_file}?v={OVERLAY_VERSION}">'
     src_css = overlay / theme_file
     if not src_css.is_file():
@@ -353,9 +677,14 @@ def main() -> None:
     _copy_joshu_desktop_file_icons(web, asset_root if branded else root, branded)
     _patch_file_explorer_tango_icons(web) if branded else None
     _copy_joshu_icons(web, asset_root if branded else root, branded)
+    _copy_joshu_app_icon(web, asset_root if branded else root)
     _copy_joshu_chat_portrait(web, root, branded)
+    _remove_vendor_setting_tab(web)
     _copy_tango_icon_library(web, root)
     _replace_init_splash(web, overlay)
+    _apply_auth_pages(web, overlay, root, release_version)
+    _patch_system_settings_branding(web, overlay, release_version)
+    _apply_reset_templates(web, overlay, root, release_version)
     for script_name in SHELL_SCRIPTS:
         src_js = overlay / script_name
         if src_js.is_file():
@@ -382,6 +711,7 @@ def main() -> None:
 
     text = _patch_desktop_tango_folder_icons(text)
     text = _refresh_desktop_overlay_links(text, theme_file, theme_link)
+    text = _patch_favicon_link(text)
 
     for script_name in SHELL_SCRIPTS:
         if (overlay / script_name).is_file():

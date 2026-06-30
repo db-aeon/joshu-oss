@@ -19,8 +19,29 @@ CONNECTORS_SHORTCUT_CONTENT=$'module\nConnectors\nConnectors\nimg/joshu/connecto
 SAFETY_SHORTCUT_CONTENT=$'module\nSafety\nSafety\nimg/joshu/system-setting.png\n'
 HERMES_ADMIN_DASHBOARD_PATH="${PUBLIC_BASE_PATH:-/joshu}/hermes-admin/"
 
+# VPS direct mode: https://hermes-admin.<CUSTOMER_DOMAIN>/ — not /joshu/hermes-admin (local dev only).
+resolve_hermes_admin_shortcut_path() {
+  if [[ -n "${JOSHU_HERMES_DASHBOARD_SHORTCUT_PATH:-}" ]]; then
+    printf '%s' "${JOSHU_HERMES_DASHBOARD_SHORTCUT_PATH}"
+    return
+  fi
+  if [[ -n "${HERMES_DASHBOARD_PUBLIC_URL:-}" ]]; then
+    local url="${HERMES_DASHBOARD_PUBLIC_URL}"
+    [[ "${url}" == */ ]] || url="${url}/"
+    printf '%s' "${url}"
+    return
+  fi
+  if [[ -n "${CUSTOMER_DOMAIN:-}" && "${JOSHU_HERMES_DASHBOARD_DIRECT:-true}" =~ ^(1|true|yes)$ ]]; then
+    local host="${HERMES_DASHBOARD_DOMAIN:-hermes-admin.${CUSTOMER_DOMAIN}}"
+    printf 'https://%s/' "${host}"
+    return
+  fi
+  printf '%s' "${HERMES_ADMIN_DASHBOARD_PATH}"
+}
+
 install_hermes_admin_shortcuts() {
-  local admin_path="${JOSHU_HERMES_DASHBOARD_SHORTCUT_PATH:-${HERMES_ADMIN_DASHBOARD_PATH}}"
+  local admin_path
+  admin_path="$(resolve_hermes_admin_shortcut_path)"
   local content=$'url\nHermes Admin\n'"${admin_path}"$'\nimg/joshu/system-setting.png\n'
   _write_desktop_shortcut "Hermes Admin.shortcut" "${content}"
 }

@@ -34,16 +34,23 @@ No proprietary control plane — this is **standalone self-host** only. Control-
 
 ## Step 2 — Point DNS at the server
 
-| Type | Name / host | Points to |
-| --- | --- | --- |
-| A | `mybox` | `203.0.113.50` |
-| A | `hermes-admin.mybox` | `203.0.113.50` |
+The desktop and Joshu API use your main hostname. **Hermes Admin** (cron, skills, Kanban) uses a separate subdomain on the same VPS IP.
 
-Wait until DNS resolves:
+| Type | Name / host | Points to | Serves |
+| --- | --- | --- | --- |
+| A | `mybox` | `203.0.113.50` | `https://mybox.example.com/` (ArozOS desktop) |
+| A | `hermes-admin.mybox` | `203.0.113.50` | `https://hermes-admin.mybox.example.com/` (Hermes Admin) |
+
+If `CUSTOMER_DOMAIN` is itself a subdomain (e.g. `community.project-aeon.com`), the Hermes record is **`hermes-admin.community`** → same IP (full name `hermes-admin.community.project-aeon.com`).
+
+Wait until both resolve:
 
 ```bash
 dig +short mybox.example.com A
+dig +short hermes-admin.mybox.example.com A
 ```
+
+Both should return your VPS IPv4 before bootstrap finishes TLS.
 
 ---
 
@@ -137,11 +144,78 @@ curl -fsS https://mybox.example.com/joshu/api/instance/health
 
 ---
 
+## Hermes Admin (desktop shortcut)
+
+On a VPS, Hermes Admin is **not** at `/joshu/hermes-admin/` (that path is for **local dev** only). Bootstrap enables **direct mode** by default: Caddy serves the dashboard on its own hostname at site root.
+
+| | |
+| --- | --- |
+| **URL** | `https://hermes-admin.mybox.example.com/` |
+| **Open from** | Desktop **Hermes Admin** shortcut (url shortcut → full HTTPS URL) |
+| **Login** | User `admin` (or `JOSHU_HERMES_DASHBOARD_USER`) + password from `instance.env` |
+| **Requires** | DNS **A** record from [Step 2](#step-2--point-dns-at-the-server) |
+
+View the auto-generated dashboard password:
+
+```bash
+grep JOSHU_HERMES_DASHBOARD_PASSWORD /etc/joshu/instance.env
+```
+
+Confirm the stack sees the dashboard:
+
+```bash
+curl -fsS https://mybox.example.com/joshu/api/hermes-dashboard/status
+# expect: "directExposure":true, "publicUrl":"https://hermes-admin.mybox.example.com"
+```
+
+**Wrong URL symptom:** `Cannot GET /joshu/hermes-admin/` — you opened the local-dev path on a VPS. Use the `hermes-admin.*` subdomain instead.
+
+**Alternative (no extra DNS):** set `JOSHU_HERMES_DASHBOARD_DIRECT=false` in `/etc/joshu/instance.env`, re-render Caddy (`bash deploy/scripts/render-caddyfile.sh /etc/joshu/instance.env`), and restart the stack. Joshu then proxies `https://mybox.example.com/joshu/hermes-admin/`. Direct subdomain mode is recommended for production parity.
+
+`JOSHU_HERMES_DASHBOARD_PASSWORD` is **not** your ArozOS desktop login — only Hermes Admin / gateway dashboard access.
+
+---
+
 ## Optional — voice in jChat
 
 Voice is **on by default** for OSS self-host when `JOSHU_VOICE_IMAGE_REF` is set in `deploy/.env.vps.example` (bootstrap enables `voice-rt` automatically). You only need a **Gemini API key** — add it in **Welcome → Connect AI** (optional field) or on the **Review** step if you skipped it earlier. No manual `instance.env` edits required.
 
 If you disabled voice or run an older box, see [`deploy/README.md`](../../deploy/README.md) for compose profile `voice-rt`.
+
+---
+
+## Forgot ArozOS password (self-host)
+
+Joshu does **not** send email reset links. The **Forgot password?** link on the login page (`/reset.html`) expects an **administrator** to generate a **temporary password** first (System Settings → Users → edit user → **Reset password**), then you complete the flow in the browser.
+
+On a **solo** self-host box you are usually both admin and user. If you are locked out but still have **SSH as root**:
+
+### Option A — SSH reset (recommended when locked out)
+
+```bash
+ssh root@203.0.113.50
+cd /opt/joshu
+
+# List ArozOS usernames (folder names under the data volume)
+docker volume inspect deploy_joshu_arozos --format '{{ .Mountpoint }}'
+ls "$(docker volume inspect deploy_joshu_arozos --format '{{ .Mountpoint }}')/files/users/"
+
+# Set a new login password (stops joshu-stack briefly, updates system/ao.db)
+bash scripts/arozos-reset-password.sh YOUR_USERNAME 'your-new-strong-password'
+```
+
+First run pulls a small `golang:1.23-alpine` image and compiles the helper (~1–2 minutes). Later runs are faster.
+
+Log in at `https://mybox.example.com/` with the new password.
+
+### Option B — Browser reset (when another admin exists)
+
+1. Admin: **System Settings → Users →** edit user → **Reset password** (copies a temporary password).
+2. User: open `/reset.html` or the link with `acc` and `rkey` query params, enter username + temporary password, choose a new password.
+
+### Not the same as Hermes admin
+
+`JOSHU_HERMES_DASHBOARD_PASSWORD` in `/etc/joshu/instance.env` is only for [Hermes Admin](#hermes-admin-desktop-shortcut) — not your ArozOS desktop login.
 
 ---
 
@@ -155,7 +229,29 @@ If you disabled voice or run an older box, see [`deploy/README.md`](../../deploy
 | Chat empty / 401 | Add OpenRouter in **Welcome → Connect AI**, or check gateway keys in `instance.env` |
 | Desktop icons broken (placeholder images) | `img/joshu/*.png` missing from ArozOS `web/` — re-run theme apply + icon copy (image **0.1.30+** or host `git pull` + restart). See below. |
 | Desktop has icons but no window chrome | `aroz-vanilla-shell.css` not applied — same fix; hard-refresh after restart |
+| Site works then **502** / box “down” for minutes | Usually **not** Hetzner sleep — `joshu-stack` crash loop (failed healthcheck). Check `docker compose logs joshu-stack` and restart count. Common on **0.1.29** without host `git pull`: missing `packages/email-signature/dist` bind mount + broken Camofox `server.js`. Fix below. |
+| Locked out of ArozOS login | No email reset — use SSH script or admin temporary password. See [Forgot ArozOS password](#forgot-arozos-password-self-host). |
+| Hermes Admin **Cannot GET /joshu/hermes-admin/** | VPS uses **direct mode** — open `https://hermes-admin.mybox.example.com/` (not `/joshu/`). Add DNS **A** record ([Step 2](#step-2--point-dns-at-the-server)). See [Hermes Admin](#hermes-admin-desktop-shortcut). |
 | `git clone` fails | Outbound HTTPS from VPS |
+
+### Stack crash loop (502 / intermittent outage)
+
+Hetzner VPS instances do **not** sleep like a laptop. Intermittent **502** from Caddy almost always means `joshu-stack` is restarting (`docker inspect deploy-joshu-stack-1 --format '{{.RestartCount}}'`).
+
+After `git pull` on `/opt/joshu` (needs **main** with email-signature mount fix + vanilla theme):
+
+```bash
+cd /opt/joshu
+git pull origin main
+source /etc/joshu/instance.env
+bash scripts/sync-dist-from-image.sh
+cd deploy
+docker compose -f docker-compose.yml --env-file /etc/joshu/instance.env up -d --force-recreate joshu-stack
+```
+
+Wait for health: `curl -fsS http://127.0.0.1:8788/joshu/api/instance/health | head -c 200`
+
+Use **CPX31 (8 GB RAM)** or larger — CX/2 GB hosts OOM under Postgres + Hermes + Camofox.
 
 ### Desktop icons or missing chrome
 

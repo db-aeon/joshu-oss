@@ -2,6 +2,12 @@
   "en-US": {
     "strings": {
       "menu/group/Joshu": "Joshu",
+      "menu/group/About ArOZ": "About",
+      "menu/group/About": "About",
+      "tab/about/ArozOS": "About",
+      "tab/about/About ArOZ": "About",
+      "tab/about/Joshu": "Joshu",
+      "tab/about/Hermes Gateway": "Hermes Gateway",
       "tab/joshu/Hermes Gateway": "Hermes Gateway",
       "tab/joshu/Box State": "Box State",
       "joshu/gateway/Title": "Hermes Gateway",
@@ -12,7 +18,8 @@
     "titles": {
       "Start or stop the Hermes agent gateway on this box": "Start or stop the Hermes agent gateway on this box",
       "Joshu box snapshots and factory profile": "Joshu box snapshots and factory profile",
-      "Snapshot, restore, and factory reset for this Joshu box": "Snapshot, restore, and factory reset for this Joshu box"
+      "Snapshot, restore, and factory reset for this Joshu box": "Snapshot, restore, and factory reset for this Joshu box",
+      "Information of the current running ArOZ Online System": "About this box"
     }
   }
 }

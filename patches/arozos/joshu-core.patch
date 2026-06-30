@@ -7,20 +7,42 @@ index 0f6a724..8f21039 100644
  src/system/smtp_conf.json
  /src/web/FFmpeg Factory
 +.DS_Store
+diff --git a/src/system.go b/src/system.go
+index 0000000..0000000 100644
+--- a/src/system.go
++++ b/src/system.go
+@@ -62,16 +62,6 @@ func SystemIDInit() {
+ 		StartDir: "SystemAO/info/srcLicense.html",
+ 	})
+ 
+-	//Register vendor information
+-	if fs.FileExists("web/SystemAO/vendor/index.html") {
+-		registerSetting(settingModule{
+-			Name:     "Vendor",
+-			Desc:     "Vendor Notes",
+-			IconPath: "SystemAO/info/img/small_icon.png",
+-			Group:    "About",
+-			StartDir: "SystemAO/vendor/index.html",
+-		})
+-	}
+-
+ 	http.HandleFunc("/system/info/license", systemHandleListLicense)
+ 
+ 	//Handle health check ping
 diff --git a/src/setting.go b/src/setting.go
 index 5b6e119..24f772f 100644
 --- a/src/setting.go
 +++ b/src/setting.go
-@@ -111,6 +111,12 @@ func system_setting_getSettingGroups() []settingGroup {
+@@ -111,6 +111,6 @@ func system_setting_getSettingGroups() []settingGroup {
  			IconPath: "SystemAO/system_setting/img/info.svg",
  			Desc:     "Information of the current running ArOZ Online System",
  		},
-+		{
-+			Name:     "Joshu",
-+			Group:    "Joshu",
-+			IconPath: "img/joshu/chat.png",
-+			Desc:     "Joshu box snapshots and factory profile",
-+		},
+-		{
+-			Name:     "Joshu",
+-			Group:    "Joshu",
+-			IconPath: "img/joshu/chat.png",
+-			Desc:     "Joshu box snapshots and factory profile",
+-		},
  	}
  }
  
@@ -38,19 +60,19 @@ index 0000000..17a5867
 +
 +func JoshuSettingInit() {
 +	registerSetting(settingModule{
-+		Name:         "Hermes Gateway",
-+		Desc:         "Start or stop the Hermes agent gateway on this box",
++		Name:         "Joshu",
++		Desc:         "Joshu box snapshots and factory profile",
 +		IconPath:     "img/joshu/chat.png",
-+		Group:        "Joshu",
-+		StartDir:     "SystemAO/joshu/hermes-gateway.html",
++		Group:        "About",
++		StartDir:     "SystemAO/joshu/box-state.html",
 +		RequireAdmin: true,
 +	})
 +	registerSetting(settingModule{
-+		Name:         "Box State",
-+		Desc:         "Snapshot, restore, and factory reset for this Joshu box",
++		Name:         "Hermes Gateway",
++		Desc:         "Start or stop the Hermes agent gateway on this box",
 +		IconPath:     "img/joshu/chat.png",
-+		Group:        "Joshu",
-+		StartDir:     "SystemAO/joshu/box-state.html",
++		Group:        "About",
++		StartDir:     "SystemAO/joshu/hermes-gateway.html",
 +		RequireAdmin: true,
 +	})
 +}
@@ -74,6 +96,7 @@ index e9d947e..7c658a5 100644
                  "menu/group/Security & Auth": "Security & Auth",
                  "menu/group/Developer Options": "Developer Options",
                  "menu/group/About ArOZ": "About ArozOS",
+                "menu/group/About": "About",
 -                
 -                "tab/info/Overview": "Overview",
 +                "menu/group/Joshu": "Joshu",

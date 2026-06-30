@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<head>
+    <title>About</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0 user-scalable=no">
+    <link rel="stylesheet" href="../../script/semantic/semantic.min.css">
+    <script type="text/javascript" src="../../script/jquery.min.js"></script>
+    <script type="text/javascript" src="../../script/semantic/semantic.min.js"></script>
+</head>
+
+<body>
+    <div class="ui container">
+        <div class="ui basic segment" style="text-align:left">
+            <h2 class="ui header">
+                About
+                <div class="sub header">ArozOS-based box · release {{joshu_release_version}}</div>
+            </h2>
+            <div class="ui divider"></div>
+            <p style="margin-top:-12px;">ArozOS build: <span id="vcode"></span></p>
+            <p style="margin-top:-12px;">Box UUID: <span id="sysuuid"></span></p>
+            <img src="../../img/public/joshu-wordmark.svg" class="ui small image" alt="Joshu" style="max-height:48px;width:auto;">
+            <br><br>
+            <p>Joshu is a desktop agent stack built on <a href="https://github.com/tobychui/arozos" target="_blank" rel="noopener">ArozOS</a> (AGPL). Desktop shell, apps, and engine docs:
+                <a href="https://github.com/db-aeon/joshu-oss" target="_blank" rel="noopener">joshu-oss on GitHub</a>.</p>
+            <div class="ui divider"></div>
+            <p class="muted" style="color:#767676;font-size:0.9rem;">
+                ArozOS © tobychui / imuslab. Joshu branding and box-layer patches are maintained separately under AGPL.
+            </p>
+        </div>
+    </div>
+</body>
+<script>
+    $.get("../../system/id/requestInfo", function (data) {
+        $("#sysuuid").text(data.SystemUUID);
+        $("#vcode").text(data.Build + " v" + data.Version);
+    });
+</script>
+</html>
