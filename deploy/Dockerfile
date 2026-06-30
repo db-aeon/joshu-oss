@@ -1,8 +1,8 @@
 # Joshu sandbox stack image (VPS / self-host)
-# Hermes pin: deploy/RELEASE.json — run `npm run vps:sync-hermes-pin` after `hermes:update`.
+# Hermes / Camofox pins: deploy/RELEASE.json — run `npm run vps:sync-hermes-pin` / `vps:sync-camofox-pin`.
 # Build: npm run vps:predeploy && npm run vps:build-image (or JOSHU_IMAGE_PUSH=1 JOSHU_IMAGE_TAG=0.1.4 …)
 
-ARG CAMOFOX_BASE=ghcr.io/jo-inc/camofox-browser:latest
+ARG CAMOFOX_BASE=ghcr.io/jo-inc/camofox-browser@sha256:3ab61b4742105922aab6f8c99460f55563b6f93e906975383ddce16ec8917f3f
 FROM ${CAMOFOX_BASE} AS builder
 
 ARG HERMES_AGENT_REPO=https://github.com/NousResearch/hermes-agent.git

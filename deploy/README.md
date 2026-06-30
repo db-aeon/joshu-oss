@@ -11,8 +11,9 @@ Production packaging for **one VPS per customer**. Replaces VPS for always-on sa
 ## Build image
 
 Hermes is baked at image build time from the pin in `deploy/RELEASE.json` (same as the sandbox image).
-`npm run vps:sync-hermes-pin` copies that ref into `deploy/Dockerfile` and
-`deploy/RELEASE.json`; `npm run vps:build-image` always passes it as a Docker build-arg.
+`npm run vps:sync-hermes-pin` copies `hermesRef` into `deploy/Dockerfile`;
+`npm run vps:sync-camofox-pin` copies `camofoxBase` (digest pin for `camofox-browser`).
+`npm run vps:build-image` passes both as Docker build-args.
 
 ```bash
 npm run build:deploy
@@ -26,11 +27,12 @@ JOSHU_IMAGE_TAG=0.1.14 JOSHU_IMAGE_REPO=ghcr.io/YOUR_ORG/joshu-sandbox JOSHU_IMA
 
 Pushes **`ghcr.io/YOUR_ORG/joshu-oss:<tag>`** and **`ghcr.io/YOUR_ORG/joshu-oss-voice-realtime:<tag>`** (override with `JOSHU_VOICE_IMAGE_REPO` / `JOSHU_VOICE_IMAGE_REF`).
 
-Current stable pin: [`deploy/RELEASE.json`](RELEASE.json) (**`0.1.24`**).
+Current stable pin: [`deploy/RELEASE.json`](RELEASE.json) (**`0.1.29`**).
 
 After `npm run hermes:update`, `npm run vps:sync-hermes-pin` runs automatically (also invoked by `vps:build-image`).
+After bumping `camofoxBase`, run `npm run vps:sync-camofox-pin` before rebuild.
 
-Image tags and Hermes pins live in [`deploy/RELEASE.json`](RELEASE.json). See [runtime-topology — Image build](../docs/vps-sandbox/runtime-topology.md#image-build) for how they flow into the Docker image.
+Image tags and upstream pins (`hermesRef`, `gbrainRef`, `camofoxBase`) live in [`deploy/RELEASE.json`](RELEASE.json). See [runtime-topology — Image build](../docs/vps-sandbox/runtime-topology.md#image-build) for how they flow into the Docker image.
 
 **Hermes config:** The image does not include your laptop `~/.hermes/config.yaml`. Product
 settings come from `instance.env`, `integrations/hermes/skills-enabled.yaml`, and
@@ -38,7 +40,7 @@ Joshu startup (`src/hermesApi.ts`). Details:
 [hermes-integration.md](../docs/hermes-integration.md) and [local-installation.md](../docs/local-installation.md).
 
 CI: [`.github/workflows/joshu-oss-image.yml`](../.github/workflows/joshu-oss-image.yml)
-— builds **joshu-oss** and **joshu-oss-voice-realtime**; reads `HERMES_AGENT_REF` from `deploy/RELEASE.json`.
+— builds **joshu-oss** and **joshu-oss-voice-realtime**; reads `hermesRef`, `camofoxBase`, and `gbrainRef` from `deploy/RELEASE.json`.
 
 ## Configure instance
 

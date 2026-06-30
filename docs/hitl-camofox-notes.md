@@ -13,7 +13,21 @@ Camofox, noVNC, and ArozOS subservices. For VPS layout see
   `scripts/aroz-subproxy.mjs` to reverse-proxy `/joshu/*` to Joshu on `8788`.
 - **`scripts/patch-camofox-single-tab.mjs`** — applied at Docker image build and
   on local Camofox container create.
-- Hermes pin: [`deploy/RELEASE.json`](../deploy/RELEASE.json) (`hermesRef`).
+- Pins in [`deploy/RELEASE.json`](../deploy/RELEASE.json):
+  - **`hermesRef`** — Hermes Agent git SHA
+  - **`camofoxBase`** — `ghcr.io/jo-inc/camofox-browser@sha256:…` (digest; not `:latest`)
+- Sync Dockerfile defaults: `npm run vps:sync-hermes-pin`, `npm run vps:sync-camofox-pin`
+  (both run in `vps:predeploy` / `vps:build-image`).
+
+### Bumping Camofox
+
+1. `docker pull ghcr.io/jo-inc/camofox-browser:latest` and test the patch:
+   `node scripts/patch-camofox-single-tab.mjs` against `/app/server.js` in the container.
+2. Set `camofoxBase` in `deploy/RELEASE.json` to the image digest
+   (`docker inspect --format='{{index .RepoDigests 0}}' …`).
+3. `npm run vps:sync-camofox-pin` then rebuild (`npm run vps:build-image`).
+4. Local dev: `docker rm -f camofox-hitl && bash scripts/ensure-camofox-container.sh`
+   (reads `camofoxBase`; override with `CAMOFOX_BASE` for experiments).
 
 Desktop shortcuts: [`arozos-desktop-shortcuts.md`](arozos-desktop-shortcuts.md).
 

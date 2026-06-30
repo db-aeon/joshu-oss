@@ -6,7 +6,7 @@ How the Joshu box stack maps to a **per-customer VPS** running Docker Compose �
 
 | Component | VPS Compose service | Notes |
 | --- | --- | --- |
-| Camofox `node server.js` in `/app` | `camofox` | Same image `ghcr.io/jo-inc/camofox-browser:latest`; patch applied at image build |
+| Camofox `node server.js` in `/app` | `camofox` | Base image from `deploy/RELEASE.json` → `camofoxBase` (digest pin); `patch-camofox-single-tab.mjs` at image build |
 | Joshu `node dist/server.js` on `127.0.0.1:8788` | `joshu` | `PUBLIC_BASE_PATH=/joshu`; not exposed directly |
 | ArozOS binary on `0.0.0.0:8787` | `arozos` | Public desktop; proxies `/joshu/*` to Joshu |
 | Hindsight API + local Postgres | `postgres` + `hindsight` | **Use durable volume** for Postgres data |
@@ -61,8 +61,8 @@ Order is preserved in `deploy/scripts/vps-start.sh`:
 
 `deploy/Dockerfile` stages:
 
-- Base: `camofox-browser` + apt packages (ffmpeg, postgres client, go for ArozOS build)
-- Hermes: pinned `HERMES_AGENT_REF` from [`deploy/RELEASE.json`](../../deploy/RELEASE.json), venv, image extras parity
+- Base: `camofoxBase` from [`deploy/RELEASE.json`](../../deploy/RELEASE.json) (`ARG CAMOFOX_BASE`) + apt packages (ffmpeg, postgres client, go for ArozOS build)
+- Hermes: pinned `hermesRef` / `HERMES_AGENT_REF` from [`deploy/RELEASE.json`](../../deploy/RELEASE.json), venv, image extras parity
 - ArozOS: build from `vendor/arozos` → `/opt/arozos-template`
 - Joshu: `npm run build:deploy`, app bundles → template subservices
 - Camofox patch: `patch-camofox-single-tab.mjs` at build time
