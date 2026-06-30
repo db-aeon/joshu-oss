@@ -24,7 +24,7 @@
     "dev:connectors": "vite --config apps/connectors/vite.config.ts --host 127.0.0.1 --port 3009",
     "dev:safety-settings": "vite --config apps/safety-settings/vite.config.ts --host 127.0.0.1 --port 3010",
     "dev:welcome": "vite --config apps/welcome/vite.config.ts --host 127.0.0.1 --port 3008",
-    "build": "npm run build -w @joshu/email-signature && npm run build -w @joshu/platform-data && npm run build -w @joshu/app-sdk && npm run build -w @joshu/jchat-ui && npm run build -w @joshu/app-agent && tsc -p tsconfig.json",
+    "build": "npm run build -w @joshu/email-signature && npm run build -w @joshu/platform-data && npm run build -w @joshu/app-sdk && npm run build -w @joshu/jchat-ui && npm run build -w @joshu/app-agent && npm run build -w @joshu/box-state && tsc -p tsconfig.json",
     "build:excalidraw": "node scripts/ensure-excalidraw-vendor.mjs && vite build --config apps/excalidraw/vite.config.ts",
     "build:hermes-chat": "vite build --config apps/hermes-chat/vite.config.ts",
     "build:hindsight-viewer": "vite build --config apps/hindsight-viewer/vite.config.ts",

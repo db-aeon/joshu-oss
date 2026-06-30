@@ -66,3 +66,13 @@ jobs:
             ghcr.io/${{ github.repository_owner }}/joshu-voice-realtime:${{ github.ref_name }}
             ghcr.io/${{ github.repository_owner }}/joshu-voice-realtime:${{ steps.release.outputs.version }}
             ghcr.io/${{ github.repository_owner }}/joshu-voice-realtime:latest
+
+      - name: Make GHCR packages public (self-host pull without login)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for pkg in joshu-oss joshu-voice-realtime; do
+            gh api --method PATCH "/users/${{ github.repository_owner }}/packages/container/${pkg}" \
+              -f visibility=public \
+              || echo "[ghcr] visibility unchanged for ${pkg} (may need manual publish settings)"
+          done
