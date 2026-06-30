@@ -1,0 +1,73 @@
+<!DOCTYPE HTML>
+<html>
+    <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <title>Joshu — Reset password</title>
+    <link rel="stylesheet" href="script/semantic/semantic.min.css">
+    <link rel="stylesheet" href="script/ao.css">
+    <link rel="stylesheet" href="script/joshu-auth-pages.css?v={{joshu_overlay_version}}">
+    <script type="application/javascript" src="script/jquery.min.js"></script>
+    <script type="application/javascript" src="script/semantic/semantic.min.js"></script>
+    </head>
+    <body class="jp-user-setup">
+    <br><br><br>
+    <div class="ui container" align="center">
+        <div class="ui basic segment" style="max-width:440px;" align="left">
+            <div class="imageRight" align="center">
+                <img class="ui small image loginLogo" src="img/public/joshu-wordmark.svg" alt="Joshu">
+            </div>
+            <div class="ui divider"></div>
+            <div class="ui text container">
+                <p>Reset your password on <strong>{{host_name}}</strong></p>
+                <p style="color:#5c5c5c;font-size:0.92rem;line-height:1.45;">
+                    Joshu does not email reset links. An administrator must reset your account first
+                    (System Settings → Users → <em>Reset password</em>), then give you a
+                    <strong>temporary password</strong> or a link with <code>acc</code> and <code>rkey</code> parameters.
+                </p>
+            </div>
+            <div class="ui divider"></div>
+            <form class="ui form" onsubmit="handleFormSubmit(event, this);">
+                <div class="field">
+                    <label>Username</label>
+                    <input type="text" name="username" placeholder="Username" autocomplete="username">
+                </div>
+                <div class="field">
+                    <label>Temporary password</label>
+                    <input type="password" name="resetkey" placeholder="From your administrator" autocomplete="current-password">
+                    <small>Enter the one-time password your administrator generated — not your old password.</small>
+                </div>
+                <button id="submitbtn" class="ui primary button" type="submit">Continue</button>
+            </form>
+            <div id="errmsg" class="ui red inverted segment" style="display:none;">
+                <i class="remove icon"></i> <span id="errtext">Internal Server Error</span>
+            </div>
+            <div class="ui divider"></div>
+            <p class="joshu-auth-footer">Self-hosting? Locked out without another admin — recover via SSH on the box. <span class="joshu-auth-version">v{{joshu_release_version}}</span></p>
+            <p>Back to <a href="login.html">Sign in</a></p>
+        </div>
+    </div>
+
+    <script>
+        function handleFormSubmit(event, object){
+            event.preventDefault();
+            var username = object.username.value;
+            var rkey = object.resetkey.value;
+            $.ajax({
+                url: "system/reset/validateResetKey",
+                data: {username: username, rkey: rkey},
+                method: "POST",
+                success: function(data){
+                    if (data.error !== undefined){
+                        $("#errtext").text(data.error);
+                        $("#errmsg").show();
+                    }else{
+                        $("#errmsg").hide();
+                        window.location.href = location.protocol + '//' + location.host + location.pathname + "?acc=" + encodeURIComponent(username) + "&rkey=" + encodeURIComponent(rkey);
+                    }
+                }
+            });
+        }
+    </script>
+    </body>
+</html>

@@ -27,6 +27,9 @@ OSS default overlays (no proprietary brand pack):
 | Artifact | Purpose |
 |----------|---------|
 | [`arozos/web-overlays-vanilla/aroz-vanilla-shell.css`](../../arozos/web-overlays-vanilla/aroz-vanilla-shell.css) | Desktop chrome (silver taskbar, pinstripe window title bars, menus) |
+| [`arozos/web-overlays-vanilla/login.html`](../../arozos/web-overlays-vanilla/login.html) | Sign-in screen (replaces stock ArozOS login) |
+| [`arozos/web-overlays-vanilla/user.html`](../../arozos/web-overlays-vanilla/user.html) | First-account setup when no users exist |
+| [`arozos/web-overlays-vanilla/joshu-auth-pages.css`](../../arozos/web-overlays-vanilla/joshu-auth-pages.css) | Login / setup styling (Vanilla); copied to `script/joshu-auth-pages.css` (pre-auth public path) |
 | [`arozos/web-overlays-vanilla/aroz-taskbar-focus.js`](../../arozos/web-overlays-vanilla/aroz-taskbar-focus.js) | Taskbar focus sync |
 | [`arozos/web-overlays-vanilla/aroz-jchat-tray.js`](../../arozos/web-overlays-vanilla/aroz-jchat-tray.js) | jChat tray hook |
 | [`scripts/apply_arozos_joshu_theme.py`](../../scripts/apply_arozos_joshu_theme.py) | Applies overlays at dev/build time |

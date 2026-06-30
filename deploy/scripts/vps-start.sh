@@ -535,7 +535,18 @@ warm_camofox_browser() {
   return 1
 }
 
+# 0.1.29 images shipped a broken Camofox viewport patch (`}););`). Repair in-place until next image cut.
+repair_camfox_server_js() {
+  local f="${CAMOFOX_APP_DIR}/server.js"
+  [[ -f "$f" ]] || return 0
+  if grep -q '}););' "$f" 2>/dev/null; then
+    echo "[vps-start] repairing Camofox server.js (duplicate route closer)" >&2
+    sed -i 's/}););/});/g' "$f"
+  fi
+}
+
 echo "[vps-start] Camofox ${CAMOFOX_URL}"
+repair_camfox_server_js
 ( cd "${CAMOFOX_APP_DIR}" && node --max-old-space-size="${MAX_OLD_SPACE_SIZE}" server.js ) &
 for _ in $(seq 1 90); do curl -fsS "${CAMOFOX_URL}/health" >/dev/null 2>&1 && break; sleep 1; done
 if [[ "${JOSHU_WARM_CAMOFOX}" =~ ^(1|true|yes)$ ]]; then
@@ -674,6 +685,12 @@ if [[ "${JOSHU_HERMES_DASHBOARD_ENABLED:-true}" =~ ^(1|true|yes)$ ]]; then
       echo "[vps-start] Hermes dashboard failed to start" >&2
       exit 1
     fi
+  fi
+  # Shortcut install runs earlier (before ArozOS); refresh Hermes Admin URL now that public URL is resolved.
+  if [[ "${AROZOS_ENABLED:-false}" =~ ^(1|true|yes)$ ]]; then
+    # shellcheck source=../../scripts/lib/arozos-desktop-shortcuts.sh
+    source "${APP_DIR}/scripts/lib/arozos-desktop-shortcuts.sh"
+    install_hermes_admin_shortcuts
   fi
 fi
 

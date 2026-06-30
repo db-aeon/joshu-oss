@@ -353,6 +353,7 @@ body.darkTheme {
 .floatWindow .controls {
   border-radius: 0 !important;
   backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
   box-sizing: border-box !important;
   border-top: var(--vb-shell-border) !important;
   border-left: var(--vb-shell-border) !important;
@@ -389,23 +390,36 @@ body.darkTheme {
 }
 
 .floatWindow .controls .title {
+  box-sizing: content-box !important;
   grid-column: 2 !important;
   grid-row: 1 !important;
+  position: relative !important;
+  left: auto !important;
+  top: auto !important;
   justify-self: center !important;
   align-self: center !important;
+  margin: 0 auto !important;
   max-width: min(520px, 56%) !important;
   padding: 2px 14px 4px !important;
   text-align: center !important;
   color: var(--vb-shell-ink) !important;
   font-weight: 600 !important;
+  font-synthesis: none;
   font-size: 12.5px !important;
   line-height: 1.15 !important;
   white-space: nowrap !important;
   overflow: hidden !important;
   text-overflow: ellipsis !important;
+  text-shadow: none !important;
   background: var(--vb-fw-title-plateau) !important;
   border: none !important;
   box-shadow: none !important;
+}
+
+.floatWindow .controls.fwdragger,
+.floatWindow .fwdragger {
+  text-shadow: none !important;
+  --text-outline-color: transparent;
 }
 
 .floatWindow .fwcontrol .buttons.closetoggle,
@@ -419,6 +433,7 @@ body.darkTheme {
   grid-column: 3 !important;
   grid-row: 1 !important;
   justify-self: center !important;
+  margin-left: 0 !important;
 }
 
 .floatWindow .fwcontrol .buttons.maxtoggle {
@@ -520,6 +535,9 @@ body.darkTheme {
 .floatWindow.white .controls .title {
   background: var(--vb-fw-title-plateau) !important;
   color: var(--vb-shell-ink) !important;
+  font-weight: 600 !important;
+  font-synthesis: none;
+  text-shadow: none !important;
 }
 
 .floatWindow.white .iframewrapper {

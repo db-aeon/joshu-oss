@@ -41,6 +41,9 @@ services:
       - ../factory/manifest.yaml:/opt/joshu/factory/manifest.yaml:ro
       - ../arozos/system-setting:/opt/joshu/arozos/system-setting:ro
       - ../arozos/locale:/opt/joshu/arozos/locale:ro
+      # Vanilla shell overlays — git pull updates chrome without image rebuild (OSS default theme).
+      - ../arozos/web-overlays-vanilla:/opt/joshu/arozos/web-overlays-vanilla:ro
+      - ../scripts/apply_arozos_joshu_theme.py:/opt/joshu/scripts/apply_arozos_joshu_theme.py:ro
       - ../scripts/rebind-gbrain-owner.sh:/opt/joshu/scripts/rebind-gbrain-owner.sh:ro
       - ../scripts/start-gbrain.sh:/opt/joshu/scripts/start-gbrain.sh:ro
       - ../scripts/install-gbrain.sh:/opt/joshu/scripts/install-gbrain.sh:ro
