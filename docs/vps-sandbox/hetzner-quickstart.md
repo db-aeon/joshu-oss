@@ -136,24 +136,27 @@ grep JOSHU_HERMES_DASHBOARD_PASSWORD /etc/joshu/instance.env
 
 In a browser: `https://mybox.example.com/`
 
-Log in to ArozOS. **Welcome** opens automatically and asks for your **OpenRouter** API key (Connect AI step). Paste a key from [openrouter.ai/keys](https://openrouter.ai/keys) to enable jChat. On the same step you can optionally add a [Gemini API key](https://aistudio.google.com/apikey) for the microphone in jChat (voice uses Gemini Live, not OpenAI).
+**First boot:** if the box has no users yet, you land on **Create your account** (`/user.html`) — not the login page. Create the owner account, then sign in.
+
+**Welcome** opens automatically and asks for your **OpenRouter** API key (Connect AI step). Paste a key from [openrouter.ai/keys](https://openrouter.ai/keys) to enable jChat. On the same step you can optionally add a [Gemini API key](https://aistudio.google.com/apikey) for the microphone in jChat (voice uses Gemini Live, not OpenAI).
 
 You can skip Connect AI and add keys later by reopening **Welcome** from the desktop (Review step shows Gemini if you skipped voice).
 
-Health check (laptop):
+Health check (laptop) — may return **503** for a few minutes while Hermes finishes booting (common on small VPS plans):
 
 ```bash
 curl -fsS https://mybox.example.com/joshu/api/instance/health
+# when healthy: "healthy":true and HTTP 200
 ```
 
-**Branding checks (0.1.31+):** login page says **Joshu**, favicon is the hand icon, System Settings → ☰ → **About** shows **About** + **Joshu** tabs (no Vendor tab). Hard-refresh (`Cmd+Shift+R`) if the browser cached an old favicon.
+**Branding checks (0.1.31+):** login / setup pages say **Joshu**, favicon is the hand icon, System Settings → ☰ → **About** shows **About** + **Joshu** tabs (no Vendor tab). Hard-refresh (`Cmd+Shift+R`) if the browser cached an old favicon.
 
 ```bash
-curl -fsSI https://mybox.example.com/img/public/joshu-icon.svg
-curl -fsSI https://mybox.example.com/aroz-vanilla-shell.css
+curl -fsSI https://mybox.example.com/img/public/joshu-icon.svg   # expect 200
+curl -fsSI https://mybox.example.com/login.html | grep -i joshu  # page title / wordmark
 ```
 
-Both should return `200`.
+`aroz-vanilla-shell.css` is served behind ArozOS auth — unauthenticated `curl` gets **307** to `/login.html` (that still means the theme file is present).
 
 ---
 
@@ -250,7 +253,9 @@ docker compose -f docker-compose.yml --env-file /etc/joshu/instance.env up -d --
 ```bash
 cd /opt/joshu/deploy
 docker compose -f docker-compose.yml --env-file /etc/joshu/instance.env down -v
-cd / && rm -rf /opt/joshu
+cd /   # leave /opt/joshu before deleting it (otherwise git clone fails)
+rm -rf /opt/joshu
+docker volume rm deploy_joshu_arozos 2>/dev/null || true   # if down -v left a stray volume
 # keep /etc/joshu/instance.env — update image pins, then repeat Steps 4–6
 ```
 
@@ -262,10 +267,11 @@ cd / && rm -rf /opt/joshu
 | --- | --- |
 | `docker pull` → `registry: denied` | Image tag not published yet, or GHCR package still private. Confirm tag in [`deploy/RELEASE.json`](../../deploy/RELEASE.json). After a release build, `docker pull` should work without login. |
 | Certificate error in browser | DNS not pointing at VPS yet |
-| Health `curl` fails | Ports 80/443 open; wait a few minutes after bootstrap |
+| Health `curl` returns 503 | Hermes still starting — wait 2–5 min; check `components.hermes.ok` in JSON. On **2 GB** plans boot can take longer or OOM — use **CPX31 (8 GB)**. |
+| Health `curl` fails (connection error) | Ports 80/443 open; wait a few minutes after bootstrap |
 | Chat empty / 401 | Add OpenRouter in **Welcome → Connect AI**, or check gateway keys in `instance.env` |
 | Desktop icons broken (placeholder images) | Image **&lt; 0.1.30** or theme not applied — `git pull` + restart stack. **0.1.31+** bakes icons + vanilla chrome at build and re-applies on boot. |
-| Desktop has icons but no window chrome | Same — ensure `aroz-vanilla-shell.css` returns `200` (see Step 7) |
+| Desktop has icons but no window chrome | Same — after login, DevTools → Network should load `aroz-vanilla-shell.css` (unauthenticated curl gets 307; see Step 7) |
 | Site works then **502** / box “down” for minutes | `joshu-stack` crash loop — `docker compose logs joshu-stack`. Use **CPX31 (8 GB)** or larger; 2 GB hosts OOM. |
 | Locked out of ArozOS login | No email reset — use SSH script or admin temporary password. See [Forgot ArozOS password](#forgot-arozos-password-self-host). |
 | Hermes Admin **Cannot GET /joshu/hermes-admin/** | VPS uses **direct mode** — open `https://hermes-admin.mybox.example.com/` (not `/joshu/`). Add DNS **A** record ([Step 2](#step-2--point-dns-at-the-server)). |
