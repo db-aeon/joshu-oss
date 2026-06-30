@@ -18,6 +18,8 @@ jobs:
           submodules: recursive
 
       - name: Ensure vendor trees (OSS snapshot omits vendor/)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: bash scripts/ensure-vendor-for-build.sh
 
       - uses: actions/setup-node@v4
