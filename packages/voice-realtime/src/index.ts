@@ -1,6 +1,5 @@
 /**
  * Speech-to-speech voice — OpenAI Realtime or Gemini Live (PSTN μ-law + browser PCM24k).
- * See docs/vps-sandbox/voice-realtime.md and docs/vps-sandbox/web-voice.md
  */
 
 import "./loadEnv.js";

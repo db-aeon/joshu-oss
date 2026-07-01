@@ -61,10 +61,10 @@ should_skip() {
     docs/README.md|docs/joshu-identity.md|docs/day0-cold-start.md|docs/hermes-customizations.md|docs/box-state.md)
       return 0
       ;;
-    docs/vps-sandbox/first-provisioning-notes.md|docs/vps-sandbox/troubleshooting-and-lessons.md|docs/vps-sandbox/session-*|docs/vps-sandbox/hotpatch-running-box.md|docs/vps-sandbox/provider-choices.md|docs/vps-sandbox/voice-*|docs/vps-sandbox/web-voice.md|docs/vps-sandbox/phone-voice-local-test.md)
+    docs/first-provisioning-notes.md|docs/troubleshooting-and-lessons.md|docs/session-*|docs/hotpatch-running-box.md|docs/provider-choices.md|docs/voice-*|docs/web-voice.md|docs/phone-voice-local-test.md)
       return 0
       ;;
-    docs/design/brand-guidelines.md|docs/README.oss.md|docs/box-state.oss.md|docs/vps-sandbox/README.oss.md|docs/design/README.oss.md)
+    docs/design/brand-guidelines.md|docs/README.oss.md|docs/box-state.oss.md|docs/design/README.oss.md)
       return 0
       ;;
     README.md|CONTRIBUTING.md|README.oss.md|CONTRIBUTING.oss.md)

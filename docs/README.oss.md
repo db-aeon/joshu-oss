@@ -40,7 +40,6 @@ Shortcut format: [`arozos-desktop-shortcuts.md`](arozos-desktop-shortcuts.md).
 | Platform smoke test | `npm run test:platform-architecture` |
 | App store / sideload / publishers | [`APP_STORE.md`](APP_STORE.md) |
 | Third-party licenses | [`THIRD_PARTY.md`](THIRD_PARTY.md) |
-| VPS / Docker architecture | [`vps-sandbox/README.md`](vps-sandbox/README.md) |
 | Vanilla ArozOS theme | [`design/README.md`](design/README.md) |
 
 ## Managed hosting

@@ -449,7 +449,7 @@ startJoshuVoiceSession({
 });
 ```
 
-Wire event: `app_action` on the voice WebSocket (parallel to `desktop_action`). See [`vps-sandbox/web-voice.md`](vps-sandbox/web-voice.md).
+Wire event: `app_action` on the voice WebSocket (parallel to `desktop_action`).
 
 ---
 

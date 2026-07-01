@@ -41,22 +41,21 @@ rsync -a "${RSYNC_DELETE[@]}" \
   --exclude 'docs/Joshu-SOP' \
   --exclude 'docs/design/brand-guidelines.md' \
   --exclude 'docs/design/joshu-style-guide-v1.png' \
-  --exclude 'docs/vps-sandbox/first-provisioning-notes.md' \
-  --exclude 'docs/vps-sandbox/troubleshooting-and-lessons.md' \
-  --exclude 'docs/vps-sandbox/session-2026-06-11-learning-browser-sync.md' \
-  --exclude 'docs/vps-sandbox/hotpatch-running-box.md' \
-  --exclude 'docs/vps-sandbox/provider-choices.md' \
-  --exclude 'docs/vps-sandbox/voice-think-speak.md' \
-  --exclude 'docs/vps-sandbox/voice-realtime.md' \
-  --exclude 'docs/vps-sandbox/web-voice.md' \
-  --exclude 'docs/vps-sandbox/phone-voice-local-test.md' \
+  --exclude 'docs/first-provisioning-notes.md' \
+  --exclude 'docs/troubleshooting-and-lessons.md' \
+  --exclude 'docs/session-2026-06-11-learning-browser-sync.md' \
+  --exclude 'docs/hotpatch-running-box.md' \
+  --exclude 'docs/provider-choices.md' \
+  --exclude 'docs/voice-think-speak.md' \
+  --exclude 'docs/voice-realtime.md' \
+  --exclude 'docs/web-voice.md' \
+  --exclude 'docs/phone-voice-local-test.md' \
   --exclude 'docs/joshu-identity.md' \
   --exclude 'docs/day0-cold-start.md' \
   --exclude 'docs/box-state.md' \
   --exclude 'docs/box-state.oss.md' \
   --exclude 'docs/hermes-customizations.md' \
   --exclude 'docs/README.oss.md' \
-  --exclude 'docs/vps-sandbox/README.oss.md' \
   --exclude 'docs/design/README.oss.md' \
   "${ROOT_DIR}/" "${OUT_DIR}/"
 
@@ -64,7 +63,6 @@ rsync -a "${RSYNC_DELETE[@]}" \
 cp "${ROOT_DIR}/README.oss.md" "${OUT_DIR}/README.md"
 cp "${ROOT_DIR}/CONTRIBUTING.oss.md" "${OUT_DIR}/CONTRIBUTING.md"
 cp "${ROOT_DIR}/docs/README.oss.md" "${OUT_DIR}/docs/README.md"
-cp "${ROOT_DIR}/docs/vps-sandbox/README.oss.md" "${OUT_DIR}/docs/vps-sandbox/README.md"
 cp "${ROOT_DIR}/docs/design/README.oss.md" "${OUT_DIR}/docs/design/README.md"
 cp "${ROOT_DIR}/docs/box-state.oss.md" "${OUT_DIR}/docs/box-state.md"
 
@@ -81,15 +79,15 @@ rm -rf \
   "${OUT_DIR}/docs/box-state.md" \
   "${OUT_DIR}/docs/design/brand-guidelines.md" \
   "${OUT_DIR}/docs/design/joshu-style-guide-v1.png" \
-  "${OUT_DIR}/docs/vps-sandbox/first-provisioning-notes.md" \
-  "${OUT_DIR}/docs/vps-sandbox/troubleshooting-and-lessons.md" \
-  "${OUT_DIR}/docs/vps-sandbox/session-2026-06-11-learning-browser-sync.md" \
-  "${OUT_DIR}/docs/vps-sandbox/hotpatch-running-box.md" \
-  "${OUT_DIR}/docs/vps-sandbox/provider-choices.md" \
-  "${OUT_DIR}/docs/vps-sandbox/voice-think-speak.md" \
-  "${OUT_DIR}/docs/vps-sandbox/voice-realtime.md" \
-  "${OUT_DIR}/docs/vps-sandbox/web-voice.md" \
-  "${OUT_DIR}/docs/vps-sandbox/phone-voice-local-test.md" \
+  "${OUT_DIR}/docs/first-provisioning-notes.md" \
+  "${OUT_DIR}/docs/troubleshooting-and-lessons.md" \
+  "${OUT_DIR}/docs/session-2026-06-11-learning-browser-sync.md" \
+  "${OUT_DIR}/docs/hotpatch-running-box.md" \
+  "${OUT_DIR}/docs/provider-choices.md" \
+  "${OUT_DIR}/docs/voice-think-speak.md" \
+  "${OUT_DIR}/docs/voice-realtime.md" \
+  "${OUT_DIR}/docs/web-voice.md" \
+  "${OUT_DIR}/docs/phone-voice-local-test.md" \
   "${OUT_DIR}/arozos/web-overlays" \
   "${OUT_DIR}/.cursor" \
   2>/dev/null || true
@@ -109,7 +107,7 @@ hermes-customizations\.md
 Joshu-SOP/
 your-org/joshu
 joshu-beige\.vercel\.app
-vps-sandbox/control-plane-portal\.md
+control-plane-portal\.md
 apps/control-plane/
 PATTERNS
 

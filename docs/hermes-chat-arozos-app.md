@@ -138,7 +138,7 @@ npm run build:hermes-chat
 rsync -a --delete dist/hermes-chat/ .local/arozos-data/subservice/hermes-chat/app/
 ```
 
-See [web-voice.md — Desktop presentation](vps-sandbox/web-voice.md#desktop-presentation-two-tiers).
+See web-voice docs for Desktop presentation.
 
 ## Voice
 
@@ -176,9 +176,9 @@ JOSHU_VOICE_WSS_HOST=127.0.0.1:8788   # dev: Joshu proxies voice, not ArozOS :87
 # VPS: JOSHU_VOICE_WSS_DIRECT=false (bootstrap default) — session wsUrl must be wss://<box>/voice-rt/…
 ```
 
-`/api/voice/session` returns `wsUrl` for `@joshu/voice-client`. On VPS the browser must get a **public** `wss://` URL (Caddy → `:8792`), not `ws://127.0.0.1:8792`. See [web-voice.md — Browser WSS URL](vps-sandbox/web-voice.md#browser-wss-url-apivoicesession--wsurl).
+`/api/voice/session` returns `wsUrl` for `@joshu/voice-client`. On VPS the browser must get a **public** `wss://` URL (Caddy → `:8792`), not `ws://127.0.0.1:8792`.
 
-Phone PSTN uses the same `voice-realtime` service on `:8792` — see [voice-realtime.md](vps-sandbox/voice-realtime.md).
+Phone PSTN uses the same `voice-realtime` service on `:8792`.
 
 Client behavior (`apps/hermes-chat/src/main.tsx`, `@joshu/voice-client`):
 

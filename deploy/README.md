@@ -32,7 +32,7 @@ Current stable pin: [`deploy/RELEASE.json`](RELEASE.json) (**`0.1.29`**).
 After `npm run hermes:update`, `npm run vps:sync-hermes-pin` runs automatically (also invoked by `vps:build-image`).
 After bumping `camofoxBase`, run `npm run vps:sync-camofox-pin` before rebuild.
 
-Image tags and upstream pins (`hermesRef`, `gbrainRef`, `camofoxBase`) live in [`deploy/RELEASE.json`](RELEASE.json). See [runtime-topology — Image build](../docs/vps-sandbox/runtime-topology.md#image-build) for how they flow into the Docker image.
+Image tags and upstream pins (`hermesRef`, `gbrainRef`, `camofoxBase`) live in [`deploy/RELEASE.json`](RELEASE.json).
 
 **Hermes config:** The image does not include your laptop `~/.hermes/config.yaml`. Product
 settings come from `instance.env`, `integrations/hermes/skills-enabled.yaml`, and
@@ -150,8 +150,6 @@ Cloud-init (control-plane provision) runs `bootstrap-vps.sh`, which clones the r
 | Compiled Joshu API (`src/` → `dist/`) | Sync host `dist/` from image (below) → recreate |
 | `deploy/Dockerfile`, Hermes pin, `deploy/runtime/package.json` | New image tag → pull → dist sync → recreate |
 
-Fleet boxes with the optional instance-agent may automate dist sync — see [instance-agent-protocol.md](../docs/vps-sandbox/instance-agent-protocol.md).
-
 Quick dist recovery after a release image pull:
 
 ```bash
@@ -168,7 +166,7 @@ Manual bootstrap on an empty VPS (pulls `JOSHU_IMAGE_REF` by default; set `JOSHU
 sudo bash deploy/scripts/bootstrap-vps.sh
 ```
 
-See [hetzner-quickstart.md](../docs/vps-sandbox/hetzner-quickstart.md) for a full Hetzner Ubuntu walkthrough.
+See [vps-quickstart.md](../docs/vps-quickstart.md) for a full Ubuntu VPS walkthrough.
 
 ## Smoke checks
 
@@ -195,7 +193,3 @@ Expect **200** and HTML (not `Invalid Host header`). Caddy rewrites upstream `Ho
 ## Architecture docs
 
 - [docs/self-host.md](../docs/self-host.md) — standalone bootstrap
-- [docs/vps-sandbox/README.md](../docs/vps-sandbox/README.md) — VPS / Docker index
-- [docs/vps-sandbox/runtime-topology.md](../docs/vps-sandbox/runtime-topology.md) — process layout, paths, boot order
-- [docs/vps-sandbox/instance-agent-protocol.md](../docs/vps-sandbox/instance-agent-protocol.md) — optional fleet sidecar (heartbeats, release updates)
-- [docs/vps-sandbox/control-plane.md](../docs/vps-sandbox/control-plane.md) — proprietary managed hosting (not in this repo)

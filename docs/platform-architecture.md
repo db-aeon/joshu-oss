@@ -181,7 +181,7 @@ Hermes app_gui_action → POST /app-gui-actions/enqueue
 | [`src/agUiApi.ts`](../src/agUiApi.ts) | SSE adapter |
 | [`packages/app-agent/`](../packages/app-agent/) | Browser handlers + chat panel |
 
-Voice uses a separate Realtime wire — see [`vps-sandbox/web-voice.md`](vps-sandbox/web-voice.md).
+Voice uses a separate Realtime wire.
 
 ## Memory recall (apps)
 
