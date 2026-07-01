@@ -1,6 +1,5 @@
 /**
  * Host bind-mounted dist/ provenance — written by instance-agent after image sync.
- * See docs/vps-sandbox/instance-agent-protocol.md
  */
 
 import { access, readFile } from "node:fs/promises";

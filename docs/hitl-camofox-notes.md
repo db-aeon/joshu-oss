@@ -1,8 +1,7 @@
 # HITL Camofox Notes
 
 Working notes for the jWeb (human-in-the-loop) browser stack: Joshu, Hermes,
-Camofox, noVNC, and ArozOS subservices. For VPS layout see
-[`vps-sandbox/runtime-topology.md`](vps-sandbox/runtime-topology.md).
+Camofox, noVNC, and ArozOS subservices.
 
 ## Current shape
 

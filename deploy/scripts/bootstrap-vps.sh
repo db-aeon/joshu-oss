@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Cloud-init / first-boot script for a fresh Hetzner (or other) VPS.
+# Cloud-init / first-boot script for a fresh VPS.
 set -euo pipefail
 
 JOSHU_REPO="${JOSHU_REPO:-https://github.com/your-org/joshu.git}"

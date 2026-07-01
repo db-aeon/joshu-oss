@@ -532,14 +532,12 @@ Joshu exposes **read-only** brain routes on port **8788** (proxied when embedded
 
 When `JOSHU_READ_API_KEY` is set (VPS: same value as `HERMES_API_KEY` from control plane), pass `Authorization: Bearer <key>`. **File writes** use Hermes filesystem tools only; gbrain MCP is read-only for agents.
 
-**Phone voice (`realtime_s2s`) does not use this API.** It routes all personal reads through Hermes → gbrain MCP via `ask_joshu`, avoiding PGLite lock contention with `gbrain serve`. See [vps-sandbox/voice-realtime.md](vps-sandbox/voice-realtime.md).
+**Phone voice (`realtime_s2s`) does not use this API.** It routes all personal reads through Hermes → gbrain MCP via `ask_joshu`, avoiding PGLite lock contention with `gbrain serve`.
 
 ## Related
 
 - [connectors.md](connectors.md) — mail/calendar mirrors, cron, body extraction, gbrain slugs, hard reset
 - [box-state.md](box-state.md#hard-factory-reset) — personal wipe including Composio + gbrain reinit
-- [vps-sandbox/voice-realtime.md](vps-sandbox/voice-realtime.md) — speech-to-speech phone voice
 - [local-installation.md](local-installation.md)
 - [self-host.md](self-host.md) — VPS deploy and health checks
-- [vps-sandbox/runtime-topology.md](vps-sandbox/runtime-topology.md)
 - EA filing templates: [`templates/ea/`](../templates/ea/)

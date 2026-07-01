@@ -25,7 +25,7 @@ Shortcut format: [`arozos-desktop-shortcuts.md`](arozos-desktop-shortcuts.md).
 | Topic | Doc |
 |-------|-----|
 | Self-host (standalone Docker) | [`self-host.md`](self-host.md) |
-| Hetzner Ubuntu quickstart | [`vps-sandbox/hetzner-quickstart.md`](vps-sandbox/hetzner-quickstart.md) |
+| Ubuntu VPS quickstart | [`vps-quickstart.md`](vps-quickstart.md) |
 | Box state / factory reset | [`box-state.md`](box-state.md) |
 | Local dev install | [`local-installation.md`](local-installation.md) |
 | Hermes integration (skills, gateway, env) | [`hermes-integration.md`](hermes-integration.md) |
@@ -41,7 +41,6 @@ Shortcut format: [`arozos-desktop-shortcuts.md`](arozos-desktop-shortcuts.md).
 | Platform smoke test | `npm run test:platform-architecture` |
 | App store / sideload / publishers | [`APP_STORE.md`](APP_STORE.md) |
 | Third-party licenses | [`THIRD_PARTY.md`](THIRD_PARTY.md) |
-| VPS / Docker architecture | [`vps-sandbox/README.md`](vps-sandbox/README.md) |
 | Vanilla ArozOS theme | [`design/README.md`](design/README.md) |
 
 ## Managed hosting

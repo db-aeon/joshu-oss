@@ -269,4 +269,3 @@ Until that agreement exists, third-party distribution is **sideload at your own 
 - [COMMERCIAL_LICENSE.md](../COMMERCIAL_LICENSE.md) — engine commercial terms (notice)
 - [TRADEMARK.md](../TRADEMARK.md) — naming and wordmark
 - [THIRD_PARTY.md](THIRD_PARTY.md) — engine dependencies (not app catalog)
-- [control-plane.md](vps-sandbox/control-plane.md) — managed catalog (proprietary)

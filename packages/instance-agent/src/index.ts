@@ -1,6 +1,5 @@
 /**
  * Joshu instance agent — polls control plane, reports Joshu health, executes commands.
- * See docs/vps-sandbox/instance-agent-protocol.md
  */
 
 import "dotenv/config";

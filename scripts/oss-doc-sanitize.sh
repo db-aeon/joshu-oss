@@ -32,7 +32,6 @@ find "${OUT_DIR}/docs" -type f \( -name '*.md' -o -name '*.json' \) -print0 |
       -e 's|arozos/web-overlays/aroz-paper-shell\.css|arozos/web-overlays-vanilla/aroz-vanilla-shell.css|g' \
       -e 's|arozos/web-overlays/aroz-jchat-tray\.js|arozos/web-overlays-vanilla/aroz-jchat-tray.js|g' \
       -e 's|arozos/web-overlays/|arozos/web-overlays-vanilla/|g' \
-      -e 's|vps-sandbox/control-plane-portal\.md|vps-sandbox/control-plane.md|g' \
       -e 's|apps/control-plane/|joshu-control-plane/|g' \
       -e 's|joshu-identity\.md|self-host.md#identity-without-control-plane|g' \
       -e 's|Joshu-SOP/ea-for-joshu\.md|hermes-integration.md|g' \

@@ -1,12 +1,12 @@
-# Hetzner Ubuntu quickstart (self-host)
+# VPS Ubuntu quickstart (self-host)
 
-Step-by-step: create a Hetzner VPS, download Joshu from GitHub, set your hostname, run the installer, open the desktop. **API keys** (OpenRouter) are added in the **Welcome** app after first login — not on the command line.
+Step-by-step: create a VPS, download Joshu from GitHub, set your hostname, run the installer, open the desktop. **API keys** (OpenRouter) are added in the **Welcome** app after first login — not on the command line.
 
-No proprietary control plane — this is **standalone self-host** only. Control-plane managed boxes skip Welcome's Connect AI step (keys are provisioned automatically).
+This is **standalone self-host** only.
 
 **You need before you start:**
 
-- A [Hetzner Cloud](https://console.hetzner.cloud/) account
+- A cloud provider account (e.g. AWS, DigitalOcean, Hetzner, Linode)
 - A domain you control (for HTTPS), e.g. `mybox.example.com`
 
 **Example values used below** (replace with yours):
@@ -15,19 +15,19 @@ No proprietary control plane — this is **standalone self-host** only. Control-
 | --- | --- |
 | VPS public IP | `203.0.113.50` |
 | Hostname | `mybox.example.com` |
-| Release image | `ghcr.io/db-aeon/joshu-oss:0.1.31` (see [`deploy/RELEASE.json`](../../deploy/RELEASE.json)) |
+| Release image | `ghcr.io/db-aeon/joshu-oss:0.1.31` (see [`deploy/RELEASE.json`](../deploy/RELEASE.json)) |
 
 ---
 
-## Step 1 — Create the Hetzner server
+## Step 1 — Create the server
 
-1. Open [Hetzner Cloud Console](https://console.hetzner.cloud/) → your project → **Add server**.
+1. Open your cloud provider's console and **Add a new server/droplet/instance**.
 2. **Image:** Ubuntu **24.04**
-3. **Type:** **CPX31** (8 GB RAM) or larger — **2 GB plans OOM** under Postgres + Hermes + Camofox
-4. **Location:** pick a region close to you (`ash` US, `nbg1` / `fsn1` EU)
+3. **Size:** **8 GB RAM** or larger — **2 GB plans OOM** under Postgres + Hermes + Camofox
+4. **Location:** pick a region close to you
 5. **SSH key:** add your public key (so you can `ssh root@…`)
 6. **Firewall (recommended):** allow inbound **22**, **80**, **443**
-7. Click **Create & buy now**
+7. Click **Create**
 8. Copy the server **IPv4** address from the dashboard.
 
 ---
@@ -104,7 +104,7 @@ Save: **Ctrl+O** Enter, **Ctrl+X**.
 
 You do **not** need to set `OPENROUTER_API_KEY`, `HERMES_API_KEY`, or `API_SERVER_KEY` here — bootstrap generates gateway secrets; Welcome collects OpenRouter after login.
 
-Pin versions from [`deploy/RELEASE.json`](../../deploy/RELEASE.json) when upgrading an existing box.
+Pin versions from [`deploy/RELEASE.json`](../deploy/RELEASE.json) when upgrading an existing box.
 
 ---
 
@@ -196,7 +196,7 @@ curl -fsS https://mybox.example.com/joshu/api/hermes-dashboard/status
 
 Voice is **on by default** for OSS self-host when `JOSHU_VOICE_IMAGE_REF` is set in `deploy/.env.vps.example` (bootstrap enables `voice-rt` automatically). You only need a **Gemini API key** — add it in **Welcome → Connect AI** (optional field) or on the **Review** step if you skipped it earlier. No manual `instance.env` edits required.
 
-If you disabled voice or run an older box, see [`deploy/README.md`](../../deploy/README.md) for compose profile `voice-rt`.
+If you disabled voice or run an older box, see [`deploy/README.md`](../deploy/README.md) for compose profile `voice-rt`.
 
 ---
 
@@ -265,14 +265,14 @@ docker volume rm deploy_joshu_arozos 2>/dev/null || true   # if down -v left a s
 
 | Problem | What to check |
 | --- | --- |
-| `docker pull` → `registry: denied` | Image tag not published yet, or GHCR package still private. Confirm tag in [`deploy/RELEASE.json`](../../deploy/RELEASE.json). After a release build, `docker pull` should work without login. |
+| `docker pull` → `registry: denied` | Image tag not published yet, or GHCR package still private. Confirm tag in [`deploy/RELEASE.json`](../deploy/RELEASE.json). After a release build, `docker pull` should work without login. |
 | Certificate error in browser | DNS not pointing at VPS yet |
-| Health `curl` returns 503 | Hermes still starting — wait 2–5 min; check `components.hermes.ok` in JSON. On **2 GB** plans boot can take longer or OOM — use **CPX31 (8 GB)**. |
+| Health `curl` returns 503 | Hermes still starting — wait 2–5 min; check `components.hermes.ok` in JSON. On **2 GB** plans boot can take longer or OOM — use **8 GB RAM**. |
 | Health `curl` fails (connection error) | Ports 80/443 open; wait a few minutes after bootstrap |
 | Chat empty / 401 | Add OpenRouter in **Welcome → Connect AI**, or check gateway keys in `instance.env` |
 | Desktop icons broken (placeholder images) | Image **&lt; 0.1.30** or theme not applied — `git pull` + restart stack. **0.1.31+** bakes icons + vanilla chrome at build and re-applies on boot. |
 | Desktop has icons but no window chrome | Same — after login, DevTools → Network should load `aroz-vanilla-shell.css` (unauthenticated curl gets 307; see Step 7) |
-| Site works then **502** / box “down” for minutes | `joshu-stack` crash loop — `docker compose logs joshu-stack`. Use **CPX31 (8 GB)** or larger; 2 GB hosts OOM. |
+| Site works then **502** / box “down” for minutes | `joshu-stack` crash loop — `docker compose logs joshu-stack`. Use **8 GB RAM** or larger; 2 GB hosts OOM. |
 | Locked out of ArozOS login | No email reset — use SSH script or admin temporary password. See [Forgot ArozOS password](#forgot-arozos-password-self-host). |
 | Hermes Admin **Cannot GET /joshu/hermes-admin/** | VPS uses **direct mode** — open `https://hermes-admin.mybox.example.com/` (not `/joshu/`). Add DNS **A** record ([Step 2](#step-2--point-dns-at-the-server)). |
 | System Settings still shows imuslab / old About tab | Close Settings window entirely, hard-refresh desktop. On **0.1.31+** branding is in the image; host bind-mounts `web-overlays-vanilla/` for faster iteration without rebuild. |
@@ -280,14 +280,14 @@ docker volume rm deploy_joshu_arozos 2>/dev/null || true   # if down -v left a s
 
 ### Stack crash loop (502 / intermittent outage)
 
-Hetzner VPS instances do **not** sleep like a laptop. Intermittent **502** from Caddy almost always means `joshu-stack` is restarting (`docker inspect deploy-joshu-stack-1 --format '{{.RestartCount}}'`).
+VPS instances do **not** sleep like a laptop. Intermittent **502** from Caddy almost always means `joshu-stack` is restarting (`docker inspect deploy-joshu-stack-1 --format '{{.RestartCount}}'`).
 
 ```bash
 docker compose -f /opt/joshu/deploy/docker-compose.yml --env-file /etc/joshu/instance.env logs joshu-stack --tail 80
 curl -fsS http://127.0.0.1:8788/joshu/api/instance/health | head -c 200
 ```
 
-Use **CPX31 (8 GB RAM)** or larger — CX/2 GB hosts OOM under Postgres + Hermes + Camofox.
+Use a server with **8 GB RAM** or larger — 2 GB hosts OOM under Postgres + Hermes + Camofox.
 
 ### Desktop icons or missing chrome (older images only)
 
@@ -306,8 +306,6 @@ Hard-refresh the browser (Cmd+Shift+R).
 
 ## Next steps
 
-- [welcome-onboarding.md](../welcome-onboarding.md) — Welcome wizard + Connect AI
-- [connectors.md](../connectors.md) — mail and calendar
-- [self-host.md](../self-host.md) · [deploy/README.md](../../deploy/README.md)
-
-Managed hosting (control plane) — [control-plane.md](control-plane.md).
+- [welcome-onboarding.md](welcome-onboarding.md) — Welcome wizard + Connect AI
+- [connectors.md](connectors.md) — mail and calendar
+- [self-host.md](self-host.md) · [deploy/README.md](../deploy/README.md)

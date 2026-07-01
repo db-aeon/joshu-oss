@@ -40,9 +40,6 @@ Env:
   JOSHU_VOICE_MODE=legacy | realtime | realtime_s2s
   TWILIO_LOCAL_PROXY_PORT=8790
   TWILIO_AUTH_TOKEN, TWILIO_MEDIA_STREAM_SECRET
-
-Docs: docs/vps-sandbox/phone-voice-local-test.md
-      docs/vps-sandbox/voice-realtime.md
 EOF
 }
 

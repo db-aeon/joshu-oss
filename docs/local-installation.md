@@ -45,8 +45,7 @@ OPENROUTER_API_KEY=sk-or-...
 
 Joshu writes `model.provider` / `model.default` from those vars into
 `~/.hermes/config.yaml` on gateway start and syncs `OPENROUTER_API_KEY` into
-`~/.hermes/.env`. VPS sandboxes use the same OpenRouter defaults via control-plane
-`DEFAULT_OPENROUTER_API_KEY` and `DEFAULT_JOSHU_HERMES_*`.
+`~/.hermes/.env`.
 
 When Hermes is needed, Joshu starts the gateway automatically with:
 
@@ -435,14 +434,14 @@ Full VNC / aspect-ratio / fingerprint notes:
 
 - In-app surfaces use [`packages/design-system`](../packages/design-system) via
   `@joshu/design-system` (tokens, typography, base CSS).
-- ArozOS desktop chrome is overlaid by **`aroz-paper-shell.css`** from the private
-  **`joshu-design`** pack when `JOSHU_DESIGN_PACK` is set (see below). OSS / missing
+- ArozOS desktop chrome is overlaid by **`aroz-paper-shell.css`** from the
+  design pack when `JOSHU_DESIGN_PACK` is set (see below). Missing
   design pack falls back to **`aroz-vanilla-shell.css`** (silver taskbar, pinstripe window
-  title bars, neutral menus — not the JDL peach/paper brand).
+  title bars, neutral menus).
 - `dev-arozos.sh` runs [`scripts/apply_arozos_joshu_theme.py`](../scripts/apply_arozos_joshu_theme.py)
   on the template `web/` tree after syncing upstream ArozOS, and again on
   `.local/arozos-data/web/` so `desktop.html` always links the shell stylesheet.
-- **`JOSHU_DESIGN_PACK`:** fleet builds set this explicitly. Local dev **auto-detects**
+- **`JOSHU_DESIGN_PACK`:** Local dev **auto-detects**
   a sibling `../joshu-design` checkout when the env var is unset (`scripts/dev-arozos.sh`).
   Without the design pack you get **vanilla OSS chrome** (black init splash wallpaper is
   normal; open a float window to confirm title-bar styling).
@@ -479,7 +478,7 @@ npm run box -- factory-reset --mode hard --confirm   # wipe personal state (see 
 
 **Hard factory reset** clears Desktop files, Hermes user config (including **`~/.hermes/skills/`** and **`cron/`**), Hindsight memories, gbrain index contents, and **Composio OAuth connections** (cloud-side disconnect so mail cron cannot re-sync). Restores factory desktop shortcuts. Joshu then **re-seeds joshu skills and re-applies the bundled-skills denylist** via `resyncHermesAfterBoxHardReset()` — start a **new jChat** session. Companion persona is not restored automatically; run `configure identity in /etc/joshu/instance.env (see self-host.md)` locally. Details: [`docs/box-state.md`](box-state.md#hard-factory-reset), [`hermes-integration — Disabled skills`](hermes-integration.md#disabled-skills-product-denylist).
 
-Factory vs personal layers, GCS durable storage (`aeon-joshu-box-snapshots`), VPS provision wiring, and Welcome onboarding: [`docs/box-state.md`](box-state.md), [`docs/welcome-onboarding.md`](welcome-onboarding.md). System Setting UI: **Settings → Joshu → Box State** (after `npm run dev:arozos`).
+Factory vs personal layers, GCS durable storage (`aeon-joshu-box-snapshots`), and Welcome onboarding: [`docs/box-state.md`](box-state.md), [`docs/welcome-onboarding.md`](welcome-onboarding.md). System Setting UI: **Settings → Joshu → Box State** (after `npm run dev:arozos`).
 
 ## Verification Commands
 

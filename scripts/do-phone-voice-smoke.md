@@ -1,6 +1,6 @@
 # DO sandbox + auto Twilio number smoke test
 
-Run after control-plane and GHCR image are configured ([`control-plane-local-provisioning.md`](../docs/vps-sandbox/control-plane-local-provisioning.md)).
+Run after control-plane and GHCR image are configured.
 
 ## Control plane env
 
@@ -49,4 +49,4 @@ On the droplet, set `JOSHU_VOICE_MODE=realtime`, `VOICE_STT_PROVIDER=openai`, `V
 
 Models: [gpt-realtime-whisper](https://developers.openai.com/api/docs/models/gpt-realtime-whisper) (STT), [gpt-4o-mini-tts](https://developers.openai.com/api/docs/models/gpt-4o-mini-tts) (TTS). Hermes still owns the LLM/tools layer.
 
-See [`voice-realtime.md`](../docs/vps-sandbox/voice-realtime.md).
+See `voice-realtime.md`.
