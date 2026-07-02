@@ -36,11 +36,19 @@ Add an `agent` block to `arozos/subservice/<your-app>/joshu.app.json`:
     "usesSkills": ["joshu-mail"],
     "headless": false,
     "guiActions": [
-      { "name": "openCompose", "description": "Open compose pane with optional draft fields" },
+      {
+        "name": "openCompose",
+        "description": "Open compose pane with optional draft fields",
+        "parameters": [
+          { "name": "subject", "type": "string" },
+          { "name": "body", "type": "string" }
+        ],
+        "voice": {
+          "shortcut": "compose",
+          "phrases": ["new email", "compose", "put in the draft"]
+        }
+      },
       { "name": "openSettings", "description": "Open settings pane" }
-    ],
-    "voiceCommands": [
-      { "name": "compose", "phrases": ["new email", "compose"], "action": "openCompose" }
     ],
     "actions": [
       { "name": "syncMirror", "description": "Headless server action (optional)" }
@@ -51,10 +59,10 @@ Add an `agent` block to `arozos/subservice/<your-app>/joshu.app.json`:
 
 | Field | Purpose |
 |-------|---------|
-| `guiActions[]` | Names the model may pass to **`app_gui_action`** — validated at enqueue time |
+| `guiActions[]` | GUI action contract — **`parameters`**, optional **`voice`** shortcut; Hermes **`app_gui_action`** + voice fast tools derive from here |
 | `usesSkills[]` | Shared platform skills (`joshu-mail`, `joshu-brain`, …) |
 | `skill` | Your bundled GUI skill (procedure when the app window is open) |
-| `voiceCommands[]` | Phrase → action mapping for Realtime voice (bypasses Hermes) |
+| `voiceCommands[]` | **Deprecated** — use `guiActions[].voice` instead |
 | `actions[]` | Headless only → `POST /joshu/api/apps/:id/invoke` |
 
 Validate:
@@ -80,14 +88,34 @@ resolve: {
 },
 ```
 
-Import chat styles once inside your bridge or panel: `@joshu/app-agent/agentChat.css` (bundled from `JoshuAgentChatPanel`).
+Import chat styles once inside your bridge or panel:
 
-### Step 4 — `guiRef` + bridge pattern
+```typescript
+import "@joshu/jchat-ui/jchatShell.css";
+import "@joshu/jchat-ui/jchatThread.css";
+import "@joshu/app-agent/agentChat.css"; // slide-out toggle + panel positioning
+```
+
+Use **`JChatShell`** from `@joshu/jchat-ui` for the shared status strip + history drawer + thread slot. Embedded apps use **`JChatBubbleDock`** (Messenger-style Chat Head) via **`JoshuEmbeddedAppAgent`** → **`JoshuAgentChatPanel`**:
+
+- **Persistent avatar head** (companion portrait from `/joshu/api/instance/identity`) — click toggles the floating panel open/closed
+- **Mic badge** on the head toggles Realtime S2S voice without opening chat (`voice` prop)
+- **Message bubbles** show companion + user avatars
+
+```typescript
+import "@joshu/jchat-ui/jchatBubble.css";
+import "@joshu/jchat-ui/jchatShell.css";
+import "@joshu/jchat-ui/jchatThread.css";
+```
+
+### Step 4 — `guiRef` + embedded chat
 
 Expose imperative GUI APIs from your app root (same handlers for voice, chat, and tests):
 
 ```typescript
 // apps/my-app/src/main.tsx
+import { useAppAgentChatSession } from "@joshu/app-agent";
+
 export type MyGuiAgentApi = {
   getGuiSnapshot: () => Record<string, unknown>;
   openCompose: (opts?: { to?: string; subject?: string; body?: string }) => void;
@@ -96,32 +124,70 @@ export type MyGuiAgentApi = {
 
 const guiRef = useRef<MyGuiAgentApi | null>(null);
 guiRef.current = { getGuiSnapshot, openCompose, setPane, /* … */ };
+
+const { threadId: chatThreadId, startNewChat } = useAppAgentChatSession({
+  appId: "my-app",
+  scope: "default", // mailbox slug, project id, etc.
+});
 ```
 
-Chat thread id — **separate from voice** so you can reset chat without losing voice state:
+Define GUI action handlers once (names must match manifest `guiActions[]`):
 
 ```typescript
-// apps/my-app/src/chatThreadId.ts — copy pattern from jMail
-// threadId: `${appId}:${mailbox}:chat:${rev}`  (rev in sessionStorage)
+// apps/my-app/src/myGuiActions.ts
+export function createMyGuiActions(guiRef: MutableRefObject<MyGuiAgentApi | null>) {
+  return [
+    {
+      name: "openCompose",
+      description: "Open compose pane with optional draft fields",
+      handler: async (args) => {
+        guiRef.current?.openCompose(args);
+        return "Compose opened.";
+      },
+    },
+  ];
+}
 ```
 
-Bridge component (see [`apps/jmail/src/mailAgentBridge.tsx`](../apps/jmail/src/mailAgentBridge.tsx)):
+Bridge component — **`JoshuEmbeddedAppAgent`** wires jChat UI + CopilotKit + GUI context:
 
 ```tsx
-<MailAgentBridge
+// apps/my-app/src/myAgentBridge.tsx
+import { JoshuEmbeddedAppAgent } from "@joshu/app-agent";
+
+export function MyAgentBridge({ guiRef, threadId, onNewChat }) {
+  const guiActions = useMemo(() => createMyGuiActions(guiRef), [guiRef]);
+  return (
+    <JoshuEmbeddedAppAgent
+      manifest={MY_MANIFEST}
+      threadId={threadId}
+      guiRef={guiRef}
+      guiReadableDescription="Current my-app UI state (activeView, selection, …)"
+      guiActions={guiActions}
+      chatTitle="My app assistant"
+      onNewChat={onNewChat}
+    />
+  );
+}
+```
+
+Mount in your app root:
+
+```tsx
+<MyAgentBridge
   key={chatThreadId}
   guiRef={guiRef}
   threadId={chatThreadId}
-  onNewChat={startNewAgentChat}  // rotates rev + DELETE /joshu/api/ag-ui/session
+  onNewChat={startNewChat}
 />
 ```
 
-Inside the bridge:
+**What `JoshuEmbeddedAppAgent` does for you:**
 
 1. `JoshuAppAgentProvider` + `createAppAgentConfig({ manifest, threadId, apiBase: "/joshu/api" })`
 2. `useJoshuGuiReadable` — snapshot injected into Hermes system prompt each turn
-3. `useJoshuGuiAction` — **one registration per `guiActions[]` name**; handler calls `guiRef.current?.…`
-4. `JoshuAgentChatPanel` — expandable rail; pass `onNewChat` for a fresh session
+3. `useJoshuGuiAction` — one registration per `guiActions[]` entry
+4. `JoshuAgentChatPanel` — expandable rail using shared `@joshu/jchat-ui` thread UI (`JChatCopilotThread`)
 
 `useJoshuGuiAction` does two jobs:
 
@@ -129,6 +195,8 @@ Inside the bridge:
 - Registers an **`app_action` dispatch handler** (for `CUSTOM` SSE events)
 
 Both call the same `handler` — you only write GUI logic once.
+
+**Lower-level:** compose `JoshuAppAgentProvider` + `useJoshuGuiReadable` + `useJoshuGuiAction` + `JoshuAgentChatPanel` manually when you need a custom layout. Export `JChatCopilotThread` for fully custom chrome.
 
 ### Step 5 — Bundled GUI skill
 
@@ -358,7 +426,7 @@ Plugin reference: [hermes-integration — joshu-app-gui](hermes-integration.md#j
 | **Voice** | `jmail:owner@example.com` | (voice WebSocket — separate) |
 | jChat | UUID session id | `joshu-hermes-chat:{sessionId}` |
 
-Chat revision (`:chat:{rev}`) lives in `sessionStorage` (jMail: key `jmail-agent-chat-rev`). **New chat** in the panel:
+Chat revision (`:chat:{rev}`) is managed by **`useAppAgentChatSession`** (`sessionStorage` key `${appId}-agent-chat-rev`). **New chat** in the panel:
 
 1. `DELETE /joshu/api/ag-ui/session?threadId=…` (localhost only)
 2. Bumps revision → remounts CopilotKit with a fresh thread
@@ -437,17 +505,20 @@ function MyAgentBridge({ guiRef, threadId, onNewChat }) {
 
 ## Voice fast path
 
-Pass manifest `voiceCommands` when starting voice:
+Declare **`guiActions[].voice`** on the manifest. Voice-realtime loads tools from `GET /joshu/api/ag-ui/info?appId=` (`voiceTools` in the response). Pass only `appId` + GUI snapshot from the client:
 
 ```typescript
 startJoshuVoiceSession({
-  sessionId: "my-app:mailbox",
-  surface: { appId: "my-app", voiceCommands: manifest.agent?.voiceCommands },
+  sessionId: "my-app:scope",
+  chatSessionId: chatThreadId,
+  surface: { appId: "my-app", threadId: chatThreadId, guiSnapshot: guiRef.current?.getGuiSnapshot() },
   onAppAction: ({ action, args }) => {
     // same handlers as useJoshuGuiAction
   },
 });
 ```
+
+Or use `resolveManifestVoiceTools(manifest.agent?.guiActions)` from `@joshu/app-agent` when wiring `useJoshuVoiceCommands`.
 
 Wire event: `app_action` on the voice WebSocket (parallel to `desktop_action`).
 

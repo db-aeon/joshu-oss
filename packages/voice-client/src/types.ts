@@ -10,6 +10,8 @@ export type JoshuVoiceClientOptions = {
   /** Optional app surface for manifest voiceCommands (browser_start). */
   surface?: {
     appId: string;
+    threadId?: string;
+    guiSnapshot?: Record<string, unknown>;
     voiceCommands?: Array<{
       name: string;
       phrases: string[];

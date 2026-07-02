@@ -9,6 +9,10 @@ export type JChatCopilotThreadProps = {
   emptyText?: string;
   placeholder?: string;
   disabled?: boolean;
+  companionAvatarUrl?: string;
+  companionName?: string;
+  userAvatarUrl?: string | null;
+  userName?: string;
 };
 
 /** CopilotKit agent run wired to the shared jChat thread UI. */
@@ -17,6 +21,10 @@ export function JChatCopilotThread({
   emptyText,
   placeholder,
   disabled = false,
+  companionAvatarUrl,
+  companionName,
+  userAvatarUrl,
+  userName,
 }: JChatCopilotThreadProps): React.ReactElement {
   const { copilotkit } = useCopilotKit();
   const { agent } = useAgent({
@@ -56,6 +64,10 @@ export function JChatCopilotThread({
       disabled={disabled}
       emptyText={emptyText}
       placeholder={placeholder}
+      companionAvatarUrl={companionAvatarUrl}
+      companionName={companionName}
+      userAvatarUrl={userAvatarUrl}
+      userName={userName}
     />
   );
 }

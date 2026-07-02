@@ -10,6 +10,12 @@
 
 **Joshu** is an open-source, local-first app workspace designed for always-on deployments. It integrates the [Hermes Agent](https://github.com/NousResearch/hermes-agent) with a suite of desktop-class web applications, providing a private, self-hosted AI executive assistant environment.
 
+> **💡 Looking for an easy, one-click solution?**  
+> Visit [joshu.me](https://joshu.me) for our fully managed, ready-to-use paid service.
+
+> **⚠️ Early Stage Notice**  
+> This open-source repository is in a **VERY EARLY** stage of development. While every effort has been made to get the stack up and running for the community, it has not been thoroughly tested. It is provided "as is" with no warranty. Expect rough edges and potential breaking changes!
+
 ## ✨ Features
 
 - 🤖 **Hermes AI Integration:** Deeply integrated with Hermes for agentic workflows, scheduling, and memory.

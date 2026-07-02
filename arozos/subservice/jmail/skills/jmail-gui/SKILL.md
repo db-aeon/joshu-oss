@@ -45,13 +45,15 @@ When `activeView` is `thread`, describe **`openThread`**, not stale compose stat
 - Invoke actions: `connectorsStatus`, `syncMirror`.
 - MCP send rules unchanged (Nylas agent mailbox, action guard).
 
-## Voice fast commands (no Hermes)
+## Voice fast commands (manifest guiActions[].voice)
 
-| User says | Tool / action |
-|-----------|----------------|
-| "new email", "compose" | `openCompose` via app voice tool |
-| "search mail for …" | `searchMail({ query })` |
-| Multi-step / ambiguous | `think` → Hermes + `jmail-gui` / `joshu-mail` |
+When jMail is open, voice tools are built from `guiActions[].voice` on the manifest (parameters inherit from the guiAction):
+
+| User says | Gemini tool | guiAction |
+|-----------|-------------|-----------|
+| "new email", "compose", "put in the draft" + body | `app_jmail_compose({ body, subject, to })` | `openCompose` |
+| "search mail for …" | `app_jmail_search({ query })` | `searchMail` |
+| Multi-step / ambiguous | `think` → Hermes + `app_gui_action` | — |
 
 ## Frontend tools reference
 

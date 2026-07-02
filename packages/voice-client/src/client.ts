@@ -72,6 +72,20 @@ export class JoshuVoiceClient {
     this.paused = paused;
   }
 
+  /** Push embedded app GUI context to voice-realtime (register_surface). */
+  updateSurface(surface: NonNullable<JoshuVoiceClientOptions["surface"]>): void {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+    this.ws.send(
+      JSON.stringify({
+        event: "register_surface",
+        appId: surface.appId,
+        threadId: surface.threadId,
+        guiSnapshot: surface.guiSnapshot,
+        voiceCommands: surface.voiceCommands,
+      }),
+    );
+  }
+
   async start(): Promise<void> {
     if (this.running) return;
     this.running = true;
@@ -104,6 +118,8 @@ export class JoshuVoiceClient {
         sessionId: this.opts.sessionId,
         chatSessionId: this.opts.chatSessionId,
         appId: this.opts.surface?.appId,
+        threadId: this.opts.surface?.threadId,
+        guiSnapshot: this.opts.surface?.guiSnapshot,
         voiceCommands: this.opts.surface?.voiceCommands,
       }),
     );

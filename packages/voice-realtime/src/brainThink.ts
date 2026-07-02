@@ -1,6 +1,13 @@
 import { HERMES_API_BASE_URL, HERMES_API_KEY, HERMES_MODEL } from "./config.js";
 import { buildThinkSystemPrompt, resolveJoshuIdentity } from "./joshuIdentity.js";
 import type { DesktopSurfaceAction } from "./voiceSurfaceSync.js";
+import {
+  buildAppAgentSessionKey,
+  buildEmbeddedAppThinkMessages,
+  drainAppGuiActionsFromJoshu,
+  type AppGuiActionWire,
+  type EmbeddedAppSurfaceContext,
+} from "./voiceAppContext.js";
 
 export type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
 
@@ -15,6 +22,10 @@ export type ThinkParams = {
   onDelta?: (delta: string) => void;
   /** Present app/file on the ArozOS desktop (Hermes desktop_open tool). */
   onDesktopAction?: (action: DesktopSurfaceAction) => void;
+  /** Execute app_gui_action results in the embedded app shell. */
+  onAppAction?: (action: AppGuiActionWire) => void;
+  /** Embedded app context — aligns Hermes session + prompts with AG-UI chat. */
+  appContext?: EmbeddedAppSurfaceContext;
   /** screen = rich markdown for UI; phone = plain speakable text. */
   presentation?: "screen" | "phone";
 };
@@ -47,7 +58,11 @@ function parseSseEvent(raw: string): { name: string; data: string } {
 
 export async function runJoshuThink(params: ThinkParams): Promise<string> {
   const base = HERMES_API_BASE_URL.replace(/\/+$/, "");
-  const sessionKey = `joshu-hermes-chat:${params.callSid}`;
+  const appCtx = params.appContext;
+  const hermesSessionId = appCtx?.threadId ?? params.callSid;
+  const sessionKey = appCtx
+    ? buildAppAgentSessionKey(appCtx.appId, appCtx.threadId)
+    : `joshu-hermes-chat:${params.callSid}`;
   const voiceThinkKey = `voice-think:${params.callSid}:${params.jobId}`;
   const forScreen = params.presentation === "screen";
 
@@ -56,6 +71,7 @@ export async function runJoshuThink(params: ThinkParams): Promise<string> {
       role: "system",
       content: buildThinkSystemPrompt(identity, forScreen ? "screen" : "phone"),
     },
+    ...(appCtx ? buildEmbeddedAppThinkMessages(appCtx) : []),
     {
       role: "user",
       content: [
@@ -73,7 +89,7 @@ export async function runJoshuThink(params: ThinkParams): Promise<string> {
     headers: {
       Authorization: `Bearer ${HERMES_API_KEY}`,
       "Content-Type": "application/json",
-      "X-Hermes-Session-Id": params.callSid,
+      "X-Hermes-Session-Id": hermesSessionId,
       "X-Hermes-Session-Key": sessionKey,
     },
     body: JSON.stringify({
@@ -96,6 +112,7 @@ export async function runJoshuThink(params: ThinkParams): Promise<string> {
   const flushDesktopActions = async (): Promise<void> => {
     if (!params.onDesktopAction) return;
     const keys = [sessionKey, voiceThinkKey];
+    if (appCtx) keys.push(`joshu-hermes-chat:${appCtx.threadId}`);
     const seen = new Set<string>();
     for (const key of keys) {
       const actions = await drainDesktopActionsFromJoshu(key);
@@ -106,6 +123,31 @@ export async function runJoshuThink(params: ThinkParams): Promise<string> {
         params.onDesktopAction(action);
       }
     }
+  };
+
+  const flushAppGuiActions = async (): Promise<void> => {
+    if (!params.onAppAction || !appCtx) return;
+    const keys = [
+      sessionKey,
+      `joshu-hermes-chat:${appCtx.threadId}`,
+      voiceThinkKey,
+      `joshu-hermes-chat:${params.callSid}`,
+    ];
+    const seen = new Set<string>();
+    for (const key of keys) {
+      const actions = await drainAppGuiActionsFromJoshu(key);
+      for (const action of actions) {
+        const sig = `${action.appId}:${action.action}:${JSON.stringify(action.args ?? {})}`;
+        if (seen.has(sig)) continue;
+        seen.add(sig);
+        params.onAppAction(action);
+      }
+    }
+  };
+
+  const flushSurfaceActions = async (): Promise<void> => {
+    await flushDesktopActions();
+    await flushAppGuiActions();
   };
 
   while (true) {
@@ -124,7 +166,10 @@ export async function runJoshuThink(params: ThinkParams): Promise<string> {
           const parsed = JSON.parse(event.data) as { tool?: string; status?: string };
           const toolName = parsed.tool?.replace(/^.*\./, "") ?? "";
           if (toolName === "desktop_open" && parsed.status === "completed") {
-            await flushDesktopActions();
+            await flushSurfaceActions();
+          }
+          if (toolName === "app_gui_action" && parsed.status === "completed") {
+            await flushAppGuiActions();
           }
         } catch {
           /* ignore */
@@ -148,7 +193,7 @@ export async function runJoshuThink(params: ThinkParams): Promise<string> {
     }
   }
 
-  await flushDesktopActions();
+  await flushSurfaceActions();
 
   const name = identity.name;
   return finalText.trim() || `(No response from ${name}.)`;

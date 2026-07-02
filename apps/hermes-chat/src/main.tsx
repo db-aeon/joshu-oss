@@ -1,19 +1,19 @@
 import "@joshu/design-system/typography.css";
 import "@joshu/design-system/tokens.css";
 import "@joshu/design-system/base.css";
+import "@joshu/jchat-ui/jchatShell.css";
 import "@joshu/jchat-ui/jchatThread.css";
 import "./styles.css";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { JChatThread, type JChatAttachment, type JChatMessage, type JChatToolEvent } from "@joshu/jchat-ui";
+import { JChatShell, JChatThread, formatSessionWhen, type JChatAttachment, type JChatMessage, type JChatToolEvent } from "@joshu/jchat-ui";
 
 import { fetchVoiceStatus, startJoshuVoiceSession } from "./joshuVoice";
 import { executeDesktopAction, matchQuickDesktopOpen, openDesktopModule, type DesktopAction } from "./desktopActions";
 import {
   fetchChatSessionMessages,
   fetchChatSessions,
-  formatSessionWhen,
   type ChatSessionRow,
 } from "./chatSessions";
 import { syncJChatTray } from "./traySync";
@@ -175,7 +175,6 @@ function App() {
   const [status, setStatus] = useState<"checking" | "ready" | "error">("checking");
   const [statusText, setStatusText] = useState("Starting Hermes gateway if needed...");
   const [busy, setBusy] = useState(false);
-  const [videoOn, setVideoOn] = useState(true);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [chatSessions, setChatSessions] = useState<ChatSessionRow[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(false);
@@ -799,163 +798,85 @@ function App() {
   }, []);
 
   const micSupported = typeof navigator !== "undefined" && Boolean(navigator.mediaDevices?.getUserMedia);
-  const onAir = voiceInputOn && s2sVoiceAvailable;
-  const linkReady = status === "ready";
 
-  const openJWeb = useCallback(() => {
-    openDesktopModule("jWeb");
-  }, []);
-
-  const hangUp = useCallback(() => {
-    setVoiceInputOn(false);
-    ttsAbortRef.current?.abort();
-    if (ttsAudioRef.current) {
-      ttsAudioRef.current.pause();
-      ttsAudioRef.current.src = "";
-      ttsAudioRef.current = null;
-    }
-  }, []);
+  const historyItems = useMemo(
+    () =>
+      chatSessions.map((item) => ({
+        id: item.id,
+        title: item.title,
+        whenLabel: formatSessionWhen(item.lastActive),
+      })),
+    [chatSessions],
+  );
 
   return (
-    <main className="jchat-shell">
-      <header className={`jchat-status jchat-status-${status}`}>
-        <span className="jchat-status-dot" aria-hidden />
-        <span>{statusText}</span>
-        <div className="jchat-status-actions">
-          <button
-            type="button"
-            className={`jchat-link-btn ${historyOpen ? "jchat-link-btn-on" : ""}`}
-            aria-pressed={historyOpen}
-            aria-expanded={historyOpen}
-            onClick={() => setHistoryOpen((open) => !open)}
-          >
-            History
-          </button>
-          <button
-            type="button"
-            className="jchat-link-btn"
-            disabled={!composioEnabled}
-            title={composioEnabled ? "Open Connectors" : "Set COMPOSIO_API_KEY to enable"}
-            onClick={openConnectorsApp}
-          >
-            Connectors
-          </button>
-          <button
-            type="button"
-            className={`jchat-link-btn ${speechOutputOn ? "jchat-link-btn-on" : ""}`}
-            aria-pressed={speechOutputOn}
-            disabled={voiceInputOn && s2sVoiceAvailable}
-            onClick={() => toggleSpeechOutput()}
-          >
-            Speech {speechOutputOn ? "on" : "off"}
-          </button>
-        </div>
-      </header>
-
-      {voiceHint && <p className="voice-hint">{voiceHint}</p>}
-
-      <section className="jchat-stage" aria-label="Video presence">
-        {videoOn ? (
-          <img src={portraitUrl} alt={`${identity.name} portrait`} />
-        ) : (
-          <div className="jchat-stage-placeholder">Video off</div>
-        )}
-        {onAir && <span className="jchat-badge jchat-badge-onair">● ON AIR</span>}
-        {linkReady && <span className="jchat-badge jchat-badge-ready">LINK READY</span>}
-      </section>
-
-      <div className="jchat-controls" role="toolbar" aria-label="Call controls">
-        <button
-          type="button"
-          className={`jchat-ctrl ${voiceInputOn ? "jchat-ctrl-on" : ""} ${!micSupported || !s2sVoiceAvailable ? "jchat-ctrl-disabled" : ""}`}
-          aria-pressed={voiceInputOn}
-          aria-disabled={!micSupported || !s2sVoiceAvailable}
-          title={
-            s2sVoiceAvailable
-              ? "Voice mode — Realtime S2S"
-              : voiceHint || "Voice unavailable"
-          }
-          onClick={() => {
-            if (!micSupported || !s2sVoiceAvailable) {
-              setVoiceHint(
-                (prev) =>
-                  prev ||
-                  "Voice unavailable — ensure voice-realtime is running (npm run dev:arozos)",
-              );
-              return;
-            }
-            toggleVoiceInput();
-          }}
-        >
-          <span className="jchat-ctrl-icon" aria-hidden>
-            🎙
-          </span>
-          <span className="jchat-ctrl-label">Mic</span>
-        </button>
-        <button
-          type="button"
-          className={`jchat-ctrl ${videoOn ? "jchat-ctrl-on" : ""}`}
-          aria-pressed={videoOn}
-          onClick={() => setVideoOn((v) => !v)}
-        >
-          <span className="jchat-ctrl-icon" aria-hidden>
-            📹
-          </span>
-          <span className="jchat-ctrl-label">Video</span>
-        </button>
-        <button type="button" className="jchat-ctrl" onClick={openJWeb} title="Open jWeb to share your desk">
-          <span className="jchat-ctrl-icon" aria-hidden>
-            🖥
-          </span>
-          <span className="jchat-ctrl-label">Share Desk</span>
-        </button>
-        <button type="button" className="jchat-ctrl jchat-ctrl-hangup" onClick={hangUp} title="End voice session">
-          <span className="jchat-ctrl-icon" aria-hidden>
-            ✕
-          </span>
-          <span className="jchat-ctrl-label">Hang Up</span>
-        </button>
-      </div>
-
-      <div className={`jchat-split ${historyOpen ? "jchat-split-history-open" : ""}`}>
-        {historyOpen && (
-          <aside className="jchat-history" aria-label={`Recent chats with ${identity.name}`}>
-            <div className="jchat-history-head-row">
-              <h2 className="jchat-history-head">Recent chats</h2>
-              <button type="button" className="jchat-history-new" onClick={startNewChat} disabled={busy}>
-                New
-              </button>
-            </div>
-            <div className="jchat-history-list">
-              {sessionsLoading && chatSessions.length === 0 ? (
-                <p className="jchat-history-status">Loading…</p>
-              ) : sessionsError && chatSessions.length === 0 ? (
-                <p className="jchat-history-status jchat-history-status-error">{sessionsError}</p>
-              ) : chatSessions.length === 0 ? (
-                <p className="jchat-history-status">No past chats yet.</p>
-              ) : (
-                chatSessions.map((item) => (
-                  <button
-                    type="button"
-                    key={item.id}
-                    className={`jchat-history-item ${sessionId === item.id ? "jchat-history-item-active" : ""}`}
-                    onClick={() => void resumeSession(item.id)}
-                    disabled={busy}
-                  >
-                    <span className="jchat-history-icon" aria-hidden>
-                      💬
-                    </span>
-                    <span>
-                      <p className="jchat-history-title">{item.title}</p>
-                      <p className="jchat-history-time">{formatSessionWhen(item.lastActive)}</p>
-                    </span>
-                  </button>
-                ))
-              )}
-            </div>
-          </aside>
-        )}
-
+    <main className="jchat-app">
+      <JChatShell
+        status={status}
+        statusText={statusText}
+        hint={voiceHint ? <p className="voice-hint">{voiceHint}</p> : undefined}
+        historyOpen={historyOpen}
+        onHistoryToggle={() => setHistoryOpen((open) => !open)}
+        history={{
+          title: `Recent chats with ${identity.name}`,
+          ariaLabel: `Recent chats with ${identity.name}`,
+          items: historyItems,
+          activeId: sessionId,
+          onSelect: (id) => void resumeSession(id),
+          loading: sessionsLoading,
+          error: sessionsError,
+          onNewChat: startNewChat,
+          newChatDisabled: busy,
+        }}
+        headerActions={
+          <>
+            <button
+              type="button"
+              className={`jchat-pill-btn ${voiceInputOn ? "jchat-pill-btn-on" : ""}`}
+              aria-pressed={voiceInputOn}
+              disabled={!micSupported || !s2sVoiceAvailable}
+              title={
+                s2sVoiceAvailable
+                  ? voiceInputOn
+                    ? "Turn voice off"
+                    : "Voice mode — Realtime S2S"
+                  : voiceHint || "Voice unavailable"
+              }
+              onClick={() => {
+                if (!micSupported || !s2sVoiceAvailable) {
+                  setVoiceHint(
+                    (prev) =>
+                      prev ||
+                      "Voice unavailable — ensure voice-realtime is running (npm run dev:arozos)",
+                  );
+                  return;
+                }
+                toggleVoiceInput();
+              }}
+            >
+              Mic {voiceInputOn ? "on" : "off"}
+            </button>
+            <button
+              type="button"
+              className="jchat-link-btn"
+              disabled={!composioEnabled}
+              title={composioEnabled ? "Open Connectors" : "Set COMPOSIO_API_KEY to enable"}
+              onClick={openConnectorsApp}
+            >
+              Connectors
+            </button>
+            <button
+              type="button"
+              className={`jchat-link-btn ${speechOutputOn ? "jchat-link-btn-on" : ""}`}
+              aria-pressed={speechOutputOn}
+              disabled={voiceInputOn && s2sVoiceAvailable}
+              onClick={() => toggleSpeechOutput()}
+            >
+              Speech {speechOutputOn ? "on" : "off"}
+            </button>
+          </>
+        }
+      >
         <JChatThread
           messages={messages}
           draft={draft}
@@ -965,6 +886,9 @@ function App() {
           disabled={status === "error"}
           sendEnabled={!busy && status !== "error" && (draft.trim().length > 0 || attachments.length > 0)}
           emptyText={`Start a fresh session with ${identity.name}. Ask for research, mail, or attach an image.`}
+          companionAvatarUrl={portraitUrl}
+          companionName={identity.name}
+          userName={identity.ownerDisplayName}
           beforeComposer={
             <>
               {attachments.length > 0 ? (
@@ -997,7 +921,7 @@ function App() {
             </>
           }
         />
-      </div>
+      </JChatShell>
     </main>
   );
 }

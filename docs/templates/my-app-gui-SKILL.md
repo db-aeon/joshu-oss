@@ -58,4 +58,4 @@ Declare in `joshu.app.json` `agent.guiActions[]` and register matching `useJoshu
 
 ## Voice fast path (optional)
 
-Map manifest `voiceCommands` to the same handlers as `useJoshuGuiAction`.
+Map manifest `guiActions[].voice` to the same handlers as `useJoshuGuiAction` (legacy `voiceCommands[]` still supported).

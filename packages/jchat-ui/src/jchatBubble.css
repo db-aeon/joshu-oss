@@ -1,0 +1,262 @@
+/**
+ * Chat Heads / Messenger bubble dock — floating avatar + panel.
+ */
+
+.jchat-bubble-dock {
+  position: fixed;
+  bottom: 1.25rem;
+  z-index: 1200;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.65rem;
+  pointer-events: none;
+}
+
+.jchat-bubble-dock--right {
+  right: 1.25rem;
+  align-items: flex-end;
+}
+
+.jchat-bubble-dock--left {
+  left: 1.25rem;
+  align-items: flex-start;
+}
+
+.jchat-bubble-dock > * {
+  pointer-events: auto;
+}
+
+/* Floating panel card */
+.jchat-bubble-panel {
+  display: flex;
+  flex-direction: column;
+  max-height: min(32rem, calc(100vh - 7rem));
+  min-height: 14rem;
+  border-radius: 1rem;
+  border: var(--border-default, 1px solid rgba(13, 13, 13, 0.12));
+  background: var(--jchat-panel-bg, #faf7f2);
+  box-shadow:
+    0 12px 40px rgba(13, 13, 13, 0.18),
+    0 2px 8px rgba(13, 13, 13, 0.08);
+  overflow: hidden;
+  animation: jchat-bubble-panel-in 0.22s ease-out;
+}
+
+.jchat-bubble-dock--left .jchat-bubble-panel {
+  align-self: flex-start;
+}
+
+@keyframes jchat-bubble-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.75rem) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.jchat-bubble-panel .jchat-shell {
+  height: 100%;
+  min-height: 0;
+  padding: 0;
+}
+
+.jchat-bubble-panel .jchat-shell--embedded .jchat-split {
+  border: 0;
+  border-radius: 0;
+}
+
+/* Chat head FAB */
+.jchat-bubble-head-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.jchat-bubble-head {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 3.5rem;
+  height: 3.5rem;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+  box-shadow:
+    0 4px 14px rgba(13, 13, 13, 0.2),
+    0 0 0 2px rgba(255, 255, 255, 0.85);
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.jchat-bubble-head:hover {
+  transform: scale(1.04);
+}
+
+.jchat-bubble-head:active {
+  transform: scale(0.97);
+}
+
+.jchat-bubble-head--open {
+  box-shadow:
+    0 6px 18px rgba(13, 13, 13, 0.22),
+    0 0 0 3px var(--color-sage, #a3839a);
+}
+
+.jchat-bubble-head--activity .jchat-bubble-head-ring {
+  animation: jchat-head-pulse 1.6s ease-in-out infinite;
+}
+
+.jchat-bubble-dock[data-voice-active="true"] .jchat-bubble-head-ring {
+  border-color: var(--color-action-secondary, #00a86b);
+  animation: jchat-head-pulse 1.2s ease-in-out infinite;
+}
+
+.jchat-bubble-head-ring {
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  pointer-events: none;
+}
+
+@keyframes jchat-head-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.06);
+  }
+}
+
+/* Mic badge on head */
+.jchat-bubble-mic {
+  position: absolute;
+  right: -0.1rem;
+  bottom: -0.1rem;
+  display: grid;
+  place-items: center;
+  width: 1.45rem;
+  height: 1.45rem;
+  padding: 0;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: var(--color-surface-panel, #fff);
+  color: var(--color-ink, #0d0d0d);
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(13, 13, 13, 0.15);
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    transform 0.15s ease;
+}
+
+.jchat-bubble-mic:hover:not(:disabled) {
+  transform: scale(1.08);
+  background: var(--color-peach, #f5e6dc);
+}
+
+.jchat-bubble-mic--on {
+  background: var(--color-action-secondary, #00a86b);
+  color: #fff;
+}
+
+.jchat-bubble-mic:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Avatars in thread + head */
+.jchat-avatar {
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--color-surface-panel, #fff);
+  border: var(--border-default, 1px solid rgba(13, 13, 13, 0.1));
+}
+
+.jchat-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.jchat-avatar-initials {
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--color-sage, #a3839a);
+  line-height: 1;
+}
+
+.jchat-avatar--sm {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
+.jchat-avatar--md {
+  width: 1.75rem;
+  height: 1.75rem;
+}
+
+.jchat-avatar--lg {
+  width: 2.25rem;
+  height: 2.25rem;
+}
+
+.jchat-avatar--head {
+  width: 3.5rem;
+  height: 3.5rem;
+  border: none;
+}
+
+.jchat-avatar--head .jchat-avatar-initials {
+  font-size: 1rem;
+}
+
+/* Message rows with avatars */
+.jchat-bubble-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.35rem;
+  max-width: 96%;
+}
+
+.jchat-bubble-row-user {
+  align-self: flex-end;
+  flex-direction: row-reverse;
+}
+
+.jchat-bubble-row-assistant {
+  align-self: flex-start;
+}
+
+.jchat-bubble-row .jchat-bubble {
+  max-width: min(18rem, 100%);
+}
+
+.jchat-empty-with-avatar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.65rem;
+  margin: auto;
+  padding: 1rem 0.75rem;
+  max-width: 14rem;
+  text-align: center;
+}
+
+.jchat-empty-with-avatar .jchat-empty {
+  margin: 0;
+}

@@ -1,29 +1,44 @@
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 
-import type { AppGuiActionEvent, JoshuVoiceCommandDef } from "./types.js";
+import type { AppGuiActionEvent, JoshuAppAgentManifest } from "./types.js";
+import { resolveManifestVoiceTools } from "./types.js";
 
 export type VoiceSocketSend = (payload: Record<string, unknown>) => void;
 
 export type UseJoshuVoiceCommandsInput = {
   appId: string;
-  commands?: JoshuVoiceCommandDef[];
+  /** Manifest agent block — voice tools derived from guiActions[].voice. */
+  manifest?: Pick<JoshuAppAgentManifest, "agent">;
+  /** @deprecated Pass manifest.agent.guiActions[].voice instead */
+  commands?: Array<{
+    name: string;
+    phrases: string[];
+    action: string;
+    params?: string[];
+    description?: string;
+  }>;
   onAction: (event: AppGuiActionEvent) => void | Promise<void>;
   /** Parent supplies WS send(); hook registers surface voice tools when ready. */
   voiceSend?: VoiceSocketSend | null;
 };
 
-/** Wire manifest voiceCommands to voice-realtime app_action fast path. */
+/** Wire manifest guiActions[].voice to voice-realtime app_action fast path. */
 export function useJoshuVoiceCommands(input: UseJoshuVoiceCommandsInput): void {
-  const { appId, commands, onAction, voiceSend } = input;
+  const { appId, manifest, commands, onAction, voiceSend } = input;
+  const voiceTools = useMemo(
+    () =>
+      resolveManifestVoiceTools(manifest?.agent?.guiActions, manifest?.agent?.voiceCommands ?? commands),
+    [manifest, commands],
+  );
 
   useEffect(() => {
-    if (!voiceSend || !commands?.length) return;
+    if (!voiceSend || !appId) return;
     voiceSend({
       event: "register_surface",
       appId,
-      voiceCommands: commands,
+      voiceCommands: voiceTools.length > 0 ? voiceTools : undefined,
     });
-  }, [appId, commands, voiceSend]);
+  }, [appId, voiceSend, voiceTools]);
 
   const handleAppAction = useCallback(
     (payload: { action?: string; args?: Record<string, unknown> }) => {
@@ -41,15 +56,18 @@ export function useJoshuVoiceCommands(input: UseJoshuVoiceCommandsInput): void {
 
 export type JoshuVoiceClientAppActionHandler = (event: AppGuiActionEvent) => void | Promise<void>;
 
-/** Map voice-realtime app_action wire event to manifest action names. */
+/** Map voice-realtime app_action wire event to manifest guiAction name. */
 export function resolveVoiceCommandAction(
-  commands: JoshuVoiceCommandDef[] | undefined,
+  manifest: Pick<JoshuAppAgentManifest, "agent"> | undefined,
   toolName: string,
 ): string | null {
-  if (!commands?.length) return null;
+  const voiceTools = resolveManifestVoiceTools(
+    manifest?.agent?.guiActions,
+    manifest?.agent?.voiceCommands,
+  );
   const normalized = toolName.replace(/^app_/, "").replace(/^joshu_/, "");
-  for (const cmd of commands) {
-    if (cmd.name === normalized || cmd.action === normalized) return cmd.action;
+  for (const cmd of voiceTools) {
+    if (cmd.name === normalized) return cmd.action;
   }
   return null;
 }
