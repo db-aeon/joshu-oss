@@ -4,7 +4,11 @@ export type {
   JoshuAppAgentManifest,
   JoshuAppAgentState,
   JoshuGuiActionDef,
+  JoshuGuiActionParameterDef,
+  JoshuGuiActionVoiceDef,
   JoshuVoiceCommandDef,
+  ManifestVoiceTool,
+  resolveManifestVoiceTools,
 } from "./types.js";
 
 export {
@@ -24,6 +28,33 @@ export {
 export { useJoshuGuiReadable, type JoshuGuiReadableInput } from "./useJoshuGuiReadable.js";
 export { useJoshuGuiAction, type JoshuGuiActionInput } from "./useJoshuGuiAction.js";
 export { JoshuAgentChatPanel, type JoshuAgentChatPanelProps } from "./JoshuAgentChatPanel.js";
+export {
+  useJoshuCompanionIdentity,
+  type JoshuCompanionIdentity,
+} from "./useJoshuCompanionIdentity.js";
+export { JChatCopilotThread, type JChatCopilotThreadProps } from "./JChatCopilotThread.js";
+export { mapAgUiMessagesToJChat } from "./mapAgUiMessagesToJChat.js";
+
+export {
+  JoshuEmbeddedAppAgent,
+  type JoshuEmbeddedAppAgentProps,
+  type JoshuGuiAgentRef,
+} from "./JoshuEmbeddedAppAgent.js";
+
+export {
+  buildAppAgentChatThreadId,
+  appAgentChatThreadStorageKey,
+  rotateAppAgentChatThread,
+  readAppAgentChatThreadRev,
+  deleteAppAgentChatSession,
+  type AppAgentChatThreadIdInput,
+} from "./appChatThreadId.js";
+
+export {
+  useAppAgentChatSession,
+  type UseAppAgentChatSessionInput,
+  type AppAgentChatSession,
+} from "./useAppAgentChatSession.js";
 
 export {
   useJoshuVoiceCommands,

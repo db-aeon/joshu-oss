@@ -151,6 +151,22 @@ export function buildThinkSystemPrompt(identity: JoshuIdentity, mode: "screen" |
 const VOICE_DELIVERY_GUIDANCE =
   "Delivery: calm, measured, and professional — understated warmth, not giddy or overly enthusiastic. Even pacing and moderate vocal energy; do not raise pitch for emphasis.";
 
+/** Extra S2S guidance when the user is already inside an embedded Joshu app (jMail, etc.). */
+export function buildEmbeddedAppVoicePromptAddendum(
+  identity: JoshuIdentity,
+  ctx: { appId: string; appName?: string; guiActions?: string[] },
+): string {
+  const appLabel = ctx.appName ?? ctx.appId;
+  const guiList = ctx.guiActions?.length ? ctx.guiActions.join(", ") : "see app skill";
+  return [
+    `The user is already using ${appLabel} (${ctx.appId}) with you — do NOT call open_desktop to open this app.`,
+    `For in-app tasks (dictation, compose body/subject, search inbox, open thread, navigate panes): call think IMMEDIATELY with NO spoken answer in that same response.`,
+    `Hermes uses app_gui_action to update the UI (${guiList}). Never paste long drafts in speech — think writes drafts via app_gui_action.`,
+    `Use app_${ctx.appId}_* fast tools only for simple one-shot shortcuts (e.g. "compose" with no body, or "search for …").`,
+    `${identity.name} receives live GUI snapshots via register_surface — prefer think for anything that edits what the user sees.`,
+  ].join(" ");
+}
+
 export function buildVoiceSystemPrompt(identity: JoshuIdentity, surface: "web" | "phone"): string {
   const { name, owner } = identity;
   const ownerLabel = owner.displayName || "the user";

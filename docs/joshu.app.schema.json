@@ -90,12 +90,35 @@
             "required": ["name"],
             "properties": {
               "name": { "type": "string" },
-              "description": { "type": "string" }
+              "description": { "type": "string" },
+              "parameters": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["name"],
+                  "properties": {
+                    "name": { "type": "string" },
+                    "type": { "enum": ["string", "number", "boolean", "object"] },
+                    "description": { "type": "string" },
+                    "required": { "type": "boolean" }
+                  }
+                }
+              },
+              "voice": {
+                "type": "object",
+                "required": ["phrases"],
+                "properties": {
+                  "shortcut": { "type": "string", "description": "Gemini tool suffix (app_{appId}_{shortcut})" },
+                  "phrases": { "type": "array", "items": { "type": "string" } },
+                  "description": { "type": "string" }
+                }
+              }
             }
           }
         },
         "voiceCommands": {
           "type": "array",
+          "description": "Deprecated — prefer guiActions[].voice",
           "items": {
             "type": "object",
             "required": ["name", "phrases", "action"],

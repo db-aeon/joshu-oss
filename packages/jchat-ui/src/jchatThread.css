@@ -1,15 +1,8 @@
 /**
- * jChat thread UI — shared by jChat app and embedded @joshu/app-agent panels.
+ * jChat thread UI — bubbles, composer, tool cards.
+ * Shell chrome: @joshu/jchat-ui/jchatShell.css
  * Requires @joshu/design-system tokens (loaded by host app).
  */
-
-:root {
-  --jchat-user-bubble: #b7c0e0;
-  --jchat-assistant-bubble: #ebe4dc;
-  --jchat-panel-bg: #faf7f2;
-  --jchat-accent-send: #c8a2a6;
-  --jchat-accent-send-hover: #b89296;
-}
 
 .jchat-thread {
   display: flex;
@@ -53,13 +46,11 @@
 }
 
 .jchat-bubble-row {
-  display: flex;
-  max-width: 92%;
+  max-width: 96%;
 }
 
 .jchat-bubble-row-user {
   align-self: flex-end;
-  justify-content: flex-end;
 }
 
 .jchat-bubble-row-assistant {

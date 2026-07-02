@@ -8,6 +8,7 @@ import { homedir } from "node:os";
 import path from "node:path";
 
 import type { Request, Response, Router } from "express";
+import { resolveManifestVoiceTools } from "@joshu/app-sdk";
 import type { HermesApiRunner, HermesChatMessage } from "./hermesApi.js";
 import { buildTurnSystemMessages } from "./hermesApi.js";
 import {
@@ -194,7 +195,8 @@ export function registerAgUiRoutes(
     await loadAppManifests(projectRoot);
     const appId = readString(req.query.appId);
     const manifest = getManifestForAppId(appId);
-    const guiActions = manifest?.agent?.guiActions?.map((a) => a.name) ?? [];
+    const guiActions = manifest?.agent?.guiActions ?? [];
+    const voiceTools = resolveManifestVoiceTools(guiActions, manifest?.agent?.voiceCommands);
 
     res.json({
       agents: [
@@ -203,7 +205,9 @@ export function registerAgUiRoutes(
           name: manifest?.name ? `${manifest.name} Agent` : "Hermes",
           description: "Joshu box agent (Hermes gateway)",
           appId: appId || undefined,
-          guiActions,
+          guiActions: guiActions.map((a) => a.name),
+          guiActionDetails: guiActions,
+          voiceTools,
           skills: [
             ...(manifest?.agent?.usesSkills ?? []),
             ...(manifest?.agent?.skill ? [manifest.agent.skill] : []),

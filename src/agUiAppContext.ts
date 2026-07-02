@@ -41,8 +41,12 @@ function collectSkillNames(manifest: JoshuAppManifest): string[] {
   return [...skills];
 }
 
-function collectGuiActionNames(manifest: JoshuAppManifest): string[] {
-  return (manifest.agent?.guiActions ?? []).map((a) => a.name).filter(Boolean);
+function formatGuiActionsForPrompt(manifest: JoshuAppManifest): string[] {
+  return (manifest.agent?.guiActions ?? []).map((action) => {
+    const params = (action.parameters ?? []).map((p) => p.name).filter(Boolean);
+    if (params.length === 0) return action.name;
+    return `${action.name}(${params.join(", ")})`;
+  });
 }
 
 /** Hermes session key for embedded app agents (distinct from jChat). */
@@ -58,7 +62,7 @@ export function buildAppAgentSystemMessages(
   if (!manifest) return [];
 
   const skills = collectSkillNames(manifest);
-  const guiActions = manifest ? collectGuiActionNames(manifest) : [];
+  const guiActions = formatGuiActionsForPrompt(manifest);
   const mode = state.mode ?? "embedded";
   const lines: string[] = [
     `You are assisting inside the Joshu desktop app "${manifest.name}" (id: ${manifest.id}).`,

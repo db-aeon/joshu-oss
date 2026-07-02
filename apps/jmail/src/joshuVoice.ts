@@ -20,9 +20,14 @@ export const fetchVoiceGatewayStatus = fetchVoiceStatus;
 
 export async function startJoshuVoiceSession(params: {
   voiceApiBase: string;
+  /** Voice-realtime session id (logging / web: prefix). */
   sessionId: string;
+  /** Hermes + app_gui_action session — use CopilotKit thread id for embedded apps. */
+  chatSessionId?: string;
   surface?: {
     appId: string;
+    threadId?: string;
+    guiSnapshot?: Record<string, unknown>;
     voiceCommands?: Array<{
       name: string;
       phrases: string[];
@@ -44,17 +49,19 @@ export async function startJoshuVoiceSession(params: {
   onError?: (message: string) => void;
 }): Promise<{ client: JoshuVoiceClient; stop: () => Promise<void> }> {
   const res = await fetch(
-    `${params.voiceApiBase}/session?chatSessionId=${encodeURIComponent(params.sessionId)}`,
+    `${params.voiceApiBase}/session?chatSessionId=${encodeURIComponent(params.chatSessionId ?? params.sessionId)}`,
     { cache: "no-store" },
   );
   if (!res.ok) throw new Error(await res.text());
   const json = (await res.json()) as { wsUrl?: string };
   if (!json.wsUrl) throw new Error("Voice session missing wsUrl");
 
+  const hermesSessionId = params.chatSessionId ?? params.sessionId;
+
   const client = new JoshuVoiceClient({
     wsUrl: json.wsUrl,
     sessionId: `web:${params.sessionId}`,
-    chatSessionId: params.sessionId,
+    chatSessionId: hermesSessionId,
     surface: params.surface,
     onUserTranscript: params.onUserTranscript,
     onAssistantDelta: params.onAssistantDelta,

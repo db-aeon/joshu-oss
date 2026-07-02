@@ -49,8 +49,16 @@ assert.ok(manifests.has("schedules"), "schedules manifest should load");
 const jmail = manifests.get("jmail");
 assert.ok(jmail?.data?.uses?.includes("mail"));
 assert.ok(jmail?.agent?.guiActions?.length, "jmail should declare guiActions");
-assert.ok(jmail?.agent?.voiceCommands?.length, "jmail should declare voiceCommands");
+const composeAction = jmail?.agent?.guiActions?.find((a) => a.name === "openCompose");
+assert.ok(composeAction?.voice?.phrases?.length, "openCompose should declare voice phrases");
+assert.ok(composeAction?.parameters?.some((p) => p.name === "body"), "openCompose should declare body param");
 assert.ok(collectAppSkillNames().length >= 0);
+
+const { resolveManifestVoiceTools } = await import(
+  pathToFileURL(path.join(rootDir, "packages/app-sdk/dist/manifestAgent.js")).href
+);
+const voiceTools = resolveManifestVoiceTools(jmail?.agent?.guiActions, jmail?.agent?.voiceCommands);
+assert.ok(voiceTools.some((t) => t.name === "compose" && t.action === "openCompose"), "voice tools from guiActions");
 
 // --- app-scoped AG-UI system messages ---
 const { buildAppAgentSystemMessages, buildAppAgentSessionId } = await import(
@@ -65,10 +73,9 @@ const sysMsgs = buildAppAgentSystemMessages(jmail, {
 });
 assert.equal(sysMsgs.length, 1);
 assert.match(sysMsgs[0].content, /jMail|jmail/i);
-assert.match(sysMsgs[0].content, /Never send email/);
+assert.match(sysMsgs[0].content, /Never auto-submit/);
 assert.match(sysMsgs[0].content, /app_gui_action/);
-assert.match(sysMsgs[0].content, /action=openCompose/);
-assert.match(sysMsgs[0].content, /openCompose/);
+assert.match(sysMsgs[0].content, /openCompose\(to, subject, body\)/);
 
 // --- app GUI action queue ---
 const { enqueueAppGuiAction, drainAppGuiActions, isValidAppGuiAction } = await import(

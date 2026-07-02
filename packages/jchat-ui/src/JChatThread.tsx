@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, type ReactNode } from "react";
 
 import { JChatMessageBubble } from "./JChatMessageBubble.js";
+import { JChatAvatar } from "./JChatAvatar.js";
 import type { JChatMessage } from "./types.js";
 
 export type JChatThreadProps = {
@@ -16,6 +17,10 @@ export type JChatThreadProps = {
   beforeComposer?: ReactNode;
   /** Override default send enablement (draft non-empty). */
   sendEnabled?: boolean;
+  companionAvatarUrl?: string;
+  companionName?: string;
+  userAvatarUrl?: string | null;
+  userName?: string;
 };
 
 /** jChat thread column: scrollable bubbles + composer (matches hermes-chat). */
@@ -31,6 +36,10 @@ export function JChatThread({
   placeholder = "Type a message…",
   beforeComposer,
   sendEnabled,
+  companionAvatarUrl,
+  companionName,
+  userAvatarUrl,
+  userName,
 }: JChatThreadProps): React.ReactElement {
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
@@ -44,12 +53,24 @@ export function JChatThread({
     <section className="jchat-thread" aria-label="Chat thread">
       <div className="jchat-messages">
         {messages.length === 0 ? (
-          <p className="jchat-empty">{emptyText}</p>
+          <div className="jchat-empty-with-avatar">
+            {companionAvatarUrl || companionName ? (
+              <JChatAvatar src={companionAvatarUrl} label={companionName ?? "Assistant"} size="lg" />
+            ) : null}
+            <p className="jchat-empty">{emptyText}</p>
+          </div>
         ) : (
           <>
             {showDaySeparator ? <div className="jchat-day-sep">Today</div> : null}
             {messages.map((message) => (
-              <JChatMessageBubble key={message.id} message={message} />
+              <JChatMessageBubble
+                key={message.id}
+                message={message}
+                companionAvatarUrl={companionAvatarUrl}
+                companionName={companionName}
+                userAvatarUrl={userAvatarUrl}
+                userName={userName}
+              />
             ))}
           </>
         )}

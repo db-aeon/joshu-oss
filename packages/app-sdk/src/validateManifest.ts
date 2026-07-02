@@ -2,18 +2,22 @@
  * Lightweight manifest validation (schema v2 subset).
  */
 
-export type JoshuGuiActionDef = {
-  name: string;
-  description?: string;
-};
+import {
+  resolveManifestVoiceTools,
+  validateGuiActionEntry,
+  validateVoiceCommandsLegacy,
+  type JoshuGuiActionDef,
+  type JoshuVoiceCommandDef,
+} from "./manifestAgent.js";
 
-export type JoshuVoiceCommandDef = {
-  name: string;
-  phrases: string[];
-  action: string;
-  params?: string[];
-  description?: string;
-};
+export type {
+  JoshuGuiActionDef,
+  JoshuGuiActionParameterDef,
+  JoshuGuiActionVoiceDef,
+  JoshuVoiceCommandDef,
+  ManifestVoiceTool,
+} from "./manifestAgent.js";
+export { resolveManifestVoiceTools, parameterNamesForGuiAction } from "./manifestAgent.js";
 
 export type JoshuAppManifest = {
   id: string;
@@ -34,6 +38,7 @@ export type JoshuAppManifest = {
     headless?: boolean;
     intents?: Array<{ phrase: string; action: string }>;
     guiActions?: JoshuGuiActionDef[];
+    /** @deprecated Prefer guiActions[].voice */
     voiceCommands?: JoshuVoiceCommandDef[];
     actions?: Array<{ name: string; description?: string; handler?: string }>;
   };
@@ -48,6 +53,40 @@ export type ManifestValidationResult = {
   errors: string[];
   manifest?: JoshuAppManifest;
 };
+
+function parseLegacyVoiceCommands(raw: unknown, errors: string[]): JoshuVoiceCommandDef[] {
+  if (raw === undefined) return [];
+  if (!Array.isArray(raw)) {
+    errors.push("agent.voiceCommands must be an array");
+    return [];
+  }
+  const out: JoshuVoiceCommandDef[] = [];
+  for (const [i, entry] of raw.entries()) {
+    if (!entry || typeof entry !== "object") {
+      errors.push(`agent.voiceCommands[${i}] must be an object`);
+      continue;
+    }
+    const row = entry as Record<string, unknown>;
+    const name = typeof row.name === "string" ? row.name.trim() : "";
+    const action = typeof row.action === "string" ? row.action.trim() : "";
+    const phrases = Array.isArray(row.phrases)
+      ? row.phrases.filter((p): p is string => typeof p === "string" && p.trim().length > 0)
+      : [];
+    if (!name) errors.push(`agent.voiceCommands[${i}].name required`);
+    if (!action) errors.push(`agent.voiceCommands[${i}].action required`);
+    if (phrases.length === 0) errors.push(`agent.voiceCommands[${i}].phrases must be non-empty`);
+    out.push({
+      name,
+      phrases,
+      action,
+      params: Array.isArray(row.params)
+        ? row.params.filter((p): p is string => typeof p === "string" && p.trim().length > 0)
+        : undefined,
+      description: typeof row.description === "string" ? row.description : undefined,
+    });
+  }
+  return out;
+}
 
 export function validateJoshuAppManifest(raw: unknown): ManifestValidationResult {
   const errors: string[] = [];
@@ -84,6 +123,8 @@ export function validateJoshuAppManifest(raw: unknown): ManifestValidationResult
     }
   }
 
+  let parsedAgent: JoshuAppManifest["agent"] | undefined;
+
   if (doc.agent && typeof doc.agent === "object") {
     const agent = doc.agent as Record<string, unknown>;
     if (agent.actions !== undefined) {
@@ -97,14 +138,47 @@ export function validateJoshuAppManifest(raw: unknown): ManifestValidationResult
         }
       }
     }
-    if (agent.guiActions !== undefined && !Array.isArray(agent.guiActions)) {
-      errors.push("agent.guiActions must be an array");
+
+    const guiActions: JoshuGuiActionDef[] = [];
+    if (agent.guiActions !== undefined) {
+      if (!Array.isArray(agent.guiActions)) {
+        errors.push("agent.guiActions must be an array");
+      } else {
+        const seenNames = new Set<string>();
+        agent.guiActions.forEach((entry, i) => {
+          const parsed = validateGuiActionEntry(entry, `agent.guiActions[${i}]`, errors);
+          if (!parsed) return;
+          if (seenNames.has(parsed.name)) {
+            errors.push(`agent.guiActions duplicate name: ${parsed.name}`);
+            return;
+          }
+          seenNames.add(parsed.name);
+          guiActions.push(parsed);
+        });
+      }
     }
-    if (agent.voiceCommands !== undefined && !Array.isArray(agent.voiceCommands)) {
-      errors.push("agent.voiceCommands must be an array");
+
+    const legacyVoice = parseLegacyVoiceCommands(agent.voiceCommands, errors);
+    const guiActionNames = new Set(guiActions.map((a) => a.name));
+    validateVoiceCommandsLegacy(legacyVoice, guiActionNames, errors);
+
+    const voiceTools = resolveManifestVoiceTools(guiActions, legacyVoice);
+    const shortcutSeen = new Set<string>();
+    for (const tool of voiceTools) {
+      if (shortcutSeen.has(tool.name)) {
+        errors.push(`Duplicate voice shortcut name: ${tool.name}`);
+      }
+      shortcutSeen.add(tool.name);
     }
+
+    parsedAgent = {
+      ...(agent as JoshuAppManifest["agent"]),
+      guiActions: guiActions.length > 0 ? guiActions : undefined,
+      voiceCommands: legacyVoice.length > 0 ? legacyVoice : undefined,
+    };
   }
 
   if (errors.length > 0) return { ok: false, errors };
-  return { ok: true, errors: [], manifest: doc as JoshuAppManifest };
+  const manifest = { ...(doc as JoshuAppManifest), agent: parsedAgent ?? (doc.agent as JoshuAppManifest["agent"]) };
+  return { ok: true, errors: [], manifest };
 }

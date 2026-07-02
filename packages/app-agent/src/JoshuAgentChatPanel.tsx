@@ -1,9 +1,13 @@
 import React, { useMemo, useState } from "react";
+import "@joshu/jchat-ui/jchatBubble.css";
+import "@joshu/jchat-ui/jchatShell.css";
 import "@joshu/jchat-ui/jchatThread.css";
 import "./agentChat.css";
 
+import { JChatBubbleDock, JChatShell, type JChatBubbleVoiceControl } from "@joshu/jchat-ui";
 import { JChatCopilotThread } from "./JChatCopilotThread.js";
 import { useJoshuAppAgentContext } from "./JoshuAppAgentProvider.js";
+import { useJoshuCompanionIdentity } from "./useJoshuCompanionIdentity.js";
 
 export type JoshuAgentChatPanelProps = {
   title?: string;
@@ -14,9 +18,16 @@ export type JoshuAgentChatPanelProps = {
   /** Start a fresh CopilotKit thread + Hermes session (app supplies rotation). */
   onNewChat?: () => void | Promise<void>;
   emptyText?: string;
+  /** Override auto-fetched companion identity (Chat Head avatar + bubble avatars). */
+  companionName?: string;
+  companionAvatarUrl?: string;
+  userName?: string;
+  /** Mic badge on the Chat Head — Realtime S2S voice toggle. */
+  voice?: JChatBubbleVoiceControl;
+  apiBase?: string;
 };
 
-/** Expandable chat panel — jChat thread UI + CopilotKit AG-UI backend. */
+/** Messenger-style Chat Head + floating panel — jChat UI + CopilotKit AG-UI backend. */
 export function JoshuAgentChatPanel({
   title = "Assistant",
   defaultOpen = false,
@@ -25,59 +36,81 @@ export function JoshuAgentChatPanel({
   className = "",
   onNewChat,
   emptyText,
+  companionName: companionNameProp,
+  companionAvatarUrl: companionAvatarUrlProp,
+  userName: userNameProp,
+  voice,
+  apiBase = "/joshu/api",
 }: JoshuAgentChatPanelProps): React.ReactElement {
   const { config } = useJoshuAppAgentContext();
+  const identity = useJoshuCompanionIdentity(apiBase);
   const [open, setOpen] = useState(defaultOpen);
 
-  const panelStyle = useMemo(
-    () => ({
-      width: typeof width === "number" ? `${width}px` : width,
-    }),
-    [width],
-  );
+  const companionName = companionNameProp ?? identity.name;
+  const companionAvatarUrl = companionAvatarUrlProp ?? identity.portraitUrl;
+  const userName = userNameProp ?? identity.ownerDisplayName;
 
-  const threadEmptyText = emptyText ?? `Ask ${title} for help with this app.`;
+  const threadEmptyText =
+    emptyText ?? `Start a fresh session with ${companionName}. Ask for help with this app.`;
+
+  const panelTitle = title ?? `${companionName}`;
+
+  const voiceTitle = useMemo(() => {
+    if (!voice) return undefined;
+    if (voice.title) return voice.title;
+    if (!voice.available) return "Voice unavailable";
+    return voice.active ? "Turn voice off" : "Turn voice on";
+  }, [voice]);
 
   return (
     <div className={`joshu-agent-chat ${className}`.trim()} data-open={open ? "true" : "false"}>
-      <button
-        type="button"
-        className="joshu-agent-chat__toggle"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-        aria-label={open ? "Close assistant" : "Open assistant"}
+      <JChatBubbleDock
+        open={open}
+        onOpenChange={setOpen}
+        companionName={companionName}
+        companionAvatarUrl={companionAvatarUrl}
+        position={position}
+        panelWidth={width}
+        ariaLabel={panelTitle}
+        voice={voice ? { ...voice, title: voiceTitle } : undefined}
       >
-        {open ? "Close chat" : "Chat"}
-      </button>
-      {open ? (
-        <aside
-          className={`joshu-agent-chat__panel joshu-agent-chat__panel--${position}`}
-          style={panelStyle}
-          aria-label={title}
-        >
-          <header className="joshu-agent-chat__header">
-            <span>{title}</span>
-            <div className="joshu-agent-chat__header-actions">
+        <JChatShell
+          variant="embedded"
+          status="ready"
+          statusText={panelTitle}
+          headerActions={
+            <>
               {onNewChat ? (
                 <button
                   type="button"
-                  className="jchat-history-new joshu-agent-chat__new"
+                  className="jchat-pill-btn"
                   onClick={() => void onNewChat()}
                   title="New chat (fresh session)"
                 >
-                  New
+                  New chat
                 </button>
               ) : null}
-              <button type="button" className="joshu-agent-chat__close" onClick={() => setOpen(false)}>
+              <button
+                type="button"
+                className="jchat-shell-close"
+                onClick={() => setOpen(false)}
+                aria-label="Hide chat"
+                title="Hide chat"
+              >
                 ×
               </button>
-            </div>
-          </header>
-          <div className="joshu-agent-chat__body">
-            <JChatCopilotThread agentId={config.agentId} emptyText={threadEmptyText} />
-          </div>
-        </aside>
-      ) : null}
+            </>
+          }
+        >
+          <JChatCopilotThread
+            agentId={config.agentId}
+            emptyText={threadEmptyText}
+            companionAvatarUrl={companionAvatarUrl}
+            companionName={companionName}
+            userName={userName}
+          />
+        </JChatShell>
+      </JChatBubbleDock>
     </div>
   );
 }

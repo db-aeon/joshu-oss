@@ -12,7 +12,9 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
-    "./jchatThread.css": "./src/jchatThread.css"
+    "./jchatThread.css": "./src/jchatThread.css",
+    "./jchatShell.css": "./src/jchatShell.css",
+    "./jchatBubble.css": "./src/jchatBubble.css"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json"

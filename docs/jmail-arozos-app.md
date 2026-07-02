@@ -77,8 +77,9 @@ jMail is the **reference app** for [`@joshu/app-agent`](app-agent.md). To build 
 
 | Piece | Location |
 |-------|----------|
-| Provider + frontend tools | `apps/jmail/src/mailAgentBridge.tsx` |
-| Chat thread id | `apps/jmail/src/chatThreadId.ts` — `jmail:{mailbox}:chat:{rev}` |
+| Embedded chat bridge | `apps/jmail/src/mailAgentBridge.tsx` — thin wrapper around `JoshuEmbeddedAppAgent` |
+| GUI action handlers | `apps/jmail/src/mailGuiActions.ts` — `createJmailGuiActions(guiRef)` |
+| Chat session hook | `useAppAgentChatSession({ appId: "jmail", scope: mailbox })` in `main.tsx` |
 | Manifest (build-time) | `apps/jmail/src/mailAppManifest.ts` |
 | Bundled GUI skill | `arozos/subservice/jmail/skills/jmail-gui/SKILL.md` |
 | Server AG-UI + queue | `src/agUiAppContext.ts`, `src/agUiApi.ts`, `src/appGuiActionApi.ts` |

@@ -10,12 +10,7 @@ import { fetchVoiceGatewayStatus, startJoshuVoiceSession } from "./joshuVoice";
 import { platform } from "./joshuData";
 import { prepareEmailBodyDocument } from "./messageBody";
 import { MailAgentBridge, type MailGuiAgentApi } from "./mailAgentBridge";
-import {
-  buildJmailChatThreadId,
-  readJmailChatThreadRev,
-  rotateJmailChatThread,
-} from "./chatThreadId.js";
-import { executeDesktopAction } from "@joshu/app-agent";
+import { executeDesktopAction, useAppAgentChatSession } from "@joshu/app-agent";
 import type { ConnectorsStatus } from "@joshu/platform-data";
 import { JMAIL_MANIFEST } from "./mailAppManifest";
 
@@ -201,7 +196,7 @@ function App() {
   const [voiceState, setVoiceState] = useState("idle");
   const [voiceTranscript, setVoiceTranscript] = useState("");
   const [voiceAssistant, setVoiceAssistant] = useState("");
-  const voiceSessionRef = useRef<{ stop: () => Promise<void> } | null>(null);
+  const voiceSessionRef = useRef<{ client: import("@joshu/voice-client").JoshuVoiceClient; stop: () => Promise<void> } | null>(null);
   const guiRef = useRef<MailGuiAgentApi | null>(null);
 
   const mailbox = status?.agent.email ?? agentEmail;
@@ -214,23 +209,10 @@ function App() {
       ? mailbox || "Agent mailbox"
       : inbox.email || inbox.accountKey || "Gmail";
   const voiceSessionId = useMemo(() => `jmail:${mailbox || "default"}`, [mailbox]);
-  const [chatRev, setChatRev] = useState(() => readJmailChatThreadRev());
-  const chatThreadId = useMemo(
-    () => buildJmailChatThreadId(mailbox, chatRev),
-    [mailbox, chatRev],
-  );
-
-  const startNewAgentChat = useCallback(async () => {
-    try {
-      await fetch(`/joshu/api/ag-ui/session?threadId=${encodeURIComponent(chatThreadId)}`, {
-        method: "DELETE",
-      });
-    } catch {
-      /* best-effort */
-    }
-    const rev = rotateJmailChatThread();
-    setChatRev(rev);
-  }, [chatThreadId]);
+  const { threadId: chatThreadId, startNewChat: startNewAgentChat } = useAppAgentChatSession({
+    appId: "jmail",
+    scope: mailbox || "default",
+  });
 
   const loadConnectorsStatus = useCallback(async () => {
     try {
@@ -526,9 +508,11 @@ function App() {
         const session = await startJoshuVoiceSession({
           voiceApiBase: VOICE_API_BASE,
           sessionId: voiceSessionId,
+          chatSessionId: chatThreadId,
           surface: {
             appId: JMAIL_MANIFEST.id,
-            voiceCommands: JMAIL_MANIFEST.agent?.voiceCommands,
+            threadId: chatThreadId,
+            guiSnapshot: guiRef.current?.getGuiSnapshot() ?? {},
           },
           onDesktopAction: (action) => {
             void executeDesktopAction(action);
@@ -548,7 +532,24 @@ function App() {
           await session.stop();
           return;
         }
-        voiceSessionRef.current = session;
+
+        const syncGuiToVoice = (): void => {
+          session.client.updateSurface({
+            appId: JMAIL_MANIFEST.id,
+            threadId: chatThreadId,
+            guiSnapshot: guiRef.current?.getGuiSnapshot() ?? {},
+          });
+        };
+        syncGuiToVoice();
+        const guiSyncTimer = window.setInterval(syncGuiToVoice, 2000);
+        const prevStop = session.stop.bind(session);
+        voiceSessionRef.current = {
+          client: session.client,
+          stop: async () => {
+            window.clearInterval(guiSyncTimer);
+            await prevStop();
+          },
+        };
       } catch (err) {
         if (!cancelled) {
           setError(`Voice connection failed: ${(err as Error).message}`);
@@ -561,7 +562,7 @@ function App() {
       void voiceSessionRef.current?.stop();
       voiceSessionRef.current = null;
     };
-  }, [voiceOn, gatewayVoiceAvailable, nylasProvisioned, inbox, voiceSessionId, handleVoiceAppAction]);
+  }, [voiceOn, gatewayVoiceAvailable, nylasProvisioned, inbox, voiceSessionId, chatThreadId, handleVoiceAppAction]);
 
   useEffect(() => {
     setSelectedId(null);
@@ -840,17 +841,6 @@ function App() {
                 })}
               </div>
             )}
-            {nylasProvisioned && inbox.kind === "nylas" && gatewayVoiceAvailable && (
-              <button
-                type="button"
-                className={voiceOn ? "" : "secondary"}
-                aria-pressed={voiceOn}
-                onClick={() => setVoiceOn((v) => !v)}
-                title="Voice assistant — OpenAI Realtime S2S + selective Hermes"
-              >
-                Voice {voiceOn ? voiceState : "off"}
-              </button>
-            )}
             {accountReady && (
               <>
                 {(inbox.kind === "nylas" || inbox.kind === "gmail") && (
@@ -891,26 +881,6 @@ function App() {
 
         {error && <div className="banner banner-err">{error}</div>}
         {notice && <div className="banner banner-ok">{notice}</div>}
-
-        {voiceOn && nylasProvisioned && inbox.kind === "nylas" && (
-          <section className="panel voice-panel" aria-label="Voice assistant">
-            <h2>Voice</h2>
-            <p className="mail-subtitle">
-              Ask about mail, drafts, or scheduling. Replies stream in the chat below and are spoken aloud.
-            </p>
-            {voiceTranscript && (
-              <p>
-                <strong>You:</strong> {voiceTranscript}
-              </p>
-            )}
-            {voiceAssistant && (
-              <p>
-                <strong>Assistant:</strong> {voiceAssistant}
-              </p>
-            )}
-            {!voiceTranscript && !voiceAssistant && <p className="message-empty">Listening…</p>}
-          </section>
-        )}
 
         {pane === "setup" && (
           <div className="setup-panels">
@@ -1182,6 +1152,12 @@ function App() {
         guiRef={guiRef}
         threadId={chatThreadId}
         onNewChat={startNewAgentChat}
+        voice={{
+          available: Boolean(gatewayVoiceAvailable && nylasProvisioned && inbox.kind === "nylas"),
+          active: voiceOn,
+          onToggle: () => setVoiceOn((v) => !v),
+          title: voiceOn ? `Voice · ${voiceState}` : "Turn voice on (Realtime S2S)",
+        }}
       />
     </div>
   );

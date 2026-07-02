@@ -1,21 +1,23 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { resolvePortraitUrl } from "@joshu/jchat-ui";
 
-export type JoshuIdentity = {
+export type JoshuCompanionIdentity = {
   name: string;
   imageUrl: string | null;
   avatarUrl: string | null;
   ownerDisplayName: string;
+  portraitUrl: string;
 };
 
 const IDENTITY_API = "/joshu/api/instance/identity";
 
-export { resolvePortraitUrl };
+/** Load companion persona for Chat Heads and message avatars. */
+export function useJoshuCompanionIdentity(apiBase = "/joshu/api"): JoshuCompanionIdentity {
+  const identityUrl = `${apiBase.replace(/\/+$/, "")}/instance/identity`;
 
-export function useIdentity(): JoshuIdentity {
-  const [identity, setIdentity] = useState<JoshuIdentity>({
-    name: "John",
+  const [identity, setIdentity] = useState<Omit<JoshuCompanionIdentity, "portraitUrl">>({
+    name: "Assistant",
     imageUrl: null,
     avatarUrl: null,
     ownerDisplayName: "You",
@@ -23,7 +25,7 @@ export function useIdentity(): JoshuIdentity {
 
   useEffect(() => {
     let cancelled = false;
-    fetch(IDENTITY_API, { cache: "no-store" })
+    fetch(identityUrl, { cache: "no-store" })
       .then(async (response) => {
         if (!response.ok) return;
         const json = (await response.json()) as {
@@ -34,7 +36,7 @@ export function useIdentity(): JoshuIdentity {
         };
         if (cancelled) return;
         setIdentity({
-          name: json.name?.trim() || "John",
+          name: json.name?.trim() || "Assistant",
           imageUrl: json.imageUrl ?? null,
           avatarUrl: json.avatarUrl ?? null,
           ownerDisplayName: json.owner?.displayName?.trim() || "You",
@@ -46,7 +48,12 @@ export function useIdentity(): JoshuIdentity {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [identityUrl]);
 
-  return identity;
+  const portraitUrl = useMemo(
+    () => resolvePortraitUrl(identity.imageUrl, identity.avatarUrl),
+    [identity.avatarUrl, identity.imageUrl],
+  );
+
+  return { ...identity, portraitUrl };
 }

@@ -5,39 +5,9 @@
 import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 
-export type JoshuAppManifest = {
-  id: string;
-  name: string;
-  version: string;
-  license: string;
-  publisher: string;
-  entry: string;
-  apiPrefix?: string;
-  description?: string;
-  data?: {
-    uses?: string[];
-    mail?: { accounts?: string };
-  };
-  agent?: {
-    skill?: string;
-    usesSkills?: string[];
-    headless?: boolean;
-    intents?: Array<{ phrase: string; action: string }>;
-    guiActions?: Array<{ name: string; description?: string }>;
-    voiceCommands?: Array<{
-      name: string;
-      phrases: string[];
-      action: string;
-      params?: string[];
-      description?: string;
-    }>;
-    actions?: Array<{
-      name: string;
-      description?: string;
-      handler?: string;
-    }>;
-  };
-};
+import type { JoshuAppManifest } from "@joshu/app-sdk";
+
+export type { JoshuAppManifest };
 
 export type AppActionHandler = (args: Record<string, unknown>) => Promise<unknown>;
 

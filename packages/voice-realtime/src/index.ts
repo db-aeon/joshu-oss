@@ -157,6 +157,14 @@ server.on("upgrade", (req, socket, head) => {
               voiceCommands: Array.isArray(msg.voiceCommands)
                 ? (msg.voiceCommands as AppVoiceCommand[])
                 : undefined,
+              threadId:
+                typeof msg.threadId === "string" && msg.threadId.trim()
+                  ? msg.threadId.trim()
+                  : chatSessionId,
+              guiSnapshot:
+                msg.guiSnapshot && typeof msg.guiSnapshot === "object" && !Array.isArray(msg.guiSnapshot)
+                  ? (msg.guiSnapshot as Record<string, unknown>)
+                  : undefined,
             });
             return;
           }
@@ -176,7 +184,12 @@ server.on("upgrade", (req, socket, head) => {
             const voiceCommands = Array.isArray(msg.voiceCommands)
               ? (msg.voiceCommands as AppVoiceCommand[])
               : [];
-            if (appId) browserSession.handleRegisterSurface(appId, voiceCommands);
+            const threadId = typeof msg.threadId === "string" ? msg.threadId : undefined;
+            const guiSnapshot =
+              msg.guiSnapshot && typeof msg.guiSnapshot === "object" && !Array.isArray(msg.guiSnapshot)
+                ? (msg.guiSnapshot as Record<string, unknown>)
+                : undefined;
+            if (appId) browserSession.handleRegisterSurface(appId, voiceCommands, { threadId, guiSnapshot });
             return;
           }
           if (ev === "browser_audio") {

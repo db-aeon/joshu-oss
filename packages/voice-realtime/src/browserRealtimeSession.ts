@@ -8,10 +8,11 @@ import {
   HERMES_PROGRESS_POST_SPEECH_MS,
   VOICE_S2S_PROVIDER,
   WEB_SYSTEM_PROMPT,
+  JOSHU_IDENTITY,
 } from "./config.js";
 import { runJoshuThink } from "./brainThink.js";
 import { resolveDesktopModule } from "./desktopModules.js";
-import { JOSHU_IDENTITY } from "./config.js";
+import { buildEmbeddedAppVoicePromptAddendum } from "./joshuIdentity.js";
 import { createVoiceS2sClient } from "./createVoiceS2sClient.js";
 import {
   buildAppVoiceToolDefinitions,
@@ -23,6 +24,11 @@ import { normalizeThinkToolName } from "./realtimeTools.js";
 import type { FunctionCallPayload, ResponseSpeechReason } from "./voiceS2sTypes.js";
 import type { VoiceS2sClient } from "./voiceS2sTypes.js";
 import { voiceLog, voiceWarn } from "./voiceLog.js";
+import {
+  fetchAgUiAppInfo,
+  surfaceTargetsCurrentApp,
+  type EmbeddedAppSurfaceContext,
+} from "./voiceAppContext.js";
 import {
   responseDoneRequestedThink,
   surfaceAssistantDelta,
@@ -95,26 +101,107 @@ export class BrowserRealtimeSession {
   private t0 = performance.now();
   private surfaceAppId = "";
   private voiceCommands: AppVoiceCommand[] = [];
+  /** Embedded app agent context — aligns voice think with AG-UI chat + app_gui_action. */
+  private appSurface: EmbeddedAppSurfaceContext | null = null;
 
   constructor(private readonly ws: WebSocket) {}
 
-  handleRegisterSurface(appId: string, commands: AppVoiceCommand[]): void {
-    this.surfaceAppId = appId.trim();
-    this.voiceCommands = commands;
-    voiceLog(this.sessionId, "surface", `register app=${this.surfaceAppId} commands=${commands.length}`);
+  handleRegisterSurface(
+    appId: string,
+    commands: AppVoiceCommand[],
+    surface?: { threadId?: string; guiSnapshot?: Record<string, unknown> },
+  ): void {
+    const nextAppId = appId.trim();
+    const guiOnly =
+      nextAppId === this.surfaceAppId &&
+      this.voiceCommands.length > 0 &&
+      commands.length === 0 &&
+      Boolean(this.appSurface);
+
+    if (guiOnly && this.appSurface) {
+      this.appSurface = {
+        ...this.appSurface,
+        threadId: surface?.threadId?.trim() || this.appSurface.threadId,
+        guiSnapshot: surface?.guiSnapshot ?? this.appSurface.guiSnapshot,
+      };
+      return;
+    }
+
+    this.surfaceAppId = nextAppId;
+    if (commands.length > 0) {
+      this.voiceCommands = commands;
+    }
+    const resolvedThreadId = surface?.threadId?.trim() || this.appSurface?.threadId || this.surfaceSessionId;
+    this.appSurface = {
+      appId: this.surfaceAppId,
+      threadId: resolvedThreadId,
+      guiSnapshot: surface?.guiSnapshot ?? this.appSurface?.guiSnapshot,
+      mode: "embedded",
+      appName: this.appSurface?.appName,
+      guiActions: this.appSurface?.guiActions,
+      skills: this.appSurface?.skills,
+    };
+    void this.enrichAppSurfaceFromAgUi(commands.length === 0);
+    voiceLog(this.sessionId, "surface", `register app=${this.surfaceAppId} commands=${this.voiceCommands.length}`, {
+      threadId: resolvedThreadId.slice(0, 48),
+      guiKeys: surface?.guiSnapshot ? Object.keys(surface.guiSnapshot).length : 0,
+    });
+  }
+
+  private async enrichAppSurfaceFromAgUi(loadVoiceTools = false): Promise<void> {
+    if (!this.appSurface) return;
+    const info = await fetchAgUiAppInfo(this.appSurface.appId);
+    if (!this.appSurface) return;
+    if (loadVoiceTools && info.voiceTools.length > 0) {
+      this.voiceCommands = info.voiceTools;
+    }
+    this.appSurface = {
+      ...this.appSurface,
+      appName: info.appName ?? this.appSurface.appName,
+      guiActions: info.guiActions.length ? info.guiActions : this.appSurface.guiActions,
+      skills: info.skills.length ? info.skills : this.appSurface.skills,
+    };
+  }
+
+  private resolveS2sSystemPrompt(): string {
+    if (!this.appSurface) return WEB_SYSTEM_PROMPT;
+    return `${WEB_SYSTEM_PROMPT} ${buildEmbeddedAppVoicePromptAddendum(JOSHU_IDENTITY, {
+      appId: this.appSurface.appId,
+      appName: this.appSurface.appName,
+      guiActions: this.appSurface.guiActions,
+    })}`;
   }
 
   handleStart(
     sessionId: string,
     chatSessionId: string,
-    surface?: { appId?: string; voiceCommands?: AppVoiceCommand[] },
+    surface?: {
+      appId?: string;
+      voiceCommands?: AppVoiceCommand[];
+      threadId?: string;
+      guiSnapshot?: Record<string, unknown>;
+    },
   ): void {
     this.sessionId = sessionId;
     this.surfaceSessionId = chatSessionId || sessionId;
     this.t0 = performance.now();
+    void this.bootstrapAndConnect(surface);
+  }
 
+  private async bootstrapAndConnect(surface?: {
+    appId?: string;
+    voiceCommands?: AppVoiceCommand[];
+    threadId?: string;
+    guiSnapshot?: Record<string, unknown>;
+  }): Promise<void> {
     if (surface?.appId) {
-      this.handleRegisterSurface(surface.appId, surface.voiceCommands ?? []);
+      this.handleRegisterSurface(surface.appId, surface.voiceCommands ?? [], {
+        threadId: surface.threadId ?? this.surfaceSessionId,
+        guiSnapshot: surface.guiSnapshot,
+      });
+      if (!surface.voiceCommands?.length) {
+        await this.enrichAppSurfaceFromAgUi(true);
+      }
     }
 
     const extraTools =
@@ -126,7 +213,7 @@ export class BrowserRealtimeSession {
     this.s2s = createVoiceS2sClient(
       {
         audioFormat: "pcm24",
-        systemPrompt: WEB_SYSTEM_PROMPT,
+        systemPrompt: this.resolveS2sSystemPrompt(),
         injectPresentation: "screen",
         turnDetection: BROWSER_VAD,
         extraTools,
@@ -380,6 +467,32 @@ export class BrowserRealtimeSession {
         );
         return;
       }
+      // User is already inside this embedded app — route to think instead of re-opening desktop.
+      if (this.surfaceAppId && surfaceTargetsCurrentApp(this.surfaceAppId, moduleName)) {
+        voiceLog(this.sessionId, "tool", "open_desktop blocked — embedded app active, starting think", {
+          app: moduleName,
+          surfaceAppId: this.surfaceAppId,
+        });
+        s2s.sendFunctionOutput(
+          call.callId,
+          JSON.stringify({
+            status: "redirect",
+            message: `${moduleName} is already open — use think for in-app tasks.`,
+          }),
+          { triggerResponse: false },
+        );
+        this.turnThinkRequested = true;
+        this.organicSurfaceSync = false;
+        this.startBrainJob({
+          userQuote: this.pendingUserQuote ?? undefined,
+          intent: "in_app_task",
+          summary: this.conversationSummary(),
+          voiceInject: true,
+          withProgress: true,
+          source: "think",
+        });
+        return;
+      }
       this.emitSurface(surfaceDesktopAction({ kind: "module", target: moduleName }));
       s2s.sendFunctionOutput(
         call.callId,
@@ -573,12 +686,14 @@ export class BrowserRealtimeSession {
     this.setState("thinking");
     this.emitSurface(surfaceBrainJobStart());
 
-    void this.runBrainJob({
-      jobId,
-      abort,
-      intent: params.intent ?? "task",
-      summary: params.summary ?? this.conversationSummary(),
-      userQuote: params.userQuote,
+    void this.enrichAppSurfaceFromAgUi().then(() => {
+      void this.runBrainJob({
+        jobId,
+        abort,
+        intent: params.intent ?? "task",
+        summary: params.summary ?? this.conversationSummary(),
+        userQuote: params.userQuote,
+      });
     });
   }
 
@@ -599,6 +714,7 @@ export class BrowserRealtimeSession {
         userQuote: params.userQuote,
         signal: params.abort.signal,
         presentation: "screen",
+        appContext: this.appSurface ?? undefined,
         onDelta: (delta) => {
           if (this.brainJob?.jobId !== params.jobId) return;
           this.emitSurface(surfaceAssistantDelta(delta));
@@ -606,6 +722,10 @@ export class BrowserRealtimeSession {
         onDesktopAction: (action) => {
           if (this.brainJob?.jobId !== params.jobId) return;
           this.emitSurface(surfaceDesktopAction(action));
+        },
+        onAppAction: (action) => {
+          if (this.brainJob?.jobId !== params.jobId) return;
+          this.emitSurface(surfaceAppAction(action.appId, action.action, action.args));
         },
       });
       if (params.abort.signal.aborted) return;
