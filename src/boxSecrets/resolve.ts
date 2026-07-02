@@ -5,6 +5,10 @@ function processEnvTrim(name: string): string {
   return process.env[name]?.trim() ?? "";
 }
 
+function embeddingsProvider(): string {
+  return provisionEnvTrim("HINDSIGHT_API_EMBEDDINGS_PROVIDER") || "google";
+}
+
 /** True when control plane or operator set the key in /etc/joshu/instance.env. */
 export function isProvisionLockedSecret(name: BoxSecretsUiKey): boolean {
   return Boolean(provisionEnvTrim(name));
@@ -34,6 +38,13 @@ export function isGeminiConfigured(projectRoot = process.cwd()): boolean {
   return Boolean(resolveBoxSecret("GEMINI_API_KEY", projectRoot));
 }
 
+/** gbrain + Hindsight embeddings — dedicated key or shared Gemini key on google provider. */
+export function isEmbeddingsGeminiConfigured(projectRoot = process.cwd()): boolean {
+  if (resolveBoxSecret("HINDSIGHT_API_EMBEDDINGS_GEMINI_API_KEY", projectRoot)) return true;
+  if (embeddingsProvider() === "google" && isGeminiConfigured(projectRoot)) return true;
+  return false;
+}
+
 /** True when the release pins a voice-realtime image (OSS self-host default in .env.vps.example). */
 export function isVoiceOffered(): boolean {
   const ref = provisionEnvTrim("JOSHU_VOICE_IMAGE_REF");
@@ -55,9 +66,25 @@ export function needsGeminiVoiceInWelcome(projectRoot = process.cwd()): boolean 
   return !isGeminiConfigured(projectRoot);
 }
 
-/** Standalone boxes without a provisioned OpenRouter key should collect it in Welcome. */
+/** File brain + Hindsight need a Gemini embedding key when provider=google. */
+export function needsEmbeddingsGeminiInWelcome(projectRoot = process.cwd()): boolean {
+  if (!isStandaloneSelfHost()) return false;
+  if (embeddingsProvider() !== "google") return false;
+  if (isProvisionLockedSecret("HINDSIGHT_API_EMBEDDINGS_GEMINI_API_KEY")) return false;
+  return !isEmbeddingsGeminiConfigured(projectRoot);
+}
+
+/** One Gemini key field in Welcome covers voice mic + google embeddings. */
+export function needsGeminiMlInWelcome(projectRoot = process.cwd()): boolean {
+  return needsGeminiVoiceInWelcome(projectRoot) || needsEmbeddingsGeminiInWelcome(projectRoot);
+}
+
+/** Standalone boxes missing any user-facing ML secret should show Connect AI. */
 export function needsConnectAiInWelcome(projectRoot = process.cwd()): boolean {
-  return needsOpenRouterInWelcome(projectRoot);
+  return (
+    needsOpenRouterInWelcome(projectRoot) ||
+    needsGeminiMlInWelcome(projectRoot)
+  );
 }
 
 export function readBoxSecretsStatus(projectRoot = process.cwd()) {
@@ -68,6 +95,7 @@ export function readBoxSecretsStatus(projectRoot = process.cwd()) {
     OPENROUTER_API_KEY: { configured: false, source: "unset", locked: false },
     HINDSIGHT_API_LLM_API_KEY: { configured: false, source: "unset", locked: false },
     GEMINI_API_KEY: { configured: false, source: "unset", locked: false },
+    HINDSIGHT_API_EMBEDDINGS_GEMINI_API_KEY: { configured: false, source: "unset", locked: false },
   };
 
   for (const key of BOX_SECRETS_UI_KEYS) {
@@ -81,6 +109,12 @@ export function readBoxSecretsStatus(projectRoot = process.cwd()) {
       fields[key] = { configured: true, source: "env", locked: false };
     } else if (fromLocal) {
       fields[key] = { configured: true, source: "local", locked: false };
+    } else if (key === "HINDSIGHT_API_EMBEDDINGS_GEMINI_API_KEY" && isEmbeddingsGeminiConfigured(projectRoot)) {
+      // Shared GEMINI_API_KEY satisfies google embeddings without a dedicated field.
+      const gemini = resolveBoxSecret("GEMINI_API_KEY", projectRoot);
+      fields[key] = gemini
+        ? { configured: true, source: fields.GEMINI_API_KEY.source, locked: false }
+        : { configured: false, source: "unset", locked: false };
     } else {
       fields[key] = { configured: false, source: "unset", locked: false };
     }
@@ -91,9 +125,13 @@ export function readBoxSecretsStatus(projectRoot = process.cwd()) {
     needsConnectAi: needsConnectAiInWelcome(projectRoot),
     needsOpenRouter: needsOpenRouterInWelcome(projectRoot),
     needsGeminiVoice: needsGeminiVoiceInWelcome(projectRoot),
+    needsEmbeddingsGemini: needsEmbeddingsGeminiInWelcome(projectRoot),
+    needsGeminiMl: needsGeminiMlInWelcome(projectRoot),
+    embeddingsProvider: embeddingsProvider(),
     voiceOffered: isVoiceOffered(),
     llmConfigured: isLlmConfigured(projectRoot),
     geminiConfigured: isGeminiConfigured(projectRoot),
+    embeddingsGeminiConfigured: isEmbeddingsGeminiConfigured(projectRoot),
     fields,
   };
 }

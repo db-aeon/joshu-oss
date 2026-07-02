@@ -12,7 +12,7 @@ ENV_FILE="${1:?usage: ensure-instance-env-secrets.sh /etc/joshu/instance.env}"
 
 get_env() {
   local key="$1"
-  grep -m1 "^${key}=" "${ENV_FILE}" 2>/dev/null | cut -d= -f2- || true
+  grep -m1 "^${key}=" "${ENV_FILE}" 2>/dev/null | cut -d= -f2- | sed 's/[[:space:]]*#.*$//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' || true
 }
 
 is_placeholder() {
@@ -61,8 +61,21 @@ if [[ -n "${voice_image}" && "${voice_image}" != *your-org* ]]; then
     upsert_env JOSHU_WEB_VOICE_ENABLED true
     echo "[ensure-instance-env-secrets] set JOSHU_WEB_VOICE_ENABLED=true"
   fi
-  if [[ -z "$(get_env JOSHU_VOICE_PROVIDER)" ]]; then
+  if [[ -z "$(get_env JOSHU_VOICE_PROVIDER)" || "$(get_env JOSHU_VOICE_PROVIDER)" == "openai" ]]; then
     upsert_env JOSHU_VOICE_PROVIDER gemini_live
-    echo "[ensure-instance-env-secrets] set JOSHU_VOICE_PROVIDER=gemini_live"
+    echo "[ensure-instance-env-secrets] set JOSHU_VOICE_PROVIDER=gemini_live (OSS voice default)"
+  fi
+fi
+
+# OSS standalone without GCP reranker credentials — use local RRF (no service account).
+if [[ -z "$(get_env INSTANCE_AGENT_TOKEN)" ]]; then
+  sa_key="$(get_env HINDSIGHT_API_RERANKER_GOOGLE_SERVICE_ACCOUNT_KEY)"
+  project_id="$(get_env HINDSIGHT_API_RERANKER_GOOGLE_PROJECT_ID)"
+  reranker_provider="$(get_env HINDSIGHT_API_RERANKER_PROVIDER)"
+  if [[ "${reranker_provider}" == "google" ]]; then
+    if is_placeholder "${project_id}" || [[ -z "${sa_key}" || ! -f "${sa_key}" ]]; then
+      upsert_env HINDSIGHT_API_RERANKER_PROVIDER rrf
+      echo "[ensure-instance-env-secrets] standalone: HINDSIGHT_API_RERANKER_PROVIDER=rrf (no GCP reranker)"
+    fi
   fi
 fi

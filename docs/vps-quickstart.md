@@ -1,6 +1,6 @@
 # VPS Ubuntu quickstart (self-host)
 
-Step-by-step: create a VPS, download Joshu from GitHub, set your hostname, run the installer, open the desktop. **API keys** (OpenRouter) are added in the **Welcome** app after first login — not on the command line.
+Step-by-step: create a VPS, download Joshu from GitHub, set your hostname, run the installer, open the desktop. **API keys** (OpenRouter + Gemini) are added in the **Welcome** app after first login — not on the command line.
 
 This is **standalone self-host** only.
 
@@ -138,9 +138,14 @@ In a browser: `https://mybox.example.com/`
 
 **First boot:** if the box has no users yet, you land on **Create your account** (`/user.html`) — not the login page. Create the owner account, then sign in.
 
-**Welcome** opens automatically and asks for your **OpenRouter** API key (Connect AI step). Paste a key from [openrouter.ai/keys](https://openrouter.ai/keys) to enable jChat. On the same step you can optionally add a [Gemini API key](https://aistudio.google.com/apikey) for the microphone in jChat (voice uses Gemini Live, not OpenAI).
+**Welcome** opens automatically and walks through **Connect AI**:
 
-You can skip Connect AI and add keys later by reopening **Welcome** from the desktop (Review step shows Gemini if you skipped voice).
+1. **[OpenRouter](https://openrouter.ai/keys) API key** — jChat + Hindsight LLM
+2. **[Google Gemini](https://aistudio.google.com/apikey) API key** — file search (gbrain), Hindsight embeddings, and jChat microphone (Gemini Live)
+
+Both are required for a fully healthy OSS box when voice is enabled (default with `JOSHU_VOICE_IMAGE_REF`). Keys are stored in `.joshu/box-secrets/local-env.json` on your box — not sent to Joshu.
+
+You can **Finish later** on Welcome and return from the desktop **Welcome** shortcut; Connect AI stays until all required keys are saved.
 
 Health check (laptop) — may return **503** for a few minutes while Hermes finishes booting (common on small VPS plans):
 
@@ -194,9 +199,16 @@ curl -fsS https://mybox.example.com/joshu/api/hermes-dashboard/status
 
 ## Optional — voice in jChat
 
-Voice is **on by default** for OSS self-host when `JOSHU_VOICE_IMAGE_REF` is set in `deploy/.env.vps.example` (bootstrap enables `voice-rt` automatically). You only need a **Gemini API key** — add it in **Welcome → Connect AI** (optional field) or on the **Review** step if you skipped it earlier. No manual `instance.env` edits required.
+Voice is **on by default** for OSS self-host when `JOSHU_VOICE_IMAGE_REF` is set in `deploy/.env.vps.example` (bootstrap enables `voice-rt` and sets `JOSHU_VOICE_PROVIDER=gemini_live`). Add your **Gemini API key** in **Welcome → Connect AI** (same key powers voice + file brain). No manual `instance.env` edits required.
 
-If you disabled voice or run an older box, see [`deploy/README.md`](../deploy/README.md) for compose profile `voice-rt`.
+After changing `JOSHU_VOICE_PROVIDER` in `instance.env`, recreate the voice sidecar (not just restart):
+
+```bash
+cd /opt/joshu/deploy
+docker compose --env-file /etc/joshu/instance.env --profile voice-rt up -d --force-recreate voice-realtime
+```
+
+If you disabled voice or run an older box, see [`deploy/README.md`](../deploy/README.md) for compose profile `voice-rt` and [`voice-realtime.md`](voice-realtime.md) for configuration, WSS URLs, and instant think ack.
 
 ---
 
@@ -269,7 +281,9 @@ docker volume rm deploy_joshu_arozos 2>/dev/null || true   # if down -v left a s
 | Certificate error in browser | DNS not pointing at VPS yet |
 | Health `curl` returns 503 | Hermes still starting — wait 2–5 min; check `components.hermes.ok` in JSON. On **2 GB** plans boot can take longer or OOM — use **8 GB RAM**. |
 | Health `curl` fails (connection error) | Ports 80/443 open; wait a few minutes after bootstrap |
-| Chat empty / 401 | Add OpenRouter in **Welcome → Connect AI**, or check gateway keys in `instance.env` |
+| Chat empty / 401 | Add OpenRouter in **Welcome → Connect AI** |
+| Voice hint / mic disabled | Add Gemini in **Welcome → Connect AI**; recreate `voice-realtime` after provider env changes |
+| `healthy: false` after Welcome | Restart stack once keys are saved so gbrain/Hindsight pick up embeddings |
 | Desktop icons broken (placeholder images) | Image **&lt; 0.1.30** or theme not applied — `git pull` + restart stack. **0.1.31+** bakes icons + vanilla chrome at build and re-applies on boot. |
 | Desktop has icons but no window chrome | Same — after login, DevTools → Network should load `aroz-vanilla-shell.css` (unauthenticated curl gets 307; see Step 7) |
 | Site works then **502** / box “down” for minutes | `joshu-stack` crash loop — `docker compose logs joshu-stack`. Use **8 GB RAM** or larger; 2 GB hosts OOM. |

@@ -7,6 +7,8 @@ export const BOX_SECRETS_UI_KEYS = [
   "OPENROUTER_API_KEY",
   "HINDSIGHT_API_LLM_API_KEY",
   "GEMINI_API_KEY",
+  /** gbrain + Hindsight embeddings when HINDSIGHT_API_EMBEDDINGS_PROVIDER=google */
+  "HINDSIGHT_API_EMBEDDINGS_GEMINI_API_KEY",
 ] as const;
 
 export type BoxSecretsUiKey = (typeof BOX_SECRETS_UI_KEYS)[number];

@@ -34,10 +34,17 @@ function voiceStackLabel(): string {
 }
 
 function missingVoiceKeyReason(): string {
+  const hermesKey = envTrim("HERMES_API_KEY") || envTrim("API_SERVER_KEY");
+  const token = resolveVoiceToken();
+  const missing: string[] = [];
+  if (!token && !hermesKey) missing.push("HERMES_API_KEY");
   if (voiceS2sProvider() === "gemini_live") {
-    return "missing GEMINI_API_KEY, HERMES_API_KEY, or voice token";
+    if (!resolveGeminiKey()) missing.push("GEMINI_API_KEY (Welcome → Connect AI)");
+  } else if (!resolveOpenAiKey()) {
+    missing.push("OPENAI_API_KEY");
   }
-  return "missing OPENAI_API_KEY, HERMES_API_KEY, or voice token";
+  if (missing.length === 0) return "voice not configured";
+  return `missing ${missing.join(", ")}`;
 }
 
 function resolveVoiceToken(): string {
