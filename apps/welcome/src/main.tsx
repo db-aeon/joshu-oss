@@ -223,8 +223,11 @@ function App() {
   const [needsConnectAi, setNeedsConnectAi] = useState(false);
   const [needsOpenRouter, setNeedsOpenRouter] = useState(true);
   const [needsGeminiVoice, setNeedsGeminiVoice] = useState(false);
+  const [needsEmbeddingsGemini, setNeedsEmbeddingsGemini] = useState(false);
+  const [needsGeminiMl, setNeedsGeminiMl] = useState(false);
   const [voiceOffered, setVoiceOffered] = useState(false);
   const [geminiConfigured, setGeminiConfigured] = useState(false);
+  const [embeddingsGeminiConfigured, setEmbeddingsGeminiConfigured] = useState(false);
   const [openRouterKey, setOpenRouterKey] = useState("");
   const [geminiKey, setGeminiKey] = useState("");
   const [draft, setDraft] = useState<Draft>(emptyDraft);
@@ -269,14 +272,20 @@ function App() {
       needsConnectAi?: boolean;
       needsOpenRouter?: boolean;
       needsGeminiVoice?: boolean;
+      needsEmbeddingsGemini?: boolean;
+      needsGeminiMl?: boolean;
       voiceOffered?: boolean;
       geminiConfigured?: boolean;
+      embeddingsGeminiConfigured?: boolean;
     };
     setNeedsConnectAi(Boolean(secrets.needsConnectAi));
     setNeedsOpenRouter(secrets.needsOpenRouter !== false);
     setNeedsGeminiVoice(Boolean(secrets.needsGeminiVoice));
+    setNeedsEmbeddingsGemini(Boolean(secrets.needsEmbeddingsGemini));
+    setNeedsGeminiMl(Boolean(secrets.needsGeminiMl));
     setVoiceOffered(Boolean(secrets.voiceOffered));
     setGeminiConfigured(Boolean(secrets.geminiConfigured));
+    setEmbeddingsGeminiConfigured(Boolean(secrets.embeddingsGeminiConfigured));
     const draftBody = (await draftRes.json()) as {
       draft?: Partial<Draft> & { primaryWorkEmail?: string; personalEmail?: string } | null;
     };
@@ -343,7 +352,7 @@ function App() {
 
   const patch = (partial: Partial<Draft>) => setDraft((d) => ({ ...d, ...partial }));
 
-  const saveConnectAi = async () => {
+  const saveConnectAi = async (): Promise<boolean> => {
     const payload: Record<string, string> = {};
     if (openRouterKey.trim()) payload.OPENROUTER_API_KEY = openRouterKey.trim();
     if (geminiKey.trim()) payload.GEMINI_API_KEY = geminiKey.trim();
@@ -361,16 +370,26 @@ function App() {
         needsConnectAi?: boolean;
         needsOpenRouter?: boolean;
         needsGeminiVoice?: boolean;
+        needsEmbeddingsGemini?: boolean;
+        needsGeminiMl?: boolean;
         geminiConfigured?: boolean;
+        embeddingsGeminiConfigured?: boolean;
       };
+      message?: string;
     };
     const status = data.status;
-    setNeedsConnectAi(Boolean(status?.needsConnectAi));
+    const stillNeeds = Boolean(status?.needsConnectAi);
+    setNeedsConnectAi(stillNeeds);
     setNeedsOpenRouter(status?.needsOpenRouter !== false);
     setNeedsGeminiVoice(Boolean(status?.needsGeminiVoice));
+    setNeedsEmbeddingsGemini(Boolean(status?.needsEmbeddingsGemini));
+    setNeedsGeminiMl(Boolean(status?.needsGeminiMl));
     setGeminiConfigured(Boolean(status?.geminiConfigured));
+    setEmbeddingsGeminiConfigured(Boolean(status?.embeddingsGeminiConfigured));
     setOpenRouterKey("");
     setGeminiKey("");
+    if (data.message) setSavedFlash(data.message);
+    return stillNeeds;
   };
 
   const saveGeminiKey = async () => {
@@ -384,11 +403,25 @@ function App() {
       const data = (await res.json().catch(() => ({}))) as { error?: string };
       throw new Error(data.error ?? "Could not save Gemini API key");
     }
-    const data = (await res.json()) as { status?: { geminiConfigured?: boolean; needsGeminiVoice?: boolean } };
-    setGeminiConfigured(Boolean(data.status?.geminiConfigured));
+    const data = (await res.json()) as {
+      status?: {
+        needsConnectAi?: boolean;
+        needsGeminiVoice?: boolean;
+        needsEmbeddingsGemini?: boolean;
+        needsGeminiMl?: boolean;
+        geminiConfigured?: boolean;
+        embeddingsGeminiConfigured?: boolean;
+      };
+      message?: string;
+    };
+    setNeedsConnectAi(Boolean(data.status?.needsConnectAi));
     setNeedsGeminiVoice(Boolean(data.status?.needsGeminiVoice));
+    setNeedsEmbeddingsGemini(Boolean(data.status?.needsEmbeddingsGemini));
+    setNeedsGeminiMl(Boolean(data.status?.needsGeminiMl));
+    setGeminiConfigured(Boolean(data.status?.geminiConfigured));
+    setEmbeddingsGeminiConfigured(Boolean(data.status?.embeddingsGeminiConfigured));
     setGeminiKey("");
-    setSavedFlash("Gemini key saved — voice mic in jChat is enabled.");
+    setSavedFlash(data.message ?? "Gemini key saved — voice and file brain will use it after restart.");
   };
 
   const next = async () => {
@@ -399,15 +432,24 @@ function App() {
         setError("Paste your OpenRouter API key to enable chat.");
         return;
       }
+      if (needsGeminiMl && !geminiKey.trim() && !geminiConfigured && !embeddingsGeminiConfigured) {
+        setError("Paste your Google Gemini API key — it powers voice and file search on this box.");
+        return;
+      }
+      if (!needsOpenRouter && !needsGeminiMl) {
+        setStep((s) => Math.min(s + 1, lastStep));
+        return;
+      }
       if (!openRouterKey.trim() && !geminiKey.trim()) {
-        setError("Enter at least one API key, or choose Skip for now.");
+        setError("Enter the required API keys above.");
         return;
       }
       setBusy(true);
       try {
-        await saveConnectAi();
-        setNeedsConnectAi(false);
-        // Step index stays at 1 — after removing connect-ai, that slot is "you".
+        const stillNeeds = await saveConnectAi();
+        if (!stillNeeds) {
+          setStep((s) => Math.min(s + 1, lastStep));
+        }
       } catch (e) {
         setError((e as Error).message);
       } finally {
@@ -533,14 +575,11 @@ function App() {
             <>
               <h2>Connect AI</h2>
               <p className="welcome-hint">
-                jChat needs an{" "}
-                <a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer">
-                  OpenRouter
-                </a>{" "}
-                API key for chat. Keys are stored on your box (not sent to Joshu).
+                Your box needs API keys to run chat, memory, and file search. Keys are stored on your box only — not
+                sent to Joshu.
               </p>
               {needsOpenRouter ? (
-                <Field label="OpenRouter API key" hint="Starts with sk-or-v1-">
+                <Field label="OpenRouter API key" hint="For jChat — get one at openrouter.ai/keys">
                   <input
                     type="password"
                     autoComplete="off"
@@ -552,16 +591,20 @@ function App() {
               ) : (
                 <p className="welcome-hint">OpenRouter is already connected.</p>
               )}
-              {voiceOffered ? (
+              {needsGeminiMl ? (
                 <>
                   <p className="welcome-hint" style={{ marginTop: "1rem" }}>
-                    Optional: add a{" "}
                     <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer">
                       Google Gemini
                     </a>{" "}
-                    API key to enable the microphone in jChat (Gemini Live voice).
+                    API key — powers file search (gbrain)
+                    {voiceOffered ? ", jChat microphone (Gemini Live)" : ""}
+                    , and Hindsight embeddings on this box.
                   </p>
-                  <Field label="Gemini API key (voice)" hint="Optional — enables mic in jChat">
+                  <Field
+                    label="Google Gemini API key"
+                    hint={needsEmbeddingsGemini && needsGeminiVoice ? "Required for voice + file brain" : needsEmbeddingsGemini ? "Required for file brain" : "Required for voice"}
+                  >
                     <input
                       type="password"
                       autoComplete="off"
@@ -571,6 +614,10 @@ function App() {
                     />
                   </Field>
                 </>
+              ) : geminiConfigured || embeddingsGeminiConfigured ? (
+                <p className="welcome-hint" style={{ marginTop: "1rem" }}>
+                  Gemini is already connected.
+                </p>
               ) : null}
             </>
           )}
@@ -815,16 +862,24 @@ function App() {
                 <dd>{draft.urgentChannel || "—"}</dd>
                 <dt>Mailbox</dt>
                 <dd>{nylasProvisioned ? assistantEmail : "Not yet — you can set up in jMail later"}</dd>
-                {voiceOffered ? (
+                {needsGeminiMl || voiceOffered ? (
                   <>
-                    <dt>Voice (jChat mic)</dt>
-                    <dd>{geminiConfigured ? "Gemini Live connected" : "Not set — add a key below"}</dd>
+                    <dt>Gemini (voice + file brain)</dt>
+                    <dd>
+                      {embeddingsGeminiConfigured && geminiConfigured
+                        ? "Connected"
+                        : embeddingsGeminiConfigured
+                          ? "File brain connected — add key again for voice if needed"
+                          : geminiConfigured
+                            ? "Voice connected — restart box for file brain"
+                            : "Not set — add a key below"}
+                    </dd>
                   </>
                 ) : null}
               </dl>
-              {voiceOffered && needsGeminiVoice ? (
+              {needsGeminiMl ? (
                 <div style={{ marginTop: "1rem" }}>
-                  <Field label="Gemini API key (voice)" hint="From aistudio.google.com/apikey">
+                  <Field label="Google Gemini API key" hint="From aistudio.google.com/apikey">
                     <input
                       type="password"
                       autoComplete="off"

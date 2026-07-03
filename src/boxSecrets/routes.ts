@@ -8,6 +8,7 @@ import {
   type BoxSecretsUiKey,
 } from "./localEnv.js";
 import { isProvisionLockedSecret, readBoxSecretsStatus } from "./resolve.js";
+import { provisionEnvTrim } from "../provisionInstanceEnv.js";
 
 function readUpdateBody(body: unknown): Partial<Record<BoxSecretsUiKey, string>> | null {
   if (!body || typeof body !== "object") return null;
@@ -17,9 +18,19 @@ function readUpdateBody(body: unknown): Partial<Record<BoxSecretsUiKey, string>>
     const raw = o[key];
     if (typeof raw === "string" && raw.trim()) out[key] = raw.trim();
   }
-  if (!out.OPENROUTER_API_KEY && !out.GEMINI_API_KEY) return null;
+  if (!out.OPENROUTER_API_KEY && !out.GEMINI_API_KEY && !out.HINDSIGHT_API_EMBEDDINGS_GEMINI_API_KEY) {
+    return null;
+  }
   if (out.OPENROUTER_API_KEY && !out.HINDSIGHT_API_LLM_API_KEY) {
     out.HINDSIGHT_API_LLM_API_KEY = out.OPENROUTER_API_KEY;
+  }
+  const embeddingsProvider = provisionEnvTrim("HINDSIGHT_API_EMBEDDINGS_PROVIDER") || "google";
+  if (embeddingsProvider === "google") {
+    if (out.GEMINI_API_KEY && !out.HINDSIGHT_API_EMBEDDINGS_GEMINI_API_KEY) {
+      out.HINDSIGHT_API_EMBEDDINGS_GEMINI_API_KEY = out.GEMINI_API_KEY;
+    } else if (out.HINDSIGHT_API_EMBEDDINGS_GEMINI_API_KEY && !out.GEMINI_API_KEY) {
+      out.GEMINI_API_KEY = out.HINDSIGHT_API_EMBEDDINGS_GEMINI_API_KEY;
+    }
   }
   return out;
 }
@@ -41,7 +52,9 @@ export function registerBoxSecretsRoutes(
   router.put("/api/box-secrets", async (req: Request, res: Response) => {
     const updates = readUpdateBody(req.body);
     if (!updates) {
-      res.status(400).json({ error: "OPENROUTER_API_KEY or GEMINI_API_KEY required" });
+      res.status(400).json({
+        error: "OPENROUTER_API_KEY, GEMINI_API_KEY, or HINDSIGHT_API_EMBEDDINGS_GEMINI_API_KEY required",
+      });
       return;
     }
     for (const key of BOX_SECRETS_UI_KEYS) {
@@ -54,18 +67,23 @@ export function registerBoxSecretsRoutes(
     }
     try {
       writeBoxSecretsOverrides(updates, projectRoot);
+      const openRouterChanged = Boolean(updates.OPENROUTER_API_KEY);
       await syncHermesLlmEnv(projectRoot);
       let gateway = runner ? await runner.getGatewayStatus().catch(() => null) : null;
-      if (runner) {
+      // Gemini-only saves must not block Welcome on a full gateway boot (~30–90s).
+      if (runner && openRouterChanged) {
         gateway = await runner.restartGateway(projectRoot);
       }
       res.json({
         ok: true,
         status: readBoxSecretsStatus(projectRoot),
         gateway,
-        message: updates.GEMINI_API_KEY
-          ? "AI keys saved. Voice uses Gemini Live when the voice container is running."
-          : "AI keys saved. Hermes gateway restarted.",
+        restartedGateway: openRouterChanged,
+        message: openRouterChanged
+          ? "AI keys saved. Hermes gateway restarted."
+          : updates.GEMINI_API_KEY || updates.HINDSIGHT_API_EMBEDDINGS_GEMINI_API_KEY
+            ? "AI keys saved. Restart the box (or wait for the next boot) for file brain and voice to pick them up."
+            : "AI keys saved.",
       });
     } catch (err) {
       res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
@@ -78,6 +96,7 @@ export function registerBoxSecretsRoutes(
       res.json({
         openRouterConfigured: Boolean(local.OPENROUTER_API_KEY),
         geminiConfigured: Boolean(local.GEMINI_API_KEY),
+        embeddingsGeminiConfigured: Boolean(local.HINDSIGHT_API_EMBEDDINGS_GEMINI_API_KEY),
         // Never return secret values — UI uses password fields only.
       });
     } catch (err) {

@@ -7,7 +7,10 @@ Human SOP: [`executive-assistant.md`](executive-assistant.md). Welcome seeds pro
 ## User flow
 
 1. On first login, **Welcome** auto-opens once per browser session when onboarding is incomplete (see [`arozos/web-overlays-vanilla/aroz-onboarding-launch.js`](../arozos/web-overlays-vanilla/aroz-onboarding-launch.js)).
-2. **Standalone self-host only:** if no OpenRouter key is configured, Welcome shows **Connect AI** (step 2) to save API keys to `.joshu/box-secrets/local-env.json`. On the same step you can optionally add a **Gemini** key for the jChat microphone (Gemini Live). **Control-plane managed boxes skip this** — keys are already in `/etc/joshu/instance.env` at provision time.
+2. **Standalone self-host only:** if required API keys are missing, Welcome shows **Connect AI** to save keys to `.joshu/box-secrets/local-env.json`:
+   - **OpenRouter** — jChat + Hindsight LLM (when not in `instance.env`)
+   - **Google Gemini** — file brain (gbrain embeddings), Hindsight embeddings, and jChat microphone (Gemini Live) when voice is enabled
+   Fleet / control-plane boxes skip this — keys are in `/etc/joshu/instance.env` at provision time.
 3. **Optional Day 0:** After Gmail is connected, run **Analyze mail for setup (Day 0)** in **Connectors → Connect apps** to pre-fill the draft from 30 days of mail + calendar. See [`day0-cold-start.md`](day0-cold-start.md).
 4. Seven-step wizard captures priorities, communication (with contact details), online tools, and optional VIPs.
 5. Progress auto-saves on each **Continue** via `PUT /joshu/api/onboarding/draft`.
@@ -23,7 +26,7 @@ Human SOP: [`executive-assistant.md`](executive-assistant.md). Welcome seeds pro
 | # | Step | What the user provides |
 |---|------|------------------------|
 | 0 | Welcome | Intro (or “Review or update” if already completed) |
-| 1 | Connect AI | OpenRouter API key (**standalone only**, when not provisioned); optional Gemini key for jChat voice |
+| 1 | Connect AI | OpenRouter API key (**standalone**, when not provisioned); **Google Gemini** key for file brain + voice (when not provisioned) |
 | 2 | You & your assistant | Principal name, assistant persona name |
 | 3 | Big picture | Multi-select priorities + optional notes |
 | 4 | Communication | Channel checkboxes **with contact fields** + schedule/rhythm |
@@ -31,7 +34,7 @@ Human SOP: [`executive-assistant.md`](executive-assistant.md). Welcome seeds pro
 | 6 | Key people | Optional VIP rows |
 | 7 | Review | Summary → **Finish setup** or **Save changes** |
 
-Step **Connect AI** is omitted when `GET /joshu/api/box-secrets/status` reports `needsConnectAi: false` (fleet / CP boxes with provisioned `OPENROUTER_API_KEY`, or after the key is saved).
+Step **Connect AI** is omitted when `GET /joshu/api/box-secrets/status` reports `needsConnectAi: false` (all required standalone keys present — from provision or Welcome).
 
 ### Big picture (step 2)
 
@@ -127,8 +130,8 @@ Mounted under `PUBLIC_BASE_PATH` (default `/joshu`). JSON body routes require `e
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/joshu/api/box-secrets/status` | `needsConnectAi`, `needsOpenRouter`, `needsGeminiVoice`, `voiceOffered`, `geminiConfigured`, `standalone`, per-field source |
-| `PUT` | `/joshu/api/box-secrets` | Save `OPENROUTER_API_KEY` and/or `GEMINI_API_KEY` to `.joshu/box-secrets/local-env.json`; sync Hermes; restart gateway when OpenRouter changes |
+| `GET` | `/joshu/api/box-secrets/status` | `needsConnectAi`, `needsOpenRouter`, `needsGeminiMl`, `needsEmbeddingsGemini`, `needsGeminiVoice`, `voiceOffered`, `embeddingsProvider`, per-field source |
+| `PUT` | `/joshu/api/box-secrets` | Save keys to `.joshu/box-secrets/local-env.json`; Gemini also sets `HINDSIGHT_API_EMBEDDINGS_GEMINI_API_KEY`; OpenRouter change restarts Hermes gateway (Gemini-only saves do not block Welcome) |
 
 `POST /complete` is idempotent for updates: re-running refreshes markdown/profile without a second running-log entry.
 

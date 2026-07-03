@@ -50,13 +50,21 @@ import json, sys
 path = sys.argv[1]
 with open(path) as f:
     data = json.load(f)
-for key in ("OPENROUTER_API_KEY", "HINDSIGHT_API_LLM_API_KEY", "GEMINI_API_KEY"):
+for key in ("OPENROUTER_API_KEY", "HINDSIGHT_API_LLM_API_KEY", "GEMINI_API_KEY", "HINDSIGHT_API_EMBEDDINGS_GEMINI_API_KEY"):
     val = (data.get(key) or "").strip()
     if val:
         print(f"{key}={val}")
 PY
 )
       echo "[vps-start] loaded box-secrets from ${json}"
+      # Shared Gemini key powers google embeddings + gbrain when dedicated key omitted.
+      if [[ -n "${GEMINI_API_KEY:-}" && -z "${HINDSIGHT_API_EMBEDDINGS_GEMINI_API_KEY:-}" ]]; then
+        export HINDSIGHT_API_EMBEDDINGS_GEMINI_API_KEY="${GEMINI_API_KEY}"
+      fi
+      if [[ -n "${HINDSIGHT_API_EMBEDDINGS_GEMINI_API_KEY:-}" ]]; then
+        export GOOGLE_API_KEY="${GOOGLE_API_KEY:-${HINDSIGHT_API_EMBEDDINGS_GEMINI_API_KEY}}"
+        export GOOGLE_GENERATIVE_AI_API_KEY="${GOOGLE_GENERATIVE_AI_API_KEY:-${HINDSIGHT_API_EMBEDDINGS_GEMINI_API_KEY}}"
+      fi
       return 0
     fi
   done
@@ -178,11 +186,15 @@ sync_companion_identity() {
     -H "Content-Type: application/json" \
     -d '{"forceSoul":true}' >/dev/null 2>&1; then
     echo "[vps-start] companion identity synced via Joshu API"
-    return 0
+  else
+    local script="${APP_DIR}/scripts/sync-companion-identity.mjs"
+    if [[ -f "${script}" && -f "${APP_DIR}/dist/companionIdentitySync.js" ]]; then
+      node "${script}" --force-soul || echo "[vps-start] WARN: sync-companion-identity failed" >&2
+    fi
   fi
-  local script="${APP_DIR}/scripts/sync-companion-identity.mjs"
-  if [[ -f "${script}" && -f "${APP_DIR}/dist/companionIdentitySync.js" ]]; then
-    node "${script}" --force-soul || echo "[vps-start] WARN: sync-companion-identity failed" >&2
+  if [[ "${JOSHU_VOICE_MODE:-realtime_s2s}" == "realtime_s2s" && -x "${APP_DIR}/scripts/generate-voice-instant-ack.sh" ]]; then
+    bash "${APP_DIR}/scripts/generate-voice-instant-ack.sh" \
+      || echo "[vps-start] WARN: voice instant ack generation failed" >&2
   fi
 }
 
