@@ -15,7 +15,7 @@ This is **standalone self-host** only.
 | --- | --- |
 | VPS public IP | `203.0.113.50` |
 | Hostname | `mybox.example.com` |
-| Release image | `ghcr.io/db-aeon/joshu-oss:0.1.31` (see [`deploy/RELEASE.json`](../deploy/RELEASE.json)) |
+| Release image | `ghcr.io/db-aeon/joshu-oss:0.1.32` (see [`deploy/RELEASE.json`](../deploy/RELEASE.json)) |
 
 ---
 
@@ -95,9 +95,9 @@ CUSTOMER_DOMAIN=mybox.example.com
 VPS_IPV4=203.0.113.50
 ACME_EMAIL=you@example.com
 
-JOSHU_RELEASE_VERSION=0.1.31
-JOSHU_IMAGE_REF=ghcr.io/db-aeon/joshu-oss:0.1.31
-JOSHU_VOICE_IMAGE_REF=ghcr.io/db-aeon/joshu-oss-voice-realtime:0.1.31
+JOSHU_RELEASE_VERSION=0.1.32
+JOSHU_IMAGE_REF=ghcr.io/db-aeon/joshu-oss:0.1.32
+JOSHU_VOICE_IMAGE_REF=ghcr.io/db-aeon/joshu-oss-voice-realtime:0.1.32
 ```
 
 Save: **Ctrl+O** Enter, **Ctrl+X**.
@@ -249,7 +249,7 @@ Log in at `https://mybox.example.com/` with the new password.
 
 ## Upgrade or reinstall (existing VPS)
 
-To move to a newer image (e.g. `0.1.31`):
+To move to a newer image (e.g. `0.1.32`):
 
 ```bash
 cd /opt/joshu && git pull origin main
