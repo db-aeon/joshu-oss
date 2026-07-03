@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="robots" content="noindex">
+        <title>Joshu — Sign in again</title>
+        <link rel="icon" href="img/public/joshu-icon.svg?v={{joshu_overlay_version}}" type="image/svg+xml">
+        <link rel="stylesheet" href="script/joshu-auth-pages.css?v={{joshu_overlay_version}}">
+        <style>
+            body {
+                background: #ece9e4;
+                margin: 0;
+            }
+            .jp-session-boot {
+                max-width: 42rem;
+                margin: 3rem auto;
+                padding: 0 1.5rem 2rem;
+            }
+            .jp-session-boot h1 {
+                font-size: 1.5rem;
+                font-weight: 600;
+                margin: 0 0 0.75rem;
+                color: #1a1a1a;
+            }
+            .jp-session-boot p,
+            .jp-session-boot li {
+                line-height: 1.55;
+                color: #333;
+            }
+            .jp-session-boot ul {
+                margin: 0.75rem 0 1rem 1.25rem;
+            }
+            .jp-session-boot .steps {
+                margin: 1.25rem 0;
+            }
+            .jp-session-boot .steps a {
+                font-weight: 500;
+            }
+            .jp-session-boot .wordmark {
+                margin-bottom: 1.5rem;
+            }
+            .jp-session-boot .wordmark img {
+                max-height: 36px;
+                width: auto;
+            }
+        </style>
+    </head>
+    <body class="jp-session-boot-page">
+        <div class="jp-session-boot">
+            <div class="wordmark">
+                <img src="img/public/joshu-wordmark.svg" alt="Joshu">
+            </div>
+            <h1>Your browser session does not match this box</h1>
+            <p>
+                For security, Joshu blocked access because your saved login session is no longer valid
+                for this server. That usually happens when:
+            </p>
+            <ul>
+                <li>The box was reset or reinstalled while your browser kept an old session cookie</li>
+                <li>User data was copied to a new image without signing in again</li>
+                <li>You switched between environments that share the same hostname</li>
+            </ul>
+            <p>Clear the old session and sign in again:</p>
+            <div class="steps">
+                <p>
+                    1.
+                    <a href="./system/auth/logout" target="_blank" rel="noopener">Sign out (clear session)</a>
+                    — wait for an “OK” response in the new tab.
+                </p>
+                <p>
+                    2.
+                    <a href="./login.html">Back to sign in</a>
+                </p>
+            </div>
+            <p class="joshu-auth-footer">
+                Self-hosting?
+                <a href="https://github.com/db-aeon/joshu-oss/blob/main/docs/vps-quickstart.md" target="_blank" rel="noopener">VPS quickstart</a>
+                ·
+                <a href="https://github.com/db-aeon/joshu-oss" target="_blank" rel="noopener">joshu-oss on GitHub</a>
+                <span class="joshu-auth-version">v{{joshu_release_version}}</span>
+            </p>
+        </div>
+    </body>
+</html>

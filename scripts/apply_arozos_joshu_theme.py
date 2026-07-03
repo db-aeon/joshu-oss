@@ -40,7 +40,7 @@ SHELL_SCRIPTS = (
     "aroz-onboarding-launch.js",
     "aroz-jchat-tray.js",
 )
-AUTH_PAGE_FILES = ("login.html", "user.html")
+AUTH_PAGE_FILES = ("login.html", "user.html", "index.html")
 AUTH_ASSET_FILES = ("joshu-auth-pages.css", "joshu-wordmark.svg")
 RESET_TEMPLATE_FILES = ("resetCodeTemplate.html", "resetPasswordTemplate.html")
 # login.html / user.html are shown before auth — assets must live on public ArozOS paths.
@@ -628,7 +628,7 @@ def _apply_auth_pages(web: Path, overlay: Path, root: Path, version: str) -> Non
         for needle, repl in substitutions.items():
             text = text.replace(needle, repl)
         (web / page).write_text(text, encoding="utf-8")
-    print(f"[joshu] applied auth branding (login + user setup) v{version} -> {web}")
+    print(f"[joshu] applied auth branding (login, user setup, session boot) v{version} -> {web}")
 
 
 def _apply_reset_templates(web: Path, overlay: Path, root: Path, version: str) -> None:
