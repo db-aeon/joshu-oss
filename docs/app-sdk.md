@@ -43,8 +43,8 @@ flowchart TB
 
   subgraph app["Your app browser bundle"]
     ui[Vite UI + guiRef]
-    pa[@joshu/app-agent handlers]
-    pd[@joshu/platform-data]
+    pa["@joshu/app-agent handlers"]
+    pd["@joshu/platform-data"]
   end
 
   manifest --> reg
