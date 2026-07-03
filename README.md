@@ -16,14 +16,18 @@
 > **⚠️ Early Stage Notice**  
 > This open-source repository is in a **VERY EARLY** stage of development. While every effort has been made to get the stack up and running for the community, it has not been thoroughly tested. It is provided "as is" with no warranty. Expect rough edges and potential breaking changes!
 
-## ✨ Features
+## ✨ What is Joshu?
 
-- 🤖 **Hermes AI Integration:** Deeply integrated with Hermes for agentic workflows, scheduling, and memory.
-- 🌐 **jWeb (HITL Browser):** A Human-in-the-Loop browser that shares a Camofox tab between you and the agent via noVNC.
-- 💬 **jChat & jMail:** Native chat interface and Nylas/Composio-powered email client.
-- 🧠 **Memory & File Brain:** Semantic memory extraction via Hindsight and local file indexing via gbrain.
-- 🛠️ **Rich App Ecosystem:** Includes jWhiteboard (Excalidraw), Schedules (cron UI), jMovie (video editor), and Connectors (OAuth management).
-- 🔒 **Privacy First:** Fully self-hostable on your own hardware or a VPS.
+Joshu is a fundamentally new approach to AI agents: instead of an AI trying to use your computer, you and the AI share a computer built specifically for both of you.
+
+- 🧠 **LLM:** Powered by Deepseek v4 Flash via OpenRouter. Dealing with LLMs used to be a headache of cost, intelligence, speed, and censorship—that's a thing of the past.
+- ⚡ **Hermes Harness:** The LLM is wrapped in the Hermes agent framework, which manages multi-gateway communication (chat, SMS, iMessage, telephony, voice). Hermes routes incoming messages to the LLM and handles structured skill execution.
+- 🖥️ **The Cloud Desktop (LGUI):** Joshu's most unique feature. Rather than just a chat interface, Joshu provides a full cloud desktop (a "Language Graphical User Interface") running on the VPS that both the human AND the AI agent can operate simultaneously. Apps on the desktop (email client, file browser, whiteboard, web browser) have language pipelines built in, so Joshu can open, read, and interact with them programmatically, while you can also use them like a normal desktop app. This solves a fundamental problem with "computer use" AI: instead of trying to control a Mac or Windows desktop designed for a mouse and human eyes, Joshu's cloud desktop is purpose-built for joint human-AI operation from the ground up.
+- 🌐 **Hybrid Web Browser:** Joshu includes a sandboxed browser-within-a-browser. It doesn't share cookies with your local Chrome, but it IS logged into your accounts (Facebook, Gmail, etc.). This lets Joshu handle tasks that require authentication—a hard blocker for most agent systems that can't get past login screens or 2FA without a human in the loop.
+- 📁 **GBrain Semantic File System:** The Linux file system is augmented with GBrain (by Gary Tan), a semantic indexing layer. Every file Joshu creates, every email thread saved, and every document uploaded gets indexed. The LLM can query files both with traditional terminal commands (`grep`, `ls`) AND via semantic vector search, finding relevant files by meaning, not just filename.
+- 💭 **Hindsight Memory System:** Hindsight is wired in as the memory provider, working seamlessly out of the box to give the agent long-term recall.
+- ☁️ **Dedicated Cloud Box:** The entire system runs on a dedicated Ubuntu VPS (like DigitalOcean), not shared infrastructure. Each user gets their own box with dedicated CPU, GPU, RAM, and disk. A control plane app on Vercel manages the fleet of boxes.
+- 📚 **Skill Library & Learning Loop:** In addition to the standard Hermes learning loop, the box reports any long sessions back to the control plane, which are then stored in Git for manual inspection to catch red flags and improve the system.
 
 ## 🚀 Quick Start (Local Development)
 
