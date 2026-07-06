@@ -4,7 +4,16 @@
 set -euo pipefail
 
 INSTALL_DIR="${JOSHU_INSTALL_DIR:-/opt/joshu}"
-IMAGE_REF="${JOSHU_IMAGE_REF:?Set JOSHU_IMAGE_REF}"
+ENV_FILE="${JOSHU_INSTANCE_ENV:-/etc/joshu/instance.env}"
+
+if [[ -z "${JOSHU_IMAGE_REF:-}" && -f "${ENV_FILE}" ]]; then
+  set -a
+  # shellcheck source=/dev/null
+  source "${ENV_FILE}"
+  set +a
+fi
+
+IMAGE_REF="${JOSHU_IMAGE_REF:?Set JOSHU_IMAGE_REF or define it in ${ENV_FILE}}"
 VERSION="${JOSHU_RELEASE_VERSION:-$(echo "$IMAGE_REF" | awk -F: '{print $NF}')}"
 DIST_DIR="${INSTALL_DIR}/dist"
 BOX_STATE_DIST="${INSTALL_DIR}/packages/box-state/dist"

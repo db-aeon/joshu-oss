@@ -164,13 +164,13 @@ Cloud-init (control-plane provision) runs `bootstrap-vps.sh`, which clones the r
 | --- | --- |
 | Skills, MCP scripts, `vps-start.sh`, templates (bind-mounted paths) | `git pull` on host → recreate `joshu-stack` |
 | Compiled Joshu API (`src/` → `dist/`) | Sync host `dist/` from image (below) → recreate |
-| `deploy/Dockerfile`, Hermes pin, `deploy/runtime/package.json` | New image tag → pull → dist sync → recreate |
+| `deploy/Dockerfile`, Hermes pin, `deploy/runtime/package.json` | Bump pins in `instance.env` → **`docker pull`** new tags → dist sync → recreate |
 
 Quick dist recovery after a release image pull:
 
 ```bash
-JOSHU_IMAGE_REF=ghcr.io/db-aeon/joshu-sandbox:0.1.17 \
-JOSHU_RELEASE_VERSION=0.1.17 \
+set -a && source /etc/joshu/instance.env && set +a
+docker pull "$JOSHU_IMAGE_REF"
 bash /opt/joshu/scripts/sync-dist-from-image.sh
 cd /opt/joshu/deploy && docker compose -f docker-compose.yml --env-file /etc/joshu/instance.env up -d --force-recreate joshu-stack
 curl -fsS http://127.0.0.1:8788/joshu/api/instance/health | jq '.components.dist'

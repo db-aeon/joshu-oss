@@ -254,11 +254,22 @@ To move to a newer image (e.g. `0.1.33`):
 ```bash
 cd /opt/joshu && git pull origin main
 nano /etc/joshu/instance.env   # bump JOSHU_RELEASE_VERSION + JOSHU_IMAGE_REF (+ voice ref)
+
+# Load pins for the commands below
+set -a && source /etc/joshu/instance.env && set +a
+
+# Pull release images (required — node_modules and runtime deps live in the image, not git)
+docker pull "$JOSHU_IMAGE_REF"
+docker pull "$JOSHU_VOICE_IMAGE_REF" 2>/dev/null || true
+
+# Sync bind-mounted dist/ (+ workspace package dist/) from the new image
 bash scripts/sync-dist-from-image.sh
+
 cd deploy
-docker compose -f docker-compose.yml --env-file /etc/joshu/instance.env pull joshu-stack voice-rt 2>/dev/null || true
 docker compose -f docker-compose.yml --env-file /etc/joshu/instance.env up -d --force-recreate
 ```
+
+`sync-dist-from-image.sh` also runs `docker pull`, but the explicit pulls above make the upgrade obvious and fail fast if the tag is missing. `docker compose pull` works too — use one pull path, not neither.
 
 **Full wipe** (factory-fresh data — destroys desktop files, Postgres, Hermes state):
 
