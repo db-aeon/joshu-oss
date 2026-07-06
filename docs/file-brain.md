@@ -99,7 +99,7 @@ Hermes gateway startup (`src/hermesApi.ts`) sets **`terminal.cwd`** and **`HERME
 
 **Hermes `search_files`** (built into `hermes-cli`, not Joshu MCP) shells out to **ripgrep** (`rg`), with `find` as a slower fallback. Local dev: `brew install ripgrep` (checked by [`scripts/dev-arozos.sh`](../scripts/dev-arozos.sh)). VPS sandbox image: `ripgrep` in [`deploy/Dockerfile`](../deploy/Dockerfile) runtime packages. Prefer **gbrain MCP `query`** with `source_id: "__all__"` for file-brain questions; use `search_files` for raw disk greps when MCP returns nothing useful.
 
-Resolution: [`src/joshuFilesPaths.ts`](../src/joshuFilesPaths.ts), [`scripts/lib/joshu-files-paths.sh`](../scripts/lib/joshu-files-paths.sh).
+Resolution: [`src/joshuFilesPaths.ts`](../src/joshuFilesPaths.ts), [`scripts/lib/joshu-files-paths.sh`](../scripts/lib/joshu-files-paths.sh). Full box layout and troubleshooting: [`box-paths.md`](box-paths.md).
 
 ### Single-owner sandboxes (VPS)
 

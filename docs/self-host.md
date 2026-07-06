@@ -72,7 +72,15 @@ See [local-installation.md](local-installation.md) and `npm run dev:arozos`.
 
 ---
 
+## Configuration without Welcome
+
+- [box-paths.md](box-paths.md) — required ArozOS user paths (`JOSHU_AROZ_USER`, Desktop, `.joshu`)
+- [env-without-wizard.md](env-without-wizard.md) — API keys and secrets via `/etc/joshu/instance.env`
+
+---
+
 ## Related
 
 - [deploy/README.md](../deploy/README.md) — image build and env reference
+- [vps-quickstart.md](vps-quickstart.md) — step-by-step VPS install
 - [THIRD_PARTY.md](THIRD_PARTY.md) — ArozOS GPL, Hermes patches
