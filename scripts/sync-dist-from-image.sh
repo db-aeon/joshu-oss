@@ -16,11 +16,12 @@ fi
 IMAGE_REF="${JOSHU_IMAGE_REF:?Set JOSHU_IMAGE_REF or define it in ${ENV_FILE}}"
 VERSION="${JOSHU_RELEASE_VERSION:-$(echo "$IMAGE_REF" | awk -F: '{print $NF}')}"
 DIST_DIR="${INSTALL_DIR}/dist"
+APP_SDK_DIST="${INSTALL_DIR}/packages/app-sdk/dist"
 BOX_STATE_DIST="${INSTALL_DIR}/packages/box-state/dist"
 EMAIL_SIG_DIST="${INSTALL_DIR}/packages/email-signature/dist"
 PROVENANCE="${DIST_DIR}/.release-provenance.json"
 
-mkdir -p "$DIST_DIR" "$BOX_STATE_DIST" "$EMAIL_SIG_DIST"
+mkdir -p "$DIST_DIR" "$APP_SDK_DIST" "$BOX_STATE_DIST" "$EMAIL_SIG_DIST"
 
 echo "[sync-dist-from-image] pulling ${IMAGE_REF}"
 docker pull "$IMAGE_REF"
@@ -30,6 +31,12 @@ trap 'docker rm -f "$CID" >/dev/null 2>&1 || true' EXIT
 
 echo "[sync-dist-from-image] copying dist -> ${DIST_DIR}"
 docker cp "${CID}:/opt/joshu/dist/." "$DIST_DIR/"
+
+if docker cp "${CID}:/opt/joshu/packages/app-sdk/dist/." "$APP_SDK_DIST/" 2>/dev/null; then
+  echo "[sync-dist-from-image] app-sdk dist synced"
+else
+  echo "[sync-dist-from-image] app-sdk dist not in image (skipped)"
+fi
 
 if docker cp "${CID}:/opt/joshu/packages/box-state/dist/." "$BOX_STATE_DIST/" 2>/dev/null; then
   echo "[sync-dist-from-image] box-state dist synced"

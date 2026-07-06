@@ -265,6 +265,9 @@ docker pull "$JOSHU_VOICE_IMAGE_REF" 2>/dev/null || true
 # Sync bind-mounted dist/ (+ workspace package dist/) from the new image
 bash scripts/sync-dist-from-image.sh
 
+# git pull/reset restores the Caddyfile template — re-render from instance.env
+bash deploy/scripts/render-caddyfile.sh /etc/joshu/instance.env
+
 cd deploy
 docker compose -f docker-compose.yml --env-file /etc/joshu/instance.env up -d --force-recreate
 ```
