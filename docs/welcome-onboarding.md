@@ -4,6 +4,8 @@ First-time setup for Joshu boxes with the **EA v2** layout (`Projects/`, `Triage
 
 Human SOP: [`executive-assistant.md`](executive-assistant.md). Welcome seeds project folders from big-picture priorities and installs morning/evening/weekly Hermes crons (no midday).
 
+**Prefer CLI / headless setup?** See [`env-without-wizard.md`](env-without-wizard.md) for API keys via `instance.env`. If Welcome shows **`draft path unavailable`**, fix ArozOS paths first — [`box-paths.md`](box-paths.md).
+
 ## User flow
 
 1. On first login, **Welcome** auto-opens once per browser session when onboarding is incomplete (see [`arozos/web-overlays-vanilla/aroz-onboarding-launch.js`](../arozos/web-overlays-vanilla/aroz-onboarding-launch.js)).
@@ -168,8 +170,18 @@ npm run dev:arozos           # syncs subservice, desktop shortcut, auto-launch s
 
 After UI or API changes: rebuild Welcome (`npm run build:welcome`) and restart Joshu / `dev:arozos` so the subservice serves fresh assets.
 
+## Troubleshooting
+
+| Symptom | Doc |
+|---------|-----|
+| **`draft path unavailable`** on Continue | [`box-paths.md`](box-paths.md) — set `JOSHU_AROZ_USER` to ArozOS login email; ensure `Desktop/` exists |
+| Skip Connect AI / set keys in shell | [`env-without-wizard.md`](env-without-wizard.md) |
+| `gbrain.ok: false` in health | [`box-paths.md`](box-paths.md), [`file-brain.md`](file-brain.md) |
+
 ## Related docs
 
+- [`box-paths.md`](box-paths.md) — filesystem layout on the box
+- [`env-without-wizard.md`](env-without-wizard.md) — secrets without Welcome
 - [`executive-assistant.md`](executive-assistant.md) — full EA operating model
 - [`executive-assistant.md`](executive-assistant.md#project-kanban-multi-step--hitl-2026-06) — project Kanban for multi-step / HITL work (after Day-1 setup)
 - [`docs/hermes-integration.md`](hermes-integration.md) — skills, workspace bootstrap

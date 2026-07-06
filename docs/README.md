@@ -26,7 +26,8 @@ Shortcut format: [`arozos-desktop-shortcuts.md`](arozos-desktop-shortcuts.md).
 |-------|-----|
 | Self-host (standalone Docker) | [`self-host.md`](self-host.md) |
 | Ubuntu VPS quickstart | [`vps-quickstart.md`](vps-quickstart.md) |
-| Box state / factory reset | [`box-state.md`](box-state.md) |
+| **Box filesystem paths** | [`box-paths.md`](box-paths.md) |
+| **Env without Welcome wizard** | [`env-without-wizard.md`](env-without-wizard.md) |
 | Local dev install | [`local-installation.md`](local-installation.md) |
 | Hermes integration (skills, gateway, env) | [`hermes-integration.md`](hermes-integration.md) |
 | Connectors (mail, calendar, MCP) | [`connectors.md`](connectors.md) |

@@ -1,6 +1,6 @@
 # VPS Ubuntu quickstart (self-host)
 
-Step-by-step: create a VPS, download Joshu from GitHub, set your hostname, run the installer, open the desktop. **API keys** (OpenRouter + Gemini) are added in the **Welcome** app after first login — not on the command line.
+Step-by-step: create a VPS, download Joshu from GitHub, set your hostname, run the installer, open the desktop. **API keys** (OpenRouter + Gemini) can be added in **Welcome → Connect AI** after first login, or manually in [`instance.env`](env-without-wizard.md) before login.
 
 This is **standalone self-host** only.
 
@@ -138,7 +138,16 @@ In a browser: `https://mybox.example.com/`
 
 **First boot:** if the box has no users yet, you land on **Create your account** (`/user.html`) — not the login page. Create the owner account, then sign in.
 
-**Welcome** opens automatically and walks through **Connect AI**:
+**Set owner paths (recommended before Welcome):** add the email you just registered to `/etc/joshu/instance.env`, then restart the stack:
+
+```dotenv
+JOSHU_AROZ_USER=you@example.com
+JOSHU_OWNER_EMAIL=you@example.com
+```
+
+Must match the ArozOS login email **exactly** (case-sensitive). Without this, Welcome may show **`draft path unavailable`** and File Brain stays unhealthy. Details: [`box-paths.md`](box-paths.md).
+
+**Welcome** opens automatically and walks through **Connect AI** (skip if keys are already in `instance.env` — [`env-without-wizard.md`](env-without-wizard.md)):
 
 1. **[OpenRouter](https://openrouter.ai/keys) API key** — jChat + Hindsight LLM
 2. **[Google Gemini](https://aistudio.google.com/apikey) API key** — file search (gbrain), Hindsight embeddings, and jChat microphone (Gemini Live)
@@ -295,7 +304,8 @@ docker volume rm deploy_joshu_arozos 2>/dev/null || true   # if down -v left a s
 | Certificate error in browser | DNS not pointing at VPS yet |
 | Health `curl` returns 503 | Hermes still starting — wait 2–5 min; check `components.hermes.ok` in JSON. On **2 GB** plans boot can take longer or OOM — use **8 GB RAM**. |
 | Health `curl` fails (connection error) | Ports 80/443 open; wait a few minutes after bootstrap |
-| Chat empty / 401 | Add OpenRouter in **Welcome → Connect AI** |
+| Welcome **`draft path unavailable`** | Set `JOSHU_AROZ_USER` to login email; restart stack — [`box-paths.md`](box-paths.md) |
+| Chat empty / 401 | Add OpenRouter in **Welcome → Connect AI** or [`instance.env`](env-without-wizard.md) |
 | Voice hint / mic disabled | Add Gemini in **Welcome → Connect AI**; recreate `voice-realtime` after provider env changes |
 | `healthy: false` after Welcome | Restart stack once keys are saved so gbrain/Hindsight pick up embeddings |
 | Desktop icons broken (placeholder images) | Image **&lt; 0.1.30** or theme not applied — `git pull` + restart stack. **0.1.31+** bakes icons + vanilla chrome at build and re-applies on boot. |
@@ -334,6 +344,8 @@ Hard-refresh the browser (Cmd+Shift+R).
 
 ## Next steps
 
+- [box-paths.md](box-paths.md) — required filesystem paths on the box
+- [env-without-wizard.md](env-without-wizard.md) — API keys without Welcome
 - [welcome-onboarding.md](welcome-onboarding.md) — Welcome wizard + Connect AI
 - [connectors.md](connectors.md) — mail and calendar
 - [self-host.md](self-host.md) · [deploy/README.md](../deploy/README.md)
