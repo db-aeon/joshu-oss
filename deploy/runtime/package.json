@@ -5,6 +5,7 @@
   "type": "module",
   "dependencies": {
     "@composio/core": "^0.10.0",
+    "@joshu/app-sdk": "file:./packages/app-sdk",
     "@joshu/box-state": "file:./packages/box-state",
     "@joshu/email-signature": "file:./packages/email-signature",
     "@js-temporal/polyfill": "^0.5.1",

@@ -27,7 +27,7 @@ JOSHU_IMAGE_TAG=0.1.14 JOSHU_IMAGE_REPO=ghcr.io/YOUR_ORG/joshu-sandbox JOSHU_IMA
 
 Pushes **`ghcr.io/YOUR_ORG/joshu-oss:<tag>`** and **`ghcr.io/YOUR_ORG/joshu-oss-voice-realtime:<tag>`** (override with `JOSHU_VOICE_IMAGE_REPO` / `JOSHU_VOICE_IMAGE_REF`).
 
-Current stable pin: [`deploy/RELEASE.json`](RELEASE.json) (**`0.1.32`**).
+Current stable pin: [`deploy/RELEASE.json`](RELEASE.json) (**`0.1.33`**).
 
 After `npm run hermes:update`, `npm run vps:sync-hermes-pin` runs automatically (also invoked by `vps:build-image`).
 After bumping `camofoxBase`, run `npm run vps:sync-camofox-pin` before rebuild.
@@ -64,6 +64,21 @@ Required runtime secrets:
   that directory is mounted read-only into `joshu-stack`.
 
 **Runtime npm deps:** Container `node_modules` come from [`deploy/runtime/package.json`](runtime/package.json) at image build (not from host git). Adding deps there (e.g. `@langfuse/tracing` for Joshu deterministic Langfuse) requires a **new image** — rebuild, push a new tag, pull on the host, then sync `dist/`. Dist-only updates cannot change `node_modules` inside the image.
+
+**Runtime workspace packages:** When the Joshu server imports a monorepo package at runtime, it must be listed in `deploy/runtime/package.json`, copied in `deploy/Dockerfile` (`packages/<name>/`), and validated after `npm ci`. Today: `@joshu/app-sdk`, `@joshu/box-state`, `@joshu/email-signature`. After changing any of these, regenerate the lockfile:
+
+```bash
+npm run build -w @joshu/app-sdk -w @joshu/box-state -w @joshu/email-signature
+mkdir -p deploy/runtime/packages/{app-sdk,box-state,email-signature}
+for pkg in app-sdk box-state email-signature; do
+  cp "packages/$pkg/package.json" "deploy/runtime/packages/$pkg/"
+  rsync -a "packages/$pkg/dist/" "deploy/runtime/packages/$pkg/dist/"
+done
+(cd deploy/runtime && npm install --package-lock-only --no-audit --no-fund)
+rm -rf deploy/runtime/packages
+```
+
+Compose bind-mounts `packages/*/dist` for hotfix lanes; `vps-start.sh` copies bind-mounted packages into `node_modules/@joshu/` when the image is older than the host checkout.
 
 ## Run
 
@@ -135,6 +150,7 @@ Cloud-init (control-plane provision) runs `bootstrap-vps.sh`, which clones the r
 
 | Host path | Container path | Lane |
 | --- | --- | --- |
+| `packages/app-sdk/dist/`, `packages/box-state/dist/`, `packages/email-signature/dist/` | `/opt/joshu/packages/*/dist/` | B — workspace package hotfix |
 | `dist/` | `/opt/joshu/dist/` | B — API hotfix / `syncDistFromImage` |
 | `integrations/hermes/skills/` | `/opt/joshu/integrations/hermes/skills/` | A — factory skills source for bootstrap |
 | `integrations/hermes/skills-enabled.yaml` | same | A — Hermes allowlist / bundled denylist |

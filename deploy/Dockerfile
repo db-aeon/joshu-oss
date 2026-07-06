@@ -145,6 +145,8 @@ COPY integrations ./integrations
 COPY .hermes ./.hermes
 COPY templates ./templates
 COPY factory ./factory
+COPY packages/app-sdk/package.json ./packages/app-sdk/
+COPY packages/app-sdk/dist ./packages/app-sdk/dist/
 COPY packages/box-state/package.json ./packages/box-state/
 COPY packages/box-state/dist ./packages/box-state/dist/
 COPY packages/email-signature/package.json ./packages/email-signature/
@@ -180,6 +182,8 @@ RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund \
     && rm -rf /root/.cache/pip /tmp/* ${APP_DIR}/patches \
     && test -f /root/.cache/camoufox/version.json \
     || (echo "ERROR: Camoufox browser cache missing after image build; /app postinstall cache was wiped" >&2; exit 1) \
+    && test -f node_modules/@joshu/app-sdk/dist/index.js \
+    || (echo "ERROR: @joshu/app-sdk dist missing after npm ci" >&2; exit 1) \
     && test -f node_modules/@joshu/box-state/dist/index.js \
     || (echo "ERROR: @joshu/box-state dist missing after npm ci" >&2; exit 1) \
     && test -f node_modules/@joshu/email-signature/dist/index.js \

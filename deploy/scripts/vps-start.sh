@@ -623,14 +623,16 @@ fi
 # Start gbrain before Joshu so /api/instance/health does not run doctor against a locked PGLite.
 start_gbrain_stack
 
-# Hotfix boxes: bind-mounted packages/email-signature may ship before the next image cut.
-if [[ -f "${APP_DIR}/packages/email-signature/dist/index.js" ]] \
-  && [[ ! -f "${APP_DIR}/node_modules/@joshu/email-signature/dist/index.js" ]]; then
-  echo "[vps-start] copying @joshu/email-signature from bind-mounted packages/" >&2
-  mkdir -p "${APP_DIR}/node_modules/@joshu"
-  rm -rf "${APP_DIR}/node_modules/@joshu/email-signature"
-  cp -a "${APP_DIR}/packages/email-signature" "${APP_DIR}/node_modules/@joshu/email-signature"
-fi
+# Hotfix boxes: bind-mounted workspace packages may ship before the next image cut.
+mkdir -p "${APP_DIR}/node_modules/@joshu"
+for _pkg in app-sdk box-state email-signature; do
+  if [[ -f "${APP_DIR}/packages/${_pkg}/dist/index.js" ]] \
+    && [[ ! -f "${APP_DIR}/node_modules/@joshu/${_pkg}/dist/index.js" ]]; then
+    echo "[vps-start] copying @joshu/${_pkg} from bind-mounted packages/" >&2
+    rm -rf "${APP_DIR}/node_modules/@joshu/${_pkg}"
+    cp -a "${APP_DIR}/packages/${_pkg}" "${APP_DIR}/node_modules/@joshu/${_pkg}"
+  fi
+done
 
 echo "[vps-start] Joshu ${HOST}:${PORT}"
 export JOSHU_DEFER_HERMES_GATEWAY_WARM=true

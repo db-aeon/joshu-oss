@@ -1,11 +1,11 @@
 {
-  "version": "0.1.32",
+  "version": "0.1.33",
   "channel": "stable",
-  "imageRef": "ghcr.io/db-aeon/joshu-oss:0.1.32",
-  "voiceImageRef": "ghcr.io/db-aeon/joshu-oss-voice-realtime:0.1.32",
+  "imageRef": "ghcr.io/db-aeon/joshu-oss:0.1.33",
+  "voiceImageRef": "ghcr.io/db-aeon/joshu-oss-voice-realtime:0.1.33",
   "hermesRef": "a91a57fa5a13d516c38b07a141a9ce8a3daabeb0",
   "gbrainRef": "fa2c7a6990a7a57b251979ef6e1988ff09529021",
   "camofoxBase": "ghcr.io/jo-inc/camofox-browser@sha256:3ab61b4742105922aab6f8c99460f55563b6f93e906975383ddce16ec8917f3f",
-  "builtAt": "2026-07-03T15:40:00.000Z",
-  "notes": "Welcome Connect AI (OpenRouter + Gemini), voice instant think ack, Joshu session-boot page, expanded README, removed obsolete .oss.md snapshots"
+  "builtAt": "2026-07-06T22:00:00.000Z",
+  "notes": "Fix missing @joshu/app-sdk in runtime image (server crash on 0.1.32 — #25)"
 }
