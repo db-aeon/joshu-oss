@@ -1,0 +1,24 @@
+# Reference only — NOT used at runtime.
+#
+# The live Caddyfile is generated on every container start by
+# deploy/scripts/caddy-entrypoint.sh → deploy/scripts/render-caddyfile.sh, from
+# /etc/joshu/instance.env. Nothing mounts a checked-in Caddyfile anymore, so a git
+# reset/pull/sync on the clone can no longer take the edge down.
+#
+# Rendered shape (direct Hermes-dashboard mode):
+#
+#   {CUSTOMER_DOMAIN} {
+#       encode gzip
+#       reverse_proxy /joshu/*   127.0.0.1:8788
+#       reverse_proxy /voice/*   127.0.0.1:8791
+#       reverse_proxy /voice-rt/* 127.0.0.1:8792
+#       reverse_proxy            127.0.0.1:8787   # ArozOS desktop
+#   }
+#
+#   hermes-admin.{CUSTOMER_DOMAIN} {
+#       encode gzip
+#       reverse_proxy 127.0.0.1:9119 { header_up Host 127.0.0.1:9119 }
+#   }
+#
+# To inspect the rendered config on a box:
+#   docker exec deploy-caddy-1 cat /etc/caddy/Caddyfile

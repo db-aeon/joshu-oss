@@ -80,6 +80,8 @@ COPY scripts ./scripts
 COPY proprietary ./proprietary
 COPY patches/arozos ./patches/arozos
 COPY vendor/arozos ./vendor/arozos
+# Fleet: populated by scripts/stage-docker-design-pack.sh before build. OSS: empty marker only.
+COPY .docker-staging/joshu-design /opt/joshu-design
 
 RUN bash ${APP_DIR}/scripts/apply-arozos-patches.sh \
     && cd ${APP_DIR}/vendor/arozos/src \
@@ -133,6 +135,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY --from=builder /opt/hermes-agent /opt/hermes-agent
 COPY --from=builder /opt/arozos-template /opt/arozos-template
+COPY --from=builder /opt/joshu-design /opt/joshu-design
 COPY --from=builder /usr/lib/postgresql/15/lib/vector.so /usr/lib/postgresql/15/lib/vector.so
 COPY --from=builder /usr/share/postgresql/15/extension/vector* /usr/share/postgresql/15/extension/
 

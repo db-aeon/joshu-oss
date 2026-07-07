@@ -4,6 +4,8 @@
 
 import type { Request, Response, Router } from "express";
 import { readFile } from "node:fs/promises";
+import http from "node:http";
+import net from "node:net";
 import path from "node:path";
 
 import {
@@ -32,6 +34,44 @@ function updateInProgressFromInstanceEnv(): boolean {
   return instanceEnvTrim("JOSHU_UPDATE_IN_PROGRESS") === "true";
 }
 
+function isTruthyEnv(name: string): boolean {
+  return /^(1|true|yes)$/i.test(instanceEnvTrim(name, "false"));
+}
+
+/** GET a loopback port; ok on any non-5xx response (ArozOS redirects to /login.html). */
+function probeHttpLocal(port: number, pathname = "/", timeoutMs = 2500): Promise<boolean> {
+  return new Promise((resolve) => {
+    const req = http.request(
+      { host: "127.0.0.1", port, path: pathname, method: "GET", timeout: timeoutMs },
+      (res) => {
+        res.resume();
+        resolve((res.statusCode ?? 500) < 500);
+      },
+    );
+    req.on("error", () => resolve(false));
+    req.on("timeout", () => {
+      req.destroy();
+      resolve(false);
+    });
+    req.end();
+  });
+}
+
+/** TCP-connect to a loopback port; ok if something is listening (Caddy on :443). */
+function probeTcpLocal(port: number, timeoutMs = 2500): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = net.connect({ host: "127.0.0.1", port });
+    const finish = (ok: boolean): void => {
+      socket.destroy();
+      resolve(ok);
+    };
+    socket.setTimeout(timeoutMs);
+    socket.on("connect", () => finish(true));
+    socket.on("error", () => finish(false));
+    socket.on("timeout", () => finish(false));
+  });
+}
+
 function isLocalhostRequest(req: Request): boolean {
   const ip = req.ip ?? req.socket.remoteAddress ?? "";
   if (ip === "127.0.0.1" || ip === "::1" || ip === "::ffff:127.0.0.1") return true;
@@ -56,6 +96,10 @@ export interface InstanceHealthReport {
     connectorsMcp: { ok: boolean };
     twilio: { ok: boolean };
     dist: DistProvenanceStatus & { routesPresent?: boolean };
+    // ArozOS desktop (:8787) and the public edge (Caddy :443). `expected` reflects
+    // whether the box is configured to serve them (AROZOS_ENABLED / CUSTOMER_DOMAIN).
+    arozos: { ok: boolean; expected: boolean };
+    edge: { ok: boolean; expected: boolean };
   };
   uptimeSec: number;
 }
@@ -99,6 +143,16 @@ export function registerInstanceHealthRoutes(
       deps.probeTwilio(),
     ]);
 
+    // Edge/desktop reachability — these caught the "health 200 but site down" gap
+    // where ArozOS or Caddy was dead while the Joshu API stayed green.
+    const arozosExpected = isTruthyEnv("AROZOS_ENABLED");
+    const arozPort = Number(instanceEnvTrim("PUBLIC_AROZ_PORT", "8787")) || 8787;
+    const edgeExpected = Boolean(instanceEnvTrim("CUSTOMER_DOMAIN", ""));
+    const [arozosOk, edgeOk] = await Promise.all([
+      arozosExpected ? probeHttpLocal(arozPort) : Promise.resolve(true),
+      edgeExpected ? probeTcpLocal(443) : Promise.resolve(true),
+    ]);
+
     const updateInProgress = updateInProgressFromInstanceEnv();
     const imageRef = instanceEnvTrim("JOSHU_IMAGE_REF", "local");
     let releaseVersion = instanceEnvTrim("JOSHU_RELEASE_VERSION", "0.0.0-dev");
@@ -139,15 +193,26 @@ export function registerInstanceHealthRoutes(
         ...distStatus,
         routesPresent,
       },
+      arozos: { ok: arozosOk, expected: arozosExpected },
+      edge: { ok: edgeOk, expected: edgeExpected },
     };
 
     const connectorsMcpRequired = deps.connectorsMcpRequired !== false;
-    const healthy =
+    // Core = the box's own service plane. Update readiness keys off this only, so a
+    // broken edge/desktop (which a release update can itself repair) never deadlocks
+    // the managed-update path.
+    const coreHealthy =
       components.joshu.ok &&
       components.camofox.ok &&
       components.hermes.ok &&
       components.dist.ok &&
       (!connectorsMcpRequired || components.connectorsMcp.ok);
+    // Overall health additionally reflects the desktop + edge when the box is
+    // configured to serve them, so "site down" surfaces as 503 instead of 200.
+    const healthy =
+      coreHealthy &&
+      (!arozosExpected || components.arozos.ok) &&
+      (!edgeExpected || components.edge.ok);
 
     const report: InstanceHealthReport = {
       instanceId: envTrim("JOSHU_INSTANCE_ID"),
@@ -156,7 +221,7 @@ export function registerInstanceHealthRoutes(
       imageRef,
       hermesRef: instanceEnvTrim("HERMES_AGENT_REF", "unknown"),
       healthy,
-      readyForUpdate: healthy && !updateInProgress,
+      readyForUpdate: coreHealthy && !updateInProgress,
       components,
       uptimeSec: Math.floor((Date.now() - startedAt) / 1000),
     };
