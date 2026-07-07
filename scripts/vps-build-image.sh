@@ -5,6 +5,14 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${ROOT_DIR}"
 
+# Fleet repo: stage Hermes skill-evolution patch before image build (matches CI workflow).
+if [[ -f "${ROOT_DIR}/proprietary/scripts/stage-fleet-docker-patches.sh" ]]; then
+  bash "${ROOT_DIR}/proprietary/scripts/stage-fleet-docker-patches.sh"
+fi
+
+# Stage the branded design pack (fleet) or an empty marker (OSS → vanilla shell).
+bash "${ROOT_DIR}/scripts/stage-docker-design-pack.sh"
+
 node scripts/sync-vps-hermes-pin.mjs
 node scripts/sync-vps-camofox-pin.mjs
 HERMES_AGENT_REF="$(node scripts/sync-vps-hermes-pin.mjs --print)"

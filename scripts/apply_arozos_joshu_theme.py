@@ -19,13 +19,33 @@ from pathlib import Path
 
 BRANDED_THEME_FILE = "aroz-paper-shell.css"
 VANILLA_THEME_FILE = "aroz-vanilla-shell.css"
+# Fleet images bake the branded design pack here (staged by scripts/stage-docker-design-pack.sh).
+# OSS images leave only a marker, so auto-detection cleanly falls back to the vanilla shell.
+BAKED_DESIGN_PACK_DIR = "/opt/joshu-design"
+
+
+def _has_branded_overlay(candidate: Path) -> bool:
+    """True only when a design-pack dir actually ships the branded shell CSS."""
+    return (candidate / "arozos" / "web-overlays" / BRANDED_THEME_FILE).is_file()
+
+
 def _resolve_theme_paths(root: Path) -> tuple[Path, str, Path, bool]:
-    """Return (overlay_dir, theme_file, asset_root, branded)."""
+    """Return (overlay_dir, theme_file, asset_root, branded).
+
+    Branding is image-intrinsic: an explicit JOSHU_DESIGN_PACK wins, otherwise we
+    auto-detect the baked fleet pack at /opt/joshu-design. Both sources fall back to
+    the vanilla shell when the branded CSS is missing (OSS images, absent pack), so a
+    stale host vps-start.sh or a missing env export can no longer silently revert
+    fleet chrome to vanilla.
+    """
     design_pack = os.environ.get("JOSHU_DESIGN_PACK", "").strip()
+    if not design_pack and _has_branded_overlay(Path(BAKED_DESIGN_PACK_DIR)):
+        design_pack = BAKED_DESIGN_PACK_DIR
     if design_pack:
         asset_root = Path(design_pack).resolve()
-        overlay = asset_root / "arozos" / "web-overlays"
-        return overlay, BRANDED_THEME_FILE, asset_root, True
+        if _has_branded_overlay(asset_root):
+            overlay = asset_root / "arozos" / "web-overlays"
+            return overlay, BRANDED_THEME_FILE, asset_root, True
     overlay = root / "arozos" / "web-overlays-vanilla"
     return overlay, VANILLA_THEME_FILE, root, False
 
@@ -283,13 +303,19 @@ def _copy_joshu_settings_banner_assets(web: Path, overlay: Path) -> None:
             return
 
 
-def _copy_system_settings_info_pages(web: Path, overlay: Path, release_version: str) -> None:
-    """Joshu About + Overview pages (replace imuslab vendor graphics)."""
+def _copy_system_settings_info_pages(
+    web: Path, overlay: Path, root: Path, release_version: str
+) -> None:
+    """Joshu About + Overview pages (replace imuslab vendor graphics).
+
+    These are brand-neutral engine pages that ship in the vanilla overlay. The
+    branded design pack does not carry a SystemAO/ tree, so fall back to the vanilla
+    overlay (mirroring the reset-template resolution). Without this, branded fleet
+    boxes silently keep the stock ArozOS pages while OSS boxes get the patched design.
+    """
     info_overlay = overlay / "SystemAO" / "info"
-    if not info_overlay.is_dir():
-        return
+    vanilla_info = root / "arozos" / "web-overlays-vanilla" / "SystemAO" / "info"
     dest_info = web / "SystemAO" / "info"
-    dest_info.mkdir(parents=True, exist_ok=True)
     substitutions = {
         "{{joshu_release_version}}": release_version,
         "{{joshu_overlay_version}}": OVERLAY_VERSION,
@@ -297,17 +323,22 @@ def _copy_system_settings_info_pages(web: Path, overlay: Path, release_version: 
     for name in ("about.html", "overview.html"):
         src = info_overlay / name
         if not src.is_file():
+            src = vanilla_info / name
+        if not src.is_file():
             continue
+        dest_info.mkdir(parents=True, exist_ok=True)
         text = src.read_text(encoding="utf-8")
         for needle, repl in substitutions.items():
             text = text.replace(needle, repl)
         (dest_info / name).write_text(text, encoding="utf-8")
 
 
-def _patch_system_settings_branding(web: Path, overlay: Path, release_version: str) -> None:
+def _patch_system_settings_branding(
+    web: Path, overlay: Path, root: Path, release_version: str
+) -> None:
     """Joshu System Settings: wordmark, About labels, about page copy."""
     _copy_joshu_settings_banner_assets(web, overlay)
-    _copy_system_settings_info_pages(web, overlay, release_version)
+    _copy_system_settings_info_pages(web, overlay, root, release_version)
 
     index_path = web / "SystemAO" / "system_setting" / "index.html"
     if not index_path.is_file():
@@ -683,7 +714,7 @@ def main() -> None:
     _copy_tango_icon_library(web, root)
     _replace_init_splash(web, overlay)
     _apply_auth_pages(web, overlay, root, release_version)
-    _patch_system_settings_branding(web, overlay, release_version)
+    _patch_system_settings_branding(web, overlay, root, release_version)
     _apply_reset_templates(web, overlay, root, release_version)
     for script_name in SHELL_SCRIPTS:
         src_js = overlay / script_name

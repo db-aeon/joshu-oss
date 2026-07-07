@@ -17,3 +17,10 @@ __pycache__/
 
 # Standalone spec repo — https://github.com/db-aeon/portable-soul
 portable-soul/
+
+# Docker build staging: keep the marker, ignore staged design-pack contents.
+.docker-staging/joshu-design/*
+!.docker-staging/joshu-design/.no-design-pack
+
+# Caddyfile is generated at container start from instance.env (see deploy/Caddyfile.template).
+deploy/Caddyfile

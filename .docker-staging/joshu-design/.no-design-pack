@@ -1,0 +1,4 @@
+Placeholder so `COPY .docker-staging/joshu-design` succeeds on a clean checkout.
+scripts/stage-docker-design-pack.sh overwrites this dir at build time:
+- fleet build → real joshu-design pack (branded shell)
+- OSS build   → this marker only (vanilla shell)

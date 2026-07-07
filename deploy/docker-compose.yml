@@ -8,8 +8,14 @@ services:
     image: caddy:2-alpine
     restart: unless-stopped
     network_mode: host
+    # Self-healing edge: caddy-entrypoint.sh renders /etc/caddy/Caddyfile from
+    # /etc/joshu/instance.env on every start, so git operations on the clone can
+    # never leave Caddy serving a stale/empty config.
+    entrypoint: ["/bin/sh", "/usr/local/bin/caddy-entrypoint.sh"]
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./scripts/render-caddyfile.sh:/usr/local/bin/render-caddyfile.sh:ro
+      - ./scripts/caddy-entrypoint.sh:/usr/local/bin/caddy-entrypoint.sh:ro
+      - /etc/joshu/instance.env:/etc/joshu/instance.env:ro
       - caddy_data:/data
       - caddy_config:/config
     environment:
