@@ -269,7 +269,7 @@ index 53b6ed74..e3adfb89 100644
                          url: videoURL
                      },
 diff --git a/src/web/desktop.html b/src/web/desktop.html
-index 32478b70..b6dd6796 100644
+index 32478b70..02e184ca 100644
 --- a/src/web/desktop.html
 +++ b/src/web/desktop.html
 @@ -20,7 +20,8 @@
@@ -309,7 +309,7 @@ index 32478b70..b6dd6796 100644
              pointer-events: auto;
          }
  
-@@ -1418,6 +1432,129 @@
+@@ -1418,6 +1432,145 @@
          var isMacOS = (navigator.appVersion.indexOf("Mac")!=-1);
          var isTouchScreen = window.matchMedia("(any-pointer: coarse)").matches;
  
@@ -343,9 +343,28 @@ index 32478b70..b6dd6796 100644
 +        }
 +
 +        function scheduleDesktopLayerCleanup() {
++            // Never interrupt an intentional move/resize — timed cleanup is for stuck layers only.
 +            [50, 200, 750, 2000, 5000, 10000].forEach(function(ms) {
-+                window.setTimeout(resetDesktopInteractionLayers, ms);
++                window.setTimeout(function() {
++                    if (movingWindow || resizingWindow || multiSelecting) {
++                        return;
++                    }
++                    resetDesktopInteractionLayers();
++                }, ms);
 +            });
++        }
++
++        // Focus the app iframe only when not mid-gesture (iframe focus blurs the desktop window).
++        function focusFloatWindowIframe(object) {
++            var iframe = $(object).find("iframe")[0];
++            if (!iframe || !iframe.contentWindow) {
++                return;
++            }
++            try {
++                iframe.contentWindow.focus();
++            } catch (ex) {
++                /* cross-origin or detached iframe */
++            }
 +        }
 +
 +        function recoverDesktopInteraction() {
@@ -411,25 +430,22 @@ index 32478b70..b6dd6796 100644
 +            };
 +            // Register before async applocale init so bfcache pageshow is not missed.
 +            window.addEventListener("pageshow", function(event) {
-+                resetDesktopInteractionLayers();
++                // Skip hard reset mid-gesture (bfcache restore during drag is rare but possible).
++                if (!(movingWindow || resizingWindow || multiSelecting)) {
++                    resetDesktopInteractionLayers();
++                }
 +                scheduleDesktopLayerCleanup();
 +            });
 +            document.addEventListener("visibilitychange", function() {
 +                if (document.visibilityState === "visible") {
-+                    resetDesktopInteractionLayers();
++                    if (!(movingWindow || resizingWindow || multiSelecting)) {
++                        resetDesktopInteractionLayers();
++                    }
 +                    scheduleDesktopLayerCleanup();
 +                }
 +            });
-+            window.addEventListener("focus", function() {
-+                if (movingWindow || resizingWindow || multiSelecting) {
-+                    resetDesktopInteractionLayers();
-+                }
-+            });
-+            window.addEventListener("blur", function() {
-+                if (movingWindow || resizingWindow) {
-+                    resetDesktopInteractionLayers();
-+                }
-+            });
++            // Do NOT reset on window focus/blur while moving/resizing. Bring-to-front focuses the
++            // float-window iframe, which blurs the desktop window and previously aborted the gesture.
 +            $(function() {
 +                resetDesktopInteractionLayers();
 +                scheduleDesktopLayerCleanup();
@@ -439,7 +455,7 @@ index 32478b70..b6dd6796 100644
          //Check and prepare localization
          if (typeof(applocale) != "undefined"){
              //Applocale found. Do localization
-@@ -1437,6 +1574,8 @@
+@@ -1437,6 +1590,8 @@
  
  
          function initDesktop(){
@@ -448,7 +464,7 @@ index 32478b70..b6dd6796 100644
              //Initiation functions
              initDesktopTheme();
              initDesktopHostInfo();
-@@ -1461,6 +1600,8 @@
+@@ -1461,6 +1616,8 @@
  
              //Activate all dropdowns
              $(".dropdown").dropdown();
@@ -457,7 +473,7 @@ index 32478b70..b6dd6796 100644
          }
  
          function initFrameLoading(){
-@@ -1717,7 +1858,7 @@
+@@ -1717,7 +1874,7 @@
          }
  
          function showToolPanel(){
@@ -466,7 +482,7 @@ index 32478b70..b6dd6796 100644
                  hideListMenu();
              }
              $("#quickAccessPanel").fadeToggle("fast");
-@@ -1739,7 +1880,7 @@
+@@ -1739,7 +1896,7 @@
                      if (currentGlobalVol != null && currentGlobalVol != undefined && currentGlobalVol != ""){
                          
                      }else{
@@ -475,7 +491,7 @@ index 32478b70..b6dd6796 100644
                      }
  
                      var audio = new Audio("media?file=" + data);
-@@ -1798,7 +1939,7 @@
+@@ -1798,7 +1955,7 @@
              if (currentGlobalVol != null && currentGlobalVol != undefined && currentGlobalVol != ""){
                  $("#volumebar").css("width", currentGlobalVol * 100 + "%");
              }else{
@@ -484,7 +500,7 @@ index 32478b70..b6dd6796 100644
                  localStorage.setItem("global_volume",currentGlobalVol);
              }
  
-@@ -1829,15 +1970,21 @@
+@@ -1829,15 +1986,21 @@
          }
  
          function toggleNotification(action=undefined){
@@ -511,7 +527,208 @@ index 32478b70..b6dd6796 100644
                  }
              }
          }
-@@ -3330,6 +3477,7 @@
+@@ -2081,7 +2244,7 @@
+                 fwmove($(this).parent(), evt);
+ 
+                 //Add cusor change on resizble position reach
+-                let hoverOffset = [event.pageX - $(this).offset().left, event.pageY - $(this).offset().top];
++                let hoverOffset = [evt.pageX - $(this).offset().left, evt.pageY - $(this).offset().top];
+                 if (hoverOffset[1] <= 3 && !$(this).parent().hasClass("fixedsize")){
+                     $(this).addClass("resizbleCursor");
+                 }else{
+@@ -2218,26 +2381,26 @@
+                 if ($(object).hasClass("fixedsize")) {
+                     return false;
+                 }
+-                var dx = event.pageX - $(object).find(".iframewrapper").offset().left;
+-                var dy = event.pageY - $(object).offset().top;
++                var dx = evt.pageX - $(this).offset().left;
++                var dy = evt.pageY - $(object).offset().top;
++                // Scope cursor classes to this window only (upstream wiped every .iframewrapper).
++                var $wrap = $(this);
++                $wrap.removeClass("leftCorner rightCorner widthHover heighHover");
+                 if (dx < 10 && dy > $(object).height() - 10) {
+                     //Left Bottom Corner
+-                    $(".iframewrapper").attr("class", "iframewrapper leftCorner");
++                    $wrap.addClass("leftCorner");
+                 } else if (dx > $(object).width() - 10 && dy > $(object).height() - 10) {
+                     //Right Bottom Corner
+-                    $(".iframewrapper").attr("class", "iframewrapper rightCorner");
++                    $wrap.addClass("rightCorner");
+                 } else if (dx < 10) {
+                     //Dragging left edge
+-                    $(".iframewrapper").attr("class", "iframewrapper widthHover");
++                    $wrap.addClass("widthHover");
+                 } else if (dx > $(object).width() - 10) {
+                     //Dragging right edge
+-                    $(".iframewrapper").attr("class", "iframewrapper widthHover");
++                    $wrap.addClass("widthHover");
+                 } else if (dy > $(object).height() - 10) {
+                     //Bottom Edge
+-                    $(".iframewrapper").attr("class", "iframewrapper heighHover");
+-                } else {
+-                    //???
+-                    $(".iframewrapper").attr("class", "iframewrapper");
++                    $wrap.addClass("heighHover");
+                 }
+             });
+ 
+@@ -2417,27 +2580,10 @@
+                 return false;
+             }
+ 
+-            //Mouse down, start resizing
+-            resizingWindow = true;
+-            resizingWindowTarget = object;
+-            resizingMinX = $(object).offset().left + $(object).width() - minxWidth;
+-            MoveFloatWindowToTop(object);
+-            if ($(object).hasClass("topmost")){
+-                //Top most windows
+-                $("#tfwdragpanel").show();
+-            }else{
+-                //Normal Windows
+-                $('.floatWindow.topmost').css("pointer-events", "none");
+-                $('.floatWindow.topmost').css("opacity", 0.7);
+-                $("#fwdragpanel").show();
+-            }
+-          
+-            
+-            $(object).find(".iframecover").show();
+-
+-            //Check which edge is the user dragging
++            //Check which edge is the user dragging (before arming resize state)
+             var dx = event.pageX - $(object).find(".iframewrapper").offset().left;
+             var dy = event.pageY - $(object).offset().top;
++            resizingEdgeID = 0;
+ 
+             if (dx < 10 && dy > $(object).height() - 10) {
+                 //Left Bottom Corner
+@@ -2461,6 +2607,30 @@
+                 $(object).find(".iframewrapper").css('cursor', 's-resize');
+             }
+ 
++            // Not on a resize edge — ignore (do not arm drag panels / covers).
++            if (resizingEdgeID == 0) {
++                return false;
++            }
++
++            //Mouse down, start resizing
++            resizingWindow = true;
++            resizingWindowTarget = object;
++            resizingMinX = $(object).offset().left + $(object).width() - minxWidth;
++            // Skip iframe focus during gesture — focusing blurs the desktop and breaks capture.
++            MoveFloatWindowToTop(object, { skipIframeFocus: true });
++            if ($(object).hasClass("topmost")){
++                //Top most windows
++                $("#tfwdragpanel").show().css({"pointer-events": "auto"});
++            }else{
++                //Normal Windows
++                $('.floatWindow.topmost').css("pointer-events", "none");
++                $('.floatWindow.topmost').css("opacity", 0.7);
++                $("#fwdragpanel").show().css({"pointer-events": "auto"});
++            }
++          
++            
++            $(object).find(".iframecover").show();
++
+             //For upper edge, see fwdown() handler
+         }
+ 
+@@ -2519,8 +2689,8 @@
+         function resizeUp(object, event) {
+             resizingWindow = false;
+             resizingEdgeID = 0;
+-            $("#fwdragpanel").hide();
+-            $("#tfwdragpanel").hide();
++            $("#fwdragpanel").hide().css({"pointer-events": "none"});
++            $("#tfwdragpanel").hide().css({"pointer-events": "none"});
+             $('.floatWindow.topmost').css("pointer-events", "auto");
+             $('.floatWindow.topmost').css("opacity", 1);
+ 
+@@ -2536,6 +2706,7 @@
+             resizingWindowTarget = undefined;
+ 
+             $(".topmost").show();
++            focusFloatWindowIframe(object);
+ 
+         }
+ 
+@@ -2600,17 +2771,17 @@
+             //Hide all contenxt menus
+             hideAllContextMenus();
+ 
+-            //Move the window to the top layer
+-            MoveFloatWindowToTop(object);
++            //Move the window to the top layer (defer iframe focus until mouseup)
++            MoveFloatWindowToTop(object, { skipIframeFocus: true });
+             
+-            //Show the background drag panel
++            //Show the background drag panel (re-enable pointer-events — reset may have disabled them)
+             if ($(object).hasClass("topmost")){
+-                $("#tfwdragpanel").show();
++                $("#tfwdragpanel").show().css({"pointer-events": "auto"});
+             }else{
+                 
+                 $('.floatWindow.topmost').css("pointer-events", "none");
+                 $('.floatWindow.topmost').css("opacity", 0.7);
+-                $("#fwdragpanel").show();
++                $("#fwdragpanel").show().css({"pointer-events": "auto"});
+             }
+             
+             
+@@ -2647,7 +2818,7 @@
+                         height: originalSize[1],
+                         left: newLeft,
+                         right: "auto",
+-                        top: event.Y - 2
++                        top: event.pageY - 2
+                     });
+                     clickDownOffset[0] = clickRatio * originalSize[0];
+                     clickDownOffset[1] = 2;
+@@ -2724,8 +2895,8 @@
+         function fwup(object, event) {
+             event = mapEventFromTouch(event);
+             if (movingWindow) {
+-                $("#fwdragpanel").hide();
+-                $("#tfwdragpanel").hide();
++                $("#fwdragpanel").hide().css({"pointer-events": "none"});
++                $("#tfwdragpanel").hide().css({"pointer-events": "none"});
+                 $('.floatWindow.topmost').css("pointer-events", "auto");
+                 $('.floatWindow.topmost').css("opacity", 1);
+ 
+@@ -2746,6 +2917,7 @@
+ 
+                 $("#fwdockRightIndicator").hide();
+                 $("#fwdockLeftIndicator").hide();
++                focusFloatWindowIframe(object);
+             }else if (resizingWindow && resizingEdgeID == 6){
+                 resizeUp($(object), event);
+             }
+@@ -2933,7 +3105,7 @@
+             return false;
+         }
+ 
+-        function MoveFloatWindowToTop(object) {
++        function MoveFloatWindowToTop(object, opts) {
+             var windowID = $(object).attr("windowId");
+             var windowZindex = $(object).css("z-index");
+             //Shift down all floatWindows that has z-index higher than this window by 2
+@@ -3004,9 +3176,11 @@
+                 $(object).fadeIn(100);
+             }
+ 
+-            //Focus on the top most floatWindow
+-            var iframe = focusedWindow.find("iframe")[0];
+-            iframe.contentWindow.focus();
++            // Focus the app iframe unless a move/resize gesture is in progress.
++            // Focusing mid-drag blurs the desktop window and historically aborted capture.
++            if (!(opts && opts.skipIframeFocus) && !movingWindow && !resizingWindow) {
++                focusFloatWindowIframe(object);
++            }
+ 
+         }
+ 
+@@ -3330,6 +3504,7 @@
  
          //Actiave background cross fade changing animation
          function initBackgroundSwitchingAnimation() {
@@ -519,7 +736,7 @@ index 32478b70..b6dd6796 100644
              if (localStorage.getItem("ao/desktop/backgroundInterval") !== null && !isNaN(parseInt(localStorage.getItem("ao/desktop/backgroundInterval")))){
                  //Localstorage has interval setting that is not NaN
                  backgroundCrossfadeInterval = parseInt(localStorage.getItem("ao/desktop/backgroundInterval")) * 1000;
-@@ -3353,6 +3501,7 @@
+@@ -3353,6 +3528,7 @@
  
          //Function for changing the desktop theme
          function changeDesktopTheme(targetThemeName) {
@@ -527,7 +744,7 @@ index 32478b70..b6dd6796 100644
              currentUserTheme = targetThemeName;
  
              if (currentUserTheme.includes(":/") == false){
-@@ -3374,6 +3523,7 @@
+@@ -3374,6 +3550,7 @@
                  }
                  setTimeout(function() {
                      $("#dbg0").addClass("showBackground");
@@ -535,7 +752,7 @@ index 32478b70..b6dd6796 100644
                  }, 300);
  
                  if (currentBackgroundList.length == 1) {
-@@ -3404,6 +3554,7 @@
+@@ -3404,6 +3581,7 @@
                          }
                          setTimeout(function() {
                              $("#dbg0").addClass("showBackground");
@@ -543,7 +760,40 @@ index 32478b70..b6dd6796 100644
                          }, 300);
  
                          if (currentBackgroundList.length == 1) {
-@@ -3804,9 +3955,9 @@
+@@ -3650,16 +3828,22 @@
+                 endMultiSelection(event);
+             }
+ 
+-            if (resizingWindow){
+-                //Resizing floatWindow out of the window bound (aka someone don't know how to resize a window correctly)
+-                resizingWindow = false;
+-                resizingEdgeID = 0;
+-                $("#fwdragpanel").hide();
+-                $("#tfwdragpanel").hide();
+-                $('.floatWindow.topmost').css("pointer-events", "auto");
+-                $('.floatWindow.topmost').css("opacity", 1);
+-                $(resizingWindowTarget).find(".iframecover").hide();
+-                $(resizingWindowTarget).find(".iframewrapper").css('cursor', '');
++            // End float-window gestures even when mouseup lands off the title bar / edge
++            // (e.g. over #fwdragpanel). Upstream only cleared resize, which left moves stuck.
++            if (movingWindow && focusedWindow !== undefined) {
++                fwup(focusedWindow, event);
++            } else if (resizingWindow) {
++                var resizeTarget = resizingWindowTarget !== undefined ? resizingWindowTarget : focusedWindow;
++                if (resizeTarget !== undefined) {
++                    resizeUp(resizeTarget, event);
++                } else {
++                    resizingWindow = false;
++                    resizingEdgeID = 0;
++                    $("#fwdragpanel").hide().css({"pointer-events": "none"});
++                    $("#tfwdragpanel").hide().css({"pointer-events": "none"});
++                    $('.floatWindow.topmost').css("pointer-events", "auto");
++                    $('.floatWindow.topmost').css("opacity", 1);
++                }
+             }
+             
+         }
+@@ -3804,9 +3988,9 @@
                  //Folder objects
                  icon = "folder outline";
                  if (isEmptyDir){
@@ -555,7 +805,7 @@ index 32478b70..b6dd6796 100644
                  }
                  
                  type = "folder";
-@@ -3904,7 +4055,8 @@
+@@ -3904,7 +4088,8 @@
                  if (updateObject !== undefined){
                      //Check if content identical. If yes, skip rewrite
                      if (updateObject.attr("filedata") == compressedFiledata){
@@ -565,7 +815,7 @@ index 32478b70..b6dd6796 100644
                      }else{
                          //Update its contents
                          updateObject.attr("type", type);
-@@ -3915,6 +4067,7 @@
+@@ -3915,6 +4100,7 @@
                          updateObject.css("height", iheight + "px");
                          updateObject.css("left", screenX + "px");
                          updateObject.css("top", screenY + "px");
@@ -573,7 +823,7 @@ index 32478b70..b6dd6796 100644
                      }
                  }else{
                      //No exists. Append to wrapper
-@@ -5031,13 +5184,7 @@
+@@ -5031,13 +5217,7 @@
                  shiftHold = true;
              }else if (keycode == "27"){
                  //Cancel all floatwindow events and key events
@@ -588,7 +838,7 @@ index 32478b70..b6dd6796 100644
                  ctrlHold = false;
                  shiftHold = false;
              }else if (keycode == "46"){
-@@ -5130,6 +5277,7 @@
+@@ -5130,6 +5310,7 @@
              }else if (keycode == "27"){
                  //ESC key, stop all floatWindow operations
                  console.log("%c[Desktop] Dragging function killed. Restarting all dragging elements.", 'color: #e64747');
@@ -596,7 +846,7 @@ index 32478b70..b6dd6796 100644
                  movingWindow = false;
                  resizingWindow = false;
                  event.preventDefault();
-@@ -6476,6 +6624,9 @@
+@@ -6476,6 +6657,9 @@
                  //Find the correct file in the current directory and place its image
                  let thumbData = JSON.parse(event.data);
                  $(".launchIcon").each(function(){
@@ -606,7 +856,7 @@ index 32478b70..b6dd6796 100644
                      if (thumbData[1].length > 0){
                          if ($(this).attr("filename") == thumbData[0]){
                              let imageContainer = $(this).find(".launchIconImage");
-@@ -6517,6 +6668,9 @@
+@@ -6517,6 +6701,9 @@
  
          function startFallbackThumbnailLoader(){
                  $(".launchIcon").each(function(){

@@ -190,7 +190,11 @@
 
   function jpScheduleRetries() {
     [50, 200, 750, 2000, 5000, 10000].forEach(function (ms) {
-      window.setTimeout(function () { jpRun(false, { skipRecover: true }); }, ms);
+      window.setTimeout(function () {
+        // Do not clear an intentional move/resize — retries are for stuck layers only.
+        if (window.movingWindow || window.resizingWindow || window.multiSelecting) return;
+        jpRun(false, { skipRecover: true });
+      }, ms);
     });
   }
 
@@ -222,21 +226,21 @@
   if (!window.__arozDesktopOverlayGuard) {
     window.__arozDesktopOverlayGuard = true;
     window.addEventListener("pageshow", function () {
-      jpRun(false, { skipRecover: true });
+      if (!(window.movingWindow || window.resizingWindow || window.multiSelecting)) {
+        jpRun(false, { skipRecover: true });
+      }
       jpScheduleRetries();
     });
     document.addEventListener("visibilitychange", function () {
       if (document.visibilityState === "visible") {
-        jpRun(false, { skipRecover: false });
+        if (!(window.movingWindow || window.resizingWindow || window.multiSelecting)) {
+          jpRun(false, { skipRecover: false });
+        }
         jpScheduleRetries();
       }
     });
-    window.addEventListener("focus", function () {
-      jpRun(false, { skipRecover: false });
-    });
-    window.addEventListener("blur", function () {
-      if (window.movingWindow || window.resizingWindow) jpRun(false, { skipRecover: true });
-    });
+    // Never reset on focus/blur during move/resize: focusing a float-window iframe blurs
+    // the desktop window and previously aborted the gesture mid-drag.
     window.addEventListener("load", function () {
       jpRun(false, { skipRecover: true });
       jpScheduleRetries();
