@@ -36,6 +36,11 @@ export type ResolveAgentAuthorizationInput = {
   agentInbox?: boolean;
   /** LLM category — scheduling only eligible when authorized. */
   category?: string;
+  /**
+   * Outbound-only: skip the ingest loop-prevention rule that rejects mail
+   * `from` the agent. Used when re-evaluating a thread whose tip is our send.
+   */
+  skipAgentSentGuard?: boolean;
 };
 
 const DELEGATION_PATTERNS = [
@@ -111,7 +116,9 @@ export function resolveAgentAuthorization(input: ResolveAgentAuthorizationInput)
   const bcc = normalizeEmailList(input.bcc);
   const allRecipients = [...to, ...cc, ...bcc];
 
-  if (isFromJoshuAgent(input.from, projectRoot)) {
+  // Ingest loop prevention: do not triage/act on mail the agent itself sent.
+  // Outbound follow-ups set skipAgentSentGuard when the mirror tip is our send.
+  if (!input.skipAgentSentGuard && isFromJoshuAgent(input.from, projectRoot)) {
     return {
       agent_authorized: false,
       scheduling_eligible: false,
@@ -165,12 +172,35 @@ function stripMirrorFrontmatter(raw: string): { fm: MailThreadFrontmatter | null
   }
 }
 
+/**
+ * Most recent non-agent `from` on the thread, if the mirror tip is our own send.
+ * Used only for outbound follow-ups (ingest still uses the tip as-is).
+ */
+function latestNonAgentFrom(
+  fm: MailThreadFrontmatter,
+  projectRoot: string,
+): string | undefined {
+  const metas = Array.isArray(fm.thread_messages) ? fm.thread_messages : [];
+  for (let i = metas.length - 1; i >= 0; i--) {
+    const from = metas[i]?.from?.trim();
+    if (from && !isFromJoshuAgent(from, projectRoot)) return from;
+  }
+  return undefined;
+}
+
 /** Recompute authorization from a mirrored thread file (API gates, outbound send). */
 export async function resolveAuthorizationFromSourcePath(opts: {
   filesRoot: string;
   sourcePath: string;
   projectRoot?: string;
   category?: string;
+  /**
+   * Outbound send path: if the mirror tip is our own prior message, do not hard-fail
+   * with `agent_sent_message` (that rule is for ingest loop prevention). Re-evaluate
+   * against the prior non-agent message + thread body; if still ambiguous, treat a
+   * prior agent send on the thread as proof we were already authorized.
+   */
+  forOutbound?: boolean;
 }): Promise<MailAgentAuthorization | null> {
   const rel = opts.sourcePath.trim().replace(/^\/+/, "");
   if (!rel) return null;
@@ -183,8 +213,35 @@ export async function resolveAuthorizationFromSourcePath(opts: {
   }
   const { fm, body } = stripMirrorFrontmatter(raw);
   if (!fm) return null;
+  const projectRoot = opts.projectRoot ?? process.cwd();
   const provider: TriageProvider = fm.source?.includes("nylas") ? "nylas" : "gmail";
   const threadPreview = body.trim().slice(0, 8000);
+  const tipIsAgent = isFromJoshuAgent(fm.from, projectRoot);
+
+  // Outbound follow-up on a thread where we already sent: skip the ingest-only
+  // "agent_sent_message" short-circuit and evaluate prior context instead.
+  if (opts.forOutbound && tipIsAgent) {
+    const priorFrom = latestNonAgentFrom(fm, projectRoot);
+    const auth = resolveAgentAuthorization({
+      provider,
+      from: priorFrom ?? fm.from,
+      to: fm.to,
+      cc: fm.cc,
+      bcc: fm.bcc,
+      triggerBodyPreview: threadPreview.slice(-2000),
+      threadBodyPreview: threadPreview,
+      projectRoot,
+      accountEmail: fm.account_email,
+      agentInbox: provider === "nylas",
+      category: opts.category,
+      // Force-skip agent_sent when priorFrom is missing (still tip=agent).
+      skipAgentSentGuard: !priorFrom,
+    });
+    if (auth.agent_authorized) return auth;
+    // We already mailed on this thread (passed this gate + owner approval once).
+    return authorized("prior_agent_send_on_thread", opts.category);
+  }
+
   return resolveAgentAuthorization({
     provider,
     from: fm.from,
@@ -193,7 +250,7 @@ export async function resolveAuthorizationFromSourcePath(opts: {
     bcc: fm.bcc,
     triggerBodyPreview: threadPreview.slice(-2000),
     threadBodyPreview: threadPreview,
-    projectRoot: opts.projectRoot,
+    projectRoot,
     accountEmail: fm.account_email,
     agentInbox: provider === "nylas",
     category: opts.category,
@@ -213,6 +270,7 @@ export async function resolveOutboundMailAuthorization(opts: {
       filesRoot: opts.filesRoot,
       sourcePath: opts.sourcePath,
       projectRoot: opts.projectRoot,
+      forOutbound: true,
     });
     if (pathAuth?.agent_authorized) return pathAuth;
   }

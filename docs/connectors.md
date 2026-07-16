@@ -422,12 +422,13 @@ Hermes agents call sends via **`mcp_joshu_connectors_nylas_send_message`**, whic
 | `:8795/health` OK, `connectors_status` OK | Connectors MCP is fine — gate is waiting | Restart MCP |
 | `{ ok: true, messageId: "blocked-…" }` | Owner denied or Joshu approval timed out at 30 min | Mail was sent |
 | `503` + `action_guard_telegram_not_linked` | Owner channel not linked — Joshu returns unavailable (does not crash) | MCP failure |
+| `403` + `mail_send_not_authorized` / `agent_sent_message` | Outbound auth rejected before action guard (no approval card posted) | Follow-ups after an agent send on the same thread — fixed 2026-07-16 in [`agentAuthorization.ts`](../src/ea/agentAuthorization.ts) (`prior_agent_send_on_thread`) |
 
 **Hermes `connect_timeout: 1800`** in `~/.hermes/config.yaml` (when guard is on) only extends **MCP connection establishment** — not the per-invocation tool timeout inside Hermes.
 
-**Worker behavior:** [`ea-scheduling` v4.19+](../integrations/hermes/skills/executive-assistant/ea-scheduling/SKILL.md) and [`ea-playbook` v2.16+](../integrations/hermes/skills/executive-assistant/ea-playbook/SKILL.md): on send timeout with guard enabled → **`kanban_block(reason="awaiting owner approval")`**, not `connectors-mcp-down`. After **denied** send (`decision: denied` in action-guard audit, or `blocked-*` messageId), use [ops retry](../executive-assistant.md#ea-scheduling--ops-retry-denied-send--bad-slots) — do not treat kanban comment "sent availability" as mail delivered.
+**Worker behavior:** [`ea-scheduling` v4.22+](../integrations/hermes/skills/executive-assistant/ea-scheduling/SKILL.md) and [`ea-playbook` v2.16+](../integrations/hermes/skills/executive-assistant/ea-playbook/SKILL.md): on send timeout with guard enabled → **`kanban_block(reason="awaiting owner approval")`**, not `connectors-mcp-down`. Pass **`kanbanTaskId`** on `nylas_send_message` so Joshu rewrites `block_reason` after approve/deny (delivered → `awaiting reply: …`). After **denied** send (`decision: denied` in action-guard audit, or `blocked-*` messageId), use [ops retry](../executive-assistant.md#ea-scheduling--ops-retry-denied-send--bad-slots) — do not treat kanban comment "sent availability" as mail delivered.
 
-**Future fix (backlog):** async approval — REST returns `{ status: "pending_approval", pendingId }` immediately; worker blocks on Kanban until Joshu completes send after Telegram approve. See [`ea-skill-future-fixes.md`](executive-assistant.md).
+**Future fix (backlog):** full async approval — REST returns `{ status: "pending_approval", pendingId }` immediately; worker blocks on Kanban until Joshu completes send after owner approve. Partial fix shipped: post-approve Kanban `block_reason` rewrite when `kanbanTaskId` is present; outbound follow-ups after an agent send no longer hard-fail with `agent_sent_message`.
 
 **Disable:** `JOSHU_ACTION_GUARD_ENABLED=false` or `"enabled": false` in policy — Composio MCP reverts to direct cloud URL on next gateway sync (`POST …/connectors/composio/sync` with `restartGateway: true`).
 

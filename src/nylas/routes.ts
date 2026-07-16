@@ -21,6 +21,7 @@ import { parseOptionalRecipients, parseRequiredTo } from "./recipients.js";
 import { agentRestWriteBlocked } from "../actionGuard/agentRestGate.js";
 import { gateNylasSendRequest, isJmailOwnerSend } from "../actionGuard/nylasSendGate.js";
 import { respondNylasSendGate } from "../actionGuard/nylasSendGateResponse.js";
+import { applySchedulingSendFollowup } from "../ea/schedulingSendFollowup.js";
 import { resolveJoshuFilesPaths } from "../joshuFilesPaths.js";
 import { resolveOutboundMailAuthorization } from "../ea/agentAuthorization.js";
 import { buildReplySubjectMismatchError, replySubjectsMatch } from "./replySubject.js";
@@ -203,6 +204,13 @@ export function registerNylasRoutes(router: Router, opts: { projectRoot: string 
         subject,
         body: bodyHtml,
         replyToMessageId,
+      });
+      // After sync approval (or guard off), rewrite meeting block_reason so
+      // "awaiting owner approval" does not linger once mail has left.
+      void applySchedulingSendFollowup({
+        projectRoot: opts.projectRoot,
+        body,
+        outcome: { kind: "delivered", messageId: id },
       });
       res.json({ ok: true, messageId: id, from: agent.email, to: to.map((r) => r.email), cc: cc?.map((r) => r.email) });
     } catch (err) {

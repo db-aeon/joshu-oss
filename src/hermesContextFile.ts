@@ -130,7 +130,7 @@ export function buildHermesContextMarkdown(input: HermesContextInput): string {
     "## Outbound mail (agent)",
     "",
     "Send from **your agent mailbox** (above) with Hermes tool **`mcp_joshu_connectors_nylas_send_message`** (`nylas_send_message` on joshu-connectors MCP).",
-    "When action guard is enabled, the owner approves on Telegram before delivery.",
+    "When action guard is enabled, the owner approves on the **owner channel** (Slack or Telegram) before delivery.",
     "",
     "**Do not** send mail via Composio Gmail tools, browser Gmail login, `nylas email send` / `terminal` shell, `execute_code`/`curl` to `POST /joshu/api/nylas/messages/send`, or `mail`/`sendmail` on the box — those paths are blocked or bypass action guard.",
     "For mail find/search/recall, load skill **joshu-mail** (local cache first → deep server Gmail via Composio if miss). For non-mail files, use **joshu-brain**.",

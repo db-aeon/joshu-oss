@@ -5,6 +5,7 @@ export type KanbanBridgeAction =
   | "create"
   | "unblock"
   | "block"
+  | "update_block_reason"
   | "find_by_idempotency"
   | "list"
   | "show"

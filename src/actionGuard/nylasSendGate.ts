@@ -3,6 +3,7 @@ import { isJmailOwnerClient } from "./agentRestGate.js";
 import { awaitOwnerApproval, buildNylasSendSummary } from "./gate.js";
 import { isActionGuardEnabled } from "./policy.js";
 import { stubNylasSendResponse } from "./stubs.js";
+import { applySchedulingSendFollowup } from "../ea/schedulingSendFollowup.js";
 
 /** @deprecated Use isJmailOwnerClient */
 export const isJmailOwnerSend = isJmailOwnerClient;
@@ -29,6 +30,16 @@ export async function gateNylasSendRequest(
   const result = await awaitOwnerApproval({ actionId: "nylas_send_message", summary }, projectRoot);
 
   if (result.decision === "unavailable") {
+    // Fire-and-forget Kanban rewrite when meeting workers passed kanbanTaskId.
+    void applySchedulingSendFollowup({
+      projectRoot,
+      body,
+      outcome: {
+        kind: "unavailable",
+        code: result.unavailableCode,
+        message: result.unavailableReason,
+      },
+    });
     return {
       allowed: false,
       unavailable: {
@@ -38,6 +49,11 @@ export async function gateNylasSendRequest(
     };
   }
   if (result.decision === "denied" || result.decision === "timeout") {
+    void applySchedulingSendFollowup({
+      projectRoot,
+      body,
+      outcome: { kind: result.decision },
+    });
     return { allowed: false, stub: stubNylasSendResponse(body, projectRoot) };
   }
   return { allowed: true };

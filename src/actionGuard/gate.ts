@@ -197,6 +197,12 @@ export async function awaitOwnerApproval(
 
 export function buildNylasSendSummary(args: Record<string, unknown>): Record<string, unknown> {
   const body = readString(args.body);
+  const kanbanTaskId =
+    readString(args.kanbanTaskId) ||
+    readString(args.kanban_task_id) ||
+    readString(args.taskId) ||
+    readString(args.task_id);
+  const threadId = readString(args.threadId) || readString(args.thread_id);
   return {
     to: args.to,
     cc: args.cc,
@@ -205,6 +211,8 @@ export function buildNylasSendSummary(args: Record<string, unknown>): Record<str
     // Full body for owner 1:1 approval (Slack/Telegram). Do not truncate —
     // owners need to review the exact outbound email before approving.
     body,
+    ...(kanbanTaskId ? { kanbanTaskId } : {}),
+    ...(threadId ? { threadId } : {}),
   };
 }
 

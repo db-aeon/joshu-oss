@@ -302,6 +302,23 @@ const TOOLS = [
           type: "string",
           description: "Alias for sourcePath",
         },
+        kanbanTaskId: {
+          type: "string",
+          description:
+            "ea-scheduling meeting task id (e.g. t_…). When set, Joshu rewrites that task's block_reason after action-guard approve/deny so status does not stay on 'awaiting owner approval' after mail delivers.",
+        },
+        kanban_task_id: {
+          type: "string",
+          description: "Alias for kanbanTaskId",
+        },
+        threadId: {
+          type: "string",
+          description: "Optional mail thread id for audit/context (with kanbanTaskId).",
+        },
+        thread_id: {
+          type: "string",
+          description: "Alias for threadId",
+        },
       },
       required: ["to", "subject", "body"],
     },
@@ -769,6 +786,8 @@ async function handleTool(name, args) {
   }
   if (name === "nylas_send_message") {
     const sourcePath = args.sourcePath ?? args.source_path;
+    const kanbanTaskId = args.kanbanTaskId ?? args.kanban_task_id ?? args.taskId ?? args.task_id;
+    const threadId = args.threadId ?? args.thread_id;
     const out = await joshuPost("/api/nylas/messages/send", {
       to: args.to,
       cc: args.cc,
@@ -777,6 +796,8 @@ async function handleTool(name, args) {
       body: args.body,
       replyToMessageId: args.replyToMessageId,
       ...(sourcePath ? { sourcePath: String(sourcePath) } : {}),
+      ...(kanbanTaskId ? { kanbanTaskId: String(kanbanTaskId) } : {}),
+      ...(threadId ? { threadId: String(threadId) } : {}),
     });
     return { content: [{ type: "text", text: JSON.stringify(out, null, 2) }] };
   }

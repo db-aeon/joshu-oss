@@ -7,6 +7,7 @@ import {
   listSchedulingMeetingTasks,
   queueMeetingTaskHandler,
   queueSchedulingMeetingTask,
+  updateSchedulingMeetingBlockReason,
 } from "./schedulingCron.js";
 import {
   handoffMailToTrackTask,
@@ -208,6 +209,43 @@ export function registerEaTriageRoutes(router: Router, opts: { projectRoot: stri
         return;
       }
       res.json({ ok: true, task_id: taskId });
+    } catch (err) {
+      res.status(500).json({ error: (err as Error).message });
+    }
+  });
+
+  /** Rewrite block_reason without unblock (ops / action-guard followup). */
+  router.post("/api/ea/scheduling/meetings/:taskId/block-reason", async (req: Request, res: Response) => {
+    const filesRoot = filesRootFromProject(opts.projectRoot);
+    if (!filesRoot) {
+      res.status(503).json({ error: "JOSHU_FILES_ROOT unavailable" });
+      return;
+    }
+    const taskId = readString(req.params.taskId);
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const reason = readString(body.reason);
+    const comment = readString(body.comment) || undefined;
+    if (!taskId || !reason) {
+      res.status(400).json({ error: "taskId and reason required" });
+      return;
+    }
+    try {
+      const result = await updateSchedulingMeetingBlockReason({
+        filesRoot,
+        taskId,
+        reason,
+        comment,
+        author: readString(body.author) || "ops",
+      });
+      if (!result.ok) {
+        res.status(502).json({ ok: false, error: result.error });
+        return;
+      }
+      res.json({
+        ok: true,
+        task_id: taskId,
+        block_reason: result.block_reason ?? reason,
+      });
     } catch (err) {
       res.status(500).json({ error: (err as Error).message });
     }

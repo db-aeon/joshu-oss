@@ -1,6 +1,6 @@
 # Joshu factory profile — product defaults on boot and soft factory-reset.
 schemaVersion: 1
-release: "0.2.1"
+release: "0.2.2"
 
 seeds:
   - from: templates/ea/

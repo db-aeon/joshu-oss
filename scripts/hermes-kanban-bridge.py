@@ -383,6 +383,60 @@ def _dispatch(payload: Dict[str, Any]) -> Dict[str, Any]:
         cid = kanban_db.add_comment(conn, task_id, author=author, body=str(body))
         return {"success": True, "task_id": task_id, "comment_id": cid}
 
+    if action == "update_block_reason":
+        # Rewrite block_reason on an already-blocked task without unblock→ready
+        # (which would race the dispatcher). Appends a new "blocked" event —
+        # list APIs read the latest blocked event's reason.
+        task_id = str(payload.get("task_id") or "").strip()
+        reason = str(payload.get("reason") or "").strip()
+        comment = payload.get("comment")
+        author = str(payload.get("author") or "joshu").strip() or "joshu"
+        if not task_id:
+            return {"success": False, "error": "task_id is required"}
+        if not reason:
+            return {"success": False, "error": "reason is required"}
+        task = kanban_db.get_task(conn, task_id)
+        if not task:
+            return {"success": False, "error": f"task {task_id} not found"}
+        status = str(task.status or "")
+        if status == "done":
+            return {
+                "success": False,
+                "error": f"task {task_id} is done — refuse to rewrite block reason",
+            }
+        if status in ("ready", "running", "todo"):
+            ok = kanban_db.block_task(conn, task_id, reason=reason)
+            if not ok:
+                return {"success": False, "error": f"could not block task {task_id}"}
+        elif status == "blocked":
+            append_fn = getattr(kanban_db, "_append_event", None)
+            write_txn = getattr(kanban_db, "write_txn", None)
+            if not callable(append_fn) or not callable(write_txn):
+                return {
+                    "success": False,
+                    "error": "kanban_db._append_event/write_txn not available",
+                }
+            with write_txn(conn):
+                append_fn(conn, task_id, "blocked", {"reason": reason})
+        else:
+            return {
+                "success": False,
+                "error": f"unsupported status {status!r} for update_block_reason",
+            }
+        comment_id = None
+        if comment is not None and str(comment).strip():
+            comment_id = kanban_db.add_comment(conn, task_id, author=author, body=str(comment).strip())
+        refreshed = kanban_db.get_task(conn, task_id)
+        summary = _task_summary(refreshed) if refreshed else {"task_id": task_id}
+        summary = _enrich_task_summary(conn, summary, include_activity=True)
+        return {
+            "success": True,
+            "task_id": task_id,
+            "action_taken": "block_reason_updated",
+            "comment_id": comment_id,
+            "task": summary,
+        }
+
     if action == "append_body":
         task_id = str(payload.get("task_id") or "").strip()
         append = payload.get("append")

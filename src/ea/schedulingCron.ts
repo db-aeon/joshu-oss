@@ -256,6 +256,44 @@ export async function commentSchedulingMeetingTask(opts: {
   return result.success ? { ok: true } : { ok: false, error: result.error ?? "comment_failed" };
 }
 
+export type UpdateBlockReasonResult = {
+  ok: boolean;
+  error?: string;
+  block_reason?: string | null;
+};
+
+/**
+ * Rewrite block_reason without unblock→ready (avoids dispatcher race).
+ * Used after action-guard approve/deny so "awaiting owner approval" does not linger.
+ */
+export async function updateSchedulingMeetingBlockReason(opts: {
+  filesRoot: string;
+  taskId: string;
+  reason: string;
+  comment?: string;
+  author?: string;
+}): Promise<UpdateBlockReasonResult> {
+  const taskId = opts.taskId.trim();
+  const reason = opts.reason.trim();
+  if (!taskId) return { ok: false, error: "task_id required" };
+  if (!reason) return { ok: false, error: "reason required" };
+  const result = await callKanbanBridge({
+    action: "update_block_reason",
+    board: EA_SCHEDULING_BOARD,
+    task_id: taskId,
+    reason,
+    ...(opts.comment?.trim() ? { comment: opts.comment.trim() } : {}),
+    author: opts.author?.trim() || "joshu",
+  });
+  if (!result.success) {
+    return { ok: false, error: result.error ?? "update_block_reason_failed" };
+  }
+  return {
+    ok: true,
+    block_reason: result.task?.block_reason ?? reason,
+  };
+}
+
 export type HandoffIngressReplyResult = {
   ok: boolean;
   error?: string;

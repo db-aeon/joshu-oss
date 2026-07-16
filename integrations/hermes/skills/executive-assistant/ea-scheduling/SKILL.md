@@ -4,7 +4,7 @@ description: Meeting-mail scheduling. Kanban ea-sched-*; Calendly fallback.
 metadata:
   hermes:
     category: executive-assistant
-    version: "4.21.0"
+    version: "4.22.0"
 ---
 
 # EA Scheduling
@@ -198,14 +198,16 @@ Responses include **`timeAnchor`** (owner-local now) and per-event **`localDate`
 
 ### Action guard + `nylas_send_message`
 
-Outbound mail hits **Telegram approval** when action guard is enabled. Joshu may block up to **30 minutes** waiting for the owner; Hermes MCP tool calls often **timeout around 120s** first.
+Outbound mail hits **owner-channel approval** (Slack or Telegram) when action guard is enabled. Joshu may block up to **30 minutes** waiting for the owner; Hermes MCP tool calls often **timeout around 120s** first.
+
+**Always pass `kanbanTaskId`** (this meeting task id, e.g. `t_…`) and preferably `threadId` on `nylas_send_message`. Joshu rewrites this task's `block_reason` after approve/deny/timeout so status does not stay on "awaiting owner approval" after mail delivers (or after a denied/failed gate).
 
 | Outcome | What it means | Your action |
 |---------|---------------|-------------|
-| **Timeout / `TimeoutError` on `nylas_send_message`** while guard is on | **Approval still pending** — not MCP down | **`kanban_block(reason="awaiting owner approval")`** — do **not** retry send from another task or board |
-| **`503`** / `action_guard_unavailable` | Telegram not linked or guard broken | **`kanban_block(reason="action-guard-unavailable: …")`** — not MCP down |
+| **Timeout / `TimeoutError` on `nylas_send_message`** while guard is on | **Approval still pending** — not MCP down | **`kanban_block(reason="awaiting owner approval")`** — do **not** retry send from another task or board. Joshu will rewrite the reason after the owner decides. |
+| **`503`** / `action_guard_unavailable` | Owner channel delivery failed or guard broken | **`kanban_block(reason="action-guard-unavailable: …")`** — not MCP down |
 | **`ok: true`** with `messageId` starting **`blocked-`** | Owner denied or approval timed out at Joshu | **No mail sent** — do not treat as success; block or complete without re-send |
-| **`ok: true`** with real UUID `messageId` | Mail sent | **`kanban_block`** waiting on reply (or book if confirmed) |
+| **`ok: true`** with real UUID `messageId` | Mail sent | **`kanban_block`** waiting on reply (or book if confirmed). Prefer reason like `awaiting reply: …` — Joshu may already have rewritten it. |
 
 **Before claiming "MCP down":** run **`connectors_status`**. A timeout on send alone is **not** connectors failure.
 
@@ -275,7 +277,7 @@ The **owner** sometimes sends batch emails to multiple people (investors, partne
 
 3. **Check live owner calendar** — `google_calendar_find_free_slots` (omit `items` or include personal Gmail; multi-day window, owner timezone). Schedule from **`calendars.combined.free`**. Filter free intervals to at least 30 min within working hours. Offer 2-3 specific time windows across different days.
 
-4. **Reply to the thread** — `nylas_send_message` with **`sourcePath`** from the meeting task `source_paths`, `replyToMessageId` on the message you are continuing, and the **exact parent subject** from the thread mirror (no decorations). **To:** whoever the owner addressed; **CC:** owner (so they see the thread) plus anyone they CC'd. Introduce yourself as the owner's companion and offer the slots you found. Agent sends hit **action guard** (Telegram approval) when enabled — `kanban_block` until send succeeds.
+4. **Reply to the thread** — `nylas_send_message` with **`sourcePath`** from the meeting task `source_paths`, **`kanbanTaskId`** = this task id, optional **`threadId`**, `replyToMessageId` on the message you are continuing, and the **exact parent subject** from the thread mirror (no decorations). **To:** whoever the owner addressed; **CC:** owner (so they see the thread) plus anyone they CC'd. Introduce yourself as the owner's companion and offer the slots you found. Agent sends hit **action guard** (owner channel approval) when enabled — `kanban_block` until send succeeds; Joshu rewrites `block_reason` after approve/deny when `kanbanTaskId` was passed.
 
 No kanban task is needed for this pattern — the owner's instruction is in the email body, not in a scheduling ingress workflow. Reply, wait for the counterparty, then proceed with standard meeting booking.
 

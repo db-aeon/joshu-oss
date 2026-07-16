@@ -72,13 +72,42 @@ process.env.JOSHU_AROZ_USER = ownerEmail;
   assert.equal(auth.reason, "owner_delegated_trigger");
 }
 
-// Agent-sent message — never authorize
+// Agent-sent message — never authorize (ingest path)
 {
   const auth = resolveAgentAuthorization(
     baseInput({ from: `Patrick <${agentEmail}>` }),
   );
   assert.equal(auth.agent_authorized, false);
   assert.equal(auth.reason, "agent_sent_message");
+}
+
+// Outbound follow-up: skipAgentSentGuard + owner delegation in thread body
+{
+  const auth = resolveAgentAuthorization(
+    baseInput({
+      from: `Patrick <${agentEmail}>`,
+      to: ["mcarneiro@google.com"],
+      cc: ["dbenyamin@gmail.com"],
+      skipAgentSentGuard: true,
+      triggerBodyPreview: "I am copying Patrick to share some availability.",
+      threadBodyPreview: [
+        `### 2026-07-14T19:42:10.000Z — Dan Benyamin <${ownerEmail}>`,
+        "",
+        "**Subject:** Fwd: intro",
+        "",
+        "I am copying Patrick to share some availability.",
+        "",
+        "---",
+        "",
+        `### 2026-07-14T20:02:53.000Z — Patrick <${agentEmail}>`,
+        "",
+        "Here are some windows…",
+      ].join("\n"),
+      category: "scheduling",
+    }),
+  );
+  assert.equal(auth.agent_authorized, true);
+  assert.equal(auth.reason, "owner_delegated_thread");
 }
 
 console.log("test-agent-authorization: ok");
