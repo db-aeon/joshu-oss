@@ -26,19 +26,8 @@ JOSHU_FILES_DIR_NAME="${JOSHU_FILES_DIR_NAME:-${DEFAULT_JOSHU_FILES_DIR}}"
 bootstrap_user_desktop() {
   local desktop="$1"
   local files_root="${desktop}/${JOSHU_FILES_DIR_NAME}"
-  local kb_inbox="${files_root}/research/kb/inbox"
-  local kb_drop="${kb_inbox}/DROP_PDFS_HERE.md"
 
-  mkdir -p "${files_root}" "${kb_inbox}" "${files_root}/research/kb/.raw"
-  if [[ ! -f "${kb_drop}" ]]; then
-    cat >"${kb_drop}" <<'EOF'
-# Knowledge base — PDF drop folder
-
-Drop `.pdf` files here. Joshu extracts text automatically and indexes them under `research/kb/` (searchable in File Brain within a few seconds).
-
-Originals are archived in `research/kb/.raw/`.
-EOF
-  fi
+  mkdir -p "${files_root}"
   echo "[bootstrap-joshu-files] ready ${files_root}"
 }
 

@@ -25,6 +25,24 @@ type BrainStatus = {
     total_pages?: number | null;
     raw?: string;
   };
+  activity?: {
+    busy?: boolean;
+    pdf_ingest?: {
+      active?: boolean;
+      phase?: string;
+      reason?: string;
+      last_message?: string;
+      last_ingested?: number;
+      last_updated?: number;
+      last_errors?: number;
+    } | null;
+    reindex?: {
+      active?: boolean;
+      reindex_running?: boolean;
+      reindex_scheduled?: boolean;
+      reindex_pending?: boolean;
+    } | null;
+  };
   error?: string;
 };
 
@@ -172,6 +190,16 @@ function App() {
     loadStatus();
   }, [loadStatus, refreshKey]);
 
+  // Poll while PDF ingest or reindex is active so the status pill stays live.
+  useEffect(() => {
+    const busy = Boolean(status?.activity?.busy);
+    const intervalMs = busy ? 1500 : 8000;
+    const id = window.setInterval(() => {
+      loadStatus();
+    }, intervalMs);
+    return () => window.clearInterval(id);
+  }, [loadStatus, status?.activity?.busy]);
+
   useEffect(() => {
     if (tab !== "browse") return;
     let cancelled = false;
@@ -245,6 +273,23 @@ function App() {
       : `Health ${status.health_score ?? "?"} · ${status.schema?.total_pages ?? "?"} pages`
     : status?.error ?? "Checking gbrain…";
 
+  const pdfPhase = status?.activity?.pdf_ingest?.phase;
+  const pdfActive = Boolean(status?.activity?.pdf_ingest?.active);
+  const reindexActive = Boolean(status?.activity?.reindex?.active);
+  const activityBusy = Boolean(status?.activity?.busy) || pdfActive || reindexActive;
+
+  let activityLabel = "";
+  if (pdfActive && (pdfPhase === "running" || pdfPhase === "scheduled")) {
+    activityLabel =
+      pdfPhase === "running"
+        ? status?.activity?.pdf_ingest?.last_message || "Extracting PDFs…"
+        : "PDF ingest scheduled…";
+  } else if (reindexActive) {
+    activityLabel = status?.activity?.reindex?.reindex_running
+      ? "Reindexing File Brain…"
+      : "Reindex scheduled…";
+  }
+
   return (
     <main className="app-shell">
       <header className="topbar">
@@ -252,9 +297,17 @@ function App() {
           <p className="eyebrow">Joshu File Brain</p>
           <h1>File Brain</h1>
         </div>
-        <div className={`status-pill ${status?.ok ? "status-ready" : "status-error"}`}>
-          <span />
-          {statusLabel}
+        <div className="status-cluster">
+          {activityBusy && activityLabel && (
+            <div className="status-pill status-busy" title={status?.activity?.pdf_ingest?.reason || ""}>
+              <span />
+              {activityLabel}
+            </div>
+          )}
+          <div className={`status-pill ${status?.ok ? "status-ready" : "status-error"}`}>
+            <span />
+            {statusLabel}
+          </div>
         </div>
       </header>
 

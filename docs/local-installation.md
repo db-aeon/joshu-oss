@@ -274,16 +274,17 @@ Set the opinionated folder explicitly (quote the apostrophe — `.env` is bash-s
 JOSHU_FILES_DIR_NAME="joshu's files"
 ```
 
-See [`docs/file-brain.md`](file-brain.md) for Desktop layout, slug rules, write paths, connector mail indexing, **PDF knowledge base drop** (`research/kb/inbox/`), periodic reindex (`GBRAIN_REINDEX_INTERVAL_SEC`), PGLite locks, and bumping the pin.
+See [`docs/file-brain.md`](file-brain.md) for Desktop layout, slug rules, write paths, connector mail indexing, **PDF text extraction** (any PDF on Desktop → sibling `.md`), periodic reindex (`GBRAIN_REINDEX_INTERVAL_SEC`), PGLite locks, and bumping the pin.
 
-**KB PDF ingest (local):** text PDFs dropped in `joshu's files/research/kb/inbox/` are auto-extracted when gbrain MCP HTTP is running. Install at least one extractor:
+**PDF ingest (local):** text PDFs anywhere on the ArozOS Desktop are auto-extracted to sibling markdown when gbrain MCP HTTP is running. Install at least one extractor visible to the **watcher** process (not only your interactive shell):
 
 ```bash
-brew install poppler          # pdftotext (macOS)
-pip install pypdf               # Python fallback
+brew install poppler          # pdftotext — preferred; works regardless of which python3 MCP spawns
+pip install pypdf             # only if installed into that same python3
+# optional: JOSHU_KB_PDF_PYTHON=/path/to/python-with-pypdf
 ```
 
-Manual ingest: `npm run kb:ingest-pdf`.
+Manual ingest: `npm run kb:ingest-pdf`. Logs: `${GBRAIN_HOME}/gbrain-mcp-http.log` / `gbrain-sync.log` (`[kb-pdf-ingest]`).
 
 ## Hindsight Memory
 

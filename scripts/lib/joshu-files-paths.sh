@@ -71,8 +71,7 @@ Subfolders (see FILING.md):
 - \`Projects/\` — active work (\`about.md\`, \`todo.md\`, journals)
 - \`connectors/\` — synced mail and calendar mirrors
 - \`journals/\` — dated logs
-- \`research/\` — notes and investigation
-- \`research/kb/inbox/\` — drop PDFs here (auto-extracted to \`research/kb/*.md\`)
+- \`research/\` — notes and investigation (PDFs anywhere on Desktop auto-extract to sibling \`.md\`)
 - \`inbox/\` — quick capture
 - \`uploads/\` — arbitrary uploads
 

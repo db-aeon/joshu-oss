@@ -1,10 +1,11 @@
 ---
 name: joshu-brain
 description: Search Desktop files via gbrain; mail use joshu-mail.
-version: 1.8.0
+version: 1.9.1
 metadata:
   hermes:
     category: brain
+    version: 1.9.1
 ---
 
 # Joshu File Brain
@@ -19,7 +20,7 @@ metadata:
 Use **gbrain** (read-only MCP tools from the `gbrain` server) when the user asks about:
 
 - Files on their **Desktop** (including **joshu's files**)
-- Journals, research notes, uploads, PDF knowledge base (`research/kb/`), or anything saved as files
+- Journals, research notes, uploads, PDF extracts (sibling `.md` next to PDFs), or anything saved as files
 - "What did I write about X?" when the answer should come from documents
 
 Use **Hindsight memory** (Hermes memory provider) when the user asks about:
@@ -76,21 +77,19 @@ connectors/calendar/
 connectors/_state/                          # sync cursors (machine)
 journals/                        # optional personal capture (non-EA)
 research/                        # notes and investigation
-research/kb/inbox/               # drop PDFs here → auto-extracted to research/kb/*.md
-research/kb/.raw/                # archived PDF originals (not indexed)
 inbox/
 uploads/
 ```
 
-### PDF knowledge base
+### PDF text extraction
 
-Users can drop **text PDFs** in **`${JOSHU_FILES_ROOT}/research/kb/inbox/`**. Joshu auto-extracts to **`research/kb/<slug>.md`** (gbrain type **`research`**); originals land in **`research/kb/.raw/`**. No agent action required beyond pointing users at the inbox path.
+Users can drop **text PDFs** anywhere on the **ArozOS Desktop** (`JOSHU_DESKTOP_ROOT`), including folders outside `joshu's files`. Joshu auto-extracts a **sibling `.md`** next to the PDF (`report.pdf` → `report.md`; if that name is taken, `report.pdf.md`). The PDF stays in place. When the PDF bytes change, the sidecar is re-extracted; deleting the PDF removes the sidecar. No agent action required.
 
-- Query with keywords + `research/kb` in the question to bias toward KB hits.
 - Do **not** paste full PDF bodies into markdown — the ingest pipeline handles extraction.
 - Scanned/image PDFs may fail ingest; suggest OCR or manual markdown if extraction errors.
+- File Brain shows an activity pill while extract/reindex is running.
 
-Read **`FILING.md`** and **`docs/executive-assistant.md#gtd-workspace`** before creating new pages. Connector layout and APIs: Joshu **`docs/connectors.md`**. PDF ingest details: **`docs/file-brain.md`** (Knowledge base section).
+Read **`FILING.md`** and **`docs/executive-assistant.md#gtd-workspace`** before creating new pages. Connector layout and APIs: Joshu **`docs/connectors.md`**. PDF ingest details: **`docs/file-brain.md`** (PDF text extraction section).
 
 ### Linking for recall (EA projects)
 

@@ -100,6 +100,12 @@ export type GbrainMcpHealthStatus = {
   sessionReady: boolean;
 };
 
+export type GbrainMcpActivity = {
+  busy: boolean;
+  pdf_ingest?: Record<string, unknown> | null;
+  reindex?: Record<string, unknown> | null;
+};
+
 /** Layered MCP health: process up vs MCP session initialized (Hermes / File Brain need session_ready). */
 export async function fetchGbrainMcpHealthStatus(
   timeoutMs = 2000,
@@ -123,6 +129,28 @@ export async function fetchGbrainMcpHealthStatus(
       return { reachable: false, ok: false, sessionReady: false };
     }
     return { reachable: false, ok: false, sessionReady: false };
+  }
+}
+
+/** PDF ingest + reindex activity from gbrain MCP HTTP (:8794). */
+export async function fetchGbrainMcpActivity(
+  timeoutMs = 2000,
+): Promise<GbrainMcpActivity | null> {
+  try {
+    const response = await fetch(`${legacyInspectBaseUrl()}/activity`, {
+      signal: AbortSignal.timeout(timeoutMs),
+      cache: "no-store",
+    });
+    if (!response.ok) return null;
+    const body = (await response.json()) as GbrainMcpActivity & { ok?: boolean };
+    if (body.ok === false) return null;
+    return {
+      busy: Boolean(body.busy),
+      pdf_ingest: body.pdf_ingest ?? null,
+      reindex: body.reindex ?? null,
+    };
+  } catch {
+    return null;
   }
 }
 

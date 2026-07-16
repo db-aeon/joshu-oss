@@ -20,8 +20,9 @@ All agent writes go under **`JOSHU_FILES_ROOT`** (this folder). Do not use macOS
 | `Projects/<slug>/scheduling/` | **Legacy** scheduling case files — replaced by Kanban `ea-scheduling` |
 | `Projects/other/` | Catch-all project |
 | `Projects/_archive/` | Completed projects (moved when `status: done`) |
-| `research/kb/inbox/` | **PDF drop folder** — auto-extracted to `research/kb/*.md` (see below) |
-| `research/kb/.raw/` | Archived PDF originals (reference only; not indexed) |
+| `research/` | Notes and investigation (PDFs anywhere on Desktop are fine) |
+
+**PDFs:** Drop a text PDF anywhere on the ArozOS Desktop (including outside this folder). Joshu extracts sibling markdown alongside it (`report.pdf` → `report.md`, or `report.pdf.md` if `report.md` already exists) and indexes the markdown via gbrain. The PDF stays in place. Deleting the PDF also removes its generated sidecar and de-indexes it.
 
 **Do not** create `Reference/`, `Someday/`, or `Current/` parent folders. Use `about.md` **`status`** (`active` \| `someday` \| `reference` \| `done`) and move to `_archive/` only when done.
 
@@ -85,9 +86,9 @@ Search via gbrain → connector paths. See skill **`joshu-mail`**.
 
 ## Knowledge base (PDFs)
 
-Drop **text PDFs** in **`research/kb/inbox/`**. Joshu extracts plain text automatically (no LLM), writes **`research/kb/<slug>.md`**, archives the original under **`research/kb/.raw/`**, and indexes via gbrain (type **`research`**). Scanned/image PDFs are not supported yet — transcribe or OCR externally first.
+Drop **text PDFs** anywhere on the **ArozOS Desktop** (`JOSHU_DESKTOP_ROOT`), including outside this folder. Joshu extracts plain text automatically (no LLM), writes a **sibling `.md`** next to the PDF (`report.pdf` → `report.md`), and indexes via gbrain. If `report.md` already exists and is not this PDF's extract, Joshu writes `report.pdf.md` instead. When the PDF changes, the sidecar is re-extracted; deleting the PDF removes the sidecar. Scanned/image PDFs are not supported yet — transcribe or OCR externally first.
 
-Manual ingest: `npm run kb:ingest-pdf`. Details: Joshu **`docs/file-brain.md`** (Knowledge base section).
+Manual ingest: `npm run kb:ingest-pdf`. Details: Joshu **`docs/file-brain.md`** (PDF text extraction section).
 
 ## Outbound email
 

@@ -63,7 +63,7 @@ ${AROZ_DATA}/files/users/<user>/Desktop/
 └── *.shortcut                 ← skipped where possible
 ```
 
-Common subfolders agents may create: `inbox/`, `journals/`, `research/`, `research/kb/` (PDF knowledge base — see [Knowledge base (PDF drop)](#knowledge-base-pdf-drop)), `uploads/`, `connectors/` (path prefix drives gbrain page type after sync). Synced mail/calendar mirrors live under `connectors/` — see [Connector mail in gbrain](#connector-mail-and-calendar-gbrain) and [`docs/connectors.md`](connectors.md).
+Common subfolders agents may create: `inbox/`, `journals/`, `research/`, `uploads/`, `connectors/` (path prefix drives gbrain page type after sync). Synced mail/calendar mirrors live under `connectors/` — see [Connector mail in gbrain](#connector-mail-and-calendar-gbrain) and [`docs/connectors.md`](connectors.md). **PDFs** anywhere on the ArozOS Desktop auto-extract to sibling markdown — see [PDF text extraction](#pdf-text-extraction).
 
 **Local dev example:**
 
@@ -134,7 +134,8 @@ gbrain-mcp-http-server.mjs  →  one gbrain serve (stdio NDJSON)  →  PGLite @ 
 
 | Endpoint | Consumer | Notes |
 |----------|----------|--------|
-| `GET /health` | Ops, boot scripts | `session_ready` when MCP initialize succeeded |
+| `GET /health` | Ops, boot scripts | `session_ready` when MCP initialize succeeded; includes `activity` (PDF ingest + reindex busy) |
+| `GET /activity` | File Brain status pill | `{ busy, pdf_ingest, reindex }` |
 | `GET /list` | File Brain Browse | Uses `get_recent_salience` (all sources); not `list_pages` (default source only) |
 | `GET /search?q=` | File Brain Search, `brainApi` | Implemented as hybrid **`query`** with `source_id=__all__` (see below) |
 | `GET /query?q=` | File Brain Query, `brainApi` | Hybrid search + expansion; pass `limit`; defaults to `source_id=__all__` |
@@ -186,7 +187,7 @@ ${JOSHU_FILES_ROOT}/journals/2026-05-24-slug.md
 ```
 
 - **Path is identity** — folder prefix (`journals/`, `research/`, …) drives gbrain page type after sync; optional YAML frontmatter (`type`, `date`) is for humans but **path wins** for classification.
-- Use **`.md`** for journals, research, and inbox (default sync imports `.md`/`.mdx` only). **PDFs** are not synced directly — drop them in `research/kb/inbox/` for automatic text extraction (see [Knowledge base (PDF drop)](#knowledge-base-pdf-drop)).
+- Use **`.md`** for journals, research, and inbox (default sync imports `.md`/`.mdx` only). **PDFs** are not synced directly — place them anywhere under `JOSHU_DESKTOP_ROOT` for automatic text extraction to a sibling `.md` (see [PDF text extraction](#pdf-text-extraction)).
 - **Do not** write to macOS `~/Desktop` or `Desktop/journals/` at the ArozOS Desktop root.
 - **Do not** prefix paths with `joshu's files/` when the path is already inside that folder.
 
@@ -198,38 +199,50 @@ After a filesystem write under `JOSHU_FILES_ROOT`, the gbrain MCP HTTP server ru
 
 **Connector mail mirrors:** Joshu-native cron (`JOSHU_CONNECTORS_CRON`, default on) polls **Nylas and Gmail every 10m** via `src/connectors/scheduler.ts`. Each run writes markdown and touches the reindex file. See [`docs/connectors.md`](connectors.md).
 
-### Knowledge base (PDF drop)
+### PDF text extraction
 
-Drop **text PDFs** in:
+Drop **text PDFs** anywhere under the ArozOS Desktop:
 
 ```text
-${JOSHU_FILES_ROOT}/research/kb/inbox/
+${JOSHU_DESKTOP_ROOT}/
 ```
 
-Joshu extracts plain text (no LLM), writes searchable markdown under `research/kb/<slug>.md`, archives the original in `research/kb/.raw/`, and triggers the normal gbrain reindex. Bootstrap seeds `research/kb/inbox/DROP_PDFS_HERE.md` as a user hint.
+That includes folders outside `joshu's files` (same scope as federated gbrain indexing). Joshu extracts plain text (no LLM), writes a **sibling markdown** next to the PDF, leaves the PDF in place, and triggers the normal gbrain reindex.
 
 | Path | Role |
 |------|------|
-| `research/kb/inbox/` | Drop folder — PDFs only |
-| `research/kb/*.md` | Extracted, indexed pages (gbrain type **`research`**) |
-| `research/kb/.raw/` | Archived originals (not indexed) |
+| `…/report.pdf` | Original — stays where the user/agent filed it |
+| `…/report.md` | Extracted text (preferred sidecar name) |
+| `…/report.pdf.md` | Used when `report.md` already exists and is not this PDF's extract |
 
-**Flow:** fs watch on inbox (~2.5s debounce) + 120s poll → [`scripts/ingest-pdf-kb.py`](../scripts/ingest-pdf-kb.py) via [`scripts/lib/kb-pdf-ingest.mjs`](../scripts/lib/kb-pdf-ingest.mjs) (started from [`scripts/gbrain-mcp-http-server.mjs`](../scripts/gbrain-mcp-http-server.mjs)) → markdown write → existing `.md` reindex.
+**Flow:** recursive fs watch on `JOSHU_DESKTOP_ROOT` (~2.5s debounce) + 120s poll → [`scripts/ingest-pdf-kb.py`](../scripts/ingest-pdf-kb.py) via [`scripts/lib/kb-pdf-ingest.mjs`](../scripts/lib/kb-pdf-ingest.mjs) (started from [`scripts/gbrain-mcp-http-server.mjs`](../scripts/gbrain-mcp-http-server.mjs)) → sibling markdown write → existing `.md` reindex.
 
-**Extraction:** `pdftotext` (poppler) when available, else Python `pypdf`. VPS image includes both (`deploy/Dockerfile`). Local dev: `brew install poppler` and/or `pip install pypdf`.
+**Collision:** Prefer `stem.md`. If that file exists and is not this PDF's sidecar (no matching `source_pdf` / `pdf_sha256` frontmatter), write `stem.pdf.md` (then `stem.pdf-2.md`, …).
+
+**Re-extract:** When the PDF's `sha256` changes, the existing sidecar is overwritten. Unchanged hashes are skipped.
+
+**Delete:** Removing a PDF removes its generated sidecar on the next ingest run (watch event or 120s poll) and triggers a reindex, so the extracted text drops out of search. Only sidecars with `source_pdf` + `pdf_sha256` frontmatter are cleaned up — human-authored markdown is never touched.
+
+**Extraction:** `pdftotext` (poppler) when available, else Python `pypdf`. VPS image includes both (`deploy/Dockerfile`).
+
+**Local extractors:** Prefer **`brew install poppler`** — the MCP HTTP watcher spawns a bare `python3` that may not see packages installed into a pyenv/venv. If you rely on `pypdf`, install it into that same `python3`, or set `JOSHU_KB_PDF_PYTHON` to an interpreter that has it. Watcher logs: `${GBRAIN_HOME}/gbrain-mcp-http.log` and often also `${GBRAIN_HOME}/gbrain-sync.log` (`[kb-pdf-ingest]`).
+
+**Large pages:** gbrain may **soft-skip embeddings** for very large extracted markdown (page still imports; keyword/FTS search works; semantic recall may be weaker). Check sync logs for `content-sanity soft-block`.
 
 **Manual one-shot:** `npm run kb:ingest-pdf` or `bash scripts/ingest-pdf-kb.sh`.
 
-**Limits:** text-based PDFs only today (no OCR for scanned/image PDFs). Everything under `research/` shares the same gbrain page type — use slug path `research/kb/…` in queries to bias toward the knowledge base.
+**Limits:** text-based PDFs only today (no OCR for scanned/image PDFs). Skip dirs: hidden folders (`.git`, `.raw`, …).
 
-**Dedup:** Re-dropping the same PDF (matching `pdf_sha256` in frontmatter) is skipped; the inbox copy is removed without re-extracting.
+**File Brain activity:** While extract or reindex is running, `GET /activity` (and `/health` → `activity`, `/joshu/api/brain/status` → `activity`) reports busy state. The File Brain desktop app shows a pulsing status pill.
+
+**Legacy:** Older boxes may still have `research/kb/inbox/` and `research/kb/.raw/` from the previous drop-folder design. New ingest does not use those paths; existing `.raw` archives are left alone.
 
 ### Indexing cadence (summary)
 
 | Trigger | What runs | Default interval |
 |---------|-----------|------------------|
 | `.md` change under Desktop | fs watch → debounced git commit + `sync_brain` | ~3s debounce |
-| PDF drop in `research/kb/inbox/` | extract → write `research/kb/*.md` → reindex | ~2.5s debounce + ingest |
+| PDF under `JOSHU_DESKTOP_ROOT` | extract → sibling `.md` → reindex | ~2.5s debounce + ingest |
 | MCP HTTP timer | `git add -A` on `files/users/` + `sync_brain` | **`GBRAIN_REINDEX_INTERVAL_SEC`** = 900s (15m); `0` = off |
 | MCP HTTP startup | Catch-up reindex | ~8s after boot |
 | VPS boot (`vps-start.sh`) | `ensure-gbrain-indexed.sh --soft` | ~45s after stack start |
@@ -475,8 +488,10 @@ See also [`docs/local-installation.md`](local-installation.md#file-brain-gbrain)
 | gbrain doctor fails after Hindsight/Postgres work | `DATABASE_URL` corrupted config | `start-gbrain.sh` repair block; or delete config and re-init |
 | `dev:arozos` gbrain exit early | Missing embeddings or `gbrain` not on PATH | Keys in `.env`; `npm run gbrain:install` |
 | Search empty after filesystem write | Reindex not run yet or MCP HTTP off | Wait ~3s; `POST /joshu/api/brain/reindex`; check `curl http://127.0.0.1:8794/health` |
-| PDF in `research/kb/inbox/` not indexed | MCP HTTP not running, or missing `pdftotext`/`pypdf` | Restart `start-gbrain-mcp-http.sh`; `npm run kb:ingest-pdf`; install poppler or `pip install pypdf`; check `${GBRAIN_HOME}/gbrain-mcp-http.log` for `[kb-pdf-ingest]` |
-| PDF ingest error “extracted text too short” | Scanned/image PDF (no selectable text) | Re-OCR externally or transcribe manually to `research/kb/<slug>.md` |
+| PDF under Desktop not indexed | MCP HTTP not running, or missing `pdftotext`/`pypdf` on the watcher’s Python | `brew install poppler` (preferred); or `pip install pypdf` into the same `python3` MCP uses / set `JOSHU_KB_PDF_PYTHON`; `npm run kb:ingest-pdf`; check logs for `[kb-pdf-ingest]` |
+| PDF ingest error “no PDF text extractor installed” | Watcher `python3` ≠ your shell Python | Install poppler, or point `JOSHU_KB_PDF_PYTHON` at a Python with `pypdf` |
+| PDF ingest error “extracted text too short” | Scanned/image PDF (no selectable text) | Re-OCR externally or transcribe manually to a sibling `.md` |
+| Large PDF page in search but weak semantic hits | gbrain `content-sanity soft-block` skipped embeddings | Expected for very large extracts; keyword search still works |
 | Connector mail on disk but gbrain empty | Local dev: gbrain git ran in joshu app repo instead of `.local/arozos-data/files/users/` | Ensure nested git at `files/users/`; `node scripts/lib/run-stage-desktop-git.mjs "$JOSHU_DESKTOP_ROOT"` then `POST /joshu/api/brain/reindex`; remove stray `Desktop/.git` |
 | New Desktop folders not in gbrain | Git commit not run before sync | Automatic via MCP bridge (`git add -A` on `files/users/` before `sync_brain`); nudge with reindex or restart `start-gbrain-mcp-http.sh` |
 | `gbrain desktop index` commits on `main` | Old bug: `git add -A` from Desktop cwd touched joshu root | Fix in `gbrain-desktop-git.mjs`; reword or drop mistaken commits before push |

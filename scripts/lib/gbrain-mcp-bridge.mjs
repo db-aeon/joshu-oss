@@ -504,6 +504,15 @@ export function createGbrainMcpBridge(log) {
     startGbrainServeChild();
   }
 
+  function getActivityStatus() {
+    return {
+      reindex_running: reindexInFlight,
+      reindex_scheduled: reindexTimer != null,
+      reindex_pending: pendingReindex,
+      active: reindexInFlight || reindexTimer != null || pendingReindex,
+    };
+  }
+
   return {
     spawnGbrainServe,
     startFilesystemWatch,
@@ -516,5 +525,6 @@ export function createGbrainMcpBridge(log) {
     callToolText,
     getInitResult: () => initResult,
     isReady: () => ready,
+    getActivityStatus,
   };
 }

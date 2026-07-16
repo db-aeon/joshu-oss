@@ -37,8 +37,9 @@ function json(res, status, body) {
 /**
  * @param {ReturnType<typeof import('./gbrain-mcp-bridge.mjs').createGbrainMcpBridge>} bridge
  * @param {(msg: string) => void} log
+ * @param {{ getPdfIngestStatus?: () => Record<string, unknown> }} [activity]
  */
-export function createGbrainMcpRestHandler(bridge, log) {
+export function createGbrainMcpRestHandler(bridge, log, activity = {}) {
   /**
    * @param {import('node:http').IncomingMessage} req
    * @param {import('node:http').ServerResponse} res
@@ -56,12 +57,21 @@ export function createGbrainMcpRestHandler(bridge, log) {
             sessionError = err instanceof Error ? err.message : String(err);
           }
         }
+        const pdfIngest = activity.getPdfIngestStatus?.() ?? null;
+        const reindex = typeof bridge.getActivityStatus === "function" ? bridge.getActivityStatus() : null;
+        const busy =
+          Boolean(pdfIngest?.active) || Boolean(reindex?.active);
         /** @type {Record<string, unknown>} */
         const body = {
           ok: true,
           lane: "gbrain-mcp-http",
           session_ready: bridge.isReady(),
           ...(sessionError ? { session_error: sessionError } : {}),
+          activity: {
+            busy,
+            pdf_ingest: pdfIngest,
+            reindex,
+          },
         };
         if (bridge.isReady()) {
           try {
@@ -72,6 +82,19 @@ export function createGbrainMcpRestHandler(bridge, log) {
           }
         }
         json(res, 200, body);
+        return;
+      }
+
+      if (req.method === "GET" && url.pathname === "/activity") {
+        const pdfIngest = activity.getPdfIngestStatus?.() ?? null;
+        const reindex = typeof bridge.getActivityStatus === "function" ? bridge.getActivityStatus() : null;
+        json(res, 200, {
+          ok: true,
+          busy: Boolean(pdfIngest?.active) || Boolean(reindex?.active),
+          pdf_ingest: pdfIngest,
+          reindex,
+          lane: "gbrain-mcp-http",
+        });
         return;
       }
 

@@ -1,37 +1,82 @@
 /**
- * Watch research/kb/inbox/ for PDF drops → ingest-pdf-kb.py → markdown + gbrain reindex.
+ * Watch JOSHU_DESKTOP_ROOT for PDFs → ingest-pdf-kb.py → sibling markdown + gbrain reindex.
+ *
+ * PDFs stay in place; extracted text is written alongside (report.pdf → report.md).
+ * Scope matches gbrain's federated Desktop index (not only joshu's files).
  */
 
 import { spawn } from "node:child_process";
-import { watch } from "node:fs";
+import { existsSync, watch } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const INGEST_SCRIPT = path.join(__dirname, "..", "ingest-pdf-kb.py");
-const INBOX_SUFFIX = `${path.sep}research${path.sep}kb${path.sep}inbox${path.sep}`;
+
+/** @type {KbPdfIngestStatus} */
+let status = {
+  active: false,
+  phase: "idle",
+  reason: "",
+  last_run_at: null,
+  last_message: "",
+  last_ingested: 0,
+  last_updated: 0,
+  last_removed: 0,
+  last_errors: 0,
+};
+
+/**
+ * @typedef {{
+ *   active: boolean,
+ *   phase: "idle" | "scheduled" | "running",
+ *   reason: string,
+ *   last_run_at: string | null,
+ *   last_message: string,
+ *   last_ingested: number,
+ *   last_updated: number,
+ *   last_removed: number,
+ *   last_errors: number,
+ * }} KbPdfIngestStatus
+ */
+
+/**
+ * @returns {KbPdfIngestStatus}
+ */
+export function getKbPdfIngestStatus() {
+  return { ...status };
+}
 
 /**
  * @param {string} relPath
  */
-function isKbInboxPdf(relPath) {
+function isPdfUnderRoot(relPath) {
   if (!relPath) return false;
   const norm = relPath.replace(/\\/g, "/").toLowerCase();
-  return norm.includes("/research/kb/inbox/") && norm.endsWith(".pdf");
+  if (!norm.endsWith(".pdf")) return false;
+  // Ignore junk / archive leftovers if anything still lands under .raw
+  if (norm.includes("/.raw/") || norm.includes("/.git/")) return false;
+  return true;
 }
 
 /**
- * @param {(msg: string) => void} log
- * @param {{ filesRoot?: string; debounceMs?: number; pollSec?: number; scheduleReindex?: (ms?: number) => void }} opts
+ * @param {{
+ *   desktopRoot?: string,
+ *   filesRoot?: string,
+ *   debounceMs?: number,
+ *   pollSec?: number,
+ *   scheduleReindex?: (ms?: number) => void,
+ *   log?: (msg: string) => void,
+ * }} opts
  */
 export function startKbPdfIngest(opts) {
-  const filesRoot = opts.filesRoot?.trim();
-  if (!filesRoot) {
-    log("kb-pdf-ingest disabled (JOSHU_FILES_ROOT unset)");
-    return;
+  // Prefer full Desktop so PDF extract matches federated gbrain indexing scope.
+  const scanRoot = (opts.desktopRoot || opts.filesRoot || "").trim();
+  if (!scanRoot) {
+    opts.log?.("[kb-pdf-ingest] disabled (JOSHU_DESKTOP_ROOT unset)");
+    return { getStatus: getKbPdfIngestStatus };
   }
 
-  const inboxDir = path.join(filesRoot, "research", "kb", "inbox");
   const debounceMs = Math.max(1000, opts.debounceMs ?? 2500);
   const pollSec = Math.max(30, opts.pollSec ?? 120);
   const python = process.env.JOSHU_KB_PDF_PYTHON?.trim() || "python3";
@@ -48,21 +93,33 @@ export function startKbPdfIngest(opts) {
     opts.log?.(`[kb-pdf-ingest] ${msg}`);
   }
 
-  function runIngest(reason) {
+  function setStatus(patch) {
+    status = { ...status, ...patch, active: patch.phase === "running" || patch.phase === "scheduled" };
+  }
+
+  function runIngest(reason, singlePdf) {
     if (running) {
       pending = true;
+      setStatus({ phase: "scheduled", reason: `${reason} (queued)` });
       return;
     }
     running = true;
-    const child = spawn(
-      python,
-      [INGEST_SCRIPT, "--files-root", filesRoot],
-      {
-        cwd: appDir,
-        env: process.env,
-        stdio: ["ignore", "pipe", "pipe"],
-      },
-    );
+    setStatus({
+      phase: "running",
+      reason,
+      last_message: singlePdf ? `Extracting ${path.basename(singlePdf)}…` : "Extracting PDFs…",
+    });
+
+    const args = [INGEST_SCRIPT, "--root", scanRoot];
+    if (singlePdf) {
+      args.push("--pdf", singlePdf);
+    }
+
+    const child = spawn(python, args, {
+      cwd: appDir,
+      env: process.env,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
 
     let stdout = "";
     let stderr = "";
@@ -80,7 +137,11 @@ export function startKbPdfIngest(opts) {
         .map((line) => line.trim())
         .filter(Boolean);
       const stderrText = stderr.trim();
-      const ingested = lines.some((line) => line.startsWith("ingested "));
+      const ingested = lines.filter((line) => line.startsWith("ingested ")).length;
+      const updated = lines.filter((line) => line.startsWith("updated ")).length;
+      const removed = lines.filter((line) => line.startsWith("removed ")).length;
+      const errors = lines.filter((line) => line.startsWith("error ")).length;
+      const changed = ingested + updated + removed > 0;
 
       // Collapse repeated identical outcomes (e.g. the same extractor error on
       // every 120s poll) to a single log line. A successful ingest always logs.
@@ -88,7 +149,7 @@ export function startKbPdfIngest(opts) {
       const isRepeat = signature === lastOutcomeSignature;
       lastOutcomeSignature = signature;
 
-      if (ingested || !isRepeat) {
+      if (changed || !isRepeat) {
         for (const line of lines) {
           log(`${reason}: ${line}`);
         }
@@ -103,7 +164,23 @@ export function startKbPdfIngest(opts) {
         }
       }
 
-      if (ingested) {
+      const summary =
+        lines.length === 0
+          ? "No PDFs to process"
+          : `${ingested} new, ${updated} updated, ${removed} removed, ${errors} errors`;
+
+      setStatus({
+        phase: pending ? "scheduled" : "idle",
+        reason: pending ? "follow-up" : "",
+        last_run_at: new Date().toISOString(),
+        last_message: summary,
+        last_ingested: ingested,
+        last_updated: updated,
+        last_removed: removed,
+        last_errors: errors,
+      });
+
+      if (changed) {
         opts.scheduleReindex?.(500);
       }
       if (pending) {
@@ -113,36 +190,42 @@ export function startKbPdfIngest(opts) {
     });
   }
 
-  function scheduleRun(reason) {
+  /** @type {string | undefined} */
+  let pendingPdf;
+
+  function scheduleRun(reason, singlePdf) {
     if (timer) clearTimeout(timer);
+    if (singlePdf) pendingPdf = singlePdf;
+    setStatus({
+      phase: running ? "running" : "scheduled",
+      reason,
+      active: true,
+    });
     timer = setTimeout(() => {
       timer = null;
-      runIngest(reason);
+      const pdf = pendingPdf;
+      pendingPdf = undefined;
+      // Single-file only for watch events on a PDF that still exists; a missing
+      // PDF means it was deleted — full scan runs orphan-sidecar cleanup.
+      const useSingle = pdf && reason.startsWith("watch ") && existsSync(pdf);
+      runIngest(reason, useSingle ? pdf : undefined);
     }, debounceMs);
   }
 
+  // Event-driven: ingest only the PDF that changed (avoids full-tree hash on every drop).
   try {
-    watch(inboxDir, (_event, filename) => {
-      if (filename && !filename.toLowerCase().endsWith(".pdf")) return;
-      scheduleRun(`watch ${filename || "inbox"}`);
+    watch(scanRoot, { recursive: true }, (_event, filename) => {
+      if (!isPdfUnderRoot(filename || "")) return;
+      const abs = path.join(scanRoot, filename);
+      scheduleRun(`watch ${filename}`, abs);
     });
-    log(`watching ${inboxDir}`);
+    log(`watching ${scanRoot} (recursive, *.pdf)`);
   } catch (err) {
-    log(`inbox watch failed: ${err instanceof Error ? err.message : err}`);
-  }
-
-  if (opts.scheduleReindex) {
-    const desktopRoot = process.env.JOSHU_DESKTOP_ROOT?.trim() || filesRoot;
-    try {
-      watch(desktopRoot, { recursive: true }, (_event, filename) => {
-        if (!isKbInboxPdf(filename || "")) return;
-        scheduleRun(`desktop-watch ${filename}`);
-      });
-    } catch {
-      /* inbox-only watch is enough on platforms without recursive watch */
-    }
+    log(`desktop watch failed: ${err instanceof Error ? err.message : err}`);
   }
 
   setInterval(() => scheduleRun("poll"), pollSec * 1000);
   scheduleRun("startup");
+
+  return { getStatus: getKbPdfIngestStatus };
 }

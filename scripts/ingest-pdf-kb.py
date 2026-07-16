@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """
-Ingest PDFs from research/kb/inbox/ into searchable markdown under research/kb/.
+Ingest PDFs under the ArozOS Desktop (JOSHU_DESKTOP_ROOT) into searchable sibling markdown.
 
 Text PDFs: pdftotext (poppler) when available, else pypdf. No LLM required.
-Originals move to research/kb/.raw/ after successful ingest.
+PDFs stay in place; extracted text is written alongside (e.g. report.pdf → report.md).
+If report.md already exists and is not this PDF's sidecar, write report.pdf.md instead.
+Re-extract when the PDF's sha256 changes. Delete orphan sidecars when the PDF is gone.
 """
 
 from __future__ import annotations
@@ -18,11 +20,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 
-def slugify(stem: str) -> str:
-    slug = stem.strip().lower()
-    slug = re.sub(r"[^a-z0-9]+", "-", slug)
-    slug = re.sub(r"-{2,}", "-", slug).strip("-")
-    return slug or "document"
+# Skip machine / hidden trees under the files root (still allow PDFs elsewhere).
+SKIP_DIR_NAMES = {
+    ".git",
+    ".raw",
+    "node_modules",
+    "__pycache__",
+}
 
 
 def sha256_file(path: Path) -> str:
@@ -93,124 +97,270 @@ def extract_text(pdf_path: Path) -> str:
             return text
     raise RuntimeError(
         "no selectable text extracted (scanned/image PDF?) — needs OCR or a "
-        "manual transcript at research/kb/<slug>.md",
+        "manual transcript alongside the PDF as <name>.md",
     )
 
 
-def read_existing_hash(md_path: Path) -> str | None:
+def read_frontmatter_head(md_path: Path) -> str:
     if not md_path.is_file():
-        return None
+        return ""
     try:
-        head = md_path.read_text(encoding="utf-8", errors="replace")[:4000]
+        return md_path.read_text(encoding="utf-8", errors="replace")[:6000]
     except OSError:
+        return ""
+
+
+def read_frontmatter_field(head: str, field: str) -> str | None:
+    match = re.search(rf"^{re.escape(field)}:\s*(.+?)\s*$", head, re.MULTILINE)
+    if not match:
         return None
-    match = re.search(r"^pdf_sha256:\s*([a-f0-9]{64})\s*$", head, re.MULTILINE)
-    return match.group(1) if match else None
+    value = match.group(1).strip()
+    if (value.startswith('"') and value.endswith('"')) or (
+        value.startswith("'") and value.endswith("'")
+    ):
+        value = value[1:-1]
+    return value or None
 
 
-def build_markdown(title: str, pdf_name: str, raw_name: str, pdf_hash: str, body: str) -> str:
+def is_sidecar_for_pdf(md_path: Path, pdf_path: Path, files_root: Path) -> bool:
+    """True when this markdown was generated from this PDF (frontmatter match)."""
+    head = read_frontmatter_head(md_path)
+    if not head or "pdf_sha256:" not in head:
+        return False
+    source = read_frontmatter_field(head, "source_pdf")
+    if not source:
+        return False
+    # Accept basename or path relative to files root.
+    if source == pdf_path.name:
+        return True
+    try:
+        rel = str(pdf_path.resolve().relative_to(files_root.resolve()))
+    except ValueError:
+        rel = pdf_path.name
+    return source == rel or source.endswith("/" + pdf_path.name)
+
+
+def find_existing_sidecar(pdf_path: Path, files_root: Path) -> Path | None:
+    parent = pdf_path.parent
+    if not parent.is_dir():
+        return None
+    for entry in sorted(parent.iterdir()):
+        if not entry.is_file() or entry.suffix.lower() != ".md":
+            continue
+        if is_sidecar_for_pdf(entry, pdf_path, files_root):
+            return entry
+    return None
+
+
+def choose_new_sidecar_path(pdf_path: Path) -> Path:
+    """Prefer stem.md; on collision with a human (or other) file, use stem.pdf.md (+n)."""
+    parent = pdf_path.parent
+    stem = pdf_path.stem
+    preferred = parent / f"{stem}.md"
+    if not preferred.exists():
+        return preferred
+    candidate = parent / f"{stem}.pdf.md"
+    if not candidate.exists():
+        return candidate
+    n = 2
+    while True:
+        alt = parent / f"{stem}.pdf-{n}.md"
+        if not alt.exists():
+            return alt
+        n += 1
+
+
+def build_markdown(
+    title: str,
+    pdf_name: str,
+    source_pdf: str,
+    pdf_hash: str,
+    body: str,
+) -> str:
     ingested_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
     escaped_title = title.replace('"', '\\"')
     return (
         "---\n"
         f'title: "{escaped_title}"\n'
-        f"source_pdf: {raw_name}\n"
+        f"source_pdf: {source_pdf}\n"
         f"ingested_at: {ingested_at}\n"
         f"pdf_sha256: {pdf_hash}\n"
         "---\n\n"
         f"# {title}\n\n"
-        f"_Imported from `{pdf_name}`._\n\n"
+        f"_Extracted from `{pdf_name}` (PDF kept alongside this file)._\n\n"
         f"{body}\n"
     )
 
 
-def unique_raw_path(raw_dir: Path, filename: str) -> Path:
-    candidate = raw_dir / filename
-    if not candidate.exists():
-        return candidate
-    stem = Path(filename).stem
-    suffix = Path(filename).suffix
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    return raw_dir / f"{stem}-{stamp}{suffix}"
+def should_skip_dir(path: Path) -> bool:
+    return path.name in SKIP_DIR_NAMES or path.name.startswith(".")
 
 
-def ingest_pdf(pdf_path: Path, kb_root: Path, raw_dir: Path) -> str:
+def iter_pdfs(files_root: Path) -> list[Path]:
+    results: list[Path] = []
+    for dirpath, dirnames, filenames in os_walk_filtered(files_root):
+        for name in sorted(filenames):
+            if name.startswith("."):
+                continue
+            if not name.lower().endswith(".pdf"):
+                continue
+            results.append(Path(dirpath) / name)
+    return results
+
+
+def os_walk_filtered(root: Path):
+    """os.walk that prunes skip dirs in-place."""
+    import os
+
+    for dirpath, dirnames, filenames in os.walk(root):
+        # Prune in-place so os.walk does not descend.
+        dirnames[:] = [d for d in dirnames if not should_skip_dir(Path(d))]
+        yield dirpath, dirnames, filenames
+
+
+def ingest_pdf(pdf_path: Path, files_root: Path) -> str:
     pdf_path = pdf_path.resolve()
+    files_root = files_root.resolve()
     if not pdf_path.is_file():
         raise FileNotFoundError(pdf_path)
     if pdf_path.suffix.lower() != ".pdf":
         raise ValueError(f"not a PDF: {pdf_path}")
+    try:
+        rel = str(pdf_path.relative_to(files_root))
+    except ValueError as err:
+        raise ValueError(f"PDF outside files root: {pdf_path}") from err
 
-    kb_root.mkdir(parents=True, exist_ok=True)
-    raw_dir.mkdir(parents=True, exist_ok=True)
+    title = pdf_path.stem.replace("-", " ").replace("_", " ").strip() or "Document"
+
+    existing = find_existing_sidecar(pdf_path, files_root)
+    if existing is not None:
+        # Fast path: if sidecar is newer than the PDF and already has a hash, skip
+        # without re-reading the whole PDF (polls every 2 minutes across the tree).
+        try:
+            if existing.stat().st_mtime >= pdf_path.stat().st_mtime:
+                existing_hash = read_frontmatter_field(
+                    read_frontmatter_head(existing), "pdf_sha256"
+                )
+                if existing_hash and len(existing_hash) == 64:
+                    return f"skip {rel} (unchanged → {existing.name})"
+        except OSError:
+            pass
 
     pdf_hash = sha256_file(pdf_path)
-    title = pdf_path.stem.replace("-", " ").replace("_", " ").strip() or "Document"
-    slug = slugify(pdf_path.stem)
-    md_path = kb_root / f"{slug}.md"
 
-    existing_hash = read_existing_hash(md_path)
-    if existing_hash == pdf_hash:
-        # Already ingested — remove duplicate drop from inbox so the watcher stops retrying.
-        if pdf_path.parent.resolve() == (kb_root / "inbox").resolve():
-            pdf_path.unlink(missing_ok=True)
-        return f"skip {pdf_path.name} (unchanged)"
+    if existing is not None:
+        existing_hash = read_frontmatter_field(read_frontmatter_head(existing), "pdf_sha256")
+        if existing_hash == pdf_hash:
+            return f"skip {rel} (unchanged → {existing.name})"
+        md_path = existing
+        action = "updated"
+    else:
+        md_path = choose_new_sidecar_path(pdf_path)
+        action = "ingested"
 
     body = extract_text(pdf_path)
     if len(body) < 20:
         raise RuntimeError(f"extracted text too short for {pdf_path.name}")
 
-    raw_target = unique_raw_path(raw_dir, pdf_path.name)
-    shutil.move(str(pdf_path), str(raw_target))
-
-    raw_rel = f".raw/{raw_target.name}"
     md_path.write_text(
-        build_markdown(title, pdf_path.name, raw_rel, pdf_hash, body),
+        build_markdown(title, pdf_path.name, rel, pdf_hash, body),
         encoding="utf-8",
     )
-    return f"ingested {pdf_path.name} -> research/kb/{md_path.name}"
+    try:
+        md_rel = str(md_path.relative_to(files_root))
+    except ValueError:
+        md_rel = md_path.name
+    return f"{action} {rel} -> {md_rel}"
 
 
-def scan_inbox(inbox: Path, kb_root: Path, raw_dir: Path) -> list[str]:
-    if not inbox.is_dir():
+def resolve_source_pdf(md_path: Path, source: str, files_root: Path) -> Path:
+    """Resolve a sidecar's source_pdf value (files-root-relative or basename)."""
+    if "/" in source or "\\" in source:
+        return (files_root / source).resolve()
+    return (md_path.parent / source).resolve()
+
+
+def is_generated_sidecar(head: str) -> bool:
+    """Generated sidecars carry both source_pdf and pdf_sha256 frontmatter."""
+    return bool(
+        head
+        and "pdf_sha256:" in head
+        and read_frontmatter_field(head, "source_pdf")
+    )
+
+
+def cleanup_orphan_sidecars(files_root: Path) -> list[str]:
+    """Remove generated sidecars whose source PDF was deleted.
+
+    Human-authored markdown (no source_pdf/pdf_sha256 frontmatter) is never touched.
+    """
+    results: list[str] = []
+    for dirpath, _dirnames, filenames in os_walk_filtered(files_root):
+        for name in sorted(filenames):
+            if not name.lower().endswith(".md"):
+                continue
+            md_path = Path(dirpath) / name
+            head = read_frontmatter_head(md_path)
+            if not is_generated_sidecar(head):
+                continue
+            source = read_frontmatter_field(head, "source_pdf")
+            if not source:
+                continue
+            pdf_path = resolve_source_pdf(md_path, source, files_root)
+            if pdf_path.is_file():
+                continue
+            try:
+                rel = str(md_path.resolve().relative_to(files_root.resolve()))
+            except ValueError:
+                rel = md_path.name
+            try:
+                md_path.unlink()
+                results.append(f"removed {rel} (source PDF gone: {source})")
+            except OSError as err:
+                results.append(f"error {rel}: cleanup failed: {err}")
+    return results
+
+
+def scan_files_root(files_root: Path) -> list[str]:
+    if not files_root.is_dir():
         return []
     results: list[str] = []
-    for entry in sorted(inbox.iterdir()):
-        if not entry.is_file():
-            continue
-        if entry.name.startswith("."):
-            continue
-        if entry.suffix.lower() != ".pdf":
-            continue
+    for pdf_path in iter_pdfs(files_root):
         try:
-            results.append(ingest_pdf(entry, kb_root, raw_dir))
+            results.append(ingest_pdf(pdf_path, files_root))
         except Exception as err:
-            results.append(f"error {entry.name}: {err}")
+            try:
+                rel = str(pdf_path.resolve().relative_to(files_root.resolve()))
+            except ValueError:
+                rel = pdf_path.name
+            results.append(f"error {rel}: {err}")
+    results.extend(cleanup_orphan_sidecars(files_root))
     return results
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Ingest KB PDFs to markdown for gbrain.")
-    parser.add_argument("--files-root", help="JOSHU_FILES_ROOT (parent of research/kb/)")
-    parser.add_argument("--pdf", help="Single PDF path to ingest")
-    parser.add_argument("--inbox", help="Inbox directory (default: <files-root>/research/kb/inbox)")
+    parser = argparse.ArgumentParser(
+        description="Extract PDF text to sibling markdown under the ArozOS Desktop tree.",
+    )
+    parser.add_argument(
+        "--root",
+        "--files-root",
+        dest="root",
+        help="Scan root (JOSHU_DESKTOP_ROOT; --files-root kept as alias)",
+    )
+    parser.add_argument("--pdf", help="Single PDF path to ingest (must be under --root)")
     args = parser.parse_args()
 
-    files_root = Path(args.files_root).resolve() if args.files_root else None
-    kb_root = (files_root / "research" / "kb") if files_root else None
-    inbox = Path(args.inbox).resolve() if args.inbox else (kb_root / "inbox" if kb_root else None)
-    raw_dir = (kb_root / ".raw") if kb_root else None
+    if not args.root:
+        parser.error("--root is required")
+
+    files_root = Path(args.root).resolve()
 
     if args.pdf:
-        if not kb_root or not raw_dir:
-            parser.error("--files-root is required with --pdf")
-        print(ingest_pdf(Path(args.pdf).resolve(), kb_root, raw_dir))
+        print(ingest_pdf(Path(args.pdf).resolve(), files_root))
         return 0
 
-    if not inbox or not kb_root or not raw_dir:
-        parser.error("--files-root or --inbox is required")
-
-    lines = scan_inbox(inbox, kb_root, raw_dir)
+    lines = scan_files_root(files_root)
     if not lines:
         return 0
     for line in lines:

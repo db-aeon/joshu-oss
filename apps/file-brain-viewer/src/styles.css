@@ -88,6 +88,14 @@ h2 {
   font-size: 0.85rem;
 }
 
+.status-cluster {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
 .status-pill span {
   width: 0.5rem;
   height: 0.5rem;
@@ -97,6 +105,27 @@ h2 {
 
 .status-ready span {
   background: var(--color-action-secondary);
+}
+
+.status-busy {
+  color: var(--color-text-on-paper);
+}
+
+.status-busy span {
+  background: var(--color-yellow);
+  animation: file-brain-pulse 1.1s ease-in-out infinite;
+}
+
+@keyframes file-brain-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(0.85);
+  }
 }
 
 .status-error span {

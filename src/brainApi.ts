@@ -18,6 +18,7 @@ import {
   gbrainMcpSearch,
   fetchGbrainMcpTotalPages,
   fetchGbrainMcpHealthStatus,
+  fetchGbrainMcpActivity,
   probeGbrainMcpInspect,
 } from "./gbrainMcpInspect.js";
 import { gbrainIndexedOk } from "./gbrainIndexCoverage.js";
@@ -381,13 +382,17 @@ function mountBrainHandlers(router: Router, prefix: string): void {
       : { gbrainHome };
 
     if (lane === "gbrain-mcp-http") {
-      const totalPages = await fetchGbrainMcpTotalPages();
+      const [totalPages, activity] = await Promise.all([
+        fetchGbrainMcpTotalPages(),
+        fetchGbrainMcpActivity(),
+      ]);
       return res.json({
         ok: true,
         lane,
         mcp_inspect: true,
         paths: basePaths,
         schema: { total_pages: totalPages },
+        activity: activity ?? undefined,
         hint: "Reading gbrain via MCP inspect lane (same PGLite holder as Hermes).",
       });
     }

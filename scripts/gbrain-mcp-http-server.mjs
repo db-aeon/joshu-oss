@@ -19,7 +19,7 @@ import {
 import { isReadOnlyGbrainTool } from "./lib/gbrain-mcp-readonly.mjs";
 import { createGbrainMcpBridge } from "./lib/gbrain-mcp-bridge.mjs";
 import { createGbrainMcpRestHandler } from "./lib/gbrain-mcp-rest.mjs";
-import { startKbPdfIngest } from "./lib/kb-pdf-ingest.mjs";
+import { startKbPdfIngest, getKbPdfIngestStatus } from "./lib/kb-pdf-ingest.mjs";
 
 const PORT = Number.parseInt(process.env.GBRAIN_MCP_HTTP_PORT || "8794", 10);
 const HOST = process.env.GBRAIN_MCP_HTTP_HOST?.trim() || "127.0.0.1";
@@ -84,14 +84,16 @@ async function main() {
   bridge.startPeriodicReindex();
   bridge.startEmptyIndexWatchdog();
   startKbPdfIngest({
-    filesRoot: process.env.JOSHU_FILES_ROOT?.trim(),
+    desktopRoot: process.env.JOSHU_DESKTOP_ROOT?.trim() || process.env.JOSHU_FILES_ROOT?.trim(),
     scheduleReindex: (ms) => bridge.scheduleReindex(ms),
     log: (msg) => log(msg),
   });
   // Catch-up reindex shortly after boot (in addition to periodic + fs watch).
   bridge.scheduleReindex(8_000);
 
-  const handleRest = createGbrainMcpRestHandler(bridge, (msg) => log(msg));
+  const handleRest = createGbrainMcpRestHandler(bridge, (msg) => log(msg), {
+    getPdfIngestStatus: getKbPdfIngestStatus,
+  });
   const app = createMcpExpressApp({ host: HOST });
 
   app.all("/mcp", async (req, res) => {
