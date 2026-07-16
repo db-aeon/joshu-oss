@@ -125,8 +125,10 @@ ENV APP_DIR=/opt/joshu \
     AROZ_TEMPLATE=/opt/arozos-template \
     DEBIAN_FRONTEND=noninteractive
 
+# x11vnc/novnc/websockify: Camofox VNC plugin apt.txt deps (not installed by base image).
 RUN apt-get update && apt-get install -y --no-install-recommends \
     bash ca-certificates curl ffmpeg git libopus0 libportaudio2 openssh-client patch poppler-utils postgresql-15 procps python3 python3-pip ripgrep rsync unzip util-linux \
+    x11vnc novnc python3-websockify net-tools \
     && rm -rf /var/lib/apt/lists/* \
     && python3 -m pip install --no-cache-dir --break-system-packages pypdf \
     && curl -fsSL https://bun.sh/install | bash \
@@ -191,6 +193,21 @@ RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund \
     || (echo "ERROR: @joshu/box-state dist missing after npm ci" >&2; exit 1) \
     && test -f node_modules/@joshu/email-signature/dist/index.js \
     || (echo "ERROR: @joshu/email-signature dist missing after npm ci" >&2; exit 1)
+
+# Camofox 1.6+ ships plugins.vnc.enabled=false; ENABLE_VNC alone never loads the plugin.
+RUN python3 - <<'PY'
+import json
+from pathlib import Path
+path = Path("/app/camofox.config.json")
+config = json.loads(path.read_text(encoding="utf-8"))
+plugins = config.setdefault("plugins", {})
+vnc = plugins.get("vnc") if isinstance(plugins.get("vnc"), dict) else {}
+vnc["enabled"] = True
+vnc["resolution"] = "1024x768"
+plugins["vnc"] = vnc
+path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
+print("enabled Camofox VNC plugin in", path)
+PY
 
 RUN id -u hindsight >/dev/null 2>&1 || useradd --create-home --home-dir /home/hindsight --shell /usr/sbin/nologin hindsight
 

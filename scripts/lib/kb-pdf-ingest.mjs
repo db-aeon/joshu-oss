@@ -41,6 +41,8 @@ export function startKbPdfIngest(opts) {
   let timer = null;
   let running = false;
   let pending = false;
+  /** Signature of the last logged outcome — suppresses identical poll spam. */
+  let lastOutcomeSignature = "";
 
   function log(msg) {
     opts.log?.(`[kb-pdf-ingest] ${msg}`);
@@ -77,16 +79,31 @@ export function startKbPdfIngest(opts) {
         .split(/\r?\n/)
         .map((line) => line.trim())
         .filter(Boolean);
-      for (const line of lines) {
-        log(`${reason}: ${line}`);
+      const stderrText = stderr.trim();
+      const ingested = lines.some((line) => line.startsWith("ingested "));
+
+      // Collapse repeated identical outcomes (e.g. the same extractor error on
+      // every 120s poll) to a single log line. A successful ingest always logs.
+      const signature = JSON.stringify({ code, lines, stderrText });
+      const isRepeat = signature === lastOutcomeSignature;
+      lastOutcomeSignature = signature;
+
+      if (ingested || !isRepeat) {
+        for (const line of lines) {
+          log(`${reason}: ${line}`);
+        }
+        if (stderrText) {
+          log(`${reason}: stderr ${stderrText.slice(0, 400)}`);
+        }
+        if (code !== 0 && lines.length === 0) {
+          log(`${reason}: ingest exited ${code ?? "?"}`);
+        }
+        if (isRepeat === false && lines.some((line) => line.includes("no PDF text extractor installed"))) {
+          log(`${reason}: auto-ingest is stalled until an extractor is installed (see log line above)`);
+        }
       }
-      if (stderr.trim()) {
-        log(`${reason}: stderr ${stderr.trim().slice(0, 400)}`);
-      }
-      if (code !== 0 && lines.length === 0) {
-        log(`${reason}: ingest exited ${code ?? "?"}`);
-      }
-      if (lines.some((line) => line.startsWith("ingested "))) {
+
+      if (ingested) {
         opts.scheduleReindex?.(500);
       }
       if (pending) {

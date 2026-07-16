@@ -179,7 +179,7 @@ Owner channel must be linked or approval bot token configured. Check `GET /joshu
 
 **Owner-channel Slack (approvals):** ensure Composio Slack is connected, channel ID is correct (`C…` or `D…`), and you reply **Y** or **N** in that channel (not in a thread the poller ignores in v1). If Composio returns `ratelimited`, polling backs off 30s — wait and retry. This is **not** Hermes Slack chat — see [agent-safety.md — Owner 1:1 channel](agent-safety.md#owner-11-channel).
 
-**Hermes Slack chat:** after Save, use **Restart gateway**; confirm `SLACK_ALLOWED_USERS` includes your `U…` ID; DM the bot or `@mention` in an invited channel. One Socket Mode connection per Slack app — do not reuse the same `xapp-` token on two boxes at once.
+**Hermes Slack chat:** after Save, use **Restart gateway**; confirm `SLACK_ALLOWED_USERS` includes your `U…` ID; DM the bot or `@mention` in an invited channel. One Socket Mode connection per Slack app — do not reuse the same `xapp-` token on two boxes at once. Channel `@mentions` reply in a **thread** by default — see [hermes-integration — Slack chat](hermes-integration.md#slack-chat-hermes-messaging-gateway) (`reply_in_thread: false` for in-channel replies). If nothing happens, check `~/.hermes/logs/gateway.log` for `inbound message: platform=slack` (no line ⇒ Socket Mode not receiving on this box).
 
 **Telegram:** send `/start` to the approval bot if not linked.
 

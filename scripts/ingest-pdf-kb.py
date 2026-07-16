@@ -67,13 +67,33 @@ def extract_with_pypdf(pdf_path: Path) -> str | None:
     return text or None
 
 
+def extractor_available() -> bool:
+    """True when at least one PDF text extractor is usable in this runtime."""
+    if shutil.which("pdftotext"):
+        return True
+    try:
+        import pypdf  # type: ignore  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
 def extract_text(pdf_path: Path) -> str:
+    # Distinguish an environment/config problem (no extractor at all) from a
+    # scanned/image PDF (extractor ran but found no selectable text) so the
+    # watcher log points at the right fix.
+    if not extractor_available():
+        raise RuntimeError(
+            "no PDF text extractor installed — install poppler-utils (pdftotext) "
+            "or run: pip install pypdf",
+        )
     for extractor in (extract_with_pdftotext, extract_with_pypdf):
         text = extractor(pdf_path)
         if text:
             return text
     raise RuntimeError(
-        "could not extract text (install poppler-utils/pdftotext or: pip install pypdf)",
+        "no selectable text extracted (scanned/image PDF?) — needs OCR or a "
+        "manual transcript at research/kb/<slug>.md",
     )
 
 

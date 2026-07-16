@@ -57,7 +57,7 @@ Grant file: `${AROZ_DATA}/files/users/<user>/.joshu/nylas/agent.json` (`grantId`
 | GET | `/joshu/api/nylas/messages` | List/search (`q`, `unread`, `limit`) |
 | GET | `/joshu/api/nylas/messages/:id` | Full message (body, headers) |
 | PATCH | `/joshu/api/nylas/messages/:id` | Update (`unread`, `starred`) |
-| POST | `/joshu/api/nylas/messages/send` | Outbound mail (plain `body`; API appends HTML signature) |
+| POST | `/joshu/api/nylas/messages/send` | Outbound mail (plain `body`; API appends HTML signature). Optional `replyToMessageId`, `sourcePath` / `source_path`, `cc`, `bcc` |
 | POST | `/joshu/api/nylas/test-send` | `{ "to": "you@…" }` smoke test |
 | GET | `/joshu/api/nylas/profile` | Read agent profile |
 | POST | `/joshu/api/nylas/profile` | Update agent profile (incl. EA dials: `spendingThreshold`, `urgentChannel`, `workingHoursStart`, `workingHoursEnd`) |
@@ -81,6 +81,8 @@ Grant file: `${AROZ_DATA}/files/users/<user>/.joshu/nylas/agent.json` (`grantId`
 ```
 
 **Multi-recipient send:** `to` accepts a string or array; use **`cc`** / **`bcc`** for additional guests — do not put `"a@x.com, b@y.com"` in a single `to` string ([`src/nylas/recipients.ts`](../src/nylas/recipients.ts)).
+
+**Thread replies:** when `replyToMessageId` is set, `subject` must match the parent message (only `Re:` / `Fwd:` prefix differences allowed). Decorating the subject (availability, names, task titles) returns **`400` `reply_subject_mismatch`** with `expectedSubject` + `hint` — the API does **not** mutate the subject ([`src/nylas/replySubject.ts`](../src/nylas/replySubject.ts)). Gmail/Google fork conversations when the subject changes even if reply headers are set. Retry with the exact parent subject from the thread mirror.
 
 Outbound sends always use the provisioned agent address as `from`. The Joshu API **appends a branded HTML signature** on every send (companion name, `{owner}'s Joshu`, signup link) — built from instance identity at send time, inlined into the Nylas message `body`. Configure identity via Welcome / `identity.json` — see [self-host.md](self-host.md#identity-without-control-plane).
 
@@ -143,6 +145,7 @@ curl -s -X POST http://127.0.0.1:8788/joshu/api/nylas/events \
 | `503` on status/agent | `NYLAS_API_KEY` missing on Joshu process | Set in `.env`, restart dev stack |
 | `[nylas] events.list failed: Cannot read properties of null (reading 'length')` | Nylas Node SDK crash on agent calendar `events.list` (often empty grant or odd API payload) | **Non-fatal** — [`listEvents`](../src/nylas/client.ts) catches and returns `[]`; mail sync continues. Check `GET /joshu/api/connectors/status` → `nylas.sync` has no `lastError`. If persistent, rebuild PGLite is unrelated; try `GET /events` with valid `start`/`end` or recreate events via `POST /events`. |
 | Many `400` / `404` on `/joshu/api/nylas/*` in `docker logs` | Hermes **`ea-scheduling`** trial-and-error (wrong path or missing required fields) | Use routes in the table above only. **404** on `/calendars`, `/events/create`, `/events/delete` means wrong URL — use `POST /events`, `DELETE /events/:id`. **400** on `POST /events` → need `title` plus **`date`/`startLocal`/`endLocal`/`timezone`** or `startTime`/`endTime`; on `messages/send` → `to`, `subject`, `body` (use **`cc`** for guests — not comma-separated `to`). Success lines (`200`) mixed in = normal agent learning, not outage. |
+| `400` `reply_subject_mismatch` on `messages/send` | Agent set `replyToMessageId` but changed the subject | Retry with `expectedSubject` from the error (exact parent subject; no decorations) |
 | `connectors/status` shows stale `lastSyncAt` | Cron disabled or Joshu API down | `JOSHU_CONNECTORS_CRON=true`; `GET /joshu/api/connectors/cron/jobs`; manual `POST …/connectors/mail/nylas/sync` |
 
 **Log hygiene:** Express logs every HTTP status. For sync health, prefer **`/joshu/api/connectors/status`** over counting yellow `400`/`404` lines in `docker logs`. EA ops detail: [`executive-assistant.md`](executive-assistant.md#operations--logs).

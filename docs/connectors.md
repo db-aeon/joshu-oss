@@ -125,7 +125,7 @@ Thin MCP server: [`scripts/joshu-connectors-mcp-http-server.mjs`](../scripts/jos
 |-------------------------------------|---------------|------|
 | `mcp_joshu_connectors_connectors_sync_now` | `connectors_sync_now` | `POST …/connectors/mail/{nylas\|gmail}/sync` |
 | `mcp_joshu_connectors_connectors_status` | `connectors_status` | `GET …/connectors/status` |
-| `mcp_joshu_connectors_nylas_send_message` | `nylas_send_message` | `POST …/nylas/messages/send` |
+| `mcp_joshu_connectors_nylas_send_message` | `nylas_send_message` | `POST …/nylas/messages/send` — replies need matching parent `subject` or **`400` `reply_subject_mismatch`** ([nylas-agent-mailbox.md](nylas-agent-mailbox.md)) |
 | `mcp_joshu_connectors_nylas_get_message` | `nylas_get_message` | `GET …/nylas/messages/:id` |
 | `mcp_joshu_connectors_nylas_get_profile` | `nylas_get_profile` | `GET …/nylas/profile` |
 | `mcp_joshu_connectors_nylas_update_profile` | `nylas_update_profile` | `POST …/nylas/profile` |

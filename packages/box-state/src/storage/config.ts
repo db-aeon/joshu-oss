@@ -1,5 +1,6 @@
 import os from "node:os";
 import type { BoxPaths } from "../paths.js";
+import { SNAPSHOT_GCS_KEY_FILE_ENV_VARS } from "../snapshotCreds.js";
 import type { SnapshotStorageConfig } from "./types.js";
 
 function envTrim(name: string): string | undefined {
@@ -38,10 +39,7 @@ export function resolveSnapshotStorageConfig(paths: BoxPaths): SnapshotStorageCo
     localCacheEnabled: envTrim("JOSHU_SNAPSHOT_LOCAL_CACHE") !== "false",
     gcsBucket: bucket,
     gcsPrefix: envTrim("JOSHU_SNAPSHOT_GCS_PREFIX") ?? "boxes/",
-    gcsKeyFile:
-      envTrim("JOSHU_SNAPSHOT_GCS_KEY_FILE") ||
-      envTrim("GOOGLE_APPLICATION_CREDENTIALS") ||
-      envTrim("HINDSIGHT_API_RERANKER_GOOGLE_SERVICE_ACCOUNT_KEY"),
+    gcsKeyFile: SNAPSHOT_GCS_KEY_FILE_ENV_VARS.map((name) => envTrim(name)).find(Boolean),
   };
 }
 

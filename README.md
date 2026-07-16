@@ -2,6 +2,8 @@
   <h1>Joshu</h1>
   <p><b>A local-first, always-on AI app workspace and box stack.</b></p>
 
+  [![Release](https://img.shields.io/github/v/release/db-aeon/joshu-oss?display_name=release&label=release&color=blue)](https://github.com/db-aeon/joshu-oss/releases/latest)
+  [![Docker image](https://img.shields.io/github/v/release/db-aeon/joshu-oss?display_name=release&label=ghcr.io%2Fdb--aeon%2Fjoshu--oss&logo=docker&logoColor=white)](https://github.com/db-aeon/joshu-oss/pkgs/container/joshu-oss)
   [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
   [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 </div>
@@ -86,7 +88,7 @@ We welcome community contributions! Whether it's fixing bugs, adding new feature
 
 ## 📦 Releases
 
-Tag `v*-oss` on this repo to build and push to GHCR:
+The current Docker version is shown on the [Releases page](https://github.com/db-aeon/joshu-oss/releases/latest) (and the badge above). Tagging `v*-oss` on this repo builds, pushes to GHCR, and publishes a GitHub Release with image pins plus auto-generated notes (PRs/commits since the previous tag):
 
 - `ghcr.io/db-aeon/joshu-oss:<version>` (+ `:latest`)
 - `ghcr.io/db-aeon/joshu-oss-voice-realtime:<version>` (+ `:latest`)

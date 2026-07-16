@@ -1,10 +1,11 @@
 ---
 name: joshu-mail
 description: Find/search mail; local cache first, deep server Gmail.
-version: 1.2.0
+version: 1.3.0
 metadata:
   hermes:
     category: mail
+    version: "1.3.0"
 ---
 
 # Joshu mail — find, search, recall
@@ -107,6 +108,8 @@ When the user asks you to **send** (not find) mail:
 - **`mcp_joshu_connectors_nylas_send_message`** from the agent Nylas mailbox  
 - **`nylas_get_profile`** for timezone / `primaryWorkEmail`  
 - Not Composio Gmail send, browser Gmail, or REST/curl to `POST /joshu/api/nylas/messages/send` (action-guard gated)
+
+**Reply subjects:** when `replyToMessageId` is set, copy the parent subject from the thread mirror **exactly** (only `Re:`/`Fwd:` prefix differences allowed). Decorating the subject (availability, names, task titles) returns `reply_subject_mismatch` and forks Gmail threading — retry with `expectedSubject` from the error.
 
 Principal Gmail send/reply: owner **jMail** only — agent blocked.
 

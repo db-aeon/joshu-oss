@@ -236,20 +236,13 @@ function applyFramebufferAspect(width, height) {
   layoutVncScreen();
 }
 
-/** Size #vnc-screen to fill #vnc-frame; noVNC scaleViewport scales the 1024×768 framebuffer uniformly. */
+/** Letterbox #vnc-screen inside #vnc-frame to the 1024×768 framebuffer aspect (see docs/hitl-camofox-notes.md). */
 function layoutVncScreen() {
-  if (!els.vncFrame || !els.vncScreen) return null;
-  const rect = els.vncFrame.getBoundingClientRect();
-  if (rect.width < 2 || rect.height < 2) return null;
-  const maxW = readMaxWidthPx();
-  const w = Math.max(1, Math.floor(Math.min(rect.width, maxW)));
-  const h = Math.max(1, Math.floor(rect.height));
-  els.vncScreen.style.flex = "1 1 auto";
-  els.vncScreen.style.width = `${w}px`;
-  els.vncScreen.style.height = `${h}px`;
-  els.vncScreen.style.maxWidth = `${w}px`;
-  els.vncScreen.style.maxHeight = `${h}px`;
-  return { width: w, height: h, aspect: w / h };
+  return layoutLetterboxedScreen(els.vncFrame, els.vncScreen, {
+    width: CAMOFOX_FRAMEBUFFER.width,
+    height: CAMOFOX_FRAMEBUFFER.height,
+    maxWidthPx: readMaxWidthPx(),
+  });
 }
 
 /** Ask noVNC to rescale via its scaleViewport + window resize handler (no private Display APIs). */
@@ -337,6 +330,33 @@ async function connectVnc(novnc, { force = false } = {}) {
       if (state.vncClipboardDetach) state.vncClipboardDetach();
       state.vncClipboardDetach = attachVncClipboard(rfb, {
         targetEl: els.vncScreen,
+        pasteViaApi: async (text) => {
+          const res = await fetch("api/camofox/insert-text", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text, selectAll: true }),
+            cache: "no-store",
+          });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.error || `HTTP ${res.status}`);
+          }
+          return true;
+        },
+        copyViaApi: async () => {
+          const res = await fetch("api/camofox/copy-selection", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: "{}",
+            cache: "no-store",
+          });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.error || `HTTP ${res.status}`);
+          }
+          const data = await res.json();
+          return typeof data.text === "string" ? data.text : "";
+        },
         ui: {
           pasteBtn: els.vncPasteRemote,
           typeBtn: els.vncTypeRemote,

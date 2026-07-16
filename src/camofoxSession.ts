@@ -14,6 +14,12 @@ export interface CamofoxPageObservation {
   refsCount?: number;
 }
 
+/** about:blank / empty — safe to replace with a start URL without clobbering a live session. */
+function isBlankBrowserUrl(url: string | undefined): boolean {
+  const value = (url ?? "").trim().toLowerCase();
+  return !value || value === "about:blank" || value === "about:home";
+}
+
 const HITL_TAB_SHIM = `
 (() => {
   const SHIM_VERSION = 2;
@@ -137,7 +143,13 @@ export class CamofoxSessionCoordinator {
     return (matching.length > 0 ? matching : tabs).at(-1);
   }
 
-  async ensureTab(url?: string): Promise<CamofoxTab> {
+  /**
+   * Ensure a HITL tab exists. By default, never navigates an already-active
+   * non-blank page (status/fit-viewport bootstrap used to clobber logins by
+   * re-opening CAMOFOX_START_URL). Pass navigateExisting when a caller
+   * explicitly wants to load `url` (e.g. run initialUrl).
+   */
+  async ensureTab(url?: string, opts?: { navigateExisting?: boolean }): Promise<CamofoxTab> {
     const existing = await this.currentTab();
     if (!existing) {
       const created = await this.createTab(url);
@@ -145,7 +157,12 @@ export class CamofoxSessionCoordinator {
       return created;
     }
     if (this.opts.singleTab) await this.closeOtherTabs(existing.tabId).catch(() => undefined);
-    const tab = url && existing.url !== url ? await this.navigate(existing.tabId, url) : existing;
+    const existingBlank = isBlankBrowserUrl(existing.url);
+    const shouldNavigate =
+      Boolean(url) &&
+      existing.url !== url &&
+      (opts?.navigateExisting === true || existingBlank);
+    const tab = shouldNavigate ? await this.navigate(existing.tabId, url!) : existing;
     await this.installShim(tab.tabId);
     return tab;
   }
@@ -177,6 +194,52 @@ export class CamofoxSessionCoordinator {
       snapshot: data.snapshot ?? "",
       refsCount: data.refsCount,
     };
+  }
+
+  /**
+   * Insert text into the focused page control via Playwright (not VNC keysyms).
+   * x11vnc maps `{` → `[` when Shift is dropped; browser-level typing keeps braces.
+   */
+  async insertText(text: string, opts?: { selectAll?: boolean }): Promise<void> {
+    const tab = await this.currentTab();
+    if (!tab?.tabId) throw new Error("No Camofox tab");
+    if (opts?.selectAll !== false) {
+      const pressRes = await fetch(new URL(`/tabs/${tab.tabId}/press`, this.opts.camofoxUrl), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: this.opts.userId, key: "Control+a" }),
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (!pressRes.ok) throw new Error(`Camofox select-all failed: ${pressRes.status}`);
+    }
+    // Playwright keyboard.type inserts Unicode at the page (not via x11vnc keysyms).
+    const typeRes = await fetch(new URL(`/tabs/${tab.tabId}/type`, this.opts.camofoxUrl), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        userId: this.opts.userId,
+        text,
+        mode: "keyboard",
+        delay: 0,
+      }),
+      signal: AbortSignal.timeout(120_000),
+    });
+    if (!typeRes.ok) throw new Error(`Camofox type failed: ${typeRes.status}`);
+  }
+
+  /** Read selection / focused token text via Playwright (x11vnc clipboard is unreliable). */
+  async readSelection(): Promise<string> {
+    const tab = await this.currentTab();
+    if (!tab?.tabId) throw new Error("No Camofox tab");
+    const res = await fetch(new URL(`/tabs/${tab.tabId}/selection`, this.opts.camofoxUrl), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId: this.opts.userId }),
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!res.ok) throw new Error(`Camofox selection failed: ${res.status}`);
+    const data = (await res.json()) as { text?: string };
+    return typeof data.text === "string" ? data.text : "";
   }
 
   async installShim(tabId: string): Promise<void> {

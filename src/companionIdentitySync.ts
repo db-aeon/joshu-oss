@@ -5,7 +5,7 @@
 
 import fs from "node:fs";
 import { provisionEnvTrim } from "./provisionInstanceEnv.js";
-import { writeJoshuIdentity, DEFAULT_JOSHU_IDENTITY, type JoshuIdentity } from "./joshuIdentity.js";
+import { writeJoshuIdentity, type JoshuIdentity } from "./joshuIdentity.js";
 import { syncHermesContextFile } from "./hermesContextFile.js";
 import { syncHermesSoulFile, writeHermesSoulFile } from "./hermesSoulFile.js";
 
@@ -50,6 +50,11 @@ export interface CompanionIdentitySyncOptions {
 /**
  * Write `.joshu/identity.json` (source: control-plane) and refresh Hermes context files.
  * Returns which artifacts changed.
+ *
+ * Only patches fields present in env — missing `JOSHU_IMAGE_URL` / `JOSHU_OWNER_NAME`
+ * must not clear a previously synced portrait or overwrite the owner with the bootstrap
+ * default "Owner" (that bug wiped signatures on every stack recreate when only
+ * `JOSHU_NAME` + `JOSHU_OWNER_EMAIL` were in instance.env).
  */
 export function syncCompanionIdentityFromEnv(
   projectRoot = process.cwd(),
@@ -63,17 +68,22 @@ export function syncCompanionIdentityFromEnv(
   const joshuName = envTrim("JOSHU_NAME");
   const ownerName = envTrim("JOSHU_OWNER_NAME");
   const ownerEmail = ownerEmailFromEnv();
+  const imageUrl = envTrim("JOSHU_IMAGE_URL");
+  const avatarUrl = envTrim("JOSHU_AVATAR_URL");
+  const voiceId = envTrim("JOSHU_VOICE_ID");
 
   const partial: Partial<Omit<JoshuIdentity, "schemaVersion">> = {
     source: "control-plane",
-    imageUrl: envTrim("JOSHU_IMAGE_URL") ?? null,
-    avatarUrl: envTrim("JOSHU_AVATAR_URL") ?? null,
-    voiceId: envTrim("JOSHU_VOICE_ID") ?? null,
   };
   if (joshuName) partial.name = joshuName;
+  // Only set media/voice when env provides them — never coerce missing → null.
+  if (imageUrl !== undefined) partial.imageUrl = imageUrl;
+  if (avatarUrl !== undefined) partial.avatarUrl = avatarUrl;
+  if (voiceId !== undefined) partial.voiceId = voiceId;
   if (ownerName || ownerEmail) {
     partial.owner = {
-      displayName: ownerName || DEFAULT_JOSHU_IDENTITY.owner.displayName,
+      // Keep existing displayName when only email is present (do not write "Owner").
+      displayName: ownerName || "",
       ...(ownerEmail ? { email: ownerEmail } : {}),
     };
   }

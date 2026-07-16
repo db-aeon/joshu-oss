@@ -72,15 +72,21 @@ function envOr(name: string, fallback: string): string {
   return value && value.length > 0 ? value : fallback;
 }
 
+/** CAMOFOX_START_URL — http(s) or about:blank. Never coerce about:blank → news.google. */
 function normalizeHttpUrl(raw: string): string {
+  const trimmed = raw.trim();
+  const lower = trimmed.toLowerCase();
+  if (!trimmed || lower === "about:blank") return "about:blank";
+  if (lower === "about:home") return "about:home";
   try {
-    const parsed = new URL(raw.trim());
+    const parsed = new URL(trimmed);
     if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
       throw new Error("unsupported protocol");
     }
     return parsed.toString();
   } catch {
-    return "https://news.google.com/";
+    // Prefer blank over a surprise News navigation when env is malformed.
+    return "about:blank";
   }
 }
 
@@ -246,8 +252,23 @@ async function bootstrapCamofoxStartUrl(force = false): Promise<void> {
     const health = await fetch(`${CAMOFOX_URL.replace(/\/+$/, "")}/health`, { signal: AbortSignal.timeout(3_000) });
     if (!health.ok) return;
 
+    // Retry once — a brief /tabs glitch must not treat a live session as missing
+    // (ensureTab used to navigate existing tabs to CAMOFOX_START_URL).
     let tab = await camofoxSession.currentTab().catch(() => undefined);
-    if (!tab || isBlankBrowserUrl(tab.url)) {
+    if (!tab) {
+      tab = await camofoxSession.currentTab().catch(() => undefined);
+    }
+    // Camofox rejects about: tabs — never call ensureTab(about:blank). Leave an
+    // existing blank alone; only create when missing and start URL is http(s).
+    if (!tab) {
+      if (isBlankBrowserUrl(CAMOFOX_START_URL)) {
+        console.warn("[joshu] Camofox has no tab and CAMOFOX_START_URL is blank; skip create");
+        return;
+      }
+      tab = await camofoxSession.ensureTab(CAMOFOX_START_URL);
+      runner.rememberBrowserTarget(tab.url, HITL_CAMOFOX_USER_ID);
+      console.log(`[joshu] Camofox opened start URL: ${tab.url}`);
+    } else if (isBlankBrowserUrl(tab.url) && !isBlankBrowserUrl(CAMOFOX_START_URL)) {
       tab = await camofoxSession.ensureTab(CAMOFOX_START_URL);
       runner.rememberBrowserTarget(tab.url, HITL_CAMOFOX_USER_ID);
       console.log(`[joshu] Camofox opened start URL: ${tab.url}`);
@@ -587,8 +608,9 @@ function buildAppRouter(): {
       });
     }
 
-    await bootstrapCamofoxStartUrl();
-    // Lightweight status poll — do not observe/enforce on every poll (8s from jWeb causes churn).
+    // Do not bootstrap on status poll — every 8s from jWeb was treating blank/proxy
+    // errors as a cue to ensureTab(START_URL) and fought mid-flow Slack work.
+    // Bootstrap only on boot / fit-viewport / explicit restart (force=true callers).
     const currentTab = await camofoxSession.currentTab().catch(() => undefined);
     if (currentTab) {
       runner.rememberBrowserTarget(currentTab.url, HITL_CAMOFOX_USER_ID);
@@ -663,6 +685,31 @@ function buildAppRouter(): {
   router.post("/api/camofox/shim", async (_req: Request, res: Response) => {
     const { tab } = await alignSharedBrowserTab();
     res.json({ ok: true, tab });
+  });
+
+  /** Paste/type into the focused Camofox page control via Playwright (correct braces/JSON). */
+  router.post("/api/camofox/insert-text", async (req: Request, res: Response) => {
+    try {
+      const body = (req.body ?? {}) as { text?: unknown; selectAll?: unknown };
+      const text = typeof body.text === "string" ? body.text : "";
+      if (!text) return res.status(400).json({ error: "text is required" });
+      const selectAll = body.selectAll !== false;
+      await camofoxSession.insertText(text, { selectAll });
+      const tab = await camofoxSession.currentTab().catch(() => undefined);
+      res.json({ ok: true, chars: text.length, tab });
+    } catch (err) {
+      res.status(502).json({ error: (err as Error).message });
+    }
+  });
+
+  /** Copy selection / focused Slack token from Camofox (bypasses broken VNC clipboard). */
+  router.post("/api/camofox/copy-selection", async (_req: Request, res: Response) => {
+    try {
+      const text = await camofoxSession.readSelection();
+      res.json({ ok: true, text, chars: text.length });
+    } catch (err) {
+      res.status(502).json({ error: (err as Error).message });
+    }
   });
 
   router.post("/api/hermes/reset", async (req: Request, res: Response) => {
@@ -960,7 +1007,8 @@ function buildAppRouter(): {
     await runner.ensureGatewayReady().catch(() => undefined);
 
     if (initialUrl) {
-      const tab = await camofoxSession.ensureTab(initialUrl);
+      // Explicit run initialUrl — allowed to replace the current page.
+      const tab = await camofoxSession.ensureTab(initialUrl, { navigateExisting: true });
       const observation = await camofoxSession.observe(tab).catch((err: Error) => {
         console.warn(`[joshu] failed to observe Camofox tab after initialUrl: ${err.message}`);
         return undefined;

@@ -70,6 +70,22 @@ function joshuApiError(path, res, text) {
   } catch {
     json = { raw: text };
   }
+  // Prefer rich learning feedback when Joshu returns structured mail errors
+  // (e.g. reply_subject_mismatch with expectedSubject + hint).
+  if (json && typeof json === "object" && (json.hint || json.expectedSubject || json.reason)) {
+    const parts = [
+      typeof json.error === "string" ? json.error : null,
+      typeof json.reason === "string" ? json.reason : null,
+      typeof json.hint === "string" ? json.hint : null,
+      typeof json.expectedSubject === "string"
+        ? `expectedSubject=${JSON.stringify(json.expectedSubject)}`
+        : null,
+      typeof json.gotSubject === "string" ? `gotSubject=${JSON.stringify(json.gotSubject)}` : null,
+    ].filter(Boolean);
+    if (parts.length > 0) {
+      throw new Error(parts.join(" | "));
+    }
+  }
   const message = json.error || json.raw || formatJoshuApiError(path, res, text);
   throw new Error(typeof message === "string" ? message : `HTTP ${res.status}`);
 }
@@ -225,7 +241,7 @@ const TOOLS = [
   {
     name: "nylas_send_message",
     description:
-      "Send email from the Nylas agent mailbox. Use to + cc for multi-party scheduling (one reply-all). Do not pass comma-separated addresses in to.",
+      "Send email from the Nylas agent mailbox. Use to + cc for multi-party scheduling (one reply-all). Do not pass comma-separated addresses in to. When replyToMessageId is set, subject must match the parent message exactly (only Re:/Fwd: prefix differences allowed) or the API returns reply_subject_mismatch — do not decorate subjects.",
     inputSchema: {
       type: "object",
       properties: {
@@ -266,9 +282,17 @@ const TOOLS = [
             { type: "array", items: { type: "string" } },
           ],
         },
-        subject: { type: "string" },
+        subject: {
+          type: "string",
+          description:
+            "Email subject. On replies (replyToMessageId set), copy the parent subject exactly from the thread mirror — do not append availability, names, or task titles (Gmail will fork a new conversation).",
+        },
         body: { type: "string" },
-        replyToMessageId: { type: "string" },
+        replyToMessageId: {
+          type: "string",
+          description:
+            "Nylas message id you are continuing. Requires matching subject (see subject). Use message_id / external_id from the mirror.",
+        },
         sourcePath: {
           type: "string",
           description:

@@ -29,6 +29,12 @@ export {
   resolveSnapshotBoxId,
   type ResolvedSnapshotStorage,
 } from "./storage/index.js";
+export {
+  evaluateSnapshotCredStatus,
+  SNAPSHOT_GCS_KEY_FILE_ENV_VARS,
+  type SnapshotCredStatus,
+  type EnvGetter,
+} from "./snapshotCreds.js";
 export { wipeHindsightMemories, type WipeHindsightResult } from "./hindsight.js";
 export { stopGbrainStack, restartGbrainStack, type RestartGbrainResult } from "./gbrainRestart.js";
 export { restoreArozosDesktopFactory, type ArozosDesktopRestoreResult } from "./arozosDesktopRestore.js";

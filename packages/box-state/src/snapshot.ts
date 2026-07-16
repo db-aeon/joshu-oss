@@ -68,8 +68,73 @@ async function dumpHindsight(paths: BoxPaths, destFile: string): Promise<boolean
   }
 }
 
+// pg_dump >= 17 writes `SET transaction_timeout = 0;` into the dump header.
+// Older servers (the box ships PG 15) reject it with "unrecognized configuration
+// parameter", which aborts the whole restore under ON_ERROR_STOP=1. These are
+// session no-ops for a restore, so neutralize any known cross-version params
+// before applying. Extend this list as newer pg_dump versions introduce more.
+const PG_CROSS_VERSION_INCOMPATIBLE_SET_PARAMS = ["transaction_timeout"];
+
+// Lines that require object ownership/superuser the restore role (hindsight)
+// doesn't have. `COMMENT ON EXTENSION vector` fails with "must be owner of
+// extension vector" because the extension is owned by the bootstrap superuser,
+// not the app role. The comment is cosmetic metadata, so it's safe to skip.
+const PG_OWNERSHIP_REQUIRED_LINE_PATTERNS = [/^COMMENT ON EXTENSION\b.*$/gm];
+
+/**
+ * Neutralize statements that would abort a cross-version / non-superuser restore
+ * under ON_ERROR_STOP=1: newer-server-only SET params and ownership-gated lines.
+ * Each is a no-op for restoring the actual data.
+ */
+function sanitizeCrossVersionDump(sqlFile: string): void {
+  const text = fs.readFileSync(sqlFile, "utf8");
+  const patterns = [
+    new RegExp(
+      `^SET (?:${PG_CROSS_VERSION_INCOMPATIBLE_SET_PARAMS.join("|")}) =.*$`,
+      "gm",
+    ),
+    ...PG_OWNERSHIP_REQUIRED_LINE_PATTERNS,
+  ];
+  let cleaned = text;
+  for (const pattern of patterns) {
+    cleaned = cleaned.replace(
+      pattern,
+      (line) => `-- box-state: skipped for cross-version restore -> ${line}`,
+    );
+  }
+  if (cleaned !== text) fs.writeFileSync(sqlFile, cleaned);
+}
+
+// The Hindsight service boots and runs Alembic migrations, so the target DB is
+// never empty at restore time. Our dumps are plain pg_dump (no --clean/DROP), so
+// every CREATE TABLE would collide ("relation ... already exists"). Reset the
+// public schema first by dropping the objects the app role owns (all tables +
+// materialized views), while KEEPING extensions: `vector`/`pg_trgm` are owned by
+// the bootstrap superuser and the `hindsight` role can't recreate them, and the
+// dump's `CREATE EXTENSION IF NOT EXISTS` is a no-op once they exist. This makes
+// restore idempotent and independent of the dump's own DROP statements.
+const HINDSIGHT_RESET_PUBLIC_SCHEMA_SQL = `
+DO $$
+DECLARE r RECORD;
+BEGIN
+  FOR r IN SELECT matviewname AS n FROM pg_matviews WHERE schemaname = 'public' LOOP
+    EXECUTE format('DROP MATERIALIZED VIEW IF EXISTS public.%I CASCADE', r.n);
+  END LOOP;
+  FOR r IN SELECT tablename AS n FROM pg_tables WHERE schemaname = 'public' LOOP
+    EXECUTE format('DROP TABLE IF EXISTS public.%I CASCADE', r.n);
+  END LOOP;
+END $$;
+`;
+
 async function restoreHindsight(paths: BoxPaths, sqlFile: string): Promise<void> {
   if (!fs.existsSync(sqlFile)) return;
+  sanitizeCrossVersionDump(sqlFile);
+  // Drop existing app-owned objects so the dump's CREATE statements don't collide.
+  await execFileAsync(
+    "psql",
+    [paths.hindsightDatabaseUrl, "-v", "ON_ERROR_STOP=1", "-c", HINDSIGHT_RESET_PUBLIC_SCHEMA_SQL],
+    { maxBuffer: 64 * 1024 * 1024 },
+  );
   await execFileAsync("psql", [paths.hindsightDatabaseUrl, "-v", "ON_ERROR_STOP=1", "-f", sqlFile], {
     maxBuffer: 64 * 1024 * 1024,
   });

@@ -4,7 +4,7 @@ description: Meeting-mail scheduling. Kanban ea-sched-*; Calendly fallback.
 metadata:
   hermes:
     category: executive-assistant
-    version: "4.20.0"
+    version: "4.21.0"
 ---
 
 # EA Scheduling
@@ -182,7 +182,7 @@ Responses include **`timeAnchor`** (owner-local now) and per-event **`localDate`
 
 3. **Map roles, don't guess from labels.** Recruiter ≠ scheduler ≠ hiring manager. The person who started the thread or appears most often is not automatically the right **`to`** for your reply. Example failure mode: owner replies **to the scheduler** with the recruiter only CC'd — emailing the recruiter as **`to`** misses the person actually booking the meeting.
 
-4. **When the owner delegates to you** ("copying [companion] to coordinate", "please suggest times") — your job is to continue **their** addressing: reply to whoever **they** addressed, CC who **they** CC'd (owner addresses + thread participants as appropriate), use `replyToMessageId` on the message you're continuing.
+4. **When the owner delegates to you** ("copying [companion] to coordinate", "please suggest times") — your job is to continue **their** addressing: reply to whoever **they** addressed, CC who **they** CC'd (owner addresses + thread participants as appropriate), use `replyToMessageId` on the message you're continuing. **Subject must be the parent message subject exactly** (only `Re:`/`Fwd:` prefix differences allowed). Do **not** append availability, names, or task-title decorations — that forks a new Gmail/Google thread. On `reply_subject_mismatch`, retry with `expectedSubject` from the error.
 
 5. **Before send, state recipients explicitly** in your working summary (`to` / `cc`) and match them to what you read. Owner Telegram approval shows To/CC — if they don't match your reading of the thread, fix before the owner approves.
 
@@ -256,7 +256,7 @@ Example (`GOOGLECALENDAR_CREATE_EVENT` via Composio MCP):
 | Agent ledger (read) | `nylas_list_events` / `nylas_get_event` |
 | **Create on owner calendar** | **`mcp_composio_GOOGLECALENDAR_CREATE_EVENT`** |
 | Reschedule | `mcp_composio_GOOGLECALENDAR_PATCH_EVENT` (no deletes — policy blocks `*_DELETE_*`) |
-| Mail | `nylas_send_message` — always pass **`sourcePath`** from meeting `source_paths` (and `replyToMessageId` on the message you are continuing) |
+| Mail | `nylas_send_message` — always pass **`sourcePath`** from meeting `source_paths`, `replyToMessageId` on the message you are continuing, and the **exact parent `subject`** (no decorations) |
 | Profile | `nylas_get_profile` / `nylas_update_profile` |
 
 ---
@@ -275,7 +275,7 @@ The **owner** sometimes sends batch emails to multiple people (investors, partne
 
 3. **Check live owner calendar** — `google_calendar_find_free_slots` (omit `items` or include personal Gmail; multi-day window, owner timezone). Schedule from **`calendars.combined.free`**. Filter free intervals to at least 30 min within working hours. Offer 2-3 specific time windows across different days.
 
-4. **Reply to the thread** — `nylas_send_message` with **`sourcePath`** from the meeting task `source_paths` and `replyToMessageId` on the message you are continuing. **To:** whoever the owner addressed; **CC:** owner (so they see the thread) plus anyone they CC'd. Introduce yourself as the owner's companion and offer the slots you found. Agent sends hit **action guard** (Telegram approval) when enabled — `kanban_block` until send succeeds.
+4. **Reply to the thread** — `nylas_send_message` with **`sourcePath`** from the meeting task `source_paths`, `replyToMessageId` on the message you are continuing, and the **exact parent subject** from the thread mirror (no decorations). **To:** whoever the owner addressed; **CC:** owner (so they see the thread) plus anyone they CC'd. Introduce yourself as the owner's companion and offer the slots you found. Agent sends hit **action guard** (Telegram approval) when enabled — `kanban_block` until send succeeds.
 
 No kanban task is needed for this pattern — the owner's instruction is in the email body, not in a scheduling ingress workflow. Reply, wait for the counterparty, then proceed with standard meeting booking.
 

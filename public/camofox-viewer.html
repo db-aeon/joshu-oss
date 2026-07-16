@@ -223,6 +223,33 @@
         clipboardDetach?.();
         clipboardDetach = attachVncClipboard(rfb, {
           targetEl: screenEl,
+          pasteViaApi: async (text) => {
+            const res = await fetch("api/camofox/insert-text", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ text, selectAll: true }),
+              cache: "no-store",
+            });
+            if (!res.ok) {
+              const err = await res.json().catch(() => ({}));
+              throw new Error(err.error || `HTTP ${res.status}`);
+            }
+            return true;
+          },
+          copyViaApi: async () => {
+            const res = await fetch("api/camofox/copy-selection", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: "{}",
+              cache: "no-store",
+            });
+            if (!res.ok) {
+              const err = await res.json().catch(() => ({}));
+              throw new Error(err.error || `HTTP ${res.status}`);
+            }
+            const data = await res.json();
+            return typeof data.text === "string" ? data.text : "";
+          },
           ui: {
             pasteBtn: document.getElementById("vnc-paste-remote"),
             typeBtn: document.getElementById("vnc-type-remote"),

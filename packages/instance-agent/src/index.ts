@@ -16,6 +16,7 @@ import {
   syncDistFromImage,
 } from "./distSync.js";
 import { ensureRegistryLoginForUpdate, persistGhcrSecretsFile, probeRegistryAuthOk } from "./registryAuth.js";
+import { evaluateSnapshotCredStatus, type SnapshotCredStatus } from "./snapshotCreds.js";
 import { voiceImageRefFromSandbox } from "./voiceImageRef.js";
 
 const execFileAsync = promisify(execFile);
@@ -440,18 +441,44 @@ async function prepareAgentThenRestart(cmd: Command): Promise<void> {
   await syncHostGit(cmd.payload);
   await buildHostInstanceAgent();
   await writePendingUpdate(cmd);
-  await runCompose(["up", "-d", "--force-recreate", "instance-agent"]);
+  // --no-deps is critical: without it, compose recreates the `depends_on` service
+  // (joshu-stack) too. Recreation uses whatever compose files THIS invocation was
+  // launched with — the base compose only — which drops the fleet overlay mounts,
+  // and the agent then exits (below) into a half-recreated stack, wedging both
+  // containers in "Created". Recreate ONLY the agent here; the actual stack
+  // recreate happens later in applyReleaseUpdate with the correct compose files.
+  await runCompose(["up", "-d", "--no-deps", "--force-recreate", "instance-agent"]);
   process.exit(0);
+}
+
+/** Resolve snapshot cred status from instance.env (falling back to process env). */
+async function resolveSnapshotCredStatus(): Promise<SnapshotCredStatus> {
+  const fileEnv = await readEnvFileKeys();
+  return evaluateSnapshotCredStatus((name) => fileEnv[name] ?? process.env[name]);
 }
 
 async function preUpdateSnapshot(payload: Record<string, unknown>): Promise<void> {
   if (payload.requiresSnap === false) return;
-  const fileEnv = await readEnvFileKeys();
-  const bucket = fileEnv.JOSHU_SNAPSHOT_GCS_BUCKET ?? env("JOSHU_SNAPSHOT_GCS_BUCKET");
-  if (!bucket) {
-    console.info("[instance-agent] skipping pre-update snap (no JOSHU_SNAPSHOT_GCS_BUCKET)");
+
+  const cred = await resolveSnapshotCredStatus();
+  // No snapshot bucket configured → nothing to back up; proceed.
+  if (!cred.configured) {
+    console.info(`[instance-agent] skipping pre-update snap (${cred.reason})`);
     return;
   }
+  // Bucket configured but creds are broken (e.g. SA key path points at a missing
+  // file). A missing BACKUP must not block an otherwise-reversible update — skip
+  // loudly instead of aborting. `readyForUpdate` already surfaces this pre-click.
+  if (!cred.ok) {
+    console.warn(
+      `[instance-agent] WARNING: pre-update snapshot SKIPPED — snapshot credentials look broken: ` +
+        `${cred.reason}. Proceeding WITHOUT a pre-update backup; fix the SA key to restore backups.`,
+    );
+    return;
+  }
+
+  // Creds look usable, so we expect the snapshot to succeed — a failure here is a
+  // real error (network/permission/bucket) and SHOULD abort the update.
   const version = typeof payload.version === "string" ? payload.version : "release";
   const label = `pre-update-${version}-${new Date().toISOString().slice(0, 19).replace(/[:.]/g, "-")}`;
   console.info(`[instance-agent] pre-update snapshot label=${label}`);
@@ -729,6 +756,7 @@ async function executeCommand(cmd: Command): Promise<void> {
 async function heartbeatLoop(): Promise<void> {
   const health = await fetchJoshuHealth();
   const registryAuthOk = await probeRegistryAuthOk();
+  const snapshotAuthOk = (await resolveSnapshotCredStatus()).ok;
   const res = await postJson("/api/instances/heartbeat", {
     instanceId: INSTANCE_ID,
     reportedAt: new Date().toISOString(),
@@ -742,6 +770,7 @@ async function heartbeatLoop(): Promise<void> {
       readyForUpdate: health.readyForUpdate,
       imageRef: env("JOSHU_IMAGE_REF"),
       registryAuthOk,
+      snapshotAuthOk,
     },
   });
 

@@ -85,13 +85,35 @@ export async function sendTelegramMessage(
   text: string,
   replyMarkup?: Record<string, unknown>,
 ): Promise<void> {
-  await telegramApi("sendMessage", {
-    chat_id: chatId,
-    text,
-    parse_mode: "HTML",
-    disable_web_page_preview: true,
-    ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
-  });
+  // Telegram hard-caps message text at 4096 chars — send full content in chunks.
+  const TELEGRAM_TEXT_MAX = 4000;
+  if (text.length <= TELEGRAM_TEXT_MAX) {
+    await telegramApi("sendMessage", {
+      chat_id: chatId,
+      text,
+      parse_mode: "HTML",
+      disable_web_page_preview: true,
+      ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
+    });
+    return;
+  }
+
+  let remaining = text;
+  let first = true;
+  while (remaining.length > 0) {
+    let cut = remaining.length <= TELEGRAM_TEXT_MAX ? remaining.length : remaining.lastIndexOf("\n", TELEGRAM_TEXT_MAX);
+    if (cut < TELEGRAM_TEXT_MAX * 0.5) cut = Math.min(TELEGRAM_TEXT_MAX, remaining.length);
+    const chunk = remaining.slice(0, cut);
+    remaining = remaining.slice(cut).replace(/^\n/, "");
+    await telegramApi("sendMessage", {
+      chat_id: chatId,
+      text: chunk,
+      parse_mode: "HTML",
+      disable_web_page_preview: true,
+      ...(first && replyMarkup ? { reply_markup: replyMarkup } : {}),
+    });
+    first = false;
+  }
 }
 
 export async function answerCallbackQuery(callbackQueryId: string, text: string): Promise<void> {
@@ -166,16 +188,18 @@ export function formatApprovalMessage(actionId: string, summary: Record<string, 
   const cc = formatRecipientField(summary.cc);
   const bcc = formatRecipientField(summary.bcc);
   const subject = summary.subject;
-  const bodyPreview = summary.bodyPreview ?? summary.argsPreview ?? summary.expressionPreview;
+  // Prefer full `body` (nylas send). Fall back to legacy truncated previews.
+  const body =
+    summary.body ?? summary.bodyPreview ?? summary.argsPreview ?? summary.expressionPreview;
   const textPreview = summary.text;
 
   if (to) lines.push(`To: ${escapeHtml(to)}`);
   if (cc) lines.push(`CC: ${escapeHtml(cc)}`);
   if (bcc) lines.push(`BCC: ${escapeHtml(bcc)}`);
   if (subject) lines.push(`Subject: ${escapeHtml(String(subject))}`);
-  if (textPreview) lines.push(`Text: ${escapeHtml(String(textPreview)).slice(0, 200)}`);
-  if (bodyPreview) {
-    lines.push("", escapeHtml(String(bodyPreview)).slice(0, 500));
+  if (textPreview) lines.push(`Text: ${escapeHtml(String(textPreview))}`);
+  if (body) {
+    lines.push("", escapeHtml(String(body)));
   }
   return lines.join("\n");
 }

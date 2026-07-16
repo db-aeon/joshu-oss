@@ -198,7 +198,7 @@ Unified channel for **write approvals** (v1). Plain-text owner chat ingress is s
 
 ### Slack approval flow (v1)
 
-1. **`notifyOwnerForApproval`** posts a Block Kit message: companion **avatar + name** context row (`resolveJoshuIdentity`), action id, preview, and “Reply with *Y* or *N*”. Composio does not support per-message `username`/`icon_url` — identity is **in-message** only.
+1. **`notifyOwnerForApproval`** posts a Block Kit message: companion **avatar + name** context row (`resolveJoshuIdentity`), action id, **full** preview fields (recipients, subject, email body — no truncation; long bodies split across section blocks), and “Reply with *Y* or *N*”. Composio does not support per-message `username`/`icon_url` — identity is **in-message** only.
 2. While the pending is open, **`attachSlackReplyPollingForPending`** polls conversation history via Composio `SLACK_FETCH_CONVERSATION_HISTORY` (default **8s** interval; **30s** backoff on `ratelimited`).
 3. **`parseSlackApprovalReply`** maps the owner’s message → `resolvePending` (same gate as Telegram).
 4. **`confirmSlackApprovalDecision`** posts ✅/❌ confirmation (also Block Kit with companion context).

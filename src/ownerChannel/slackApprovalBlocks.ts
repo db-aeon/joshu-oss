@@ -1,5 +1,8 @@
 import { resolveJoshuAvatarUrl, resolveJoshuIdentity } from "../joshuIdentity.js";
 import { SLACK_APPROVAL_REQUEST_MARKER } from "./slackReplyParse.js";
+import { chunkSlackMrkdwn, SLACK_SECTION_TEXT_MAX } from "./slackMrkdwnChunk.js";
+
+export { chunkSlackMrkdwn, SLACK_SECTION_TEXT_MAX } from "./slackMrkdwnChunk.js";
 
 /** Escape dynamic text embedded in Slack mrkdwn blocks. */
 export function escapeSlackMrkdwn(text: string): string {
@@ -27,24 +30,35 @@ export function buildSlackApprovalRequestMessage(
   const name = identity.name.trim() || "Joshu";
   const avatarUrl = resolveJoshuAvatarUrl(identity);
   const safeActionId = escapeSlackMrkdwn(actionId);
-  const safePreview = escapeSlackMrkdwn(preview.slice(0, 500));
+  // Full approval payload — split across section blocks (no truncation).
+  const safePreview = escapeSlackMrkdwn(preview);
+  const previewChunks = chunkSlackMrkdwn(safePreview);
 
   const fallbackText = `${name} ${SLACK_APPROVAL_REQUEST_MARKER}: ${actionId}`;
-  const blocks: SlackBlock[] = [
-    approvalContextBlock(name, avatarUrl),
-    {
-      type: "section",
-      text: {
-        type: "mrkdwn",
-        text: [
-          `\`${safeActionId}\``,
-          safePreview,
-          "",
-          "_Reply in this channel with *Y* or *N* (also: yes/no, approve/deny)._",
-        ].join("\n"),
-      },
+  const blocks: SlackBlock[] = [approvalContextBlock(name, avatarUrl)];
+
+  for (let i = 0; i < previewChunks.length; i++) {
+    const chunk = previewChunks[i]!;
+    const text =
+      i === 0
+        ? [`\`${safeActionId}\``, chunk].join("\n")
+        : chunk;
+    // Re-chunk if action-id prefix pushed the first section over the limit.
+    for (const piece of chunkSlackMrkdwn(text)) {
+      blocks.push({
+        type: "section",
+        text: { type: "mrkdwn", text: piece },
+      });
+    }
+  }
+
+  blocks.push({
+    type: "section",
+    text: {
+      type: "mrkdwn",
+      text: "_Reply in this channel with *Y* or *N* (also: yes/no, approve/deny)._",
     },
-  ];
+  });
 
   return { fallbackText, blocks };
 }

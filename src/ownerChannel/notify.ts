@@ -65,10 +65,27 @@ async function notifyViaSlack(
 ): Promise<void> {
   const preview = formatApprovalMessage(actionId, summary).replace(/<[^>]+>/g, "");
   const { fallbackText, blocks } = buildSlackApprovalRequestMessage(actionId, preview, projectRoot);
-  await sendSlackViaComposio(
-    { channel: channelId, text: fallbackText, blocks, connectedAccountId },
-    projectRoot,
-  );
+  // Slack allows ≤50 blocks per message — split oversized approval payloads.
+  const SLACK_BLOCKS_MAX = 45;
+  if (blocks.length <= SLACK_BLOCKS_MAX) {
+    await sendSlackViaComposio(
+      { channel: channelId, text: fallbackText, blocks, connectedAccountId },
+      projectRoot,
+    );
+  } else {
+    for (let i = 0; i < blocks.length; i += SLACK_BLOCKS_MAX) {
+      const slice = blocks.slice(i, i + SLACK_BLOCKS_MAX);
+      await sendSlackViaComposio(
+        {
+          channel: channelId,
+          text: i === 0 ? fallbackText : `${fallbackText} (continued)`,
+          blocks: slice,
+          connectedAccountId,
+        },
+        projectRoot,
+      );
+    }
+  }
   markPendingSlackNotified(_pendingId, projectRoot);
 }
 

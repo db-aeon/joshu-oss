@@ -20,6 +20,7 @@ import {
   type CompanionIdentitySyncResult,
 } from "./companionIdentitySync.js";
 import { provisionEnvTrim } from "./provisionInstanceEnv.js";
+import { evaluateSnapshotCredStatus } from "@joshu/box-state";
 
 function envTrim(name: string, fallback = ""): string {
   return process.env[name]?.trim() || fallback;
@@ -100,6 +101,10 @@ export interface InstanceHealthReport {
     // whether the box is configured to serve them (AROZOS_ENABLED / CUSTOMER_DOMAIN).
     arozos: { ok: boolean; expected: boolean };
     edge: { ok: boolean; expected: boolean };
+    // Pre-update/backup snapshot credentials. `expected` = a GCS bucket is configured
+    // (a snapshot will run); `ok` = creds are usable. Surfaces a missing/broken SA key
+    // BEFORE a managed update tries (and fails) to snapshot.
+    snapshot: { ok: boolean; expected: boolean; reason?: string };
   };
   uptimeSec: number;
 }
@@ -153,6 +158,12 @@ export function registerInstanceHealthRoutes(
       edgeExpected ? probeTcpLocal(443) : Promise.resolve(true),
     ]);
 
+    // Prefer instance.env (agent patches it pre-recreate) then process env, matching
+    // how the box actually resolves snapshot config at snap time.
+    const snapshotCred = evaluateSnapshotCredStatus(
+      (name) => provisionEnvTrim(name) ?? (process.env[name]?.trim() || undefined),
+    );
+
     const updateInProgress = updateInProgressFromInstanceEnv();
     const imageRef = instanceEnvTrim("JOSHU_IMAGE_REF", "local");
     let releaseVersion = instanceEnvTrim("JOSHU_RELEASE_VERSION", "0.0.0-dev");
@@ -195,6 +206,11 @@ export function registerInstanceHealthRoutes(
       },
       arozos: { ok: arozosOk, expected: arozosExpected },
       edge: { ok: edgeOk, expected: edgeExpected },
+      snapshot: {
+        ok: snapshotCred.ok,
+        expected: snapshotCred.configured,
+        ...(snapshotCred.reason ? { reason: snapshotCred.reason } : {}),
+      },
     };
 
     const connectorsMcpRequired = deps.connectorsMcpRequired !== false;
@@ -221,7 +237,12 @@ export function registerInstanceHealthRoutes(
       imageRef,
       hermesRef: instanceEnvTrim("HERMES_AGENT_REF", "unknown"),
       healthy,
-      readyForUpdate: coreHealthy && !updateInProgress,
+      // Also require usable snapshot creds WHEN snapshotting is configured, so the
+      // control plane / admin UI shows "not update-ready" before a click rather than
+      // aborting mid-update on a missing backup credential. Boxes without a snapshot
+      // bucket (snapshot.expected=false) are unaffected.
+      readyForUpdate:
+        coreHealthy && !updateInProgress && (!components.snapshot.expected || components.snapshot.ok),
       components,
       uptimeSec: Math.floor((Date.now() - startedAt) / 1000),
     };

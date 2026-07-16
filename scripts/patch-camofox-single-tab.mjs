@@ -66,13 +66,15 @@ function __hitlViewportFromEnv() {
 }
 
 function __hitlStartUrlFromEnv() {
-  const raw = String(process.env.CAMOFOX_START_URL || 'https://news.google.com/').trim();
+  // Empty / about:blank → no auto-navigate (do not coerce to news.google).
+  const raw = String(process.env.CAMOFOX_START_URL || '').trim();
+  if (!raw || raw === 'about:blank' || raw === 'about:home') return '';
   try {
     const parsed = new URL(raw);
-    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return 'https://news.google.com/';
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return '';
     return parsed.toString();
   } catch (_) {
-    return 'https://news.google.com/';
+    return '';
   }
 }
 
@@ -348,18 +350,10 @@ if (!source.includes("app.post('/tabs/:tabId/viewport'")) {
 
 // Camoufox fingerprints screen/window at launch (defaults ~1920x1080). Playwright
 // setViewportSize cannot override that — pass window size into launchOptions.
-const launchOptionsNeedle = `      const options = await launchOptions({
-        headless: useVirtualDisplay ? false : true,
-        os: hostOS,
-        humanize: true,
-        enable_cache: true,
-        proxy: launchProxy,
-        geoip: !!launchProxy,
-        virtual_display: vdDisplay,
-      });`;
-
+// Camofox 1.6+ may insert `executable_path` and/or partial firefox_user_prefs before the closer.
 const launchOptionsPatch = `      const __hitlVp = __hitlViewportFromEnv();
       const options = await launchOptions({
+        executable_path: externalCamoufox?.executablePath,
         headless: useVirtualDisplay ? false : true,
         os: hostOS,
         humanize: true,
@@ -369,12 +363,23 @@ const launchOptionsPatch = `      const __hitlVp = __hitlViewportFromEnv();
         virtual_display: vdDisplay,
         window: [__hitlVp.width, __hitlVp.height],
         ...__hitlFfLaunchOverrides(),
+        firefox_user_prefs: {
+          'browser.link.open_newwindow': 1,
+          'browser.link.open_newwindow.restriction': 0,
+          'browser.link.open_newwindow.override.external': 1,
+        },
       });`;
 
-if (source.includes(launchOptionsNeedle)) {
-  source = source.replace(launchOptionsNeedle, launchOptionsPatch);
-} else if (!source.includes("window: [__hitlVp.width, __hitlVp.height]")) {
-  console.warn(`[joshu] launchOptions window-size patch point not found in ${target}; skipping`);
+if (!source.includes("window: [__hitlVp.width, __hitlVp.height]")) {
+  const launchStart = source.indexOf("      const options = await launchOptions({");
+  const vdMarker = launchStart >= 0 ? source.indexOf("virtual_display: vdDisplay,", launchStart) : -1;
+  const launchEnd = vdMarker >= 0 ? source.indexOf("});", vdMarker) : -1;
+  if (launchStart >= 0 && vdMarker > launchStart && launchEnd > vdMarker) {
+    source =
+      source.slice(0, launchStart) + launchOptionsPatch + source.slice(launchEnd + "});".length);
+  } else {
+    console.warn(`[joshu] launchOptions window-size patch point not found in ${target}; skipping`);
+  }
 } else if (!source.includes("__hitlFfLaunchOverrides()")) {
   source = source.replace(
     "        window: [__hitlVp.width, __hitlVp.height],\n",
@@ -461,6 +466,176 @@ if (!source.includes(viewportFitCall)) {
   throw new Error(`Camofox viewport route must call __hitlFitBrowserWindow with width/height in ${target}`);
 }
 
+// ---------------------------------------------------------------------------
+// HITL clipboard: POST /tabs/:tabId/selection (Joshu copy-selection API)
+// x11vnc does not reliably sync Firefox clipboard to the Mac/host.
+// ---------------------------------------------------------------------------
+if (!source.includes("HITL_SELECTION_ROUTE")) {
+  const selectionRoute = `
+// HITL_SELECTION_ROUTE — read focused/selected text without VNC clipboard (x11vnc drops it)
+app.post('/tabs/:tabId/selection', async (req, res) => {
+  const tabId = req.params.tabId;
+  try {
+    const { userId } = req.body || {};
+    const session = sessions.get(normalizeUserId(userId));
+    const found = session && findTab(session, tabId);
+    if (!found) return tabNotFoundResponse(res, tabId);
+    session.lastAccess = Date.now();
+    const { tabState } = found;
+    tabState.toolCalls++; tabState.consecutiveTimeouts = 0; tabState.consecutiveFailures = 0;
+    const text = await withTabLock(tabId, async () => {
+      return await tabState.page.evaluate(() => {
+        const el = document.activeElement;
+        if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') && typeof el.selectionStart === 'number') {
+          const start = el.selectionStart ?? 0;
+          const end = el.selectionEnd ?? 0;
+          if (end > start) return String(el.value || '').slice(start, end);
+          const v = String(el.value || '').trim();
+          if (/^(xoxb-|xapp-|xoxe-|xoxp-)/.test(v)) return v;
+        }
+        const sel = window.getSelection ? String(window.getSelection() || '') : '';
+        if (sel.trim()) return sel;
+        // Fallback: first visible bot/app token on the page (Slack Install / Socket Mode)
+        const nodes = Array.from(document.querySelectorAll('input, textarea, code, pre, [class*="token"]'));
+        for (const node of nodes) {
+          const v = String(node.value || node.textContent || '').trim();
+          if (/^(xoxb-|xapp-)/.test(v) && v.length > 20) return v;
+        }
+        return '';
+      });
+    });
+    res.json({ ok: true, text: text || '' });
+  } catch (err) {
+    log('error', 'selection failed', { reqId: req.reqId, error: err.message });
+    handleRouteError(err, req, res);
+  }
+});
+
+`;
+  const selectionNeedles = [
+    "// Press key\n/**\n * @openapi\n * /tabs/{tabId}/press:",
+    "app.post('/tabs/:tabId/press', async (req, res) => {",
+  ];
+  let selectionInserted = false;
+  for (const needle of selectionNeedles) {
+    if (source.includes(needle)) {
+      source = source.replace(needle, selectionRoute + needle);
+      selectionInserted = true;
+      break;
+    }
+  }
+  if (!selectionInserted) {
+    console.warn(`[joshu] selection route insertion point not found in ${target}; skipping`);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Tab reaper: VNC clicks do not increment toolCalls, so default inactivity kill
+// would wipe jWeb tabs ~every TAB_INACTIVITY_MS (upstream default 5m).
+// Env TAB_INACTIVITY_MS=0 (HITL default) disables; >0 restores upstream behavior.
+// ---------------------------------------------------------------------------
+const tabInactivityNeedle = "const TAB_INACTIVITY_MS = CONFIG.tabInactivityMs;";
+const tabInactivityPatch = `const TAB_INACTIVITY_MS = (() => {
+  // HITL default 0: VNC activity is invisible to toolCalls-based reaper.
+  const raw = process.env.TAB_INACTIVITY_MS;
+  if (raw === undefined || raw === '') return 0;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : CONFIG.tabInactivityMs;
+})();`;
+if (source.includes(tabInactivityNeedle) && !source.includes("process.env.TAB_INACTIVITY_MS")) {
+  source = source.replace(tabInactivityNeedle, tabInactivityPatch);
+} else if (
+  source.includes("const TAB_INACTIVITY_MS = CONFIG.tabInactivityMs") &&
+  !source.includes("process.env.TAB_INACTIVITY_MS")
+) {
+  source = source.replace(
+    /const TAB_INACTIVITY_MS = CONFIG\.tabInactivityMs;?/,
+    tabInactivityPatch,
+  );
+}
+
+const reaperIntervalNeedle = `setInterval(() => {
+  const now = Date.now();
+  for (const [userId, session] of sessions) {
+    for (const [listItemId, group] of session.tabGroups) {
+      for (const [tabId, tabState] of group) {
+        if (!tabState._lastReaperCheck) {
+          tabState._lastReaperCheck = now;
+          tabState._lastReaperToolCalls = tabState.toolCalls;
+          continue;
+        }
+        if (tabState.toolCalls === tabState._lastReaperToolCalls) {
+          const idleMs = now - tabState._lastReaperCheck;
+          if (idleMs >= TAB_INACTIVITY_MS) {`;
+const reaperIntervalPatch = `setInterval(() => {
+  // HITL/jWeb: VNC clicks do not increment toolCalls; 0 disables the reaper.
+  if (!TAB_INACTIVITY_MS || TAB_INACTIVITY_MS <= 0) return;
+  const now = Date.now();
+  for (const [userId, session] of sessions) {
+    for (const [listItemId, group] of session.tabGroups) {
+      for (const [tabId, tabState] of group) {
+        if (!tabState._lastReaperCheck) {
+          tabState._lastReaperCheck = now;
+          tabState._lastReaperToolCalls = tabState.toolCalls;
+          continue;
+        }
+        if (tabState.toolCalls === tabState._lastReaperToolCalls) {
+          const idleMs = now - tabState._lastReaperCheck;
+          if (idleMs >= TAB_INACTIVITY_MS) {`;
+if (
+  source.includes(reaperIntervalNeedle) &&
+  !source.includes("if (!TAB_INACTIVITY_MS || TAB_INACTIVITY_MS <= 0) return;")
+) {
+  source = source.replace(reaperIntervalNeedle, reaperIntervalPatch);
+} else if (!source.includes("if (!TAB_INACTIVITY_MS || TAB_INACTIVITY_MS <= 0) return;")) {
+  // Fallback: insert gate right after the reaper setInterval opener near comment.
+  const reaperComment = "// Per-tab inactivity reaper — close tabs idle for TAB_INACTIVITY_MS\nsetInterval(() => {\n";
+  if (source.includes(reaperComment)) {
+    source = source.replace(
+      reaperComment,
+      `${reaperComment}  // HITL/jWeb: VNC clicks do not increment toolCalls; 0 disables the reaper.\n  if (!TAB_INACTIVITY_MS || TAB_INACTIVITY_MS <= 0) return;\n`,
+    );
+  } else {
+    console.warn(`[joshu] tab reaper gate insertion point not found in ${target}; skipping`);
+  }
+}
+
+// GET /tabs keepalive — Joshu status polls listTabs(); count as activity.
+const tabsGetNeedle = `app.get('/tabs', async (req, res) => {
+  try {
+    const userId = req.query.userId;
+    const session = sessions.get(normalizeUserId(userId));
+    
+    if (!session) {
+      return res.json({ running: true, tabs: [] });
+    }
+    
+    const tabs = [];`;
+const tabsGetPatch = `app.get('/tabs', async (req, res) => {
+  try {
+    const userId = req.query.userId;
+    const session = sessions.get(normalizeUserId(userId));
+    
+    if (!session) {
+      return res.json({ running: true, tabs: [] });
+    }
+
+    // HITL keepalive: jWeb status polls GET /tabs; count as activity so tab reaper / session timeout do not wipe VNC sessions.
+    session.lastAccess = Date.now();
+    for (const group of session.tabGroups.values()) {
+      for (const tabState of group.values()) {
+        tabState._lastReaperCheck = Date.now();
+        tabState._lastReaperToolCalls = tabState.toolCalls;
+      }
+    }
+    
+    const tabs = [];`;
+if (source.includes(tabsGetNeedle) && !source.includes("HITL keepalive: jWeb status polls GET /tabs")) {
+  source = source.replace(tabsGetNeedle, tabsGetPatch);
+} else if (!source.includes("HITL keepalive: jWeb status polls GET /tabs")) {
+  console.warn(`[joshu] GET /tabs keepalive insertion point not found in ${target}; skipping`);
+}
+
 // Upgrade legacy popup coercion (closed popup before navigation — breaks Slack z-app 2FA links).
 const popupV2Marker = "__hitlPopupCoerceV2";
 const legacyPopupBlock = ` page.on('popup', async (popup) => {
@@ -485,4 +660,6 @@ if (!source.includes(popupV2Marker) && source.includes(legacyPopupBlock)) {
 }
 
 writeFileSync(target, source);
-console.log(`[joshu] patched ${target} for single-tab HITL behavior and dynamic viewport resizing`);
+console.log(
+  `[joshu] patched ${target} for single-tab HITL, viewport, selection clipboard route, and tab-reaper keepalive`,
+);

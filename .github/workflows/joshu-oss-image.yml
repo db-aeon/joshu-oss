@@ -14,15 +14,16 @@ on:
           - all
           - voice-only
 
+# contents: write is required to create the GitHub Release for each tag.
 permissions:
-  contents: read
+  contents: write
   packages: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       packages: write
     steps:
       - uses: actions/checkout@v4
@@ -120,3 +121,44 @@ jobs:
               -f visibility=public \
               || echo "[ghcr] visibility unchanged for ${pkg} (may need manual publish settings)"
           done
+
+      # Publish a GitHub Release so the repo sidebar / releases page shows the
+      # current Docker version. Custom body (RELEASE.json notes + image pins) is
+      # prepended; generate_release_notes appends the PR/commit diff since the
+      # previous tag (GitHub's auto-changelog).
+      - name: Compose release notes from RELEASE.json
+        id: notes
+        if: github.ref_type == 'tag'
+        run: |
+          node -e '
+            const r = JSON.parse(require("fs").readFileSync("deploy/RELEASE.json", "utf8"));
+            const owner = process.env.GITHUB_REPOSITORY_OWNER;
+            const body = [
+              r.notes ? `${r.notes}\n` : "",
+              "## Docker images",
+              "",
+              "```",
+              `ghcr.io/${owner}/joshu-oss:${r.version}`,
+              `ghcr.io/${owner}/joshu-oss-voice-realtime:${r.version}`,
+              "```",
+              "",
+              "## Pins",
+              "",
+              `| Component | Ref |`,
+              `|-----------|-----|`,
+              `| Hermes | \`${r.hermesRef}\` |`,
+              `| gbrain | \`${r.gbrainRef}\` |`,
+              `| Camofox base | \`${r.camofoxBase}\` |`,
+              "",
+            ].join("\n");
+            require("fs").writeFileSync("release-notes.md", body);
+          '
+
+      - name: Create GitHub Release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ steps.release.outputs.version }}
+          body_path: release-notes.md
+          generate_release_notes: true
+          make_latest: true

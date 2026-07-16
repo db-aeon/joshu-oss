@@ -472,6 +472,8 @@ export CAMOFOX_VIEWPORT_WIDTH="${CAMOFOX_VIEWPORT_WIDTH:-1024}"
 export CAMOFOX_VIEWPORT_HEIGHT="${CAMOFOX_VIEWPORT_HEIGHT:-768}"
 export CAMOFOX_FF_VERSION="${CAMOFOX_FF_VERSION:-139}"
 export CAMOFOX_START_URL="${CAMOFOX_START_URL:-about:blank}"
+# VNC clicks do not increment Camofox toolCalls — default 0 disables the inactivity tab reaper.
+export TAB_INACTIVITY_MS="${TAB_INACTIVITY_MS:-0}"
 export JOSHU_WARM_CAMOFOX="${JOSHU_WARM_CAMOFOX:-false}"
 export HITL_CAMOFOX_USER_ID="${HITL_CAMOFOX_USER_ID:-hitl-camofox}"
 export HITL_CAMOFOX_SESSION_KEY="${HITL_CAMOFOX_SESSION_KEY:-hitl-main}"
@@ -548,6 +550,8 @@ warm_camofox_browser() {
 }
 
 # 0.1.29 images shipped a broken Camofox viewport patch (`}););`). Repair in-place until next image cut.
+# Also re-apply HITL patch markers (selection / reaper) when the baked /app/server.js is missing them
+# (older images, or writable-layer wipe after recreate before the next image cut).
 repair_camfox_server_js() {
   local f="${CAMOFOX_APP_DIR}/server.js"
   [[ -f "$f" ]] || return 0
@@ -555,10 +559,72 @@ repair_camfox_server_js() {
     echo "[vps-start] repairing Camofox server.js (duplicate route closer)" >&2
     sed -i 's/}););/});/g' "$f"
   fi
+  local patch_script="${APP_DIR}/scripts/patch-camofox-single-tab.mjs"
+  if [[ -f "${patch_script}" ]] && ! grep -q 'HITL_SELECTION_ROUTE' "$f" 2>/dev/null; then
+    echo "[vps-start] applying Camofox HITL patch (selection / reaper / keepalive)" >&2
+    node "${patch_script}" "$f" || echo "[vps-start] WARN: Camofox HITL patch failed" >&2
+  fi
+}
+
+# Camofox 1.6+ gates noVNC behind plugins.vnc in camofox.config.json.
+# The loader skips plugins with enabled:false BEFORE register(), so ENABLE_VNC alone is not enough.
+# Plugin apt deps (x11vnc / novnc / websockify) are also missing from the base image unless installed.
+ensure_camofox_vnc() {
+  case "${ENABLE_VNC:-1}" in
+    1|true|yes|TRUE|YES) ;;
+    *)
+      echo "[vps-start] VNC disabled (ENABLE_VNC=${ENABLE_VNC})"
+      return 0
+      ;;
+  esac
+
+  local cfg="${CAMOFOX_APP_DIR}/camofox.config.json"
+  local res="${VNC_RESOLUTION:-1024x768}"
+  # Config wants WxH; vnc-launcher appends depth when missing.
+  case "${res}" in
+    *x*x*) res="${res%x*}" ;;
+  esac
+
+  if [[ -f "${cfg}" ]]; then
+    python3 - "${cfg}" "${res}" <<'PY' || echo "[vps-start] WARN: failed to enable Camofox VNC plugin in ${cfg}" >&2
+import json
+import sys
+
+path, res = sys.argv[1], sys.argv[2]
+with open(path, encoding="utf-8") as f:
+    config = json.load(f)
+plugins = config.setdefault("plugins", {})
+vnc = plugins.get("vnc")
+if not isinstance(vnc, dict):
+    vnc = {}
+changed = vnc.get("enabled") is not True or vnc.get("resolution") != res
+vnc["enabled"] = True
+vnc["resolution"] = res
+plugins["vnc"] = vnc
+if changed:
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(config, f, indent=2)
+        f.write("\n")
+    print(f"[vps-start] enabled Camofox VNC plugin ({res})", flush=True)
+else:
+    print(f"[vps-start] Camofox VNC plugin already enabled ({res})", flush=True)
+PY
+  else
+    echo "[vps-start] WARN: missing ${cfg}; cannot enable VNC plugin" >&2
+  fi
+
+  if ! command -v x11vnc >/dev/null 2>&1 || ! command -v websockify >/dev/null 2>&1; then
+    echo "[vps-start] installing Camofox VNC apt packages (x11vnc, novnc, python3-websockify)"
+    apt-get update -qq \
+      && apt-get install -y --no-install-recommends x11vnc novnc python3-websockify net-tools procps \
+      && rm -rf /var/lib/apt/lists/* \
+      || echo "[vps-start] WARN: VNC apt install failed; jWeb/noVNC will 504 until packages are present" >&2
+  fi
 }
 
 echo "[vps-start] Camofox ${CAMOFOX_URL}"
 repair_camfox_server_js
+ensure_camofox_vnc
 ( cd "${CAMOFOX_APP_DIR}" && node --max-old-space-size="${MAX_OLD_SPACE_SIZE}" server.js ) &
 for _ in $(seq 1 90); do curl -fsS "${CAMOFOX_URL}/health" >/dev/null 2>&1 && break; sleep 1; done
 if [[ "${JOSHU_WARM_CAMOFOX}" =~ ^(1|true|yes)$ ]]; then
@@ -600,11 +666,21 @@ if [[ "${AROZOS_ENABLED:-false}" =~ ^(1|true|yes)$ ]]; then
     bash "${APP_DIR}/scripts/bootstrap-joshu-files.sh" || true
   fi
   install_all_joshu_desktop_shortcuts
+  # Commercial / fleet images bake the JDL pack at /opt/joshu-design. Prefer it even when
+  # instance.env omits JOSHU_DESIGN_PACK (older image apply scripts require the env).
+  if [[ -z "${JOSHU_DESIGN_PACK:-}" && -f /opt/joshu-design/arozos/web-overlays/aroz-paper-shell.css ]]; then
+    export JOSHU_DESIGN_PACK=/opt/joshu-design
+  fi
   python3 "${APP_DIR}/scripts/apply_arozos_joshu_theme.py" "${AROZ_DATA}/web/" || true
   # OSS vanilla apply used to skip img/joshu/ — keep shortcuts working even on older images.
   if [[ -d "${APP_DIR}/arozos/icons" ]]; then
     mkdir -p "${AROZ_DATA}/web/img/joshu"
     cp -a "${APP_DIR}/arozos/icons/"*.png "${AROZ_DATA}/web/img/joshu/" 2>/dev/null || true
+  fi
+  if [[ -n "${JOSHU_DESIGN_PACK:-}" ]]; then
+    echo "[vps-start] ArozOS shell theme: paper (JOSHU_DESIGN_PACK=${JOSHU_DESIGN_PACK})"
+  else
+    echo "[vps-start] ArozOS shell theme: vanilla (no design pack)"
   fi
   echo "[vps-start] ArozOS :${PUBLIC_AROZ_PORT} (tmp-root=${AROZ_TMP_ROOT})"
   ( cd "${AROZ_DATA}" && "${AROZ_TEMPLATE}/arozos" -port="${PUBLIC_AROZ_PORT}" -disable_ip_resolver=true \

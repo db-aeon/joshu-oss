@@ -23,6 +23,7 @@ import { gateNylasSendRequest, isJmailOwnerSend } from "../actionGuard/nylasSend
 import { respondNylasSendGate } from "../actionGuard/nylasSendGateResponse.js";
 import { resolveJoshuFilesPaths } from "../joshuFilesPaths.js";
 import { resolveOutboundMailAuthorization } from "../ea/agentAuthorization.js";
+import { buildReplySubjectMismatchError, replySubjectsMatch } from "./replySubject.js";
 
 function readString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -158,6 +159,27 @@ export function registerNylasRoutes(router: Router, opts: { projectRoot: string 
         res.status(403).json({
           error: "mail_send_not_authorized",
           reason: auth?.reason ?? "not_copied_or_delegated",
+        });
+        return;
+      }
+    }
+    // Fail (do not mutate) when a reply would fork Gmail threading via subject decoration.
+    // Runs before action guard so the owner is not asked to approve a send that cannot thread.
+    if (replyToMessageId) {
+      try {
+        const parent = await getMessage(agent.grantId, replyToMessageId);
+        const expectedSubject = (parent.subject ?? "").trim();
+        if (expectedSubject && !replySubjectsMatch(subject, expectedSubject)) {
+          res.status(400).json(
+            buildReplySubjectMismatchError({ got: subject, expected: expectedSubject }),
+          );
+          return;
+        }
+      } catch (err) {
+        res.status(400).json({
+          error: "reply_parent_message_unavailable",
+          reason: (err as Error).message,
+          hint: "replyToMessageId must be a Nylas message id that exists in the agent mailbox. Use the message_id / external_id from the thread mirror.",
         });
         return;
       }

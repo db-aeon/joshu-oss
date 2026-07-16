@@ -7,6 +7,8 @@
 
 const XK_CONTROL_L = 0xffe3;
 const XK_SHIFT_L = 0xffe1;
+const XK_RETURN = 0xff0d;
+const XK_TAB = 0xff09;
 const XK_V = 0x0076;
 const XK_C = 0x0063;
 const XK_A = 0x0061;
@@ -74,23 +76,23 @@ function typeTextToRemote(rfb, text, { selectAll = false } = {}) {
   if (selectAll) sendRemoteCtrlA(rfb);
 
   for (const ch of text) {
-    let keysym = ch.charCodeAt(0);
-    let shift = false;
-
-    if (ch >= "A" && ch <= "Z") {
-      shift = true;
-      keysym = ch.toLowerCase().charCodeAt(0);
-    } else if (US_SHIFT[ch]) {
-      shift = true;
-      keysym = US_SHIFT[ch].charCodeAt(0);
-    } else if (keysym < 0x20 || keysym > 0x7e) {
-      // Skip unsupported control / non-ASCII for now
+    // Newlines / tabs — required for Slack app-manifest JSON (clipboard paste is often a no-op on x11vnc).
+    if (ch === "\n" || ch === "\r") {
+      rfb.sendKey(XK_RETURN, "Enter");
+      continue;
+    }
+    if (ch === "\t") {
+      rfb.sendKey(XK_TAB, "Tab");
       continue;
     }
 
-    if (shift) rfb.sendKey(XK_SHIFT_L, "ShiftLeft", true);
-    rfb.sendKey(keysym);
-    if (shift) rfb.sendKey(XK_SHIFT_L, "ShiftLeft", false);
+    const keysym = ch.charCodeAt(0);
+    // Prefer Latin-1 keysyms (same as Unicode for printable ASCII). Synthesizing
+    // Shift+[ for `{` often loses Shift over VNC and types `[` instead.
+    if (keysym >= 0x20 && keysym <= 0x7e) {
+      rfb.sendKey(keysym);
+      continue;
+    }
   }
   return true;
 }
@@ -205,10 +207,10 @@ export function createVncClipboardBridge(rfb) {
 
 /**
  * @param {object} rfb
- * @param {{ targetEl?: HTMLElement, ui?: Record<string, HTMLElement | null> }} options
+ * @param {{ targetEl?: HTMLElement, ui?: Record<string, HTMLElement | null>, pasteViaApi?: (text: string) => Promise<boolean>, copyViaApi?: () => Promise<string> }} options
  */
 export function attachVncClipboard(rfb, options = {}) {
-  const { targetEl, ui = {} } = options;
+  const { targetEl, ui = {}, pasteViaApi, copyViaApi } = options;
   const bridge = createVncClipboardBridge(rfb);
   let vncEngaged = false;
   const cleanups = [];
@@ -240,8 +242,24 @@ export function attachVncClipboard(rfb, options = {}) {
           setHint("Nothing to paste — type here or use Load from Mac.");
           return;
         }
-        if (bridge.pasteToRemote(text)) {
-          setHint("Pasted into page field (clipboard). For the address bar, use Type into browser.");
+        // Prefer Playwright insert (keeps `{`/`}`). VNC keysyms are mangled by x11vnc.
+        if (typeof pasteViaApi === "function") {
+          try {
+            const ok = await pasteViaApi(text);
+            if (ok) {
+              setHint("Inserted via Camofox (braces preserved).");
+              if (targetEl) targetEl.querySelector("canvas")?.focus?.();
+              return;
+            }
+          } catch (err) {
+            setHint(`Camofox insert failed — falling back to VNC: ${err?.message || err}`);
+          }
+        }
+        if (bridge.typeToRemote(text, { selectAll: true })) {
+          setHint("Typed via VNC (may mangle braces) — click JSON field first.");
+          if (targetEl) targetEl.querySelector("canvas")?.focus?.();
+        } else if (bridge.pasteToRemote(text)) {
+          setHint("Pasted into page field (clipboard).");
           if (targetEl) targetEl.querySelector("canvas")?.focus?.();
         } else {
           setHint("VNC not connected.");
@@ -279,11 +297,30 @@ export function attachVncClipboard(rfb, options = {}) {
 
   if (ui.copyBtn) {
     const onCopyClick = () => {
-      if (bridge.requestRemoteCopy()) {
-        setHint("Requested copy — select text in Camofox first, then try again if empty.");
-      } else {
-        setHint("VNC not connected.");
-      }
+      void (async () => {
+        if (typeof copyViaApi === "function") {
+          try {
+            const text = await copyViaApi();
+            if (text?.trim()) {
+              if (ui.textarea) ui.textarea.value = text;
+              const ok = await writeLocalClipboard(text);
+              setHint(ok
+                ? "Copied from Camofox → Mac clipboard (and panel)."
+                : "Copied into panel — click Copy to Mac if needed.");
+              return;
+            }
+            setHint("Nothing selected — click the token field / select text, then try again.");
+            return;
+          } catch (err) {
+            setHint(`Camofox copy failed — falling back to VNC: ${err?.message || err}`);
+          }
+        }
+        if (bridge.requestRemoteCopy()) {
+          setHint("Requested copy — select text in Camofox first, then try again if empty.");
+        } else {
+          setHint("VNC not connected.");
+        }
+      })();
     };
     ui.copyBtn.addEventListener("click", onCopyClick);
     cleanups.push(() => ui.copyBtn.removeEventListener("click", onCopyClick));

@@ -202,7 +202,9 @@ export function buildNylasSendSummary(args: Record<string, unknown>): Record<str
     cc: args.cc,
     bcc: args.bcc,
     subject: readString(args.subject),
-    bodyPreview: body.slice(0, 400),
+    // Full body for owner 1:1 approval (Slack/Telegram). Do not truncate —
+    // owners need to review the exact outbound email before approving.
+    body,
   };
 }
 

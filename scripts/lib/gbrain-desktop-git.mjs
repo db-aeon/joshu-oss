@@ -223,7 +223,37 @@ export async function ensureGbrainGitRepo(desktopOrUsersRoot) {
 export const ensureDesktopGitRepo = ensureGbrainGitRepo;
 
 /**
- * Stage and commit under `files/users/` so the next sync_brain sees Desktop changes.
+ * Stage everything and commit if anything is staged, in a single repo root.
+ *
+ * @param {string} gitRoot
+ * @returns {Promise<boolean>} true when a commit was created
+ */
+async function commitAllInGbrainRepo(gitRoot) {
+  await assertOwnGitRoot(gitRoot);
+  await runGit(gitRoot, ["add", "-A"]);
+  try {
+    await runGit(gitRoot, ["diff", "--cached", "--quiet"]);
+    return false; // nothing staged
+  } catch (err) {
+    if (gitExitCode(err) !== 1) throw err;
+  }
+  const stamp = new Date().toISOString();
+  await runGit(gitRoot, ["commit", "-m", `gbrain desktop index ${stamp}`]);
+  return true;
+}
+
+/**
+ * Stage and commit markdown so the next sync_brain sees Desktop changes.
+ *
+ * gbrain resolves every source to its nearest ancestor git repo. In gbrain
+ * 0.40+ federated mode the Desktop is its own repo (see
+ * `ensureDesktopFederatedGit`), so BOTH the default source
+ * (`sync.repo_path` = `<Desktop>/joshu's files`) and the federated Desktop
+ * source read `Desktop/.git`. New markdown must therefore be committed *inside*
+ * the Desktop repo — committing only the outer `files/users/` repo records a
+ * gitlink bump that gbrain never reads, leaving fresh files unindexed. We commit
+ * in the Desktop repo (when present) and also keep the outer `files/users/` repo
+ * current for legacy layouts and its gitlink pointer.
  *
  * @param {string} desktopRoot
  * @returns {Promise<{ ok: boolean; committed: boolean; error?: string }>}
@@ -233,26 +263,33 @@ export async function stageDesktopForGbrainSync(desktopRoot) {
     return { ok: false, committed: false, error: "desktop root unset" };
   }
 
-  const gitRoot = resolveGbrainGitRoot(desktopRoot);
-  if (!gitRoot) {
+  const usersRoot = resolveGbrainGitRoot(desktopRoot);
+  if (!usersRoot) {
     return { ok: false, committed: false, error: "files/users root could not be resolved" };
   }
 
   try {
-    assertSafeGbrainGitRoot(gitRoot);
+    assertSafeGbrainGitRoot(usersRoot);
     await ensureGbrainGitRepo(desktopRoot);
     await ensureDesktopFederatedGit(desktopRoot);
-    await assertOwnGitRoot(gitRoot);
-    await runGit(gitRoot, ["add", "-A"]);
-    try {
-      await runGit(gitRoot, ["diff", "--cached", "--quiet"]);
-      return { ok: true, committed: false };
-    } catch (err) {
-      if (gitExitCode(err) !== 1) throw err;
+
+    // Ordered set of repos gbrain may read: federated Desktop repo first (it
+    // owns the indexed markdown), then the outer files/users repo.
+    const desktop = path.resolve(desktopRoot);
+    /** @type {string[]} */
+    const commitRoots = [];
+    if (path.basename(desktop) === "Desktop" && (await hasValidOwnGitRepo(desktop))) {
+      commitRoots.push(desktop);
     }
-    const stamp = new Date().toISOString();
-    await runGit(gitRoot, ["commit", "-m", `gbrain desktop index ${stamp}`]);
-    return { ok: true, committed: true };
+    if (!commitRoots.includes(usersRoot)) {
+      commitRoots.push(usersRoot);
+    }
+
+    let committed = false;
+    for (const root of commitRoots) {
+      if (await commitAllInGbrainRepo(root)) committed = true;
+    }
+    return { ok: true, committed };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return { ok: false, committed: false, error: message };
