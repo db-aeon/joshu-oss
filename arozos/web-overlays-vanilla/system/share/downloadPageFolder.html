@@ -1,0 +1,464 @@
+<!DOCTYPE HTML>
+<html>
+    <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <title>{{filename}} - {{hostname}} File Share</title>
+    <meta name="description" content="Folder shared from  {{hostname}}">
+
+      <!-- Facebook Meta Tags -->
+      <meta property="og:url" content="{{requri}}">
+      <meta property="og:type" content="website">
+      <meta property="og:title" content="{{filename}}">
+      <meta property="og:description" content="File shared from {{hostname}}">
+      <meta property="og:image" content="{{opg_image}}">
+    
+      <!-- Twitter Meta Tags -->
+      <meta name="twitter:card" content="summary_large_image">
+      <meta property="twitter:domain" content="{{host}}">
+      <meta property="twitter:url" content="{{requri}}">
+      <meta name="twitter:title" content="{{filename}}">
+      <meta name="twitter:description" content="File shared from {{hostname}}">
+      <meta name="twitter:image" content="{{opg_image}}">
+      
+    <link rel="stylesheet" href="../../script/skeleton/offline.css">
+    <link rel="stylesheet" href="../../script/skeleton/normalize.css">
+    <link rel="stylesheet" href="../../script/skeleton/skeleton.css">
+    <script type="application/javascript" src="../../script/jquery.min.js"></script>
+    <link rel="icon" type="image/png" href="../../img/public/share/share.png" />
+    <style>
+
+        body{
+            padding-bottom: 100px;
+        }
+        .bar{
+            height: 12px;
+            background-color: #1a1a1a;
+            width: 100%;
+        }
+
+        .footer{
+            position: fixed;
+            bottom: 0px;
+            height: 50px;
+            width: 100%;
+            background-color: #1a1a1a;
+            padding: 20px;
+            color: white;
+        }
+
+        .fileobject{
+          cursor: pointer;
+        }
+        .fileobject:hover{
+          background-color: #f5f5f5;
+        }
+
+        .fileobject.active{
+          background-color: #f5f5f5ee;
+        }
+
+        .noselect{
+          -webkit-touch-callout: none; /* iOS Safari */
+          -webkit-user-select: none; /* Safari */
+          -khtml-user-select: none; /* Konqueror HTML */
+          -moz-user-select: none; /* Old versions of Firefox */
+          -ms-user-select: none; /* Internet Explorer/Edge */
+          user-select: none;
+        }
+
+        #filelistWrapper{
+          position: relative;
+          padding: 12px;
+          border-top: 4px solid #ffe46c;
+          -webkit-box-shadow: 11px 9px 23px 0px rgba(54,54,54,0.31); 
+          box-shadow: 11px 9px 23px 0px rgba(54,54,54,0.31);
+        }
+
+        td{
+          word-break: break-all;
+        }
+    </style>
+    </head>
+    <body>
+        <div class="bar"></div>
+        <br>
+        <div class="container">
+            <h5>{{hostname}} File Sharing</h5>
+            <h3>{{filename}}</h3>
+            <div class="row">
+                <div class="one-half column">
+                    <table class="u-full-width">
+                        <thead>
+                          <tr>
+                            <th>Property</th>
+                            <th>Value</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr>
+                            <td>MIME Type</td>
+                            <td>{{mime}}</td>
+                          </tr>
+                          <tr>
+                            <td>Folder Size</td>
+                            <td id="folderSizeValue">{{size}}</td>
+                          </tr>
+                          <tr>
+                            <td>File Counts</td>
+                            <td id="fileCountValue">{{filecount}}</td>
+                          </tr>
+                          <tr>
+                            <td>Last Modification Time</td>
+                            <td>{{modtime}}</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                      <a href="{{downloadurl}}" id="downloadLink"><button class="button-primary">Download All</button></a>
+                      <button id="sharebtn" onclick="share();">Share</button>
+                      <div style="margin-top: 10px;">
+                          <input type="checkbox" id="uncompressedCheck" name="uncompressed">
+                          <label for="uncompressedCheck" style="display: inline">Uncompressed</label>
+                      </div>
+                      <p style="font-size: 80%;"><b>Zipping duration depends on folder size and compression settings. Media files are best zipped without compression for faster processing.</b></p>
+                      <p>Request File ID: {{reqid}}<br>
+                      Request Timestamp: {{reqtime}}</p>
+                      <small>📂 Double click any item in the list to open or download</small>
+                      
+                      <script>
+                      document.getElementById('uncompressedCheck').addEventListener('change', function() {
+                          const downloadLink = document.getElementById('downloadLink');
+                          if (this.checked) {
+                              downloadLink.href = '{{downloadurl}}?compression_level=0';
+                          } else {
+                              downloadLink.href = '{{downloadurl}}';
+                          }
+                      });
+                      </script>
+                      
+                    
+                </div>
+                <div class="one-half column" id="filelistWrapper" style="overflow-y: auto; padding-right: 0.5em; min-height: 400px;">
+                  <table class="u-full-width">
+                    <thead>
+                      <tr>
+                        <th>Filename</th>
+                        <th>Type</th>
+                        <th>Size</th>
+                      </tr>
+                    </thead>
+                    <tbody id="folderList">
+                     
+                    </tbody>
+                  </table>
+                </div>
+            </div>
+          
+        </div>
+        <div class="footer">
+            <div class="container">
+                File sharing by <a style="color: white;" href="https://joshu.me" target="_blank" rel="noopener noreferrer">Joshu</a>
+            </div>
+        </div>
+    <script>
+      var treeFileList = {{treelist}};
+      var downloadUUID = `{{downloaduuid}}`;
+      var currentViewingRoot = ".";
+      var selectedFile = null;
+      var stats = renderFileList(treeFileList["."] || []);
+
+      // Joshu: if server-side size/count came back as 0 (GetDirctorySize quirk) but the
+      // tree list has entries, prefer totals derived from the rendered tree.
+      (function syncFolderStatsFromTree(){
+        var fileCount = 0;
+        var totalBytes = 0;
+        Object.keys(treeFileList || {}).forEach(function(key){
+          (treeFileList[key] || []).forEach(function(file){
+            if (file.IsDir) return;
+            fileCount += 1;
+            totalBytes += convertToBytes(file.Filesize);
+          });
+        });
+        var countEl = document.getElementById("fileCountValue");
+        var sizeEl = document.getElementById("folderSizeValue");
+        if (countEl && (countEl.textContent.trim() === "0" || countEl.textContent.trim() === "") && fileCount > 0){
+          countEl.textContent = String(fileCount);
+        }
+        if (sizeEl && (sizeEl.textContent.indexOf("0.00") === 0) && totalBytes > 0){
+          sizeEl.textContent = totalBytes < 1024
+            ? (totalBytes.toFixed(2) + "Bytes")
+            : ((totalBytes / 1024).toFixed(2) + "KB");
+        }
+        if (stats && (!stats.totalFileSize || stats.totalFileSize === 0) && totalBytes > 0){
+          stats.totalFileSize = totalBytes;
+        }
+      })();
+
+      // most files are already compressed media...
+      if (stats.totalFileSize > 0 && stats.totalCompressedMediaSize / stats.totalFileSize >= 0.5) {
+        document.getElementById('uncompressedCheck').checked = true;
+        const downloadLink = document.getElementById('downloadLink');
+        downloadLink.href = '{{downloadurl}}?compression_level=0';
+      }
+
+      handleWindowResize();
+      $(window).on("resize", function(e){
+        handleWindowResize();
+      });
+
+      if (location.protocol !== 'https:') {
+         document.getElementById("sharebtn").remove()
+      }
+
+      function share(){
+        let shareData = {
+          title: "{{filename}}",
+          text: '{{filename}} - File Share from {{hostname}}',
+          url: window.location.href,
+        }
+
+        navigator.share(shareData).then(() =>
+          function(){
+            //Share succ
+          }
+        ).catch((e) =>
+          function(){
+              //Share failed
+          }
+        )
+      }
+
+
+      function handleWindowResize(){
+        if (window.innerWidth < 550){
+          //Assume mobile
+          $(".footer").css("height", "20px");
+        }else{
+          $(".footer").css("height", "50px");
+        }
+      }
+      
+      function convertToBytes(sizeString) {
+        // Joshu: ArozOS GetFileDisplaySize emits "386.00Bytes" (not "B"). Stock regex
+        // only matched [KMGT]?B, threw on "Bytes", and aborted renderFileList — so files
+        // vanished from the list while folders (which skip this path) still appeared.
+        if (!sizeString || typeof sizeString !== "string") {
+          return 0;
+        }
+        sizeString = sizeString.replace(/\s+/g, '').toUpperCase();
+        // Accept B / Bytes / KB / MB / GB / TB
+        const matches = sizeString.match(/^([\d.]+)(BYTES|[KMGT]?B)$/i);
+
+        if (!matches) {
+          return 0;
+        }
+
+        const size = parseFloat(matches[1]);
+        let unit = matches[2].toUpperCase();
+        if (unit === "BYTES") {
+          unit = "B";
+        }
+
+        const units = {
+            'B': 1,
+            'KB': 1024,
+            'MB': 1024 ** 2,
+            'GB': 1024 ** 3,
+            'TB': 1024 ** 4
+        };
+
+        return Math.round(size * (units[unit] || 1));
+      }
+
+
+      function renderFileList(filelist){
+        $("#folderList").html("");
+        if (currentViewingRoot != "."){
+          $("#folderList").append(`<tr class="fileobject noselect" ondblclick="event.preventDefault(); parentdir();">
+              <td style="padding-left: 8px;" colspan="3" > ↩ Back</td>
+            </tr>`);
+          
+        }
+
+        // Add a div for thumbnail preview
+        if (!$("#thumbnail-preview").length) {
+          $("body").append(`
+            <div id="thumbnail-preview" style="
+              display: none;
+              position: fixed;
+              background: white;
+              padding: 5px;
+              border: 1px solid #ccc;
+              border-radius: 5px;
+              box-shadow: 0 0 10px rgba(0,0,0,0.2);
+              z-index: 1000;
+            ">
+              <img style="max-width: 200px; max-height: 200px;" />
+            </div>
+          `);
+        }
+
+        var totalCompressedMediaSize = 0;
+        var totalFileSize = 0;
+        filelist.forEach(file => {
+          var filetype = "File";
+          var displayName = "";
+          var isImage = false;
+          
+          if (file.IsDir == true){
+            //Folder
+            filetype = "Folder";
+            displayName = "📁 " + file.Filename;
+          }else{
+            //File
+            totalFileSize += convertToBytes(file.Filesize);
+            var ext = file.Filename.split(".").pop();
+            var icon = "📄"
+            ext = ext.toLowerCase();
+            if (ext == "mp3" || ext == "wav" || ext == "flac" || ext == "alac" || ext == "wma" || ext == "aac" || ext == "ogg" || ext == ""){
+              icon = "🎵";
+              if (ext != "wav") {
+                totalCompressedMediaSize += convertToBytes(file.Filesize);
+              }
+            }else if (ext == "mp4" || ext == "avi" || ext == "webm" || ext == "mkv" || ext == "wmv" || ext == "mov" || ext == "rmvb" || ext == "rm"){
+              icon = "🎞️";
+              totalCompressedMediaSize += convertToBytes(file.Filesize);
+            }else if (ext == "png" || ext == "jpeg" || ext == "jpg" || ext == "bmp" || ext == "gif" || ext == "webp" || ext == "avif"){
+              icon = "🖼️";
+              isImage = true;
+              if (ext != "bmp") {
+                totalCompressedMediaSize += convertToBytes(file.Filesize);
+              }
+            }
+
+            displayName =  icon + " " + file.Filename;
+          }
+
+          var filenameLinker = `<a href="../../share/download/${downloadUUID}/${file.RelPath}">${displayName}</a>`;
+          if (file.IsDir == true){
+            filenameLinker = `${displayName}`;
+          }
+
+          var tr = $(`<tr class="fileobject noselect" onclick="highlightThis(this);" filename="${file.Filename}" relpath="${file.RelPath}" type="${filetype.toLocaleLowerCase()}" ondblclick="event.preventDefault(); openThis(this);">
+              <td style="padding-left: 8px;">${filenameLinker}</td>
+              <td>${filetype}</td>
+              <td>${file.Filesize}</td>
+            </tr>`);
+
+          // Add hover event for images
+          if (isImage) {
+            // Store the download URL as a data attribute
+            tr.attr('data-download-url', `../../share/download/${downloadUUID}/${file.RelPath}`);
+
+            // Add hover events to the entire row
+            tr.hover(
+              function(e) { // mouseenter
+                var imgUrl = $(this).attr('data-download-url');
+                $("#thumbnail-preview img").attr('src', imgUrl);
+                $("#thumbnail-preview").css({
+                  display: 'block',
+                  left: e.pageX + 20,
+                  top: e.pageY + 20
+                });
+              },
+              function() { // mouseleave
+                $("#thumbnail-preview").hide();
+              }
+            );
+
+            // Update thumbnail position on mouse move over the entire row
+            tr.mousemove(function(e) {
+              $("#thumbnail-preview").css({
+                left: e.pageX + 20,
+                top: e.pageY + 20
+              });
+            });
+          }
+
+          $("#folderList").append(tr);
+        });
+
+        // Add CSS to make the entire row hoverable
+        $("<style>")
+          .prop("type", "text/css")
+          .html(`
+            .fileobject { cursor: pointer; }
+            .fileobject:hover { background-color: rgba(0,0,0,0.05); }
+          `)
+          .appendTo("head");
+
+        return {
+          totalCompressedMediaSize, totalFileSize
+        }
+      }
+
+      //Went up one level
+      function parentdir(){
+        if (currentViewingRoot == "."){
+            //Root dir. Do nothing
+            
+        }else{
+            //Subdirs. travel up
+            var dirinfo = currentViewingRoot.split("/");
+            var nextDir = ".";
+            if (currentViewingRoot.indexOf("/") < 0){
+              //Parent dir will be root
+            }else{
+              dirinfo.pop();
+              nextDir = dirinfo.join("/");
+            }
+
+            
+            //Load the filelist
+            if (treeFileList[nextDir] != undefined){
+              currentViewingRoot = nextDir;
+              renderFileList(treeFileList[nextDir]);
+            }else{
+              //Back to root on error
+              currentViewingRoot = ".";
+              renderFileList(treeFileList["."]);
+            }
+        }
+      }
+
+      function openThis(object){
+        var targetFilename = $(object).attr("filename");
+        var targetType = $(object).attr("type");
+        var targetRelPath = $(object).attr("relpath");
+        
+        if (targetType == "folder"){
+          //Folder. Build a new root file list for this
+          var targetRenderList = treeFileList[targetRelPath];
+          if (targetRenderList != undefined){
+            currentViewingRoot = targetRelPath;
+            renderFileList(targetRenderList);
+          }
+          
+        }else{
+          //File. Download it
+          window.open("../../share/download/" + downloadUUID + "/" + targetRelPath)
+        }
+      }
+
+      resizeDOMElement();
+      function resizeDOMElement(){
+        $("#filelistWrapper").css({
+          height: window.innerHeight - $("#filelistWrapper").offset().top - 100,
+        })
+      }
+
+      function highlightThis(object){
+          $(".fileobject.active").removeClass("active");
+          $(object).addClass("active");
+          $("#activeFilename").text(" (" + $(object).attr("filename") +")");
+
+          //Update the properties values
+          selectedFile = $(object);
+      }
+
+      $(window).on("resize", function(){
+        resizeDOMElement();
+      })
+    </script>
+    </body>
+</html>

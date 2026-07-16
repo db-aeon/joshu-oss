@@ -32,9 +32,13 @@ OSS default overlays (no proprietary brand pack):
 | [`arozos/web-overlays-vanilla/joshu-auth-pages.css`](../../arozos/web-overlays-vanilla/joshu-auth-pages.css) | Login / setup styling (Vanilla); copied to `script/joshu-auth-pages.css` (pre-auth public path) |
 | [`arozos/web-overlays-vanilla/aroz-taskbar-focus.js`](../../arozos/web-overlays-vanilla/aroz-taskbar-focus.js) | Taskbar focus sync |
 | [`arozos/web-overlays-vanilla/aroz-jchat-tray.js`](../../arozos/web-overlays-vanilla/aroz-jchat-tray.js) | jChat tray hook |
-| [`scripts/apply_arozos_joshu_theme.py`](../../scripts/apply_arozos_joshu_theme.py) | Applies overlays at dev/build time |
+| [`arozos/web-overlays-vanilla/SystemAO/file_system/file_share.html`](../../arozos/web-overlays-vanilla/SystemAO/file_system/file_share.html) | Share dialog (float window; link + permissions; remove/enable toggle) |
+| [`arozos/web-overlays-vanilla/system/share/`](../../arozos/web-overlays-vanilla/system/share/) | Public `/share/*` pages (folder list fix; Joshu footer → joshu.me) |
+| [`scripts/apply_arozos_joshu_theme.py`](../../scripts/apply_arozos_joshu_theme.py) | Applies overlays at dev/build time (also patches File Manager Share → float window) |
 
 Set `JOSHU_DESIGN_PACK` when building with a **private** design pack checkout (fleet branded chrome). OSS builds omit it and use Vanilla only.
+
+**File Share tip:** After changing share overlays, re-run theme apply and **close File Manager** before reopening (float iframes keep stale JS until closed).
 
 When developing from a full local folder layout, `npm run dev:arozos` in the private monorepo auto-detects a sibling `joshu-design` checkout if present. Self-hosters without the design pack always get Vanilla — see [`../platform-architecture.md`](../platform-architecture.md) for app/platform docs (separate from shell branding).
 

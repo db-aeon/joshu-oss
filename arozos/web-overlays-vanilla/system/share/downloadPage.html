@@ -1,0 +1,137 @@
+<!DOCTYPE HTML>
+<html>
+    <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <title>{{filename}} - {{hostname}} File Share</title>
+
+    <meta name="description" content="File shared from  {{hostname}}">
+
+    <!-- Facebook Meta Tags -->
+    <meta property="og:url" content="{{requri}}">
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="{{filename}}">
+    <meta property="og:description" content="File shared from {{hostname}}">
+    <meta property="og:image" content="{{opg_image}}">
+  
+    <!-- Twitter Meta Tags -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta property="twitter:domain" content="{{host}}">
+    <meta property="twitter:url" content="{{requri}}">
+    <meta name="twitter:title" content="{{filename}}">
+    <meta name="twitter:description" content="File shared from {{hostname}}">
+    <meta name="twitter:image" content="{{opg_image}}">
+
+
+    <link rel="stylesheet" href="../../script/skeleton/offline.css">
+    <link rel="stylesheet" href="../../script/skeleton/normalize.css">
+    <link rel="stylesheet" href="../../script/skeleton/skeleton.css">
+    <script type="application/javascript" src="../../script/jquery.min.js"></script>
+    <link rel="icon" type="image/png" href="../../img/public/share/share.png" />
+    <style>
+
+        body{
+            padding-bottom: 100px;
+        }
+        .bar{
+            height: 12px;
+            background-color: #1a1a1a;
+            width: 100%;
+        }
+
+        .footer{
+            position: fixed;
+            bottom: 0px;
+            height: 50px;
+            width: 100%;
+            background-color: #1a1a1a;
+            padding: 20px;
+            color: white;
+        }
+
+        .filename{
+          word-break: break-word;
+        }
+    </style>
+    </head>
+    <body>
+        <div class="bar"></div>
+        <br>
+        <div class="container">
+            <h5>{{hostname}} File Sharing</h5>
+            <h3 class="filename">{{filename}}</h3>
+            <div class="row">
+                <div class="one-half column">
+                    <table class="u-full-width">
+                        <thead>
+                          <tr>
+                            <th>Property</th>
+                            <th>Value</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr>
+                            <td>MIME Type</td>
+                            <td>{{mime}}</td>
+                          </tr>
+                          <tr>
+                            <td>File Extension</td>
+                            <td>{{ext}}</td>
+                          </tr>
+                          <tr>
+                            <td>File Size</td>
+                            <td>{{size}}</td>
+                          </tr>
+                          <tr>
+                            <td>Last Modification Time</td>
+                            <td>{{modtime}}</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    <a href="{{downloadurl}}"><button class="button-primary">Download</button></a>
+                    <button id="sharebtn" onclick="share();">Share</button>
+                    <br><br>
+                    <p>Request File ID: {{reqid}}</p>
+                    <p>Request Timestamp: {{reqtime}}</p>
+                </div>
+                <div class="one-half column">
+                    {{previewer}}
+                    <!-- <img style="pointer-events: none;" src=""> -->
+                </div>
+            </div>
+           
+        </div>
+                <div class="footer">
+            <div class="container">
+                File sharing by <a style="color: white;" href="https://joshu.me" target="_blank" rel="noopener noreferrer">Joshu</a>
+            </div>
+        </div>
+      
+
+        
+    <script>
+      if (location.protocol !== 'https:') {
+         document.getElementById("sharebtn").remove()
+      }
+
+      function share(){
+        let shareData = {
+          title: "{{filename}}",
+          text: '{{filename}} - File Share from {{hostname}}',
+          url: window.location.href,
+        }
+
+        navigator.share(shareData).then(() =>
+          function(){
+            //Share succ
+          }
+        ).catch((e) =>
+          function(){
+              //Share failed
+          }
+        )
+      }
+      
+    </script>
+    </body>
+</html>
