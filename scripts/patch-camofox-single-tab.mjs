@@ -371,14 +371,44 @@ const launchOptionsPatch = `      const __hitlVp = __hitlViewportFromEnv();
       });`;
 
 if (!source.includes("window: [__hitlVp.width, __hitlVp.height]")) {
-  const launchStart = source.indexOf("      const options = await launchOptions({");
-  const vdMarker = launchStart >= 0 ? source.indexOf("virtual_display: vdDisplay,", launchStart) : -1;
-  const launchEnd = vdMarker >= 0 ? source.indexOf("});", vdMarker) : -1;
-  if (launchStart >= 0 && vdMarker > launchStart && launchEnd > vdMarker) {
-    source =
-      source.slice(0, launchStart) + launchOptionsPatch + source.slice(launchEnd + "});".length);
+  // Prefer a surgical insert after `virtual_display` — full-block replace is fragile on
+  // Camofox 1.6 when firefox_user_prefs (or other keys) sit between vdDisplay and `});`,
+  // and a wrong closer can truncate the launch function (browser stays null → newContext crash).
+  const start = source.indexOf("const options = await launchOptions({");
+  const vdLine = start >= 0 ? source.indexOf("virtual_display: vdDisplay,", start) : -1;
+  if (start >= 0 && vdLine > start) {
+    const optLine = source.lastIndexOf("\n", start) + 1;
+    let next = source;
+    if (!next.slice(Math.max(0, optLine - 120), optLine).includes("__hitlVp = __hitlViewportFromEnv()")) {
+      next = next.slice(0, optLine) + "      const __hitlVp = __hitlViewportFromEnv();\n" + next.slice(optLine);
+    }
+    const vd2 = next.indexOf("virtual_display: vdDisplay,", next.indexOf("const options = await launchOptions({"));
+    const end2 = next.indexOf("\n", vd2);
+    next =
+      next.slice(0, end2) +
+      "\n        window: [__hitlVp.width, __hitlVp.height],\n        ...__hitlFfLaunchOverrides()," +
+      next.slice(end2);
+    source = next;
+    console.log(`[joshu] inserted launchOptions window size via virtual_display line in ${target}`);
   } else {
-    console.warn(`[joshu] launchOptions window-size patch point not found in ${target}; skipping`);
+    // Legacy full-block replace (older Camofox layouts without prefs between vd and closer).
+    const launchStart = source.indexOf("      const options = await launchOptions({");
+    const vdMarker = launchStart >= 0 ? source.indexOf("virtual_display: vdDisplay,", launchStart) : -1;
+    const launchEnd = vdMarker >= 0 ? source.indexOf("\n      });", vdMarker) : -1;
+    if (
+      launchStart >= 0 &&
+      vdMarker > launchStart &&
+      launchEnd > vdMarker &&
+      source.includes("await firefox.launch(options)", launchEnd)
+    ) {
+      source =
+        source.slice(0, launchStart) +
+        launchOptionsPatch +
+        source.slice(launchEnd + "\n      });".length);
+      console.log(`[joshu] replaced launchOptions block with window size in ${target}`);
+    } else {
+      console.warn(`[joshu] launchOptions window-size patch point not found in ${target}; skipping`);
+    }
   }
 } else if (!source.includes("__hitlFfLaunchOverrides()")) {
   source = source.replace(

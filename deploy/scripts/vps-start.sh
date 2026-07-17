@@ -560,8 +560,18 @@ repair_camfox_server_js() {
     sed -i 's/}););/});/g' "$f"
   fi
   local patch_script="${APP_DIR}/scripts/patch-camofox-single-tab.mjs"
-  if [[ -f "${patch_script}" ]] && ! grep -q 'HITL_SELECTION_ROUTE' "$f" 2>/dev/null; then
-    echo "[vps-start] applying Camofox HITL patch (selection / reaper / keepalive)" >&2
+  # Re-apply when HITL markers are missing OR when launchOptions still lack window size
+  # (Camofox 1.6 fingerprints ~1920x1080 without window: — jWeb looks too wide).
+  local needs_hitl_patch=0
+  if [[ -f "${patch_script}" ]]; then
+    if ! grep -q 'HITL_SELECTION_ROUTE' "$f" 2>/dev/null; then
+      needs_hitl_patch=1
+    elif ! grep -q 'window: \[__hitlVp.width, __hitlVp.height\]' "$f" 2>/dev/null; then
+      needs_hitl_patch=1
+    fi
+  fi
+  if [[ "${needs_hitl_patch}" -eq 1 ]]; then
+    echo "[vps-start] applying Camofox HITL patch (selection / reaper / keepalive / window size)" >&2
     node "${patch_script}" "$f" || echo "[vps-start] WARN: Camofox HITL patch failed" >&2
   fi
 }
