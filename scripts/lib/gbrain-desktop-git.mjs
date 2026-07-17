@@ -4,7 +4,7 @@
  * joshu app repo or per-Desktop nested repos).
  */
 import { execFile } from "node:child_process";
-import { existsSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
 
@@ -16,6 +16,18 @@ const GIT_IDENTITY = {
   GIT_COMMITTER_NAME: "Joshu gbrain",
   GIT_COMMITTER_EMAIL: "gbrain@joshu.local",
 };
+
+/**
+ * Desktop files that must never enter File Brain.
+ * HERMES.md is Joshu-managed Hermes project context (no YAML frontmatter) —
+ * gbrain sync treats it as a failed page and can hang boot on `sync --all`.
+ */
+export const GBRAIN_DESKTOP_EXCLUDE_ENTRIES = [
+  "HERMES.md",
+  "SOUL.md",
+];
+
+const GBRAIN_GITIGNORE_MARKER = "# joshu-managed: gbrain-desktop-excludes";
 
 /** @param {unknown} err */
 function gitExitCode(err) {
@@ -163,6 +175,76 @@ async function ensureBaselineCommit(root) {
 }
 
 /**
+ * Keep Desktop/.gitignore excluding Joshu-managed Hermes context files from
+ * gbrain's federated Desktop source. Idempotent; preserves other entries.
+ *
+ * @param {string} desktopRoot
+ * @returns {boolean} true when the file was created or changed
+ */
+export function ensureDesktopGbrainGitignore(desktopRoot) {
+  const desktop = path.resolve(desktopRoot);
+  if (path.basename(desktop) !== "Desktop") return false;
+  mkdirSync(desktop, { recursive: true });
+
+  const gitignorePath = path.join(desktop, ".gitignore");
+  let existing = "";
+  if (existsSync(gitignorePath)) {
+    try {
+      existing = readFileSync(gitignorePath, "utf8");
+    } catch {
+      existing = "";
+    }
+  }
+
+  const lines = existing.split(/\r?\n/);
+  const have = new Set(lines.map((l) => l.trim()).filter(Boolean));
+  /** @type {string[]} */
+  const toAdd = [];
+  for (const entry of GBRAIN_DESKTOP_EXCLUDE_ENTRIES) {
+    if (!have.has(entry)) toAdd.push(entry);
+  }
+  if (toAdd.length === 0 && have.has(GBRAIN_GITIGNORE_MARKER)) return false;
+
+  let next = existing;
+  if (next && !next.endsWith("\n")) next += "\n";
+  if (!have.has(GBRAIN_GITIGNORE_MARKER)) {
+    if (next && !next.endsWith("\n\n")) next += next.endsWith("\n") ? "\n" : "\n\n";
+    next += `${GBRAIN_GITIGNORE_MARKER}\n`;
+  }
+  for (const entry of toAdd) {
+    next += `${entry}\n`;
+  }
+  writeFileSync(gitignorePath, next, "utf8");
+  return true;
+}
+
+/**
+ * Drop excluded Desktop files from the git index (leave on disk).
+ * Already-tracked HERMES.md keeps being synced until this runs.
+ *
+ * @param {string} desktopRoot
+ * @returns {Promise<boolean>} true when the index changed
+ */
+async function untrackDesktopGbrainExcludes(desktopRoot) {
+  const desktop = path.resolve(desktopRoot);
+  if (path.basename(desktop) !== "Desktop") return false;
+  if (!(await hasValidOwnGitRepo(desktop))) return false;
+
+  let changed = false;
+  for (const entry of GBRAIN_DESKTOP_EXCLUDE_ENTRIES) {
+    try {
+      const { stdout } = await runGit(desktop, ["ls-files", "--", entry]);
+      if (!stdout.trim()) continue;
+      await runGit(desktop, ["rm", "--cached", "-q", "--", entry]);
+      changed = true;
+    } catch {
+      /* not tracked or already removed */
+    }
+  }
+  return changed;
+}
+
+/**
  * gbrain 0.40+ federated sources require .git at the Desktop path passed to sync_brain.
  *
  * @param {string} desktopRoot
@@ -171,11 +253,16 @@ async function ensureDesktopFederatedGit(desktopRoot) {
   const desktop = path.resolve(desktopRoot);
   if (path.basename(desktop) !== "Desktop") return;
 
+  ensureDesktopGbrainGitignore(desktop);
   await repairBrokenGitRoot(desktop);
-  if (await hasValidOwnGitRepo(desktop)) return;
+  if (await hasValidOwnGitRepo(desktop)) {
+    await untrackDesktopGbrainExcludes(desktop);
+    return;
+  }
 
   console.warn(`[gbrain-desktop-git] initializing federated git at ${desktop}`);
   await runGit(desktop, ["init", "-q"]);
+  ensureDesktopGbrainGitignore(desktop);
   await ensureBaselineCommit(desktop);
 }
 
@@ -276,6 +363,10 @@ export async function stageDesktopForGbrainSync(desktopRoot) {
     // Ordered set of repos gbrain may read: federated Desktop repo first (it
     // owns the indexed markdown), then the outer files/users repo.
     const desktop = path.resolve(desktopRoot);
+    if (path.basename(desktop) === "Desktop") {
+      ensureDesktopGbrainGitignore(desktop);
+      await untrackDesktopGbrainExcludes(desktop);
+    }
     /** @type {string[]} */
     const commitRoots = [];
     if (path.basename(desktop) === "Desktop" && (await hasValidOwnGitRepo(desktop))) {

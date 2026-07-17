@@ -195,7 +195,9 @@ if [[ "${quick_boot}" != "true" ]]; then
   fi
 
   echo "[gbrain] initial sync + embed (all registered sources)"
-  run_gbrain sync --apply --no-pull --all --yes 2>>"${GBRAIN_LOG_FILE}" || true
+  # --skip-failed: do not block boot when a previously recorded bad file (e.g. HERMES.md)
+  # is still in the failure ledger. Excludes are enforced via Desktop/.gitignore.
+  run_gbrain sync --apply --no-pull --all --yes --skip-failed 2>>"${GBRAIN_LOG_FILE}" || true
   run_gbrain embed --stale 2>>"${GBRAIN_LOG_FILE}" || true
 fi
 

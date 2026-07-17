@@ -20,7 +20,7 @@ metadata:
 Use **gbrain** (read-only MCP tools from the `gbrain` server) when the user asks about:
 
 - Files on their **Desktop** (including **joshu's files**)
-- Journals, research notes, uploads, PDF extracts (sibling `.md` next to PDFs), or anything saved as files
+- Journals, research notes, uploads, PDF extracts / `.txt` wraps (sibling `.md` next to source files), or anything saved as files
 - "What did I write about X?" when the answer should come from documents
 
 Use **Hindsight memory** (Hermes memory provider) when the user asks about:
@@ -89,7 +89,11 @@ Users can drop **text PDFs** anywhere on the **ArozOS Desktop** (`JOSHU_DESKTOP_
 - Scanned/image PDFs may fail ingest; suggest OCR or manual markdown if extraction errors.
 - File Brain shows an activity pill while extract/reindex is running.
 
-Read **`FILING.md`** and **`docs/executive-assistant.md#gtd-workspace`** before creating new pages. Connector layout and APIs: Joshu **`docs/connectors.md`**. PDF ingest details: **`docs/file-brain.md`** (PDF text extraction section).
+### Plain text (.txt)
+
+Users can drop **`.txt`** files anywhere on the Desktop the same way. Joshu wraps them to a sibling `.md` (`notes.txt` → `notes.md`; if taken, `notes.txt.md`). The `.txt` stays in place. gbrain sync still only imports markdown — the wrap is what makes text files searchable.
+
+Read **`FILING.md`** and **`docs/executive-assistant.md#gtd-workspace`** before creating new pages. Connector layout and APIs: Joshu **`docs/connectors.md`**. PDF / TXT ingest details: **`docs/file-brain.md`**.
 
 ### Linking for recall (EA projects)
 

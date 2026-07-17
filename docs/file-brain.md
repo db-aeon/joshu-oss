@@ -63,7 +63,7 @@ ${AROZ_DATA}/files/users/<user>/Desktop/
 └── *.shortcut                 ← skipped where possible
 ```
 
-Common subfolders agents may create: `inbox/`, `journals/`, `research/`, `uploads/`, `connectors/` (path prefix drives gbrain page type after sync). Synced mail/calendar mirrors live under `connectors/` — see [Connector mail in gbrain](#connector-mail-and-calendar-gbrain) and [`docs/connectors.md`](connectors.md). **PDFs** anywhere on the ArozOS Desktop auto-extract to sibling markdown — see [PDF text extraction](#pdf-text-extraction).
+Common subfolders agents may create: `inbox/`, `journals/`, `research/`, `uploads/`, `connectors/` (path prefix drives gbrain page type after sync). Synced mail/calendar mirrors live under `connectors/` — see [Connector mail in gbrain](#connector-mail-and-calendar-gbrain) and [`docs/connectors.md`](connectors.md). **PDFs** and **plain `.txt`** anywhere on the ArozOS Desktop auto-wrap to sibling markdown — see [PDF text extraction](#pdf-text-extraction) and [Plain text (.txt) wrapping](#plain-text-txt-wrapping).
 
 **Local dev example:**
 
@@ -155,6 +155,8 @@ Boot [`scripts/start-gbrain.sh`](../scripts/start-gbrain.sh):
 3. **`sync --apply --all`** + **`embed --stale`** across registered sources.
 4. **Git at `files/users/`** — [`scripts/lib/ensure-gbrain-git.sh`](../scripts/lib/ensure-gbrain-git.sh) initializes a repo + baseline commit at **`${AROZ_DATA}/files/users/`** (gbrain sync requires committed user data). Before each debounced `sync_brain`, [`scripts/lib/gbrain-desktop-git.mjs`](../scripts/lib/gbrain-desktop-git.mjs) runs **`git add -A`** there (covers all user Desktops, `joshu's files`, connectors, `.joshu/` metadata). **Never** the joshu app repo root — local dev data stays under `.local/` (gitignored). Optional override: `JOSHU_GBRAIN_GIT_ROOT`.
 
+   **Excluded from File Brain:** Desktop `HERMES.md` / `SOUL.md` (Joshu-managed Hermes context, not notes). Staging writes them into `Desktop/.gitignore` and untracks them so gbrain never indexes them. Without that, sync can fail on missing YAML frontmatter and stall local boot.
+
 Pages outside `joshu's files` (e.g. `Desktop/Investors/foo.md`) appear with slugs like `investors/foo` and `source_id` `j-<user-slug>` (not `default`).
 
 ### Search vs query (important)
@@ -187,7 +189,7 @@ ${JOSHU_FILES_ROOT}/journals/2026-05-24-slug.md
 ```
 
 - **Path is identity** — folder prefix (`journals/`, `research/`, …) drives gbrain page type after sync; optional YAML frontmatter (`type`, `date`) is for humans but **path wins** for classification.
-- Use **`.md`** for journals, research, and inbox (default sync imports `.md`/`.mdx` only). **PDFs** are not synced directly — place them anywhere under `JOSHU_DESKTOP_ROOT` for automatic text extraction to a sibling `.md` (see [PDF text extraction](#pdf-text-extraction)).
+- Use **`.md`** for journals, research, and inbox (default sync imports `.md`/`.mdx` only). **PDFs** and **`.txt`** are not synced directly — place them anywhere under `JOSHU_DESKTOP_ROOT` for automatic wrap to a sibling `.md` (see [PDF text extraction](#pdf-text-extraction) and [Plain text (.txt) wrapping](#plain-text-txt-wrapping)).
 - **Do not** write to macOS `~/Desktop` or `Desktop/journals/` at the ArozOS Desktop root.
 - **Do not** prefix paths with `joshu's files/` when the path is already inside that folder.
 
@@ -233,7 +235,31 @@ That includes folders outside `joshu's files` (same scope as federated gbrain in
 
 **Limits:** text-based PDFs only today (no OCR for scanned/image PDFs). Skip dirs: hidden folders (`.git`, `.raw`, …).
 
-**File Brain activity:** While extract or reindex is running, `GET /activity` (and `/health` → `activity`, `/joshu/api/brain/status` → `activity`) reports busy state. The File Brain desktop app shows a pulsing status pill.
+**File Brain activity:** While extract/wrap or reindex is running, `GET /activity` (and `/health` → `activity`, `/joshu/api/brain/status` → `activity`) reports busy state (`pdf_ingest`, `txt_ingest`, `reindex`). The File Brain desktop app shows a pulsing status pill.
+
+### Plain text (.txt) wrapping
+
+Drop **`.txt`** files anywhere under the ArozOS Desktop:
+
+| On disk | Role |
+|---------|------|
+| `…/notes.txt` | Original — stays where the user/agent filed it |
+| `…/notes.md` | Wrapped text (preferred sidecar name when free) |
+| `…/notes.txt.md` | Used when `notes.md` already exists and is not this TXT's wrap |
+
+gbrain sync still imports **`.md`/`.mdx` only** — Joshu wraps `.txt` → sibling markdown (no LLM), leaves the `.txt` in place, and triggers the normal reindex.
+
+**Flow:** recursive fs watch on `JOSHU_DESKTOP_ROOT` (~2.5s debounce) + 120s poll → [`scripts/ingest-txt-kb.py`](../scripts/ingest-txt-kb.py) via [`scripts/lib/kb-txt-ingest.mjs`](../scripts/lib/kb-txt-ingest.mjs) (started from [`scripts/gbrain-mcp-http-server.mjs`](../scripts/gbrain-mcp-http-server.mjs)) → sibling markdown write → existing `.md` reindex.
+
+**Collision:** Prefer `stem.md`. If that file exists and is not this TXT's sidecar (no matching `source_txt` / `txt_sha256` frontmatter), write `stem.txt.md` (then `stem.txt-2.md`, …).
+
+**Re-wrap:** When the TXT's `sha256` changes, the existing sidecar is overwritten. Unchanged hashes are skipped.
+
+**Delete:** Removing a `.txt` removes its generated sidecar on the next ingest run (watch event or 120s poll) and triggers a reindex. Only sidecars with `source_txt` + `txt_sha256` frontmatter are cleaned up — human-authored markdown is never touched.
+
+**Manual one-shot:** `npm run kb:ingest-txt` or `bash scripts/ingest-txt-kb.sh`.
+
+**Encoding:** UTF-8 (BOM-aware), then latin-1 fallback.
 
 **Legacy:** Older boxes may still have `research/kb/inbox/` and `research/kb/.raw/` from the previous drop-folder design. New ingest does not use those paths; existing `.raw` archives are left alone.
 
@@ -243,6 +269,7 @@ That includes folders outside `joshu's files` (same scope as federated gbrain in
 |---------|-----------|------------------|
 | `.md` change under Desktop | fs watch → debounced git commit + `sync_brain` | ~3s debounce |
 | PDF under `JOSHU_DESKTOP_ROOT` | extract → sibling `.md` → reindex | ~2.5s debounce + ingest |
+| `.txt` under `JOSHU_DESKTOP_ROOT` | wrap → sibling `.md` → reindex | ~2.5s debounce + ingest |
 | MCP HTTP timer | `git add -A` on `files/users/` + `sync_brain` | **`GBRAIN_REINDEX_INTERVAL_SEC`** = 900s (15m); `0` = off |
 | MCP HTTP startup | Catch-up reindex | ~8s after boot |
 | VPS boot (`vps-start.sh`) | `ensure-gbrain-indexed.sh --soft` | ~45s after stack start |
@@ -252,7 +279,7 @@ That includes folders outside `joshu's files` (same scope as federated gbrain in
 | Boot (`start-gbrain.sh`) | One-shot `sync --apply --all` + schema | Once per stack start (**skipped when `GBRAIN_BOOT_QUICK=true`** — VPS default) |
 | Manual | `POST /joshu/api/brain/reindex` | On demand |
 
-Implementation: [`scripts/lib/gbrain-desktop-git.mjs`](../scripts/lib/gbrain-desktop-git.mjs), [`scripts/lib/gbrain-mcp-bridge.mjs`](../scripts/lib/gbrain-mcp-bridge.mjs), [`scripts/lib/kb-pdf-ingest.mjs`](../scripts/lib/kb-pdf-ingest.mjs), [`scripts/ingest-pdf-kb.py`](../scripts/ingest-pdf-kb.py), [`scripts/ensure-gbrain-indexed.sh`](../scripts/ensure-gbrain-indexed.sh), [`scripts/lib/gbrain-index-health.mjs`](../scripts/lib/gbrain-index-health.mjs), [`src/connectors/scheduler.ts`](../src/connectors/scheduler.ts).
+Implementation: [`scripts/lib/gbrain-desktop-git.mjs`](../scripts/lib/gbrain-desktop-git.mjs), [`scripts/lib/gbrain-mcp-bridge.mjs`](../scripts/lib/gbrain-mcp-bridge.mjs), [`scripts/lib/kb-pdf-ingest.mjs`](../scripts/lib/kb-pdf-ingest.mjs), [`scripts/ingest-pdf-kb.py`](../scripts/ingest-pdf-kb.py), [`scripts/lib/kb-txt-ingest.mjs`](../scripts/lib/kb-txt-ingest.mjs), [`scripts/ingest-txt-kb.py`](../scripts/ingest-txt-kb.py), [`scripts/ensure-gbrain-indexed.sh`](../scripts/ensure-gbrain-indexed.sh), [`scripts/lib/gbrain-index-health.mjs`](../scripts/lib/gbrain-index-health.mjs), [`src/connectors/scheduler.ts`](../src/connectors/scheduler.ts).
 
 **VPS auto-recovery:** `deploy/scripts/vps-start.sh` runs `scripts/ensure-gbrain-indexed.sh` at **45s** (soft reindex) and **3m** (auto: soft then full sync if still empty). A **5m watchdog** (`GBRAIN_EMPTY_INDEX_WATCHDOG_SEC`, default 300) re-checks disk vs index; the MCP bridge also flags `${GBRAIN_HOME}/.joshu-gbrain-needs-full-sync` after repeated empty syncs. Full sync uses `GBRAIN_BOOT_QUICK=false` (cooldown `GBRAIN_FULL_SYNC_COOLDOWN_SEC`, default 30m).
 
@@ -456,6 +483,10 @@ npm run build:file-brain-viewer
 ```
 
 Implementation: [`src/brainApi.ts`](../src/brainApi.ts), [`src/gbrainMcpInspect.ts`](../src/gbrainMcpInspect.ts), [`scripts/lib/gbrain-mcp-rest.mjs`](../scripts/lib/gbrain-mcp-rest.mjs). Instance health includes `components.gbrain.ok`, **`indexed_ok`**, **`page_count`**, and **`disk_markdown`** when MCP HTTP is up.
+
+### Share Chat (scoped public Q&A)
+
+Public **Chat with files** (`/joshu/share-chat/:shareUuid`) queries the same File Brain index, then **filters evidence to the ArozOS share path** before answering. It does not expose Hermes tools. See [`share-chat.md`](share-chat.md).
 
 ## Local dev
 

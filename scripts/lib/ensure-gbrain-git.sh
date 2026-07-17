@@ -70,13 +70,44 @@ gbrain_git_commit_at() {
 }
 
 # gbrain federated sources use --path <Desktop>; sync requires .git at that directory.
+# Also keep Desktop/.gitignore excluding Joshu-managed Hermes context files (HERMES.md)
+# so File Brain never indexes them (no YAML frontmatter → sync failures / boot hangs).
+ensure_desktop_gbrain_gitignore() {
+  local desktop="$1"
+  local gi entry
+  [[ -n "${desktop}" && -d "${desktop}" && "$(basename "${desktop}")" == "Desktop" ]] || return 0
+  gi="${desktop}/.gitignore"
+  touch "${gi}"
+  if ! grep -qxF '# joshu-managed: gbrain-desktop-excludes' "${gi}" 2>/dev/null; then
+    # Ensure a blank line before the managed block when appending to existing content.
+    if [[ -s "${gi}" ]] && [[ "$(tail -c1 "${gi}" | wc -c)" -ne 0 ]]; then
+      printf '\n' >>"${gi}"
+    fi
+    printf '\n# joshu-managed: gbrain-desktop-excludes\n' >>"${gi}"
+  fi
+  for entry in HERMES.md SOUL.md; do
+    if ! grep -qxF "${entry}" "${gi}" 2>/dev/null; then
+      printf '%s\n' "${entry}" >>"${gi}"
+    fi
+  done
+  if git -C "${desktop}" rev-parse --git-dir >/dev/null 2>&1; then
+    for entry in HERMES.md SOUL.md; do
+      if git -C "${desktop}" ls-files --error-unmatch -- "${entry}" >/dev/null 2>&1; then
+        git -C "${desktop}" rm --cached -q -- "${entry}" 2>/dev/null || true
+      fi
+    done
+  fi
+}
+
 ensure_desktop_source_git() {
   local desktop="$1"
   [[ -n "${desktop}" && -d "${desktop}" && "$(basename "${desktop}")" == "Desktop" ]] || return 0
 
+  ensure_desktop_gbrain_gitignore "${desktop}"
   gbrain_git_repair_broken_root "${desktop}"
 
   if git -C "${desktop}" rev-parse HEAD >/dev/null 2>&1; then
+    ensure_desktop_gbrain_gitignore "${desktop}"
     return 0
   fi
 
@@ -85,6 +116,7 @@ ensure_desktop_source_git() {
     git -C "${desktop}" init -q
   fi
 
+  ensure_desktop_gbrain_gitignore "${desktop}"
   echo "[gbrain-git] creating Desktop baseline commit at ${desktop}"
   gbrain_git_commit_at "${desktop}" "gbrain Desktop sync baseline"
 }

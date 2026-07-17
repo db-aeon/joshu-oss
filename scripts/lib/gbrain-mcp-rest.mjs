@@ -37,7 +37,7 @@ function json(res, status, body) {
 /**
  * @param {ReturnType<typeof import('./gbrain-mcp-bridge.mjs').createGbrainMcpBridge>} bridge
  * @param {(msg: string) => void} log
- * @param {{ getPdfIngestStatus?: () => Record<string, unknown> }} [activity]
+ * @param {{ getPdfIngestStatus?: () => Record<string, unknown>, getTxtIngestStatus?: () => Record<string, unknown> }} [activity]
  */
 export function createGbrainMcpRestHandler(bridge, log, activity = {}) {
   /**
@@ -58,9 +58,10 @@ export function createGbrainMcpRestHandler(bridge, log, activity = {}) {
           }
         }
         const pdfIngest = activity.getPdfIngestStatus?.() ?? null;
+        const txtIngest = activity.getTxtIngestStatus?.() ?? null;
         const reindex = typeof bridge.getActivityStatus === "function" ? bridge.getActivityStatus() : null;
         const busy =
-          Boolean(pdfIngest?.active) || Boolean(reindex?.active);
+          Boolean(pdfIngest?.active) || Boolean(txtIngest?.active) || Boolean(reindex?.active);
         /** @type {Record<string, unknown>} */
         const body = {
           ok: true,
@@ -70,6 +71,7 @@ export function createGbrainMcpRestHandler(bridge, log, activity = {}) {
           activity: {
             busy,
             pdf_ingest: pdfIngest,
+            txt_ingest: txtIngest,
             reindex,
           },
         };
@@ -87,11 +89,14 @@ export function createGbrainMcpRestHandler(bridge, log, activity = {}) {
 
       if (req.method === "GET" && url.pathname === "/activity") {
         const pdfIngest = activity.getPdfIngestStatus?.() ?? null;
+        const txtIngest = activity.getTxtIngestStatus?.() ?? null;
         const reindex = typeof bridge.getActivityStatus === "function" ? bridge.getActivityStatus() : null;
         json(res, 200, {
           ok: true,
-          busy: Boolean(pdfIngest?.active) || Boolean(reindex?.active),
+          busy:
+            Boolean(pdfIngest?.active) || Boolean(txtIngest?.active) || Boolean(reindex?.active),
           pdf_ingest: pdfIngest,
+          txt_ingest: txtIngest,
           reindex,
           lane: "gbrain-mcp-http",
         });
