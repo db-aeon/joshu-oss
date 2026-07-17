@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex" />
+  <title>Chat with {{DISPLAY_NAME}}</title>
+  <style>
+    :root {
+      --bg: #f5f0eb;
+      --card: #ffffff;
+      --ink: #0d0d0d;
+      --muted: rgba(13, 13, 13, 0.62);
+      --line: rgba(13, 13, 13, 0.14);
+      --accent: #0057ff;
+      --user-bg: #e8eefc;
+      --bot-bg: #fff;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Work Sans", "Helvetica Neue", Arial, sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+      display: flex;
+      flex-direction: column;
+    }
+    header {
+      padding: 16px 20px 12px;
+      border-bottom: 1px solid var(--line);
+      background: var(--card);
+    }
+    header h1 {
+      margin: 0 0 4px;
+      font-size: 18px;
+      font-weight: 600;
+    }
+    header .meta {
+      font-size: 13px;
+      color: var(--muted);
+    }
+    .scope-banner {
+      margin: 12px 20px 0;
+      padding: 10px 12px;
+      background: #fff8e8;
+      border: 1px solid rgba(180, 120, 0, 0.28);
+      border-radius: 2px;
+      font-size: 13px;
+      line-height: 1.35;
+    }
+    #messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px 20px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .msg {
+      max-width: min(720px, 100%);
+      padding: 12px 14px;
+      border-radius: 2px;
+      border: 1px solid var(--line);
+      background: var(--bot-bg);
+      align-self: flex-start;
+    }
+    .msg.user {
+      align-self: flex-end;
+      background: var(--user-bg);
+      border-color: rgba(0, 87, 255, 0.22);
+    }
+    .msg .who {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+    .msg .status {
+      font-size: 13px;
+      color: var(--muted);
+      font-style: italic;
+      margin-bottom: 8px;
+      min-height: 1.2em;
+    }
+    .msg .status[hidden] { display: none; }
+    .msg .body {
+      font-size: 14px;
+      line-height: 1.45;
+      word-break: break-word;
+    }
+    /* User bubbles stay plain text; bot bubbles render markdown */
+    .msg.user .body { white-space: pre-wrap; }
+    .msg .body > :first-child { margin-top: 0; }
+    .msg .body > :last-child { margin-bottom: 0; }
+    .msg .body p { margin: 0 0 8px; }
+    .msg .body h1, .msg .body h2, .msg .body h3, .msg .body h4 {
+      margin: 12px 0 6px;
+      font-size: 15px;
+      font-weight: 600;
+      line-height: 1.3;
+    }
+    .msg .body h1 { font-size: 16px; }
+    .msg .body ul, .msg .body ol { margin: 0 0 8px; padding-left: 22px; }
+    .msg .body li { margin: 2px 0; }
+    .msg .body code {
+      font: 12.5px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+      background: rgba(13, 13, 13, 0.06);
+      border: 1px solid rgba(13, 13, 13, 0.08);
+      border-radius: 3px;
+      padding: 1px 4px;
+    }
+    .msg .body pre {
+      margin: 0 0 8px;
+      padding: 10px 12px;
+      background: rgba(13, 13, 13, 0.05);
+      border: 1px solid var(--line);
+      border-radius: 2px;
+      overflow-x: auto;
+    }
+    .msg .body pre code {
+      background: none;
+      border: none;
+      padding: 0;
+      white-space: pre;
+    }
+    .msg .body blockquote {
+      margin: 0 0 8px;
+      padding: 4px 12px;
+      border-left: 3px solid var(--line);
+      color: var(--muted);
+    }
+    .msg .body a { color: var(--accent); }
+    .msg .body hr {
+      border: none;
+      border-top: 1px solid var(--line);
+      margin: 10px 0;
+    }
+    .msg .body table {
+      border-collapse: collapse;
+      margin: 0 0 8px;
+      font-size: 13px;
+    }
+    .msg .body th, .msg .body td {
+      border: 1px solid var(--line);
+      padding: 4px 8px;
+      text-align: left;
+    }
+    .msg .body th { background: rgba(13, 13, 13, 0.04); }
+    .msg.streaming .body::after {
+      content: "▍";
+      display: inline-block;
+      margin-left: 2px;
+      animation: blink 1s steps(1) infinite;
+      color: var(--accent);
+    }
+    @keyframes blink {
+      50% { opacity: 0; }
+    }
+    .citations {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 10px;
+    }
+    .chip {
+      font-size: 11px;
+      padding: 3px 8px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #fafafa;
+      color: var(--muted);
+    }
+    .composer {
+      border-top: 1px solid var(--line);
+      background: var(--card);
+      padding: 12px 20px 16px;
+      display: flex;
+      gap: 10px;
+    }
+    .composer textarea {
+      flex: 1;
+      min-height: 44px;
+      max-height: 140px;
+      resize: vertical;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 2px;
+      font: inherit;
+      font-size: 14px;
+    }
+    .composer button {
+      border: none;
+      background: var(--accent);
+      color: #fff;
+      font: inherit;
+      font-weight: 600;
+      font-size: 14px;
+      padding: 0 18px;
+      border-radius: 2px;
+      cursor: pointer;
+    }
+    .composer button:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Chat with {{DISPLAY_NAME}}</h1>
+    <div class="meta">{{ASSISTANT_NAME}} · shared {{IS_FOLDER}}</div>
+  </header>
+  <div class="scope-banner">Answers only from the shared files. Private Desktop content and other files are not used.</div>
+  <div id="messages" aria-live="polite"></div>
+  <form class="composer" id="composer">
+    <textarea id="input" rows="2" placeholder="Ask a question about these files…" maxlength="4000" required></textarea>
+    <button type="submit" id="send">Send</button>
+  </form>
+
+  <script>
+    const SHARE_UUID = "{{SHARE_UUID}}";
+    const ASSISTANT_NAME = "{{ASSISTANT_NAME}}";
+    const messagesEl = document.getElementById("messages");
+    const form = document.getElementById("composer");
+    const input = document.getElementById("input");
+    const sendBtn = document.getElementById("send");
+
+    function apiBase() {
+      const m = location.pathname.match(/^(.*?)\/share-chat\//);
+      return (m && m[1]) || "";
+    }
+
+    // --- Minimal, dependency-free markdown renderer (escape-first, XSS-safe) ---
+    function escapeHtml(s) {
+      return String(s)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    function renderInline(text) {
+      let out = escapeHtml(text);
+      // inline code first so other rules don't touch its contents
+      out = out.replace(/`([^`\n]+)`/g, (m, code) => "<code>" + code + "</code>");
+      out = out.replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>");
+      out = out.replace(/__([^_\n]+)__/g, "<strong>$1</strong>");
+      out = out.replace(/(^|[\s(])\*([^*\n]+)\*(?=[\s).,;:!?]|$)/g, "$1<em>$2</em>");
+      out = out.replace(/(^|[\s(])_([^_\n]+)_(?=[\s).,;:!?]|$)/g, "$1<em>$2</em>");
+      // [label](http…) links — only http/https, open in new tab
+      out = out.replace(
+        /\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g,
+        '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>'
+      );
+      return out;
+    }
+
+    function renderMarkdown(text) {
+      const lines = String(text || "").replace(/\r\n/g, "\n").split("\n");
+      const html = [];
+      let i = 0;
+      let para = [];
+      const flushPara = () => {
+        if (para.length) {
+          html.push("<p>" + para.map(renderInline).join("<br>") + "</p>");
+          para = [];
+        }
+      };
+      while (i < lines.length) {
+        const line = lines[i];
+        // fenced code block
+        const fence = line.match(/^```/);
+        if (fence) {
+          flushPara();
+          const code = [];
+          i++;
+          while (i < lines.length && !/^```/.test(lines[i])) { code.push(lines[i]); i++; }
+          i++; // skip closing fence (or EOF)
+          html.push("<pre><code>" + escapeHtml(code.join("\n")) + "</code></pre>");
+          continue;
+        }
+        // heading
+        const h = line.match(/^(#{1,4})\s+(.*)$/);
+        if (h) {
+          flushPara();
+          const level = h[1].length;
+          html.push("<h" + level + ">" + renderInline(h[2]) + "</h" + level + ">");
+          i++;
+          continue;
+        }
+        // horizontal rule
+        if (/^(?:-{3,}|\*{3,}|_{3,})\s*$/.test(line)) {
+          flushPara();
+          html.push("<hr>");
+          i++;
+          continue;
+        }
+        // blockquote
+        if (/^>\s?/.test(line)) {
+          flushPara();
+          const quote = [];
+          while (i < lines.length && /^>\s?/.test(lines[i])) {
+            quote.push(lines[i].replace(/^>\s?/, ""));
+            i++;
+          }
+          html.push("<blockquote>" + renderMarkdown(quote.join("\n")) + "</blockquote>");
+          continue;
+        }
+        // unordered / ordered list
+        const ul = /^\s*[-*+]\s+/.test(line);
+        const ol = /^\s*\d+[.)]\s+/.test(line);
+        if (ul || ol) {
+          flushPara();
+          const tag = ul ? "ul" : "ol";
+          const pattern = ul ? /^\s*[-*+]\s+/ : /^\s*\d+[.)]\s+/;
+          const items = [];
+          while (i < lines.length && pattern.test(lines[i])) {
+            items.push("<li>" + renderInline(lines[i].replace(pattern, "")) + "</li>");
+            i++;
+          }
+          html.push("<" + tag + ">" + items.join("") + "</" + tag + ">");
+          continue;
+        }
+        // simple pipe table (header + |---| separator)
+        if (/^\s*\|.*\|\s*$/.test(line) && i + 1 < lines.length && /^\s*\|[\s:|-]+\|\s*$/.test(lines[i + 1])) {
+          flushPara();
+          const cells = (row) => row.trim().replace(/^\||\|$/g, "").split("|").map((c) => renderInline(c.trim()));
+          const head = cells(line);
+          i += 2;
+          const rows = [];
+          while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) {
+            rows.push(cells(lines[i]));
+            i++;
+          }
+          html.push(
+            "<table><thead><tr>" + head.map((c) => "<th>" + c + "</th>").join("") + "</tr></thead>" +
+            "<tbody>" + rows.map((r) => "<tr>" + r.map((c) => "<td>" + c + "</td>").join("") + "</tr>").join("") + "</tbody></table>"
+          );
+          continue;
+        }
+        // blank line ends the paragraph
+        if (!line.trim()) {
+          flushPara();
+          i++;
+          continue;
+        }
+        para.push(line);
+        i++;
+      }
+      flushPara();
+      return html.join("\n");
+    }
+
+    function addMessage(role, text, citations) {
+      const wrap = document.createElement("div");
+      wrap.className = "msg " + (role === "user" ? "user" : "bot");
+      const who = document.createElement("div");
+      who.className = "who";
+      who.textContent = role === "user" ? "You" : ASSISTANT_NAME;
+      const body = document.createElement("div");
+      body.className = "body";
+      if (role === "user") {
+        body.textContent = text;
+      } else {
+        body.innerHTML = renderMarkdown(text);
+      }
+      wrap.appendChild(who);
+      wrap.appendChild(body);
+      if (citations && citations.length) {
+        appendCitations(wrap, citations);
+      }
+      messagesEl.appendChild(wrap);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+      return wrap;
+    }
+
+    function appendCitations(wrap, citations) {
+      const existing = wrap.querySelector(".citations");
+      if (existing) existing.remove();
+      if (!citations || !citations.length) return;
+      const row = document.createElement("div");
+      row.className = "citations";
+      for (const c of citations) {
+        const chip = document.createElement("span");
+        chip.className = "chip";
+        chip.textContent = c.title || c.slug;
+        row.appendChild(chip);
+      }
+      wrap.appendChild(row);
+    }
+
+    function startBotStream() {
+      const wrap = document.createElement("div");
+      wrap.className = "msg bot streaming";
+      const who = document.createElement("div");
+      who.className = "who";
+      who.textContent = ASSISTANT_NAME;
+      const status = document.createElement("div");
+      status.className = "status";
+      status.textContent = "Starting…";
+      const body = document.createElement("div");
+      body.className = "body";
+      body.textContent = "";
+      wrap.appendChild(who);
+      wrap.appendChild(status);
+      wrap.appendChild(body);
+      messagesEl.appendChild(wrap);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+      // Accumulate raw markdown; re-render on each delta so formatting appears live.
+      let raw = "";
+      return {
+        wrap,
+        status,
+        body,
+        get raw() { return raw; },
+        setStatus(text) {
+          status.hidden = !text;
+          status.textContent = text || "";
+          messagesEl.scrollTop = messagesEl.scrollHeight;
+        },
+        append(text) {
+          raw += text;
+          body.innerHTML = renderMarkdown(raw);
+          messagesEl.scrollTop = messagesEl.scrollHeight;
+        },
+        setFinal(text, citations) {
+          wrap.classList.remove("streaming");
+          status.hidden = true;
+          if (typeof text === "string" && text.length) raw = text;
+          body.innerHTML = renderMarkdown(raw);
+          appendCitations(wrap, citations || []);
+          messagesEl.scrollTop = messagesEl.scrollHeight;
+        },
+        fail(text) {
+          wrap.classList.remove("streaming");
+          status.hidden = true;
+          body.textContent = text;
+        },
+      };
+    }
+
+    async function readSseStream(res, handlers) {
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split("\n\n");
+        buffer = parts.pop() || "";
+        for (const part of parts) {
+          let event = "message";
+          let data = "";
+          for (const line of part.split("\n")) {
+            if (line.startsWith("event:")) event = line.slice(6).trim();
+            else if (line.startsWith("data:")) data += line.slice(5).trim();
+          }
+          if (!data) continue;
+          let parsed;
+          try { parsed = JSON.parse(data); } catch { continue; }
+          handlers(event, parsed);
+        }
+      }
+    }
+
+    addMessage(
+      "bot",
+      "Ask me anything about the shared files. I will only use those documents to answer.",
+      []
+    );
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const text = (input.value || "").trim();
+      if (!text) return;
+      addMessage("user", text, []);
+      input.value = "";
+      sendBtn.disabled = true;
+      const stream = startBotStream();
+      try {
+        const res = await fetch(
+          apiBase() + "/api/share-chat/" + encodeURIComponent(SHARE_UUID) + "/message?stream=1",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Accept: "text/event-stream",
+            },
+            body: JSON.stringify({ message: text }),
+          }
+        );
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          stream.fail(
+            data.error === "rate_limited"
+              ? "Too many questions — please wait a moment."
+              : (data.error || "Something went wrong.")
+          );
+          return;
+        }
+        // Non-SSE fallback (proxy stripped stream)
+        const ctype = res.headers.get("content-type") || "";
+        if (!ctype.includes("text/event-stream")) {
+          const data = await res.json().catch(() => ({}));
+          stream.setFinal(data.answer || "(empty answer)", data.citations || []);
+          return;
+        }
+
+        let finished = false;
+        await readSseStream(res, (event, data) => {
+          if (event === "status") {
+            stream.setStatus(data.message || data.phase || "Working…");
+          } else if (event === "evidence") {
+            if (data.count > 0) {
+              stream.setStatus(
+                "Found " + data.count + " passage" + (data.count === 1 ? "" : "s") +
+                (data.titles && data.titles.length ? " in " + data.titles.slice(0, 3).join(", ") : "") +
+                "…"
+              );
+            }
+          } else if (event === "delta") {
+            stream.setStatus("");
+            stream.append(data.text || "");
+          } else if (event === "done") {
+            finished = true;
+            stream.setFinal(data.answer || "", data.citations || []);
+          } else if (event === "error") {
+            finished = true;
+            stream.fail(data.error || "Something went wrong.");
+          }
+        });
+        if (!finished && !stream.raw) {
+          stream.fail("No answer returned.");
+        } else if (!finished) {
+          stream.setFinal(stream.raw, []);
+        }
+      } catch (err) {
+        stream.fail("Network error — could not reach share chat.");
+      } finally {
+        sendBtn.disabled = false;
+        input.focus();
+      }
+    });
+
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        form.requestSubmit();
+      }
+    });
+  </script>
+</body>
+</html>

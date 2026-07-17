@@ -52,7 +52,7 @@ def _resolve_theme_paths(root: Path) -> tuple[Path, str, Path, bool]:
 
 # Bump when Share / File Manager overlays must bust browser iframe caches.
 OVERLAY_VERSION = "20260716a"
-SHARE_DIALOG_CACHE_BUST = "20260716c"
+SHARE_DIALOG_CACHE_BUST = "20260716g"
 FOLDER_ICON_VERSION = "2"
 FWCSS_NEEDLE = '<link id="fwcss" rel="stylesheet" href="./script/ao.css">'
 SHELL_SCRIPTS = (
@@ -75,6 +75,7 @@ OLD_LINK_PATTERNS = (
 )
 FILE_EXPLORER_TANGO_MARKER = "<!-- joshu-file-explorer-tango-icons -->"
 FILE_EXPLORER_SHARE_FLOAT_MARKER = "<!-- joshu-file-explorer-share-float -->"
+FILE_EXPLORER_SHARE_TO_MARKER = "<!-- joshu-file-explorer-share-to -->"
 DESKTOP_FOLDER_MARKER = "<!-- joshu-desktop-tango-folder-icons -->"
 FOLDER_EMPTY_PATH = f"img/joshu/folder.png?v={FOLDER_ICON_VERSION}"
 FOLDER_OPEN_PATH = f"img/joshu/folder-open.png?v={FOLDER_ICON_VERSION}"
@@ -337,12 +338,14 @@ def _copy_system_settings_info_pages(
 
 
 def _copy_file_share_dialog(web: Path, overlay: Path, root: Path) -> None:
-    """Joshu-owned File Share dialog (replaces stock SystemAO/file_system/file_share.html).
+    """Joshu-owned Share To picker + File Share dialog (+ locale).
 
     Same resolution pattern as System Settings info pages: prefer branded overlay if
     present, else vanilla. Locale ships alongside so future string edits stay in-repo.
     """
     names = (
+        ("SystemAO/file_system/share_to.html", web / "SystemAO" / "file_system" / "share_to.html"),
+        ("SystemAO/file_system/chat_share.html", web / "SystemAO" / "file_system" / "chat_share.html"),
         ("SystemAO/file_system/file_share.html", web / "SystemAO" / "file_system" / "file_share.html"),
         ("SystemAO/locale/file_share.json", web / "SystemAO" / "locale" / "file_share.json"),
     )
@@ -354,8 +357,52 @@ def _copy_file_share_dialog(web: Path, overlay: Path, root: Path) -> None:
         if not src.is_file():
             continue
         dest.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(src, dest)
-    print(f"[joshu] applied file share dialog -> {web / 'SystemAO' / 'file_system' / 'file_share.html'}")
+        content = src.read_text(encoding="utf-8")
+        # Keep Share To cache-bust constant aligned with theme apply
+        if rel.endswith("share_to.html"):
+            content = re.sub(
+                r'var SHARE_DIALOG_CACHE_BUST = "[^"]*";',
+                f'var SHARE_DIALOG_CACHE_BUST = "{SHARE_DIALOG_CACHE_BUST}";',
+                content,
+                count=1,
+            )
+        dest.write_text(content, encoding="utf-8")
+    print(f"[joshu] applied share dialogs -> {web / 'SystemAO' / 'file_system'}")
+
+
+def _joshu_share_file_function() -> str:
+    """File Manager shareFile(): open Share To picker (no share/new until destination chosen)."""
+    return f"""            function shareFile(){{
+                var selectedFileObjects = [];
+                $(".fileObject.selected").each(function(){{
+                    selectedFileObjects.push({{
+                        "filepath": $(this).attr("filepath"),
+                        "filename": $(this).attr("filename")
+                    }});
+                }});
+
+                if (selectedFileObjects.length == 0){{
+                    msgbox("question", applocale.getString("message/No file selected", "No file selected"));
+                    console.log("No file is selected for sharing");
+                    return;
+                }}
+
+                // Joshu: Share To picker — do not create a public link until destination is chosen
+                var payload = encodeURIComponent(JSON.stringify(selectedFileObjects));
+                var requestURL = "SystemAO/file_system/share_to.html?v={SHARE_DIALOG_CACHE_BUST}#" + payload;
+                console.log("joshu share_to", selectedFileObjects, requestURL);
+                if (typeof ao_module_virtualDesktop !== "undefined" && ao_module_virtualDesktop && typeof parent.newFloatWindow === "function"){{
+                    parent.newFloatWindow({{
+                        url: requestURL,
+                        width: 420,
+                        height: 360,
+                        appicon: "SystemAO/file_system/img/share.svg",
+                        title: "Share To"
+                    }});
+                }} else {{
+                    window.open("share_to.html?v={SHARE_DIALOG_CACHE_BUST}#" + payload, "_blank");
+                }}
+            }}"""
 
 
 def _copy_share_public_pages(web: Path, overlay: Path, root: Path) -> None:
@@ -389,11 +436,10 @@ def _copy_share_public_pages(web: Path, overlay: Path, root: Path) -> None:
 
 
 def _patch_file_explorer_share_float_window(web: Path) -> None:
-    """Open Share from File Manager as a float window instead of the slide-in panel.
+    """Open Share from File Manager via Joshu Share To picker (then file_share / chat).
 
-    Stock ArozOS embeds file_share.html in #shareFileEmbedded and slides #shareFile.
-    Joshu matches the Desktop share path: parent.newFloatWindow(...file_share.html...).
-    ActionButtons stay enabled so Copy / Remove live inside the share window.
+    Stock ArozOS embeds file_share.html in a slide-in panel. Joshu opens share_to.html
+    as a float window; destination handlers create shares only when chosen.
     """
     path = web / "SystemAO" / "file_system" / "file_explorer.html"
     if not path.is_file():
@@ -418,86 +464,31 @@ def _patch_file_explorer_share_float_window(web: Path) -> None:
                 file=sys.stderr,
             )
 
-    old = """                            //Build the predicted share endpoint
-                            selectedFileObject["QRCode"] = true;
-                            selectedFileObject["ActionButtons"] = false;
-                            var payload = encodeURIComponent(JSON.stringify([selectedFileObject]));
-                            var requestURL = "file_share.html#" + payload;
-                            console.log(selectedFileObject, requestURL);
-                            $("#shareFileEmbedded").attr("src", requestURL);
-                            resizeShareIframe();
+    new_share = _joshu_share_file_function()
 
-                            //Show the share file interface
-                            hideAllPopupWindows();
-                            showPopupWrapper();
-                            $("#shareFile").transition('slide left');
-
-                            //Reload the list
-                            listDirectory(currentPath);"""
-
-    new = f"""                            // Joshu: open share UI as a float window (not the slide-in panel)
-                            selectedFileObject["QRCode"] = false;
-                            // Keep ActionButtons so Copy / Remove work inside the float window
-                            var payload = encodeURIComponent(JSON.stringify([selectedFileObject]));
-                            // Cache-bust so float iframes do not stick on stale file_share.html
-                            var requestURL = "SystemAO/file_system/file_share.html?v={SHARE_DIALOG_CACHE_BUST}#" + payload;
-                            console.log(selectedFileObject, requestURL);
-                            if (typeof ao_module_virtualDesktop !== "undefined" && ao_module_virtualDesktop && typeof parent.newFloatWindow === "function"){{
-                                parent.newFloatWindow({{
-                                    url: requestURL,
-                                    width: 640,
-                                    height: 560,
-                                    appicon: "SystemAO/file_system/img/share.svg",
-                                    title: applocale.getString("opr/share/title", "Share File")
-                                }});
-                            }} else {{
-                                window.open("file_share.html?v={SHARE_DIALOG_CACHE_BUST}#" + payload, "_blank");
-                            }}
-
-                            //Reload the list so the Shared column updates
-                            listDirectory(currentPath);"""
-
-    if FILE_EXPLORER_SHARE_FLOAT_MARKER in text:
-        # Upgrade prior Joshu float patches (URL / size / QR) without re-applying from stock
-        text = re.sub(
-            r'var requestURL = "SystemAO/file_system/file_share\.html(?:\?v=[^"#]*)?#" \+ payload;',
-            f'var requestURL = "SystemAO/file_system/file_share.html?v={SHARE_DIALOG_CACHE_BUST}#" + payload;',
-            text,
-            count=1,
-        )
-        text = text.replace(
-            'selectedFileObject["QRCode"] = true;\n'
-            '                            // Keep ActionButtons so Copy / Remove work inside the float window',
-            'selectedFileObject["QRCode"] = false;\n'
-            '                            // Keep ActionButtons so Copy / Remove work inside the float window',
-            1,
-        )
-        text = re.sub(
-            r"window\.open\(\"file_share\.html(?:\?v=[^\"]*)?#\" \+ payload, \"_blank\"\);",
-            f'window.open("file_share.html?v={SHARE_DIALOG_CACHE_BUST}#" + payload, "_blank");',
-            text,
-            count=1,
-        )
-        text = re.sub(
-            r"width: (?:720|640|480),\n\s*height: (?:520|560),",
-            "width: 640,\n                                    height: 560,",
-            text,
-            count=1,
+    # Replace stock or prior Joshu shareFile() with Share To opener
+    text2, n = re.subn(
+        r"            function shareFile\(\)\{.*?\n            \}\n\n            function removeSharing",
+        new_share + "\n\n            function removeSharing",
+        text,
+        count=1,
+        flags=re.DOTALL,
+    )
+    if n != 1:
+        print(
+            "[joshu] file_explorer share-to patch: shareFile function not found",
+            file=sys.stderr,
         )
         path.write_text(text, encoding="utf-8")
         return
 
-    if old not in text:
-        print(
-            "[joshu] file_explorer share-float patch: shareFile success block not found",
-            file=sys.stderr,
-        )
-        return
-
-    text = text.replace(old, new, 1)
-    text = text.replace("<head>", f"<head>\n    {FILE_EXPLORER_SHARE_FLOAT_MARKER}", 1)
+    text = text2
+    if FILE_EXPLORER_SHARE_TO_MARKER not in text:
+        text = text.replace("<head>", f"<head>\n    {FILE_EXPLORER_SHARE_TO_MARKER}", 1)
+    if FILE_EXPLORER_SHARE_FLOAT_MARKER not in text:
+        text = text.replace("<head>", f"<head>\n    {FILE_EXPLORER_SHARE_FLOAT_MARKER}", 1)
     path.write_text(text, encoding="utf-8")
-    print(f"[joshu] patched file explorer Share -> float window ({path})")
+    print(f"[joshu] patched file explorer Share -> Share To picker ({path})")
 
 
 def _patch_system_settings_branding(

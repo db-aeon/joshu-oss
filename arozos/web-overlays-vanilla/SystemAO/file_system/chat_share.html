@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <!-- joshu-chat-share: Owner dialog for public Chat-with-files links (URL + enable/remove). -->
+        <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+        <meta name="joshu-chat-share" content="overlay">
+        <title>Chat sharing</title>
+        <link rel="stylesheet" href="../../script/semantic/semantic.min.css">
+        <link rel="stylesheet" href="../../script/ao.css">
+        <script src="../../script/jquery.min.js"></script>
+        <script src="../../script/semantic/semantic.min.js"></script>
+        <script src="../../script/ao_module.js"></script>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0 user-scalable=no">
+        <style>
+            body{
+                background: var(--body_background, #f5f0eb) !important;
+                margin: 0;
+                font-family: "Work Sans", "Helvetica Neue", Arial, sans-serif;
+                color: #0d0d0d;
+            }
+            #chatLinkBar{
+                padding: 12px 14px 10px;
+                border-bottom: 1px solid rgba(0,0,0,0.12);
+            }
+            #chatLinkBar .label{
+                font-weight: 600;
+                margin-bottom: 4px;
+            }
+            #chatLinkHint{
+                font-size: 13px;
+                opacity: 0.72;
+                line-height: 1.35;
+                margin: 0 0 10px;
+            }
+            #chatlinkInput{
+                width: 100%;
+                box-sizing: border-box;
+                font: 13px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace;
+                padding: 8px 10px;
+                border: 1px solid rgba(0,0,0,0.2);
+                border-radius: 2px;
+                background: #fff;
+                color: #0d0d0d;
+            }
+            #chatlink{
+                display: block;
+                margin-top: 0.4em;
+                color: #0057ff !important;
+                font-size: 105%;
+                line-height: 1.35;
+                word-break: break-all;
+            }
+            #mainBody{
+                padding: 14px;
+            }
+            #fileLabel{
+                font-size: 14px;
+                margin: 0 0 12px;
+                word-break: break-all;
+            }
+            .actions{
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+                justify-content: flex-end;
+                padding: 0 14px 14px;
+            }
+            .actions .ui.button{ margin: 0; }
+        </style>
+    </head>
+    <body>
+        <div id="chatLinkBar">
+            <div class="label">Public chat link</div>
+            <p id="chatLinkHint">Share this URL like a public download link. Anyone with it can ask questions about these files only.</p>
+            <div id="chatLinkLoading" style="opacity:0.7;"><i class="ui loading spinner icon"></i> Generating link…</div>
+            <input id="chatlinkInput" type="text" readonly aria-label="Public chat link" style="display:none;">
+            <a id="chatlink" href="" target="_blank" style="display:none;"></a>
+        </div>
+        <div id="mainBody">
+            <p id="fileLabel">Loading…</p>
+            <p style="font-size:13px;opacity:0.72;line-height:1.4;margin:0;">
+                <strong>Remove Sharing</strong> turns off the public chat (guests see “not available”).
+                This uses the same underlying file share as File sharing — if you also shared a download link for this item, that link stops working too until you enable sharing again.
+            </p>
+        </div>
+        <div class="actions">
+            <button type="button" class="ui basic button" id="btnCopy" disabled>Copy link</button>
+            <button type="button" class="ui basic button" id="btnOpen" disabled>Open chat</button>
+            <button type="button" class="ui basic button" id="btnToggle" data-share-state="inactive" disabled>
+                <i class="share alternate icon"></i> Enable Sharing
+            </button>
+        </div>
+
+        <script>
+            var SHARE_DIALOG_CACHE_BUST = "20260716g";
+            var shareingFileData = null;
+            var shareCurrentEditingUUID = "";
+            var chatSharingURL = "";
+            // Paths relative to SystemAO/file_system/ (same as file_share.html)
+            var relpath = "../../";
+
+            function escapeHtml(s){
+                return String(s || "")
+                    .replace(/&/g, "&amp;")
+                    .replace(/</g, "&lt;")
+                    .replace(/>/g, "&gt;")
+                    .replace(/"/g, "&quot;");
+            }
+
+            function joshuPublicChatUrl(uuid){
+                var protocol = location.protocol === "https:" ? "https://" : "http://";
+                var port = window.location.port ? (":" + window.location.port) : "";
+                return protocol + window.location.hostname + port + "/joshu/share-chat/" + encodeURIComponent(uuid);
+            }
+
+            function setToggleActive(){
+                var btn = $("#btnToggle");
+                btn.attr("data-share-state", "active");
+                btn.prop("disabled", false).removeClass("positive").addClass("basic");
+                btn.html(`<i class="red remove icon"></i> Remove Sharing`);
+                $("#btnCopy, #btnOpen").prop("disabled", false);
+            }
+
+            function setToggleInactive(){
+                var btn = $("#btnToggle");
+                btn.attr("data-share-state", "inactive");
+                btn.prop("disabled", false).removeClass("basic").addClass("positive");
+                btn.html(`<i class="share alternate icon"></i> Enable Sharing`);
+                $("#btnCopy, #btnOpen").prop("disabled", true);
+            }
+
+            function updateChatLinkInfo(uuid){
+                shareCurrentEditingUUID = uuid;
+                chatSharingURL = joshuPublicChatUrl(uuid);
+                $("#chatLinkLoading").hide();
+                $("#chatlink").text(chatSharingURL).attr("href", chatSharingURL).show();
+                $("#chatlinkInput").val(chatSharingURL).show();
+                setToggleActive();
+                try {
+                    ao_module_setWindowTitle("Chat share · " + (shareingFileData.filename || "File"));
+                } catch (e) {}
+                // Soft flag for Joshu (defense in depth; public gate still requires live ArozOS share).
+                $.ajax({
+                    url: "/joshu/api/share-chat/" + encodeURIComponent(uuid) + "/enable",
+                    method: "POST",
+                    contentType: "application/json",
+                    data: JSON.stringify({ source: "chat_share_dialog" }),
+                    xhrFields: { withCredentials: true }
+                });
+            }
+
+            function clearChatLinkUi(message){
+                shareCurrentEditingUUID = "";
+                chatSharingURL = "";
+                $("#chatlink").text("").attr("href", "#").hide();
+                $("#chatlinkInput").val("").hide();
+                $("#chatLinkLoading").html(message || `<i class="green checkmark icon"></i> Chat sharing turned off`).show();
+                setToggleInactive();
+            }
+
+            function enableSharing(btn){
+                if (!shareingFileData || !shareingFileData.filepath) return;
+                $(btn).addClass("loading").prop("disabled", true);
+                $("#chatLinkLoading").html(`<i class="ui loading spinner icon"></i> Generating link…`).show();
+                $("#chatlink, #chatlinkInput").hide();
+                $.ajax({
+                    url: relpath + "system/file_system/share/new",
+                    data: { path: shareingFileData.filepath },
+                    success: function(data){
+                        $(btn).removeClass("loading");
+                        if (data && data.error){
+                            $("#chatLinkLoading").html(`<span style="color:#b00020;">Share error: ${escapeHtml(data.error)}</span>`);
+                            setToggleInactive();
+                            return;
+                        }
+                        if (!data || !data.UUID){
+                            $("#chatLinkLoading").html(`<span style="color:#b00020;">Share error: no UUID returned</span>`);
+                            setToggleInactive();
+                            return;
+                        }
+                        updateChatLinkInfo(data.UUID);
+                    },
+                    error: function(xhr){
+                        $(btn).removeClass("loading");
+                        $("#chatLinkLoading").html(`<span style="color:#b00020;">Share request failed (${xhr.status})</span>`);
+                        setToggleInactive();
+                    }
+                });
+            }
+
+            function removeSharing(btn){
+                if (!shareCurrentEditingUUID){
+                    clearChatLinkUi();
+                    return;
+                }
+                var uuid = shareCurrentEditingUUID;
+                $(btn).addClass("loading").prop("disabled", true);
+                // ArozOS-authenticated delete — same as File Share "Remove Sharing".
+                $.ajax({
+                    url: relpath + "system/file_system/share/delete",
+                    data: { uuid: uuid },
+                    success: function(data){
+                        $(btn).removeClass("loading");
+                        if (data && data.error){
+                            alert(data.error);
+                            setToggleActive();
+                            return;
+                        }
+                        $.ajax({
+                            url: "/joshu/api/share-chat/" + encodeURIComponent(uuid) + "/disable",
+                            method: "POST",
+                            contentType: "application/json",
+                            data: JSON.stringify({ source: "chat_share_dialog" }),
+                            xhrFields: { withCredentials: true }
+                        });
+                        clearChatLinkUi(`<i class="green checkmark icon"></i> Chat sharing turned off`);
+                    },
+                    error: function(xhr){
+                        $(btn).removeClass("loading");
+                        alert("Failed to remove sharing (" + xhr.status + ")");
+                        setToggleActive();
+                    }
+                });
+            }
+
+            function toggleSharing(){
+                var btn = $("#btnToggle");
+                if (btn.hasClass("loading") || btn.prop("disabled")) return;
+                if (btn.attr("data-share-state") === "inactive"){
+                    enableSharing(btn);
+                } else {
+                    removeSharing(btn);
+                }
+            }
+
+            function copyLink(){
+                if (!chatSharingURL) return;
+                var input = document.getElementById("chatlinkInput");
+                if (navigator.clipboard && navigator.clipboard.writeText){
+                    navigator.clipboard.writeText(chatSharingURL).then(function(){
+                        $("#btnCopy").text("Copied");
+                        setTimeout(function(){ $("#btnCopy").text("Copy link"); }, 1200);
+                    });
+                    return;
+                }
+                input.style.display = "block";
+                input.select();
+                try { document.execCommand("copy"); } catch (e) {}
+            }
+
+            function openChat(){
+                if (!chatSharingURL) return;
+                window.open(chatSharingURL, "_blank");
+            }
+
+            function loadSelection(){
+                var files = [];
+                try {
+                    files = ao_module_loadInputFiles() || [];
+                } catch (e) {
+                    files = [];
+                }
+                if (!files.length){
+                    $("#fileLabel").html(`<span style="color:#b00020;">No file selected.</span>`);
+                    $("#chatLinkLoading").text("Select a file from File Manager first.");
+                    return false;
+                }
+                shareingFileData = files[0];
+                $("#fileLabel").html(`Chat with <strong>${escapeHtml(shareingFileData.filename || shareingFileData.filepath)}</strong>`);
+                return true;
+            }
+
+            $(function(){
+                if (!loadSelection()) return;
+                $("#btnCopy").on("click", copyLink);
+                $("#btnOpen").on("click", openChat);
+                $("#btnToggle").on("click", toggleSharing);
+                // Create / reuse share immediately (like File Share).
+                enableSharing($("#btnToggle"));
+            });
+        </script>
+    </body>
+</html>

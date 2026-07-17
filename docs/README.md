@@ -32,6 +32,8 @@ Shortcut format: [`arozos-desktop-shortcuts.md`](arozos-desktop-shortcuts.md).
 | Hermes integration (skills, gateway, env) | [`hermes-integration.md`](hermes-integration.md) |
 | Connectors (mail, calendar, MCP) | [`connectors.md`](connectors.md) |
 | File index + search (gbrain) | [`file-brain.md`](file-brain.md) |
+| Chat with shared files (scoped public Q&A) | [`share-chat.md`](share-chat.md) |
+| PDF text extraction / plain `.txt` wrapping | [`file-brain.md`](file-brain.md#pdf-text-extraction) · [`#plain-text-txt-wrapping`](file-brain.md#plain-text-txt-wrapping) |
 | Agent write safety | [`agent-safety.md`](agent-safety.md) |
 | Safety desktop app | [`safety-settings-arozos-app.md`](safety-settings-arozos-app.md) |
 | Nylas agent inbox | [`nylas-agent-mailbox.md`](nylas-agent-mailbox.md) |

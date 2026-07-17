@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <!-- joshu-share-to: Share destination picker. Option 1 opens file_share.html; option 2 opens /joshu/share-chat/:uuid. -->
+        <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+        <meta name="joshu-share-to" content="overlay">
+        <title>Share To</title>
+        <link rel="stylesheet" href="../../script/semantic/semantic.min.css">
+        <link rel="stylesheet" href="../../script/ao.css">
+        <script src="../../script/jquery.min.js"></script>
+        <script src="../../script/semantic/semantic.min.js"></script>
+        <script src="../../script/ao_module.js"></script>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0 user-scalable=no">
+        <style>
+            body{
+                background: var(--body_background, #f5f0eb) !important;
+                margin: 0;
+                padding: 16px;
+                font-family: "Work Sans", "Helvetica Neue", Arial, sans-serif;
+                color: #0d0d0d;
+            }
+            .share-to-intro{
+                margin: 0 0 14px;
+                font-size: 14px;
+                opacity: 0.75;
+            }
+            .share-to-file{
+                margin: 0 0 18px;
+                font-size: 13px;
+                word-break: break-all;
+            }
+            .share-to-file strong{
+                font-weight: 600;
+            }
+            .share-to-options{
+                display: flex;
+                flex-direction: column;
+                gap: 10px;
+            }
+            .share-to-option{
+                display: block;
+                width: 100%;
+                text-align: left;
+                padding: 14px 16px;
+                border: 1px solid rgba(0,0,0,0.18);
+                border-radius: 2px;
+                background: #fff;
+                cursor: pointer;
+                transition: border-color 0.12s ease, background 0.12s ease;
+            }
+            .share-to-option:hover,
+            .share-to-option:focus{
+                border-color: #0057ff;
+                background: #f7f9ff;
+                outline: none;
+            }
+            .share-to-option:disabled{
+                opacity: 0.55;
+                cursor: not-allowed;
+            }
+            .share-to-option-title{
+                display: block;
+                font-size: 15px;
+                font-weight: 600;
+                margin-bottom: 4px;
+            }
+            .share-to-option-desc{
+                display: block;
+                font-size: 13px;
+                line-height: 1.35;
+                opacity: 0.72;
+            }
+            .share-to-error{
+                color: #b00020;
+                font-size: 13px;
+            }
+        </style>
+    </head>
+    <body>
+        <p class="share-to-intro">Choose how to share</p>
+        <p class="share-to-file" id="shareToFileLabel">Loading…</p>
+        <div class="share-to-options" id="shareToOptions" style="display:none;">
+            <button type="button" class="share-to-option" id="optFileSharingPage">
+                <span class="share-to-option-title">File sharing page</span>
+                <span class="share-to-option-desc">Create a link anyone (or selected people) can open in the browser.</span>
+            </button>
+            <button type="button" class="share-to-option" id="optChatWithFiles">
+                <span class="share-to-option-title">Chat with files</span>
+                <span class="share-to-option-desc">Get a public chat URL (copy / turn off anytime), like a download link.</span>
+            </button>
+        </div>
+
+        <script>
+            var SHARE_DIALOG_CACHE_BUST = "20260716g";
+            var shareFiles = [];
+
+            function loadSelection(){
+                try {
+                    shareFiles = ao_module_loadInputFiles() || [];
+                } catch (e) {
+                    shareFiles = [];
+                }
+                if (!shareFiles.length){
+                    $("#shareToFileLabel").html(`<span class="share-to-error">No file selected.</span>`);
+                    return false;
+                }
+                if (shareFiles.length === 1){
+                    $("#shareToFileLabel").html(`Sharing <strong>${escapeHtml(shareFiles[0].filename || shareFiles[0].filepath)}</strong>`);
+                } else {
+                    $("#shareToFileLabel").html(`Sharing <strong>${shareFiles.length}</strong> items`);
+                }
+                $("#shareToOptions").show();
+                return true;
+            }
+
+            function escapeHtml(s){
+                return String(s || "")
+                    .replace(/&/g, "&amp;")
+                    .replace(/</g, "&lt;")
+                    .replace(/>/g, "&gt;")
+                    .replace(/"/g, "&quot;");
+            }
+
+            function openFloatOrWindow(url, title, width, height){
+                if (typeof ao_module_virtualDesktop !== "undefined" && ao_module_virtualDesktop && parent && typeof parent.newFloatWindow === "function"){
+                    parent.newFloatWindow({
+                        url: url,
+                        width: width,
+                        height: height,
+                        appicon: "SystemAO/file_system/img/share.svg",
+                        title: title
+                    });
+                    // Close this Share To picker after launching the destination
+                    try {
+                        if (typeof ao_module_close === "function"){
+                            ao_module_close();
+                        } else if (parent && typeof parent.closeFloatWindow === "function" && typeof ao_module_windowID !== "undefined"){
+                            parent.closeFloatWindow(ao_module_windowID);
+                        }
+                    } catch (e) {}
+                } else {
+                    window.location.href = url.replace(/^SystemAO\/file_system\//, "");
+                }
+            }
+
+            function chooseFileSharingPage(){
+                if (!shareFiles.length){
+                    return;
+                }
+                if (shareFiles.length > 1){
+                    alert("File sharing page currently supports one file or folder at a time.");
+                    return;
+                }
+                var file = Object.assign({}, shareFiles[0], {
+                    QRCode: false
+                });
+                var payload = encodeURIComponent(JSON.stringify([file]));
+                var url = "SystemAO/file_system/file_share.html?v=" + SHARE_DIALOG_CACHE_BUST + "#" + payload;
+                openFloatOrWindow(url, "Share File", 640, 560);
+            }
+
+            function chooseChatWithFiles(){
+                if (!shareFiles.length){
+                    return;
+                }
+                if (shareFiles.length > 1){
+                    alert("Chat with files currently supports one file or folder at a time.");
+                    return;
+                }
+                var file = Object.assign({}, shareFiles[0]);
+                var payload = encodeURIComponent(JSON.stringify([file]));
+                var url = "SystemAO/file_system/chat_share.html?v=" + SHARE_DIALOG_CACHE_BUST + "#" + payload;
+                openFloatOrWindow(url, "Chat sharing", 640, 480);
+            }
+
+            $(function(){
+                if (!loadSelection()){
+                    return;
+                }
+                $("#optFileSharingPage").on("click", chooseFileSharingPage);
+                $("#optChatWithFiles").on("click", chooseChatWithFiles);
+            });
+        </script>
+    </body>
+</html>

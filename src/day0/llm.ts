@@ -22,7 +22,7 @@ export type Day0CompletionMeta = {
   truncated: boolean;
 };
 
-type OpenRouterUsage = {
+export type OpenRouterUsage = {
   prompt_tokens?: number;
   completion_tokens?: number;
   total_tokens?: number;

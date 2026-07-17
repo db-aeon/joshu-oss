@@ -40,6 +40,7 @@ import {
   registerHermesDashboardRoutes,
 } from "./hermesDashboard.js";
 import { registerBrainRoutes, probeGbrainHealth } from "./brainApi.js";
+import { registerShareChatRoutes, registerShareChatSlackEventsRoute } from "./shareChat/routes.js";
 import { registerFilesRoutes } from "./filesApi.js";
 import { registerDesktopActionRoutes, drainDesktopActionsForChat, desktopActionFromHermesToolRaw } from "./desktopActionApi.js";
 import { registerAppGuiActionRoutes } from "./appGuiActionApi.js";
@@ -400,7 +401,8 @@ function buildAppRouter(): {
     },
   });
 
-  // Raw body route must register before express.json().
+  // Raw body routes must register before express.json().
+  registerShareChatSlackEventsRoute(router);
   router.post("/api/hermes-chat/transcribe", express.raw({ limit: "15mb", type: "*/*" }), async (req: Request, res: Response) => {
     const body = req.body;
     if (!Buffer.isBuffer(body) || body.length === 0) {
@@ -451,6 +453,8 @@ function buildAppRouter(): {
   });
 
   router.use(express.json({ limit: "12mb" }));
+
+  registerShareChatRoutes(router);
 
   registerDesktopActionRoutes(router);
   registerAppGuiActionRoutes(router, PROJECT_ROOT);
