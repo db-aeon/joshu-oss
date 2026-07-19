@@ -1,8 +1,8 @@
 /**
  * Scoped File Brain retrieval for public share-chat.
  * Query gbrain broadly, then keep only hits under the shared path.
- * Always packs shared-disk corpus windows so the answerer can reassemble
- * (gbrain alone is not enough for single large notebooks).
+ * Always packs shared-disk corpus windows (file and folder shares) so the
+ * answerer can reassemble — gbrain alone often misses exact phrases in large PDFs.
  */
 
 import fs from "node:fs";
@@ -364,18 +364,15 @@ export async function queryScopedBrain(
     queryError = formatGbrainCliError(err);
   }
 
-  // Always pack shared-disk windows for single-file shares, or when gbrain
-  // returned nothing useful in-scope. Lets the LLM reassemble answers from
-  // long notebooks that keyword-only / slug-mismatched retrieval misses.
+  // Always pack shared-disk keyword windows (file *and* folder shares).
+  // Folder shares previously skipped this when gbrain returned ≥3 hits, which
+  // left the answerer stuck on wrong chunks (e.g. install clearances instead
+  // of "Product dimensions" in a shared manuals folder).
   let usedDiskCorpus = false;
-  const needDisk =
-    !scope.isFolder || kept.length < 3 || discardedOutsideScope > 0 && kept.length === 0;
-  if (needDisk) {
-    const diskHits = packDiskCorpus(question, scope);
-    if (diskHits.length) {
-      usedDiskCorpus = true;
-      kept.push(...diskHits);
-    }
+  const diskHits = packDiskCorpus(question, scope);
+  if (diskHits.length) {
+    usedDiskCorpus = true;
+    kept.push(...diskHits);
   }
 
   const evidence = dedupeEvidence(kept)
