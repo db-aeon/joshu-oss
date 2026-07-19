@@ -1,20 +1,17 @@
 <!DOCTYPE HTML>
-<html>
+<html lang="en">
     <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-    <title>{{filename}} - {{hostname}} File Share</title>
+    <meta name="robots" content="noindex" />
+    <title>{{filename}} · Joshu File Share</title>
+    <meta name="description" content="File shared from {{hostname}}">
 
-    <meta name="description" content="File shared from  {{hostname}}">
-
-    <!-- Facebook Meta Tags -->
     <meta property="og:url" content="{{requri}}">
     <meta property="og:type" content="website">
     <meta property="og:title" content="{{filename}}">
     <meta property="og:description" content="File shared from {{hostname}}">
     <meta property="og:image" content="{{opg_image}}">
-  
-    <!-- Twitter Meta Tags -->
     <meta name="twitter:card" content="summary_large_image">
     <meta property="twitter:domain" content="{{host}}">
     <meta property="twitter:url" content="{{requri}}">
@@ -22,116 +19,62 @@
     <meta name="twitter:description" content="File shared from {{hostname}}">
     <meta name="twitter:image" content="{{opg_image}}">
 
-
-    <link rel="stylesheet" href="../../script/skeleton/offline.css">
-    <link rel="stylesheet" href="../../script/skeleton/normalize.css">
-    <link rel="stylesheet" href="../../script/skeleton/skeleton.css">
+    <link rel="icon" href="../../img/public/joshu-icon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="../../script/joshu-public-pages.css?v=20260717h">
     <script type="application/javascript" src="../../script/jquery.min.js"></script>
-    <link rel="icon" type="image/png" href="../../img/public/share/share.png" />
-    <style>
-
-        body{
-            padding-bottom: 100px;
-        }
-        .bar{
-            height: 12px;
-            background-color: #1a1a1a;
-            width: 100%;
-        }
-
-        .footer{
-            position: fixed;
-            bottom: 0px;
-            height: 50px;
-            width: 100%;
-            background-color: #1a1a1a;
-            padding: 20px;
-            color: white;
-        }
-
-        .filename{
-          word-break: break-word;
-        }
-    </style>
     </head>
-    <body>
-        <div class="bar"></div>
-        <br>
-        <div class="container">
-            <h5>{{hostname}} File Sharing</h5>
-            <h3 class="filename">{{filename}}</h3>
-            <div class="row">
-                <div class="one-half column">
-                    <table class="u-full-width">
-                        <thead>
-                          <tr>
-                            <th>Property</th>
-                            <th>Value</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          <tr>
-                            <td>MIME Type</td>
-                            <td>{{mime}}</td>
-                          </tr>
-                          <tr>
-                            <td>File Extension</td>
-                            <td>{{ext}}</td>
-                          </tr>
-                          <tr>
-                            <td>File Size</td>
-                            <td>{{size}}</td>
-                          </tr>
-                          <tr>
-                            <td>Last Modification Time</td>
-                            <td>{{modtime}}</td>
-                          </tr>
-                        </tbody>
-                      </table>
-                    <a href="{{downloadurl}}"><button class="button-primary">Download</button></a>
-                    <button id="sharebtn" onclick="share();">Share</button>
-                    <br><br>
-                    <p>Request File ID: {{reqid}}</p>
-                    <p>Request Timestamp: {{reqtime}}</p>
+    <body class="jp-public">
+        <div class="jp-public-shell">
+            <main class="jp-public-panel">
+                <div class="jp-brandbar">
+                    <img class="jp-mark" src="../../img/public/joshu-wordmark.svg" alt="joshu">
+                    <div class="jp-identity" data-jp-identity hidden role="group">
+                        <div class="jp-identity-photo" data-jp-photo></div>
+                        <div class="jp-identity-copy">
+                            <p class="jp-identity-name" data-jp-name></p>
+                            <p class="jp-identity-role" data-jp-role></p>
+                        </div>
+                    </div>
                 </div>
-                <div class="one-half column">
-                    {{previewer}}
-                    <!-- <img style="pointer-events: none;" src=""> -->
-                </div>
-            </div>
-           
-        </div>
-                <div class="footer">
-            <div class="container">
-                File sharing by <a style="color: white;" href="https://joshu.me" target="_blank" rel="noopener noreferrer">Joshu</a>
-            </div>
-        </div>
-      
+                <h1 class="jp-public-title">{{filename}}</h1>
+                <p class="jp-public-lede">Anyone with this link can download the file.</p>
 
-        
+                <div class="jp-public-actions">
+                    <a class="jp-public-btn jp-public-btn-primary" href="{{downloadurl}}">Download</a>
+                    <button type="button" class="jp-public-btn jp-public-btn-secondary" id="sharebtn" onclick="share();">Share link</button>
+                </div>
+
+                <ul class="jp-public-meta">
+                    <li><span class="k">Type</span><span class="v">{{mime}}</span></li>
+                    <li><span class="k">Extension</span><span class="v">{{ext}}</span></li>
+                    <li><span class="k">Size</span><span class="v">{{size}}</span></li>
+                    <li><span class="k">Modified</span><span class="v">{{modtime}}</span></li>
+                </ul>
+
+                <div class="jp-public-preview">{{previewer}}</div>
+                <p class="jp-public-hint">Request {{reqid}} · {{reqtime}}</p>
+            </main>
+            <footer class="jp-public-footer">
+                <strong>Joshu</strong> · File sharing by <a href="https://joshu.me" target="_blank" rel="noopener noreferrer">joshu.me</a>
+            </footer>
+        </div>
+
+    <script type="application/javascript" src="../../script/joshu-public-identity.js?v=20260717h"></script>
     <script>
       if (location.protocol !== 'https:') {
-         document.getElementById("sharebtn").remove()
+         var btn = document.getElementById("sharebtn");
+         if (btn) btn.remove();
       }
 
       function share(){
-        let shareData = {
+        var shareData = {
           title: "{{filename}}",
-          text: '{{filename}} - File Share from {{hostname}}',
+          text: "{{filename}} — shared via Joshu",
           url: window.location.href,
-        }
-
-        navigator.share(shareData).then(() =>
-          function(){
-            //Share succ
-          }
-        ).catch((e) =>
-          function(){
-              //Share failed
-          }
-        )
+        };
+        if (!navigator.share) return;
+        navigator.share(shareData).catch(function () {});
       }
-      
     </script>
     </body>
 </html>

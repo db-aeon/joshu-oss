@@ -1,0 +1,744 @@
+/**
+ * Joshu public guest surfaces — File Share + Share Chat.
+ * Visual language matches login / first-account (joshu-auth-pages.css):
+ * warm paper atmosphere, white floating panel, Work Sans, blue accent.
+ * Not desktop window chrome.
+ */
+@import url("https://fonts.googleapis.com/css2?family=Work+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap");
+
+:root {
+  --jp-public-bg: #ece9e4;
+  --jp-public-panel: #ffffff;
+  --jp-public-ink: #1a1a1a;
+  --jp-public-muted: #5c5c5c;
+  --jp-public-accent: #2563eb;
+  --jp-public-accent-hover: #1d4ed8;
+  --jp-public-accent-soft: #e8f0fe;
+  --jp-public-border: rgba(26, 26, 26, 0.14);
+  --jp-public-shadow: 0 12px 40px rgba(26, 26, 26, 0.1);
+  --jp-public-font: "Work Sans", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --jp-public-radius: 1em;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body.jp-public {
+  margin: 0;
+  min-height: 100%;
+  font-family: var(--jp-public-font);
+  color: var(--jp-public-ink);
+  background-color: var(--jp-public-bg);
+  background-image: linear-gradient(135deg, #e8e4de 0%, #ece9e4 45%, #d4e4ff 100%);
+  background-attachment: fixed;
+}
+
+body.jp-public {
+  min-height: 100vh;
+}
+
+a {
+  color: var(--jp-public-accent);
+}
+
+a:hover {
+  color: var(--jp-public-accent-hover);
+}
+
+/* —— Shell: atmosphere + centered panel —— */
+.jp-public-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2.5rem 1.25rem 2rem;
+  gap: 1.25rem;
+}
+
+.jp-public-shell.jp-public-shell-tall {
+  justify-content: flex-start;
+  padding-top: 1.5rem;
+  padding-bottom: 1.5rem;
+}
+
+.jp-public-panel {
+  width: 100%;
+  max-width: 43.2rem; /* +20% for File Share breathing room */
+  background: var(--jp-public-panel);
+  border: 1px solid var(--jp-public-border);
+  border-radius: var(--jp-public-radius);
+  box-shadow: var(--jp-public-shadow);
+  padding: 2rem 1.75rem 1.75rem;
+}
+
+.jp-public-panel.jp-public-panel-wide {
+  max-width: 62.4rem; /* +20% for folder share */
+}
+
+.jp-public-panel.jp-public-panel-chat {
+  max-width: 44rem;
+  height: min(900px, calc(100vh - 5.5rem));
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+}
+
+/* —— Brand / type —— */
+.jp-public-brand {
+  display: block;
+  width: min(148px, 55%);
+  height: auto;
+  margin: 0 0 1.35rem;
+}
+
+.jp-public-eyebrow {
+  margin: 0 0 0.35rem;
+  font-size: 0.82rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--jp-public-muted);
+}
+
+.jp-public-title {
+  margin: 0 0 0.55rem;
+  font-size: clamp(1.35rem, 2.4vw, 1.75rem);
+  font-weight: 600;
+  line-height: 1.25;
+  word-break: break-word;
+  color: var(--jp-public-ink);
+}
+
+.jp-public-lede {
+  margin: 0 0 1.35rem;
+  font-size: 0.95rem;
+  line-height: 1.45;
+  color: var(--jp-public-muted);
+}
+
+.jp-public-note {
+  margin: 0 0 1.25rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--jp-public-border);
+  border-radius: 0.4em;
+  background: rgba(255, 255, 255, 0.65);
+  font-size: 0.85rem;
+  line-height: 1.4;
+  color: var(--jp-public-muted);
+}
+
+/* —— Actions —— */
+.jp-public-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  margin: 0 0 1.35rem;
+}
+
+.jp-public-btn {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.6rem;
+  padding: 0.55rem 1.15rem;
+  border-radius: 0.4em;
+  border: 1px solid transparent;
+  font: inherit;
+  font-size: 0.95rem;
+  font-weight: 600;
+  line-height: 1.2;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background-color 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+
+.jp-public-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.jp-public-btn-primary {
+  background: var(--jp-public-accent);
+  color: #fff !important;
+}
+
+.jp-public-btn-primary:hover {
+  background: var(--jp-public-accent-hover);
+  color: #fff !important;
+}
+
+.jp-public-btn-secondary {
+  background: #fff;
+  border-color: var(--jp-public-border);
+  color: var(--jp-public-ink) !important;
+}
+
+.jp-public-btn-secondary:hover {
+  background: var(--jp-public-accent-soft);
+  border-color: rgba(37, 99, 235, 0.35);
+}
+
+/* —— Meta / tables —— */
+.jp-public-meta {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--jp-public-border);
+}
+
+.jp-public-meta li {
+  display: grid;
+  grid-template-columns: minmax(7rem, 38%) 1fr;
+  gap: 0.75rem;
+  padding: 0.55rem 0;
+  border-bottom: 1px solid rgba(26, 26, 26, 0.08);
+  font-size: 0.88rem;
+  line-height: 1.35;
+}
+
+.jp-public-meta .k {
+  color: var(--jp-public-muted);
+  font-weight: 500;
+}
+
+.jp-public-meta .v {
+  color: var(--jp-public-ink);
+  word-break: break-word;
+}
+
+.jp-public-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.jp-public-table th,
+.jp-public-table td {
+  text-align: left;
+  padding: 0.55rem 0.4rem;
+  border-bottom: 1px solid rgba(26, 26, 26, 0.1);
+  vertical-align: top;
+  word-break: break-word;
+}
+
+.jp-public-table th {
+  color: var(--jp-public-muted);
+  font-weight: 600;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.jp-public-preview {
+  margin-top: 1.25rem;
+  padding-top: 1.15rem;
+  border-top: 1px solid var(--jp-public-border);
+}
+
+.jp-public-preview img,
+.jp-public-preview video,
+.jp-public-preview audio,
+.jp-public-preview iframe {
+  max-width: 100%;
+  border-radius: 0.4em;
+}
+
+/* —— Forms (share code entry) —— */
+.jp-public-field {
+  margin: 0 0 1rem;
+}
+
+.jp-public-field label {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.jp-public-field input[type="text"],
+.jp-public-field input[type="email"],
+.jp-public-field input[type="password"] {
+  width: 100%;
+  min-height: 2.6rem;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--jp-public-border);
+  border-radius: 0.4em;
+  font: inherit;
+  font-size: 0.95rem;
+  background: #fff;
+  color: var(--jp-public-ink);
+}
+
+.jp-public-field input:focus {
+  outline: 2px solid rgba(37, 99, 235, 0.35);
+  outline-offset: 1px;
+  border-color: rgba(37, 99, 235, 0.45);
+}
+
+.jp-public-field small {
+  display: block;
+  margin-top: 0.35rem;
+  color: var(--jp-public-muted);
+  font-size: 0.8rem;
+}
+
+.jp-public-check {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0.65rem 0 0.85rem;
+  font-size: 0.9rem;
+  color: var(--jp-public-ink);
+}
+
+.jp-public-hint {
+  margin: 0.5rem 0 0;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: var(--jp-public-muted);
+}
+
+/* —— Folder file list —— */
+.jp-public-filelist {
+  margin-top: 1.15rem;
+  border: 1px solid var(--jp-public-border);
+  border-radius: 0.5em;
+  overflow: auto;
+  max-height: min(28rem, 55vh);
+  background: #fff;
+}
+
+.jp-public-filelist .fileobject {
+  cursor: pointer;
+}
+
+.jp-public-filelist .fileobject:hover,
+.jp-public-filelist .fileobject.active {
+  background: var(--jp-public-accent-soft);
+}
+
+.jp-public-layout-split {
+  display: grid;
+  gap: 1.25rem;
+}
+
+@media (min-width: 860px) {
+  .jp-public-layout-split {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
+    align-items: start;
+  }
+}
+
+/* —— Footer —— */
+.jp-public-footer {
+  text-align: center;
+  font-size: 0.82rem;
+  color: var(--jp-public-muted);
+  line-height: 1.5;
+}
+
+.jp-public-footer strong {
+  color: var(--jp-public-ink);
+  font-weight: 600;
+}
+
+.jp-public-footer a {
+  font-weight: 600;
+}
+
+/* —— Share chat panel chrome —— */
+.jp-chat-top {
+  flex: 0 0 auto;
+  padding: 0.95rem 1.25rem 0.85rem;
+  border-bottom: 1px solid var(--jp-public-border);
+}
+
+/* One compact row: large joshu wordmark left · signature identity right */
+.jp-brandbar,
+.jp-chat-brandbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 0 0 0.75rem;
+}
+
+.jp-mark,
+.jp-chat-mark {
+  margin: 0;
+  flex: 0 1 auto;
+  min-width: 0;
+  display: block;
+  width: min(168px, 46%);
+  height: auto;
+}
+
+/* Inside non-chat public panels, keep a little more air under the brandbar */
+.jp-public-panel > .jp-brandbar {
+  margin-bottom: 1.1rem;
+}
+
+/* Email-signature language: portrait + name + {owner}'s Joshu */
+.jp-identity {
+  --jp-identity-rose: #c8a2a6;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.65rem;
+  margin: 0;
+  flex: 0 1 auto;
+  min-width: 0;
+  text-align: right;
+}
+
+.jp-identity-photo {
+  flex: 0 0 auto;
+  width: 2.75rem;
+  height: 2.75rem;
+  border: 1px solid var(--jp-identity-rose);
+  background: #f5f0eb;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  order: 2; /* photo on the far right of the right-aligned cluster */
+}
+
+.jp-identity-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.jp-identity-fallback {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--jp-public-muted);
+  line-height: 1;
+}
+
+.jp-identity-copy {
+  flex: 0 1 auto;
+  min-width: 0;
+  order: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-end;
+  gap: 0.1rem;
+  border-left: none;
+  padding-left: 0;
+  border-right: 1px solid var(--jp-identity-rose);
+  padding-right: 0.65rem;
+}
+
+.jp-identity-name {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--jp-public-ink);
+}
+
+.jp-identity-role {
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.3;
+  color: var(--jp-public-muted);
+}
+
+.jp-chat-subject {
+  font-size: 1rem;
+  margin: 0 0 0.15rem;
+  font-weight: 600;
+}
+
+.jp-chat-meta {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-transform: capitalize;
+  color: var(--jp-public-muted);
+}
+
+.jp-chat-top .jp-public-title {
+  font-size: 1rem;
+  margin-bottom: 0.15rem;
+}
+
+.jp-chat-top .jp-public-eyebrow {
+  margin-bottom: 0.65rem;
+}
+
+.jp-chat-scope {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.35;
+  color: var(--jp-public-muted);
+}
+
+@media (max-width: 420px) {
+  .jp-chat-brandbar {
+    align-items: flex-start;
+  }
+
+  .jp-mark,
+  .jp-chat-mark {
+    width: min(132px, 48%);
+    margin-top: 0.15rem;
+  }
+
+  .jp-identity-name {
+    font-size: 0.88rem;
+  }
+
+  .jp-identity-role {
+    font-size: 0.7rem;
+  }
+}
+
+.jp-chat-messages {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 1rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  background: linear-gradient(180deg, rgba(236, 233, 228, 0.35) 0%, #fff 28%);
+}
+
+.jp-chat-msg {
+  max-width: min(36rem, 100%);
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--jp-public-border);
+  border-radius: 0.55em;
+  background: #fff;
+  align-self: flex-start;
+}
+
+.jp-chat-msg.user {
+  align-self: flex-end;
+  background: var(--jp-public-accent-soft);
+  border-color: rgba(37, 99, 235, 0.28);
+}
+
+.jp-chat-msg .who {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--jp-public-muted);
+  margin-bottom: 0.35rem;
+}
+
+.jp-chat-msg .status {
+  font-size: 0.82rem;
+  color: var(--jp-public-muted);
+  font-style: italic;
+  margin-bottom: 0.4rem;
+  min-height: 1.2em;
+}
+
+.jp-chat-msg .status[hidden] {
+  display: none;
+}
+
+.jp-chat-msg .body {
+  font-size: 0.92rem;
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+.jp-chat-msg.user .body {
+  white-space: pre-wrap;
+}
+
+.jp-chat-msg .body > :first-child {
+  margin-top: 0;
+}
+
+.jp-chat-msg .body > :last-child {
+  margin-bottom: 0;
+}
+
+.jp-chat-msg .body p {
+  margin: 0 0 0.5rem;
+}
+
+.jp-chat-msg .body h1,
+.jp-chat-msg .body h2,
+.jp-chat-msg .body h3,
+.jp-chat-msg .body h4 {
+  margin: 0.7rem 0 0.35rem;
+  font-size: 0.98rem;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.jp-chat-msg .body h1 {
+  font-size: 1.05rem;
+}
+
+.jp-chat-msg .body ul,
+.jp-chat-msg .body ol {
+  margin: 0 0 0.5rem;
+  padding-left: 1.25rem;
+}
+
+.jp-chat-msg .body li {
+  margin: 0.15rem 0;
+}
+
+.jp-chat-msg .body code {
+  font: 0.8rem/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+  background: rgba(26, 26, 26, 0.06);
+  border: 1px solid rgba(26, 26, 26, 0.08);
+  border-radius: 0.25em;
+  padding: 0.05rem 0.3rem;
+}
+
+.jp-chat-msg .body pre {
+  margin: 0 0 0.5rem;
+  padding: 0.65rem 0.75rem;
+  background: rgba(26, 26, 26, 0.04);
+  border: 1px solid var(--jp-public-border);
+  border-radius: 0.35em;
+  overflow-x: auto;
+}
+
+.jp-chat-msg .body pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  white-space: pre;
+}
+
+.jp-chat-msg .body blockquote {
+  margin: 0 0 0.5rem;
+  padding: 0.2rem 0.75rem;
+  border-left: 3px solid var(--jp-public-border);
+  color: var(--jp-public-muted);
+}
+
+.jp-chat-msg .body a {
+  color: var(--jp-public-accent);
+}
+
+.jp-chat-msg .body hr {
+  border: none;
+  border-top: 1px solid var(--jp-public-border);
+  margin: 0.65rem 0;
+}
+
+.jp-chat-msg .body table {
+  border-collapse: collapse;
+  margin: 0 0 0.5rem;
+  font-size: 0.85rem;
+}
+
+.jp-chat-msg .body th,
+.jp-chat-msg .body td {
+  border: 1px solid var(--jp-public-border);
+  padding: 0.25rem 0.5rem;
+  text-align: left;
+}
+
+.jp-chat-msg .body th {
+  background: rgba(26, 26, 26, 0.04);
+}
+
+.jp-chat-msg.streaming .body::after {
+  content: "▍";
+  display: inline-block;
+  margin-left: 2px;
+  animation: jp-public-blink 1s steps(1) infinite;
+  color: var(--jp-public-accent);
+}
+
+@keyframes jp-public-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+.jp-chat-citations {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.6rem;
+}
+
+.jp-chat-chip {
+  font-size: 0.7rem;
+  font-weight: 500;
+  padding: 0.2rem 0.5rem;
+  border: 1px solid var(--jp-public-border);
+  border-radius: 0.3em;
+  background: rgba(255, 255, 255, 0.8);
+  color: var(--jp-public-muted);
+}
+
+.jp-chat-composer {
+  flex: 0 0 auto;
+  border-top: 1px solid var(--jp-public-border);
+  background: #fff;
+  padding: 0.85rem 1rem 1rem;
+  display: flex;
+  gap: 0.65rem;
+  align-items: flex-end;
+}
+
+.jp-chat-composer textarea {
+  flex: 1;
+  min-height: 2.75rem;
+  max-height: 8.5rem;
+  resize: vertical;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--jp-public-border);
+  border-radius: 0.4em;
+  font: inherit;
+  font-size: 0.92rem;
+  line-height: 1.4;
+  color: var(--jp-public-ink);
+  background: #fff;
+}
+
+.jp-chat-composer textarea:focus {
+  outline: 2px solid rgba(37, 99, 235, 0.35);
+  outline-offset: 1px;
+  border-color: rgba(37, 99, 235, 0.45);
+}
+
+.jp-chat-composer .jp-public-btn {
+  min-width: 5.25rem;
+}
+
+@media (max-width: 600px) {
+  .jp-public-shell {
+    padding: 1rem 0.75rem 1.25rem;
+    justify-content: flex-start;
+  }
+
+  .jp-public-panel {
+    border-radius: 0.75em;
+    padding: 1.35rem 1.1rem 1.2rem;
+  }
+
+  .jp-public-panel.jp-public-panel-chat {
+    height: calc(100vh - 4.25rem);
+    border-radius: 0.75em;
+  }
+
+  .jp-public-meta li {
+    grid-template-columns: 1fr;
+    gap: 0.15rem;
+  }
+}

@@ -51,8 +51,9 @@ def _resolve_theme_paths(root: Path) -> tuple[Path, str, Path, bool]:
 
 
 # Bump when Share / File Manager overlays must bust browser iframe caches.
-OVERLAY_VERSION = "20260716a"
-SHARE_DIALOG_CACHE_BUST = "20260716g"
+OVERLAY_VERSION = "20260717i"
+SHARE_DIALOG_CACHE_BUST = "20260717d"
+DESKTOP_SHARE_TO_MARKER = "/* joshu-desktop-share-to */"
 FOLDER_ICON_VERSION = "2"
 FWCSS_NEEDLE = '<link id="fwcss" rel="stylesheet" href="./script/ao.css">'
 SHELL_SCRIPTS = (
@@ -61,6 +62,7 @@ SHELL_SCRIPTS = (
     "aroz-desktop-overlay-guard.js",
     "aroz-onboarding-launch.js",
     "aroz-jchat-tray.js",
+    "aroz-filebrain-toast.js",
 )
 AUTH_PAGE_FILES = ("login.html", "user.html", "index.html")
 AUTH_ASSET_FILES = ("joshu-auth-pages.css", "joshu-wordmark.svg")
@@ -69,6 +71,11 @@ RESET_TEMPLATE_FILES = ("resetCodeTemplate.html", "resetPasswordTemplate.html")
 AUTH_CSS_WEB_PATH = "script/joshu-auth-pages.css"
 AUTH_WORDMARK_WEB_PATH = "img/public/joshu-wordmark.svg"
 AUTH_ICON_WEB_PATH = "img/public/joshu-icon.svg"
+PUBLIC_PAGES_CSS = "joshu-public-pages.css"
+PUBLIC_PAGES_CSS_WEB_PATH = "script/joshu-public-pages.css"
+PUBLIC_IDENTITY_JS = "joshu-public-identity.js"
+PUBLIC_IDENTITY_JS_WEB_PATH = "script/joshu-public-identity.js"
+PUBLIC_PERSONA_JSON_WEB_PATH = "script/joshu-public-persona.json"
 OLD_LINK_PATTERNS = (
     r'<link rel="stylesheet" href="\./joshu-desktop-theme\.css">\s*',
     r'<link rel="stylesheet" href="\./joshu-desktop-theme\.css">',
@@ -405,12 +412,95 @@ def _joshu_share_file_function() -> str:
             }}"""
 
 
+def _find_companion_identity_json(web: Path) -> Path | None:
+    """Locate `.joshu/identity.json` under ArozOS user files (single-owner boxes)."""
+    users = web.parent / "files" / "users"
+    if not users.is_dir():
+        return None
+    hits = sorted(users.glob("*/.joshu/identity.json"))
+    return hits[0] if hits else None
+
+
+def _write_public_persona_json(web: Path) -> None:
+    """Bake a same-origin persona snapshot for public File Share pages.
+
+    Share pages often cannot reach `/joshu/api/...` (ArozOS subservice not mounted for
+    guests). A static JSON next to the hydrator script keeps the email-signature lockup
+    working on local and VPS without auth.
+    """
+    identity_path = _find_companion_identity_json(web)
+    persona: dict = {
+        "name": os.environ.get("JOSHU_NAME", "").strip() or "Companion",
+        "imageUrl": os.environ.get("JOSHU_IMAGE_URL", "").strip() or None,
+        "avatarUrl": os.environ.get("JOSHU_AVATAR_URL", "").strip() or None,
+        "owner": {
+            "displayName": os.environ.get("JOSHU_OWNER_NAME", "").strip() or "Owner",
+        },
+    }
+    if identity_path and identity_path.is_file():
+        try:
+            raw = json.loads(identity_path.read_text(encoding="utf-8"))
+            if isinstance(raw, dict):
+                name = raw.get("name")
+                if isinstance(name, str) and name.strip():
+                    persona["name"] = name.strip()
+                image_url = raw.get("imageUrl")
+                if isinstance(image_url, str) and image_url.strip():
+                    persona["imageUrl"] = image_url.strip()
+                avatar_url = raw.get("avatarUrl")
+                if isinstance(avatar_url, str) and avatar_url.strip():
+                    persona["avatarUrl"] = avatar_url.strip()
+                owner = raw.get("owner")
+                if isinstance(owner, dict):
+                    display = owner.get("displayName")
+                    if isinstance(display, str) and display.strip():
+                        persona["owner"] = {"displayName": display.strip()}
+        except (OSError, json.JSONDecodeError) as err:
+            print(f"[joshu] public persona: could not read {identity_path}: {err}", file=sys.stderr)
+
+    # Prefer env overrides when set (provision / instance.env).
+    if os.environ.get("JOSHU_NAME", "").strip():
+        persona["name"] = os.environ["JOSHU_NAME"].strip()
+    if os.environ.get("JOSHU_IMAGE_URL", "").strip():
+        persona["imageUrl"] = os.environ["JOSHU_IMAGE_URL"].strip()
+    if os.environ.get("JOSHU_AVATAR_URL", "").strip():
+        persona["avatarUrl"] = os.environ["JOSHU_AVATAR_URL"].strip()
+    if os.environ.get("JOSHU_OWNER_NAME", "").strip():
+        persona["owner"] = {"displayName": os.environ["JOSHU_OWNER_NAME"].strip()}
+
+    dest = web / PUBLIC_PERSONA_JSON_WEB_PATH
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_text(json.dumps(persona, indent=2) + "\n", encoding="utf-8")
+    print(f"[joshu] wrote public persona snapshot -> {dest}")
+
+
 def _copy_share_public_pages(web: Path, overlay: Path, root: Path) -> None:
     """Joshu-owned public share pages under system/share/ (not web/).
 
     Includes folder download (convertToBytes fix), not-found / permission pages
     without stock decorative artwork, and Joshu footer (joshu.me) instead of arozos.
     """
+    vanilla = root / "arozos" / "web-overlays-vanilla"
+    # Shared guest CSS (File Share + Share Chat language matches login).
+    css_src = overlay / PUBLIC_PAGES_CSS
+    if not css_src.is_file():
+        css_src = vanilla / PUBLIC_PAGES_CSS
+    if css_src.is_file():
+        css_dest = web / PUBLIC_PAGES_CSS_WEB_PATH
+        css_dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(css_src, css_dest)
+
+    # Guest identity hydrator (portrait + name + {owner}'s Joshu on File Share pages).
+    js_src = overlay / PUBLIC_IDENTITY_JS
+    if not js_src.is_file():
+        js_src = vanilla / PUBLIC_IDENTITY_JS
+    if js_src.is_file():
+        js_dest = web / PUBLIC_IDENTITY_JS_WEB_PATH
+        js_dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(js_src, js_dest)
+
+    _write_public_persona_json(web)
+
     names = (
         "downloadPageFolder.html",
         "downloadPage.html",
@@ -418,7 +508,6 @@ def _copy_share_public_pages(web: Path, overlay: Path, root: Path) -> None:
         "permissionDenied.html",
         "index.html",
     )
-    vanilla = root / "arozos" / "web-overlays-vanilla"
     dest_dir = web.parent / "system" / "share"
     dest_dir.mkdir(parents=True, exist_ok=True)
     copied = 0
@@ -429,7 +518,19 @@ def _copy_share_public_pages(web: Path, overlay: Path, root: Path) -> None:
             src = vanilla / rel
         if not src.is_file():
             continue
-        shutil.copyfile(src, dest_dir / name)
+        text = src.read_text(encoding="utf-8")
+        # Keep public CSS cache-bust aligned with overlay version
+        text = re.sub(
+            r"joshu-public-pages\.css\?v=[^\"']+",
+            f"joshu-public-pages.css?v={OVERLAY_VERSION}",
+            text,
+        )
+        text = re.sub(
+            r"joshu-public-identity\.js\?v=[^\"']+",
+            f"joshu-public-identity.js?v={OVERLAY_VERSION}",
+            text,
+        )
+        (dest_dir / name).write_text(text, encoding="utf-8")
         copied += 1
     if copied:
         print(f"[joshu] applied {copied} share public page(s) -> {dest_dir}")
@@ -489,6 +590,107 @@ def _patch_file_explorer_share_float_window(web: Path) -> None:
         text = text.replace("<head>", f"<head>\n    {FILE_EXPLORER_SHARE_FLOAT_MARKER}", 1)
     path.write_text(text, encoding="utf-8")
     print(f"[joshu] patched file explorer Share -> Share To picker ({path})")
+
+
+def _joshu_desktop_share_to_function() -> str:
+    """Desktop context-menu Share: same Share To picker as File Manager."""
+    return f"""        {DESKTOP_SHARE_TO_MARKER}
+        function openJoshuShareTo(target, event){{
+            var selectedFileObjects = [];
+            $(".launchIconWrapper.selected").each(function(){{
+                var raw = $(this).parent().attr("filedata");
+                if (!raw){{
+                    return;
+                }}
+                try {{
+                    var fileData = JSON.parse(decodeURIComponent(raw));
+                    selectedFileObjects.push({{
+                        "filepath": fileData.Filepath,
+                        "filename": fileData.Filename
+                    }});
+                }} catch (err) {{
+                    console.warn("joshu share_to: bad desktop filedata", err);
+                }}
+            }});
+
+            if (selectedFileObjects.length == 0){{
+                hideAllContextMenus();
+                return;
+            }}
+
+            // Same Share To picker as File Manager shareFile() — no share/new until destination chosen
+            var payload = encodeURIComponent(JSON.stringify(selectedFileObjects));
+            var requestURL = "SystemAO/file_system/share_to.html?v={SHARE_DIALOG_CACHE_BUST}#" + payload;
+            console.log("joshu desktop share_to", selectedFileObjects, requestURL);
+
+            var basePosition = $($(".launchIconWrapper.selected")[0]).offset() || {{ left: 120, top: 120 }};
+            var left = basePosition.left + 100;
+            if (left + 420 > window.innerWidth){{
+                left = Math.max(24, basePosition.left - 440);
+            }}
+            var top = basePosition.top;
+            if (top + 360 > window.innerHeight){{
+                top = Math.max(24, window.innerHeight - 360);
+            }}
+
+            newFloatWindow({{
+                url: requestURL,
+                width: 420,
+                height: 360,
+                left: left,
+                top: top,
+                appicon: "SystemAO/file_system/img/share.svg",
+                title: "Share To"
+            }});
+            hideAllContextMenus();
+        }}
+
+"""
+
+
+def _patch_desktop_share_context_menu(text: str) -> str:
+    """Route desktop Share to Joshu Share To (File Manager parity).
+
+    Stock desktop opens a permission submenu → file_share.html. Joshu opens
+    share_to.html so owners get File sharing page vs Chat with files.
+    """
+    stock_share = (
+        'addContextMenuItem($("#contextmenu"), lcontex(\'Share\'), '
+        '"<i class=\'caret right icon\'></i>", "handleFileShare", true);'
+    )
+    joshu_share = (
+        'addContextMenuItem($("#contextmenu"), lcontex(\'Share\'), '
+        '"<i class=\'share alternate icon\'></i>", "openJoshuShareTo", false);'
+    )
+    if stock_share in text:
+        text = text.replace(stock_share, joshu_share)
+    elif "openJoshuShareTo" not in text:
+        print(
+            "[joshu] desktop share-to patch: Share contextmenu item not found",
+            file=sys.stderr,
+        )
+
+    fn = _joshu_desktop_share_to_function()
+    if DESKTOP_SHARE_TO_MARKER in text:
+        text2, n = re.subn(
+            rf"        {re.escape(DESKTOP_SHARE_TO_MARKER)}.*?^        function shareWithThisPermission",
+            fn + "        function shareWithThisPermission",
+            text,
+            count=1,
+            flags=re.DOTALL | re.MULTILINE,
+        )
+        if n == 1:
+            return text2
+        return text
+
+    anchor = "        function shareWithThisPermission(target, event){"
+    if anchor not in text:
+        print(
+            "[joshu] desktop share-to patch: shareWithThisPermission not found",
+            file=sys.stderr,
+        )
+        return text
+    return text.replace(anchor, fn + anchor, 1)
 
 
 def _patch_system_settings_branding(
@@ -902,6 +1104,7 @@ def main() -> None:
         obsolete_js.unlink()
 
     text = _patch_desktop_tango_folder_icons(text)
+    text = _patch_desktop_share_context_menu(text)
     text = _refresh_desktop_overlay_links(text, theme_file, theme_link)
     text = _patch_favicon_link(text)
 

@@ -8,6 +8,7 @@
         <title locale="title/title">File Share</title>
         <link rel="stylesheet" href="../../script/semantic/semantic.min.css">
         <link rel="stylesheet" href="../../script/ao.css">
+        <link rel="stylesheet" href="../../script/joshu-share-dialogs.css?v=20260717f">
         <script src="../../script/jquery.min.js"></script>
         <script src="../../script/semantic/semantic.min.js"></script>
         <script src="../../script/ao_module.js"></script>
@@ -16,83 +17,32 @@
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0 user-scalable=no">
         <style>
-            body{
-                background: var(--body_background) !important;
-            }
-
-            /* Joshu: keep share URL visible above the permission form in the float window */
-            #shareLinkColumn{
-                padding: 8px 12px;
-            }
+            /* Layout helpers only — colors/typography live in joshu-share-dialogs.css */
+            #shareLinkColumn{ padding: 0; }
             #sharelink{
                 display: block;
                 margin-top: 0.35em;
-                color: #0057ff !important;
                 font-size: 105%;
                 line-height: 1.35;
                 word-break: break-all;
                 overflow-wrap: anywhere;
             }
-            #sharelinkInput{
-                width: 100%;
-                margin-top: 0.35em;
-                font-family: inherit;
-                font-size: 0.95em;
-                padding: 0.45em 0.55em;
-                border: 1px solid rgba(0,0,0,0.18);
-                border-radius: 2px;
-                background: #fff;
-                color: #0d0d0d;
-            }
-            body.darkTheme #sharelinkInput{
-                background: #2f2d3d;
-                color: #eee;
-                border-color: rgba(255,255,255,0.2);
-            }
-
-            .sub.header.darkTheme{
-                color: rgba(39, 19, 19, 0.623) !important;
-            }
-
-            .darkTheme:not(a){
-                color: #eeeeee;
-            }
-
-            .yellow.message.darkTheme{
-                box-shadow: none !important;
-                border: 0px solid transparent !important;
-                background-color: #5e550e !important;
-            }
-
-            .dropDown.darkTheme:not(.icon){
-                background-color: #413f57 !important;
-                border: 1px solid white;
-            }
-
-            .dropdown.darkThem  .ui.label{
-                color: rgb(175, 175, 175);
-                background-color: #2f2d3d !important;
-            }
-
-            .dropdown.darkThem  .ui.label:hover{
-                color: white;
-                opacity: 0.8;
-            }
-
-
+            #qrcode{ margin-top: 0.75em; }
+            #main{ margin-top: 0 !important; }
+            #shareSettingOptions{ padding: 12px 14px !important; }
         </style>
     </head>
-    <body>
-        <div id="shareLinkBar" style="padding:10px 12px 8px;border-bottom:1px solid rgba(0,0,0,0.12);">
-            <div style="font-weight:600;margin-bottom:4px;">Share link</div>
-            <div id="shareLinkLoading" style="opacity:0.7;"><i class="ui loading spinner icon"></i> Generating link…</div>
-            <input id="sharelinkInput" type="text" readonly aria-label="Share link"
-                style="display:none;width:100%;box-sizing:border-box;font:13px/1.35 ui-monospace,SFMono-Regular,Menlo,monospace;padding:8px 10px;border:1px solid rgba(0,0,0,0.2);border-radius:2px;background:#fff;color:#0d0d0d;">
+    <body class="jp-share-dialog">
+        <div class="jp-share-shell">
+        <div id="shareLinkBar" class="jp-share-hero">
+            <div class="jp-share-hero-title">Share link</div>
+            <div id="shareLinkLoading" class="jp-share-muted"><i class="ui loading spinner icon"></i> Generating link…</div>
+            <input id="sharelinkInput" type="text" readonly aria-label="Share link" style="display:none;">
             <a id="sharelink" href="" target="_blank" style="display:none;"></a>
             <div id="qrcode" style="display:none;"></div>
         </div>
         <div id="main" class="ui stackable grid" style="margin-top:0 !important;">
-            <div id="shareSettingOptions" class="sixteen wide column" style="padding:12px; display:none;">
+            <div id="shareSettingOptions" class="sixteen wide column" style="display:none;">
                 <div class="ui header">
                     <span locale="share/setting/title">Share Settings</span>
                     <div class="sub header" locale="share/setting/subtitle">Change who can see this file</div>
@@ -195,13 +145,14 @@
             </div>
         </div>
         <div class="ui divider actionButton"></div>
-        <div class="actionButton" style="width: 100%; padding-right: 12px;" align="right">
+        <div class="actionButton jp-share-actions">
             <div id="sharingCopyBtn" class="ui basic button popupbuttons allowHover" onclick="copyLinkToClipboard(this)">
                 <i class="copy icon"></i> <span locale="button/copy">Copy</span>
             </div> 
             <div id="sharingToggleBtn" class="ui basic button popupbuttons allowHover" data-share-state="active" onclick="toggleSharing(this)">
                 <i class="red remove icon"></i> <span locale="button/remove">Remove</span>
             </div> 
+        </div>
         </div>
         <script>
             /*
@@ -821,5 +772,6 @@
             }
 
         </script>
+        </div>
     </body>
 </html>

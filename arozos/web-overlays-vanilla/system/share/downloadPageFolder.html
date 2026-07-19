@@ -1,166 +1,101 @@
 <!DOCTYPE HTML>
-<html>
+<html lang="en">
     <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-    <title>{{filename}} - {{hostname}} File Share</title>
-    <meta name="description" content="Folder shared from  {{hostname}}">
+    <meta name="robots" content="noindex" />
+    <title>{{filename}} · Joshu File Share</title>
+    <meta name="description" content="Folder shared from {{hostname}}">
 
-      <!-- Facebook Meta Tags -->
-      <meta property="og:url" content="{{requri}}">
-      <meta property="og:type" content="website">
-      <meta property="og:title" content="{{filename}}">
-      <meta property="og:description" content="File shared from {{hostname}}">
-      <meta property="og:image" content="{{opg_image}}">
-    
-      <!-- Twitter Meta Tags -->
-      <meta name="twitter:card" content="summary_large_image">
-      <meta property="twitter:domain" content="{{host}}">
-      <meta property="twitter:url" content="{{requri}}">
-      <meta name="twitter:title" content="{{filename}}">
-      <meta name="twitter:description" content="File shared from {{hostname}}">
-      <meta name="twitter:image" content="{{opg_image}}">
-      
-    <link rel="stylesheet" href="../../script/skeleton/offline.css">
-    <link rel="stylesheet" href="../../script/skeleton/normalize.css">
-    <link rel="stylesheet" href="../../script/skeleton/skeleton.css">
+    <meta property="og:url" content="{{requri}}">
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="{{filename}}">
+    <meta property="og:description" content="Folder shared from {{hostname}}">
+    <meta property="og:image" content="{{opg_image}}">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta property="twitter:domain" content="{{host}}">
+    <meta property="twitter:url" content="{{requri}}">
+    <meta name="twitter:title" content="{{filename}}">
+    <meta name="twitter:description" content="Folder shared from {{hostname}}">
+    <meta name="twitter:image" content="{{opg_image}}">
+
+    <link rel="icon" href="../../img/public/joshu-icon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="../../script/joshu-public-pages.css?v=20260717h">
     <script type="application/javascript" src="../../script/jquery.min.js"></script>
-    <link rel="icon" type="image/png" href="../../img/public/share/share.png" />
     <style>
-
-        body{
-            padding-bottom: 100px;
-        }
-        .bar{
-            height: 12px;
-            background-color: #1a1a1a;
-            width: 100%;
-        }
-
-        .footer{
-            position: fixed;
-            bottom: 0px;
-            height: 50px;
-            width: 100%;
-            background-color: #1a1a1a;
-            padding: 20px;
-            color: white;
-        }
-
-        .fileobject{
-          cursor: pointer;
-        }
-        .fileobject:hover{
-          background-color: #f5f5f5;
-        }
-
-        .fileobject.active{
-          background-color: #f5f5f5ee;
-        }
-
-        .noselect{
-          -webkit-touch-callout: none; /* iOS Safari */
-          -webkit-user-select: none; /* Safari */
-          -khtml-user-select: none; /* Konqueror HTML */
-          -moz-user-select: none; /* Old versions of Firefox */
-          -ms-user-select: none; /* Internet Explorer/Edge */
+        .noselect {
+          -webkit-user-select: none;
           user-select: none;
-        }
-
-        #filelistWrapper{
-          position: relative;
-          padding: 12px;
-          border-top: 4px solid #ffe46c;
-          -webkit-box-shadow: 11px 9px 23px 0px rgba(54,54,54,0.31); 
-          box-shadow: 11px 9px 23px 0px rgba(54,54,54,0.31);
-        }
-
-        td{
-          word-break: break-all;
         }
     </style>
     </head>
-    <body>
-        <div class="bar"></div>
-        <br>
-        <div class="container">
-            <h5>{{hostname}} File Sharing</h5>
-            <h3>{{filename}}</h3>
-            <div class="row">
-                <div class="one-half column">
-                    <table class="u-full-width">
-                        <thead>
-                          <tr>
-                            <th>Property</th>
-                            <th>Value</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          <tr>
-                            <td>MIME Type</td>
-                            <td>{{mime}}</td>
-                          </tr>
-                          <tr>
-                            <td>Folder Size</td>
-                            <td id="folderSizeValue">{{size}}</td>
-                          </tr>
-                          <tr>
-                            <td>File Counts</td>
-                            <td id="fileCountValue">{{filecount}}</td>
-                          </tr>
-                          <tr>
-                            <td>Last Modification Time</td>
-                            <td>{{modtime}}</td>
-                          </tr>
-                        </tbody>
-                      </table>
-                      <a href="{{downloadurl}}" id="downloadLink"><button class="button-primary">Download All</button></a>
-                      <button id="sharebtn" onclick="share();">Share</button>
-                      <div style="margin-top: 10px;">
-                          <input type="checkbox" id="uncompressedCheck" name="uncompressed">
-                          <label for="uncompressedCheck" style="display: inline">Uncompressed</label>
-                      </div>
-                      <p style="font-size: 80%;"><b>Zipping duration depends on folder size and compression settings. Media files are best zipped without compression for faster processing.</b></p>
-                      <p>Request File ID: {{reqid}}<br>
-                      Request Timestamp: {{reqtime}}</p>
-                      <small>📂 Double click any item in the list to open or download</small>
-                      
-                      <script>
-                      document.getElementById('uncompressedCheck').addEventListener('change', function() {
-                          const downloadLink = document.getElementById('downloadLink');
-                          if (this.checked) {
-                              downloadLink.href = '{{downloadurl}}?compression_level=0';
-                          } else {
-                              downloadLink.href = '{{downloadurl}}';
-                          }
-                      });
-                      </script>
-                      
-                    
+    <body class="jp-public">
+        <div class="jp-public-shell jp-public-shell-tall">
+            <main class="jp-public-panel jp-public-panel-wide">
+                <div class="jp-brandbar">
+                    <img class="jp-mark" src="../../img/public/joshu-wordmark.svg" alt="joshu">
+                    <div class="jp-identity" data-jp-identity hidden role="group">
+                        <div class="jp-identity-photo" data-jp-photo></div>
+                        <div class="jp-identity-copy">
+                            <p class="jp-identity-name" data-jp-name></p>
+                            <p class="jp-identity-role" data-jp-role></p>
+                        </div>
+                    </div>
                 </div>
-                <div class="one-half column" id="filelistWrapper" style="overflow-y: auto; padding-right: 0.5em; min-height: 400px;">
-                  <table class="u-full-width">
-                    <thead>
-                      <tr>
-                        <th>Filename</th>
-                        <th>Type</th>
-                        <th>Size</th>
-                      </tr>
-                    </thead>
-                    <tbody id="folderList">
-                     
-                    </tbody>
-                  </table>
+                <h1 class="jp-public-title">{{filename}}</h1>
+                <p class="jp-public-lede">Browse files in this folder, or download everything as a zip.</p>
+
+                <div class="jp-public-layout-split">
+                    <div>
+                        <ul class="jp-public-meta">
+                            <li><span class="k">Type</span><span class="v">{{mime}}</span></li>
+                            <li><span class="k">Folder size</span><span class="v" id="folderSizeValue">{{size}}</span></li>
+                            <li><span class="k">Files</span><span class="v" id="fileCountValue">{{filecount}}</span></li>
+                            <li><span class="k">Modified</span><span class="v">{{modtime}}</span></li>
+                        </ul>
+
+                        <div class="jp-public-actions" style="margin-top: 1.15rem;">
+                            <a class="jp-public-btn jp-public-btn-primary" href="{{downloadurl}}" id="downloadLink">Download all</a>
+                            <button type="button" class="jp-public-btn jp-public-btn-secondary" id="sharebtn" onclick="share();">Share link</button>
+                        </div>
+
+                        <label class="jp-public-check">
+                            <input type="checkbox" id="uncompressedCheck" name="uncompressed">
+                            <span>Uncompressed zip (faster for media)</span>
+                        </label>
+                        <p class="jp-public-hint">Zipping time depends on folder size. Double-click a row to open or download.</p>
+                        <p class="jp-public-hint">Request {{reqid}} · {{reqtime}}</p>
+                    </div>
+
+                    <div class="jp-public-filelist" id="filelistWrapper">
+                        <table class="jp-public-table">
+                            <thead>
+                              <tr>
+                                <th>Name</th>
+                                <th>Type</th>
+                                <th>Size</th>
+                              </tr>
+                            </thead>
+                            <tbody id="folderList"></tbody>
+                        </table>
+                    </div>
                 </div>
-            </div>
-          
+            </main>
+            <footer class="jp-public-footer">
+                <strong>Joshu</strong> · File sharing by <a href="https://joshu.me" target="_blank" rel="noopener noreferrer">joshu.me</a>
+            </footer>
         </div>
-        <div class="footer">
-            <div class="container">
-                File sharing by <a style="color: white;" href="https://joshu.me" target="_blank" rel="noopener noreferrer">Joshu</a>
-            </div>
-        </div>
+    <script type="application/javascript" src="../../script/joshu-public-identity.js?v=20260717h"></script>
     <script>
+      document.getElementById('uncompressedCheck').addEventListener('change', function() {
+          const downloadLink = document.getElementById('downloadLink');
+          if (this.checked) {
+              downloadLink.href = '{{downloadurl}}?compression_level=0';
+          } else {
+              downloadLink.href = '{{downloadurl}}';
+          }
+      });
+
       var treeFileList = {{treelist}};
       var downloadUUID = `{{downloaduuid}}`;
       var currentViewingRoot = ".";
@@ -201,11 +136,6 @@
         downloadLink.href = '{{downloadurl}}?compression_level=0';
       }
 
-      handleWindowResize();
-      $(window).on("resize", function(e){
-        handleWindowResize();
-      });
-
       if (location.protocol !== 'https:') {
          document.getElementById("sharebtn").remove()
       }
@@ -229,15 +159,6 @@
       }
 
 
-      function handleWindowResize(){
-        if (window.innerWidth < 550){
-          //Assume mobile
-          $(".footer").css("height", "20px");
-        }else{
-          $(".footer").css("height", "50px");
-        }
-      }
-      
       function convertToBytes(sizeString) {
         // Joshu: ArozOS GetFileDisplaySize emits "386.00Bytes" (not "B"). Stock regex
         // only matched [KMGT]?B, threw on "Bytes", and aborted renderFileList — so files
@@ -440,13 +361,6 @@
         }
       }
 
-      resizeDOMElement();
-      function resizeDOMElement(){
-        $("#filelistWrapper").css({
-          height: window.innerHeight - $("#filelistWrapper").offset().top - 100,
-        })
-      }
-
       function highlightThis(object){
           $(".fileobject.active").removeClass("active");
           $(object).addClass("active");
@@ -456,9 +370,7 @@
           selectedFile = $(object);
       }
 
-      $(window).on("resize", function(){
-        resizeDOMElement();
-      })
+    
     </script>
     </body>
 </html>

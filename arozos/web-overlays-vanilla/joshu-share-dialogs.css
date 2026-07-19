@@ -1,0 +1,361 @@
+/**
+ * Joshu share dialogs + public share pages — visual language aligned with
+ * login / first-account auth (joshu-auth-pages.css).
+ */
+@import url("https://fonts.googleapis.com/css2?family=Work+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap");
+
+:root {
+  --jp-auth-bg: #ece9e4;
+  --jp-auth-panel: #ffffff;
+  --jp-auth-ink: #1a1a1a;
+  --jp-auth-muted: #5c5c5c;
+  --jp-auth-accent: #2563eb;
+  --jp-auth-accent-hover: #1d4ed8;
+  --jp-auth-accent-dim: #1e40af;
+  --jp-auth-accent-soft: #e8f0fe;
+  --jp-auth-border: rgba(26, 26, 26, 0.14);
+  --jp-auth-font: "Work Sans", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --jp-auth-radius: 10px;
+  --jp-auth-radius-sm: 6px;
+}
+
+/* —— Owner float dialogs (file_share / chat_share / share_to) —— */
+body.jp-share-dialog {
+  margin: 0;
+  min-height: 100%;
+  font-family: var(--jp-auth-font) !important;
+  color: var(--jp-auth-ink) !important;
+  background:
+    linear-gradient(145deg, #e8e4de 0%, var(--jp-auth-bg) 42%, #d4e4ff 100%) !important;
+}
+
+body.jp-share-dialog .jp-share-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  box-sizing: border-box;
+}
+
+body.jp-share-dialog .jp-share-panel {
+  background: var(--jp-auth-panel);
+  border: 1px solid var(--jp-auth-border);
+  border-radius: var(--jp-auth-radius);
+  box-shadow: 0 10px 28px rgba(26, 26, 26, 0.08);
+}
+
+body.jp-share-dialog .jp-share-hero {
+  padding: 14px 16px 12px;
+  border-bottom: 1px solid var(--jp-auth-border);
+  background: linear-gradient(180deg, #ffffff 0%, #faf9f7 100%);
+}
+
+body.jp-share-dialog .jp-share-hero-title {
+  margin: 0 0 4px;
+  font-size: 0.95rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+body.jp-share-dialog .jp-share-hero-hint,
+body.jp-share-dialog .jp-share-muted {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--jp-auth-muted);
+}
+
+body.jp-share-dialog .jp-share-body {
+  padding: 14px 16px;
+  flex: 1 1 auto;
+}
+
+body.jp-share-dialog .jp-share-section {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--jp-auth-border);
+}
+
+body.jp-share-dialog .jp-share-label {
+  margin: 0 0 6px;
+  font-size: 0.82rem;
+  font-weight: 650;
+  color: var(--jp-auth-ink);
+}
+
+body.jp-share-dialog input[type="text"],
+body.jp-share-dialog input:not([type]),
+body.jp-share-dialog textarea,
+body.jp-share-dialog #sharelinkInput,
+body.jp-share-dialog #chatlinkInput,
+body.jp-share-dialog #slackChannelName {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.82rem;
+  line-height: 1.4;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--jp-auth-border);
+  border-radius: var(--jp-auth-radius-sm);
+  background: #fff;
+  color: var(--jp-auth-ink);
+  box-shadow: inset 0 1px 2px rgba(26, 26, 26, 0.04);
+}
+
+body.jp-share-dialog input:focus,
+body.jp-share-dialog #sharelinkInput:focus,
+body.jp-share-dialog #chatlinkInput:focus,
+body.jp-share-dialog #slackChannelName:focus {
+  outline: none;
+  border-color: var(--jp-auth-accent);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.16);
+}
+
+body.jp-share-dialog a#sharelink,
+body.jp-share-dialog a#chatlink {
+  color: var(--jp-auth-accent) !important;
+  font-weight: 500;
+}
+
+body.jp-share-dialog .jp-share-actions,
+body.jp-share-dialog .actions,
+body.jp-share-dialog .slack-actions,
+body.jp-share-dialog .actionButton {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+  align-items: center;
+  padding: 12px 16px 14px;
+}
+
+body.jp-share-dialog .ui.divider.actionButton {
+  margin: 0 !important;
+  border-top: 1px solid var(--jp-auth-border) !important;
+  border-bottom: 0 !important;
+}
+
+/* Semantic button restyle → auth primary / ghost */
+body.jp-share-dialog .ui.button {
+  font-family: var(--jp-auth-font) !important;
+  font-weight: 600 !important;
+  border-radius: var(--jp-auth-radius-sm) !important;
+  margin: 0 !important;
+}
+
+body.jp-share-dialog .ui.basic.button {
+  background: #fff !important;
+  color: var(--jp-auth-ink) !important;
+  border: 1px solid var(--jp-auth-border) !important;
+  box-shadow: none !important;
+}
+
+body.jp-share-dialog .ui.basic.button:hover,
+body.jp-share-dialog .ui.basic.button:focus {
+  background: var(--jp-auth-accent-soft) !important;
+  color: var(--jp-auth-accent-dim) !important;
+  border-color: rgba(37, 99, 235, 0.35) !important;
+}
+
+body.jp-share-dialog .ui.primary.button,
+body.jp-share-dialog .ui.button.jp-share-primary {
+  background: var(--jp-auth-accent) !important;
+  color: #fff !important;
+  border: 1px solid var(--jp-auth-accent) !important;
+  box-shadow: none !important;
+}
+
+body.jp-share-dialog .ui.primary.button:hover,
+body.jp-share-dialog .ui.button.jp-share-primary:hover {
+  background: var(--jp-auth-accent-hover) !important;
+  border-color: var(--jp-auth-accent-hover) !important;
+}
+
+body.jp-share-dialog .ui.header {
+  font-family: var(--jp-auth-font) !important;
+  color: var(--jp-auth-ink) !important;
+}
+
+body.jp-share-dialog .ui.header .sub.header {
+  color: var(--jp-auth-muted) !important;
+}
+
+body.jp-share-dialog .ui.checkbox label,
+body.jp-share-dialog .ui.checkbox .header {
+  color: var(--jp-auth-ink) !important;
+}
+
+body.jp-share-dialog .ui.yellow.message {
+  background: #fff8e8 !important;
+  color: var(--jp-auth-ink) !important;
+  border: 1px solid rgba(180, 120, 0, 0.28) !important;
+  box-shadow: none !important;
+}
+
+body.jp-share-dialog .ui.dropdown {
+  border-radius: var(--jp-auth-radius-sm) !important;
+  border-color: var(--jp-auth-border) !important;
+}
+
+/* Share To option cards */
+body.jp-share-dialog .share-to-intro {
+  margin: 0 0 10px;
+  font-size: 0.9rem;
+  color: var(--jp-auth-muted);
+}
+
+body.jp-share-dialog .share-to-file {
+  margin: 0 0 16px;
+  font-size: 0.85rem;
+  word-break: break-all;
+}
+
+body.jp-share-dialog .share-to-options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+body.jp-share-dialog .share-to-option {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 14px 16px;
+  border: 1px solid var(--jp-auth-border);
+  border-radius: var(--jp-auth-radius);
+  background: var(--jp-auth-panel);
+  box-shadow: 0 4px 14px rgba(26, 26, 26, 0.05);
+  cursor: pointer;
+  transition: border-color 0.12s ease, background 0.12s ease, box-shadow 0.12s ease;
+  font-family: var(--jp-auth-font);
+  color: var(--jp-auth-ink);
+}
+
+body.jp-share-dialog .share-to-option:hover,
+body.jp-share-dialog .share-to-option:focus {
+  border-color: var(--jp-auth-accent);
+  background: var(--jp-auth-accent-soft);
+  box-shadow: 0 6px 18px rgba(37, 99, 235, 0.12);
+  outline: none;
+}
+
+body.jp-share-dialog .share-to-option-title {
+  display: block;
+  font-size: 0.95rem;
+  font-weight: 650;
+  margin-bottom: 4px;
+}
+
+body.jp-share-dialog .share-to-option-desc {
+  display: block;
+  font-size: 0.82rem;
+  line-height: 1.4;
+  color: var(--jp-auth-muted);
+}
+
+body.jp-share-dialog .share-to-error {
+  color: #b00020;
+  font-size: 0.85rem;
+}
+
+/* —— Public share / download pages —— */
+body.jp-share-public {
+  margin: 0;
+  min-height: 100vh;
+  font-family: var(--jp-auth-font);
+  color: var(--jp-auth-ink);
+  background:
+    linear-gradient(145deg, #e8e4de 0%, var(--jp-auth-bg) 42%, #d4e4ff 100%);
+  padding: 0 0 5.5rem;
+}
+
+body.jp-share-public .jp-share-public-bar {
+  height: 4px;
+  width: 100%;
+  background: linear-gradient(90deg, var(--jp-auth-accent) 0%, #7aa2ff 55%, #d4e4ff 100%);
+}
+
+body.jp-share-public .jp-share-public-wrap {
+  max-width: 920px;
+  margin: 2.5rem auto 0;
+  padding: 0 1.25rem;
+}
+
+body.jp-share-public .jp-share-public-card {
+  background: var(--jp-auth-panel);
+  border: 1px solid var(--jp-auth-border);
+  border-radius: 1em;
+  box-shadow: 0 12px 40px rgba(26, 26, 26, 0.1);
+  padding: 1.75rem 1.5rem 1.5rem;
+}
+
+body.jp-share-public h3,
+body.jp-share-public h5 {
+  font-family: var(--jp-auth-font);
+  color: var(--jp-auth-ink);
+  font-weight: 650;
+}
+
+body.jp-share-public p,
+body.jp-share-public label,
+body.jp-share-public small,
+body.jp-share-public td {
+  color: var(--jp-auth-muted);
+}
+
+body.jp-share-public .filename {
+  color: var(--jp-auth-ink) !important;
+  word-break: break-word;
+}
+
+body.jp-share-public input[type="text"],
+body.jp-share-public input.u-full-width {
+  border: 1px solid var(--jp-auth-border) !important;
+  border-radius: var(--jp-auth-radius-sm) !important;
+  font-family: var(--jp-auth-font) !important;
+}
+
+body.jp-share-public .button-primary,
+body.jp-share-public a.button-primary,
+body.jp-share-public button.button-primary {
+  background-color: var(--jp-auth-accent) !important;
+  border-color: var(--jp-auth-accent) !important;
+  border-radius: var(--jp-auth-radius-sm) !important;
+  font-family: var(--jp-auth-font) !important;
+  font-weight: 600 !important;
+}
+
+body.jp-share-public .button-primary:hover {
+  background-color: var(--jp-auth-accent-hover) !important;
+  border-color: var(--jp-auth-accent-hover) !important;
+}
+
+body.jp-share-public .jp-share-public-footer {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 1rem 1.25rem;
+  background: rgba(255, 255, 255, 0.92);
+  border-top: 1px solid var(--jp-auth-border);
+  color: var(--jp-auth-muted);
+  font-size: 0.85rem;
+  backdrop-filter: blur(8px);
+}
+
+body.jp-share-public .jp-share-public-footer a {
+  color: var(--jp-auth-accent);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+body.jp-share-public .jp-share-public-footer a:hover {
+  color: var(--jp-auth-accent-hover);
+}
+
+body.jp-share-public table {
+  border-color: var(--jp-auth-border);
+}
+
+body.jp-share-public th {
+  color: var(--jp-auth-ink);
+}
