@@ -223,13 +223,14 @@ Legacy `JOSHU_ACTION_GUARD_TELEGRAM_*` env vars still work until owner channel i
 | Action-guard / approval | `JOSHU_ACTION_GUARD_TELEGRAM_BOT_TOKEN` | HITL Approve/Deny |
 | Hermes 1:1 chat | `TELEGRAM_BOT_TOKEN` | Owner ↔ agent chat (jChat / Telegram gateway) |
 
-**Three Slack integrations (do not conflate)**
+**Four Slack integrations (do not conflate)**
 
 | Integration | Config | Purpose |
 |-------------|--------|---------|
-| Owner approval channel | Connectors + Composio OAuth; channel ID in Safety/Connectors | HITL Y/N only |
-| Composio Slack | Connectors OAuth | Agent MCP tools (`SLACK_SEND_MESSAGE`, …) |
+| Owner approval channel | Connectors + Composio user `slack`; channel ID in Safety/Connectors | HITL Y/N only |
+| Composio Slack | Connectors OAuth (`slack`) | Agent MCP tools (`SLACK_SEND_MESSAGE`, …) |
 | Hermes Slack chat | Safety → `SLACK_BOT_TOKEN` + `SLACK_APP_TOKEN` | Full agent chat (Socket Mode) |
+| Share-chat Slackbot | Connectors toolkit **`slackbot`** (in-app setup wizard) + Chat sharing dialog | KB-scoped channel Q&A (scoped RAG only; see [share-chat.md](share-chat.md)) |
 
 ---
 

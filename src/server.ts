@@ -40,7 +40,7 @@ import {
   registerHermesDashboardRoutes,
 } from "./hermesDashboard.js";
 import { registerBrainRoutes, probeGbrainHealth } from "./brainApi.js";
-import { registerShareChatRoutes, registerShareChatSlackEventsRoute } from "./shareChat/routes.js";
+import { registerShareChatRoutes, registerShareChatSlackEventsRoute, registerShareChatComposioTriggersRoute } from "./shareChat/routes.js";
 import { registerFilesRoutes } from "./filesApi.js";
 import { registerDesktopActionRoutes, drainDesktopActionsForChat, desktopActionFromHermesToolRaw } from "./desktopActionApi.js";
 import { registerAppGuiActionRoutes } from "./appGuiActionApi.js";
@@ -359,6 +359,7 @@ function buildAppRouter(): {
 
   registerBrainRoutes(router);
   registerFilesRoutes(router);
+  // Share-chat JSON routes register after express.json() below.
 
   registerInstanceHealthRoutes(router, {
     probeHermes: async () => {
@@ -403,6 +404,7 @@ function buildAppRouter(): {
 
   // Raw body routes must register before express.json().
   registerShareChatSlackEventsRoute(router);
+  registerShareChatComposioTriggersRoute(router);
   router.post("/api/hermes-chat/transcribe", express.raw({ limit: "15mb", type: "*/*" }), async (req: Request, res: Response) => {
     const body = req.body;
     if (!Buffer.isBuffer(body) || body.length === 0) {
@@ -1210,6 +1212,16 @@ const server = app.listen(PORT, HOST, () => {
     );
   }
   void bootstrapCamofoxStartUrl(true);
+  void import("./shareChat/triggerSubscribe.js")
+    .then(({ startShareChatSlackbotTriggerSubscribe }) =>
+      startShareChatSlackbotTriggerSubscribe(PROJECT_ROOT),
+    )
+    .catch((err) => {
+      console.warn(
+        "[joshu] share-chat slackbot subscribe skipped:",
+        err instanceof Error ? err.message : String(err),
+      );
+    });
   if (HERMES_API_AUTO_START) {
     if (JOSHU_DEFER_HERMES_GATEWAY_WARM) {
       console.log(

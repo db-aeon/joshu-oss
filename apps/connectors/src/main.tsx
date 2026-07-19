@@ -102,6 +102,16 @@ function formatWhen(iso?: string): string {
   return d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
+type SlackbotSetupStatus = {
+  composioEnabled?: boolean;
+  authConfigConfigured?: boolean;
+  authConfigIdPreview?: string;
+  webhookConfigured?: boolean;
+  webhookUrl?: string;
+  setupRequired?: boolean;
+  steps?: string[];
+};
+
 function App() {
   const [tab, setTab] = useState<Tab>("overview");
   const [status, setStatus] = useState<ConnectorsStatus | null>(null);
@@ -122,6 +132,16 @@ function App() {
   const [ownerTelegramChatId, setOwnerTelegramChatId] = useState("");
   const [ownerSlackChannelId, setOwnerSlackChannelId] = useState("");
   const [ownerChannelMsg, setOwnerChannelMsg] = useState("");
+  const [slackbotSetup, setSlackbotSetup] = useState<SlackbotSetupStatus | null>(null);
+  const [slackbotManifestText, setSlackbotManifestText] = useState("");
+  const [slackbotClientId, setSlackbotClientId] = useState("");
+  const [slackbotClientSecret, setSlackbotClientSecret] = useState("");
+  const [slackbotSigningSecret, setSlackbotSigningSecret] = useState("");
+  const [slackbotAppToken, setSlackbotAppToken] = useState("");
+  const [slackbotVerificationToken, setSlackbotVerificationToken] = useState("");
+  const [slackbotWizardOpen, setSlackbotWizardOpen] = useState(false);
+  const [slackbotMsg, setSlackbotMsg] = useState("");
+  const [slackbotWebhookUrl, setSlackbotWebhookUrl] = useState("");
 
   const refreshStatus = useCallback(async () => {
     const res = await fetch(`${CONNECTORS_API}/status`, { cache: "no-store" });
@@ -168,6 +188,16 @@ function App() {
     return json;
   }, []);
 
+  const refreshSlackbotSetup = useCallback(async () => {
+    const res = await fetch(`${COMPOSIO_API}/slackbot/setup`, { cache: "no-store" });
+    if (!res.ok) return null;
+    const json = (await res.json()) as SlackbotSetupStatus & { ok?: boolean };
+    setSlackbotSetup(json);
+    if (json.webhookUrl) setSlackbotWebhookUrl(json.webhookUrl);
+    if (json.setupRequired) setSlackbotWizardOpen(true);
+    return json;
+  }, []);
+
   const refreshAll = useCallback(async () => {
     setLoading(true);
     setError("");
@@ -175,16 +205,30 @@ function App() {
       await refreshStatus();
       await refreshToolkits();
       await refreshDay0Status().catch(() => undefined);
+      await refreshSlackbotSetup().catch(() => undefined);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }
-  }, [refreshStatus, refreshToolkits, refreshDay0Status]);
+  }, [refreshStatus, refreshToolkits, refreshDay0Status, refreshSlackbotSetup]);
 
   useEffect(() => {
     void refreshAll();
   }, [refreshAll]);
+
+  // Deep-link from Chat sharing: /joshu/connectors#slackbot
+  useEffect(() => {
+    const openSlackbot = () => {
+      if (window.location.hash.replace(/^#/, "") === "slackbot") {
+        setTab("connect");
+        setSlackbotWizardOpen(true);
+      }
+    };
+    openSlackbot();
+    window.addEventListener("hashchange", openSlackbot);
+    return () => window.removeEventListener("hashchange", openSlackbot);
+  }, []);
 
   useEffect(() => {
     const onFocus = () => void refreshAll();
@@ -192,36 +236,146 @@ function App() {
     return () => window.removeEventListener("focus", onFocus);
   }, [refreshAll]);
 
+  const openOAuthPopup = (redirectUrl: string, slug: string) => {
+    const popup = window.open(redirectUrl, "_blank", "noopener,noreferrer");
+    if (!popup) throw new Error("Pop-up blocked — allow pop-ups and try again.");
+    const poll = window.setInterval(() => {
+      if (!popup.closed) return;
+      window.clearInterval(poll);
+      void (async () => {
+        await fetch(`${COMPOSIO_API}/post-connect`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ toolkit: slug, restartGateway: true }),
+        });
+        await refreshAll();
+      })();
+    }, 500);
+  };
+
   const connectToolkit = async (slug: string) => {
     const busyKey = `connect-${slug}`;
     setBusy(busyKey);
     setError("");
     try {
+      const slugLower = slug.toLowerCase();
+      // Slackbot needs the in-UI wizard before OAuth — never surface raw API JSON.
+      if (slugLower === "slackbot") {
+        const setup = slackbotSetup ?? (await refreshSlackbotSetup().catch(() => null));
+        if (!setup?.authConfigConfigured) {
+          setTab("connect");
+          setSlackbotWizardOpen(true);
+          setSlackbotMsg(
+            setup?.steps?.[0]
+              ? "Finish the steps below, then Save & Connect."
+              : "Generate a Slack app manifest, paste Client ID, Client Secret, Signing Secret, and App-Level Token (xapp-), then Save & Connect.",
+          );
+          setBusy(null);
+          return;
+        }
+      }
       const res = await fetch(`${COMPOSIO_API}/connect`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ toolkit: slug, callbackUrl: window.location.href }),
       });
-      if (!res.ok) throw new Error(await res.text());
-      const json = (await res.json()) as { redirectUrl?: string };
+      const rawText = await res.text();
+      let json: {
+        redirectUrl?: string;
+        error?: string;
+        code?: string;
+        hint?: string;
+      } = {};
+      try {
+        json = rawText ? (JSON.parse(rawText) as typeof json) : {};
+      } catch {
+        /* non-JSON */
+      }
+      if (!res.ok) {
+        if (
+          slugLower === "slackbot" &&
+          (json.code === "slackbot_setup_required" || json.error === "slackbot_setup_required")
+        ) {
+          setSlackbotWizardOpen(true);
+          setSlackbotMsg(json.hint || "Finish Slackbot setup below, then Save & Connect.");
+          setBusy(null);
+          return;
+        }
+        throw new Error(json.hint || json.error || rawText || `HTTP ${res.status}`);
+      }
       if (!json.redirectUrl) throw new Error("Missing redirect URL from Composio");
-      const popup = window.open(json.redirectUrl, "_blank", "noopener,noreferrer");
-      if (!popup) throw new Error("Pop-up blocked — allow pop-ups and try again.");
+      openOAuthPopup(json.redirectUrl, slug);
       setBusy(null);
-      const poll = window.setInterval(() => {
-        if (!popup.closed) return;
-        window.clearInterval(poll);
-        void (async () => {
-          await fetch(`${COMPOSIO_API}/post-connect`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ toolkit: slug, restartGateway: true }),
-          });
-          await refreshAll();
-        })();
-      }, 500);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+      setBusy(null);
+    }
+  };
+
+  const loadSlackbotManifest = async () => {
+    setBusy("slackbot-manifest");
+    setSlackbotMsg("");
+    try {
+      const res = await fetch(`${COMPOSIO_API}/slackbot/manifest`, { cache: "no-store" });
+      if (!res.ok) throw new Error(await res.text());
+      const json = (await res.json()) as { manifestText?: string };
+      setSlackbotManifestText(json.manifestText || "");
+      setSlackbotMsg("Manifest ready — copy or download, then create the app at api.slack.com.");
+    } catch (err) {
+      setSlackbotMsg(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const saveAndConnectSlackbot = async () => {
+    setBusy("slackbot-save");
+    setSlackbotMsg("");
+    setError("");
+    try {
+      const res = await fetch(`${COMPOSIO_API}/slackbot/setup`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+          clientId: slackbotClientId,
+          clientSecret: slackbotClientSecret,
+          signingSecret: slackbotSigningSecret,
+          appToken: slackbotAppToken,
+          verificationToken: slackbotVerificationToken || slackbotSigningSecret,
+          connect: true,
+          callbackUrl: window.location.href,
+        }),
+      });
+      const json = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        error?: string;
+        redirectUrl?: string;
+        webhookUrl?: string;
+        status?: SlackbotSetupStatus;
+        rebind?: { ok?: number; failed?: unknown[] };
+      };
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      if (json.status) setSlackbotSetup(json.status);
+      if (json.webhookUrl) setSlackbotWebhookUrl(json.webhookUrl);
+      setSlackbotClientSecret("");
+      setSlackbotSigningSecret("");
+      setSlackbotAppToken("");
+      setSlackbotVerificationToken("");
+      const rebindNote =
+        json.rebind && typeof json.rebind.ok === "number"
+          ? ` Rebound triggers on ${json.rebind.ok} channel(s).`
+          : "";
+      if (json.redirectUrl) {
+        setSlackbotMsg(
+          `Auth + webhook saved.${rebindNote} Approve Slack OAuth in the popup, then paste Event URL into Slack Event Subscriptions.`,
+        );
+        openOAuthPopup(json.redirectUrl, "slackbot");
+      } else {
+        setSlackbotMsg(`Auth + webhook saved.${rebindNote} Click Connect if OAuth is still needed.`);
+      }
+    } catch (err) {
+      setSlackbotMsg(err instanceof Error ? err.message : String(err));
+    } finally {
       setBusy(null);
     }
   };
@@ -580,7 +734,7 @@ function App() {
                   const connectBusyKey = `connect-${row.slug}`;
 
                   return (
-                    <li key={row.slug} className="composio-toolkit">
+                    <li key={row.slug} className="composio-toolkit" id={slugLower === "slackbot" ? "slackbot" : undefined}>
                       <div className="composio-row">
                         <div className="composio-row-main">
                           {row.logo ? (
@@ -593,9 +747,13 @@ function App() {
                           <div>
                             <strong>{row.name}</strong>
                             <small>
-                              {accounts.length === 0
-                                ? "Not connected"
-                                : `${accounts.length} account${accounts.length === 1 ? "" : "s"} connected`}
+                              {slugLower === "slackbot"
+                                ? accounts.length === 0
+                                  ? "Shared-file KB channels (not approvals / Hermes chat)"
+                                  : `${accounts.length} workspace connected · KB channels`
+                                : accounts.length === 0
+                                  ? "Not connected"
+                                  : `${accounts.length} account${accounts.length === 1 ? "" : "s"} connected`}
                             </small>
                           </div>
                         </div>
@@ -603,15 +761,208 @@ function App() {
                           type="button"
                           className="btn btn-primary"
                           disabled={busy === connectBusyKey}
-                          onClick={() => void connectToolkit(row.slug)}
+                          onClick={() => {
+                            if (slugLower === "slackbot") {
+                              setSlackbotWizardOpen(true);
+                              // Wizard-first: connectToolkit will no-op OAuth until auth config exists.
+                            }
+                            void connectToolkit(row.slug);
+                          }}
                         >
                           {busy === connectBusyKey
                             ? "Opening…"
-                            : accounts.length > 0
-                              ? "Connect another account"
-                              : "Connect"}
+                            : slugLower === "slackbot" && slackbotSetup?.setupRequired
+                              ? "Set up"
+                              : accounts.length > 0
+                                ? "Connect another account"
+                                : "Connect"}
                         </button>
                       </div>
+                      {slugLower === "slackbot" && slackbotWizardOpen && (
+                        <div className="slackbot-wizard">
+                          <p className="hint">
+                            Slackbot powers <strong>Chat with shared files</strong> channels. It is separate from
+                            user Slack (owner approvals) and Hermes Slack chat.
+                          </p>
+                          {slackbotSetup?.steps && slackbotSetup.steps.length > 0 && (
+                            <ol className="hint setup-steps">
+                              {slackbotSetup.steps.map((step) => (
+                                <li key={step}>{step}</li>
+                              ))}
+                            </ol>
+                          )}
+                          {slackbotSetup?.authConfigConfigured && (
+                            <p className="hint">
+                              Auth config on file{slackbotSetup.authConfigIdPreview
+                                ? ` (${slackbotSetup.authConfigIdPreview})`
+                                : ""}
+                              . You can rotate credentials below, then Connect.
+                            </p>
+                          )}
+                          <div className="actions inline-actions">
+                            <button
+                              type="button"
+                              className="btn"
+                              disabled={busy === "slackbot-manifest"}
+                              onClick={() => void loadSlackbotManifest()}
+                            >
+                              {busy === "slackbot-manifest" ? "Generating…" : "Generate manifest"}
+                            </button>
+                            {slackbotManifestText ? (
+                              <>
+                                <button
+                                  type="button"
+                                  className="btn"
+                                  onClick={() => {
+                                    void navigator.clipboard.writeText(slackbotManifestText);
+                                    setSlackbotMsg("Manifest copied.");
+                                  }}
+                                >
+                                  Copy manifest
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn"
+                                  onClick={() => {
+                                    const blob = new Blob([slackbotManifestText], {
+                                      type: "application/json",
+                                    });
+                                    const url = URL.createObjectURL(blob);
+                                    const a = document.createElement("a");
+                                    a.href = url;
+                                    a.download = "joshu-slackbot-manifest.json";
+                                    a.click();
+                                    URL.revokeObjectURL(url);
+                                  }}
+                                >
+                                  Download .json
+                                </button>
+                                <a
+                                  className="btn"
+                                  href="https://api.slack.com/apps?new_app=1"
+                                  target="_blank"
+                                  rel="noreferrer"
+                                >
+                                  Open Slack apps
+                                </a>
+                              </>
+                            ) : null}
+                          </div>
+                          {slackbotManifestText ? (
+                            <div className="field">
+                              <label htmlFor="slackbotManifest">Slack app manifest</label>
+                              <textarea
+                                id="slackbotManifest"
+                                className="manifest-preview"
+                                readOnly
+                                rows={10}
+                                value={slackbotManifestText}
+                                onFocus={(e) => e.currentTarget.select()}
+                              />
+                            </div>
+                          ) : null}
+                          <div className="field">
+                            <label htmlFor="slackbotClientId">Client ID</label>
+                            <input
+                              id="slackbotClientId"
+                              type="text"
+                              autoComplete="off"
+                              value={slackbotClientId}
+                              onChange={(e) => setSlackbotClientId(e.target.value)}
+                              placeholder="From Slack app → Basic Information"
+                            />
+                          </div>
+                          <div className="field">
+                            <label htmlFor="slackbotClientSecret">Client Secret</label>
+                            <input
+                              id="slackbotClientSecret"
+                              type="password"
+                              autoComplete="off"
+                              value={slackbotClientSecret}
+                              onChange={(e) => setSlackbotClientSecret(e.target.value)}
+                              placeholder="From Slack app → Basic Information"
+                            />
+                          </div>
+                          <div className="field">
+                            <label htmlFor="slackbotSigningSecret">Signing Secret</label>
+                            <input
+                              id="slackbotSigningSecret"
+                              type="password"
+                              autoComplete="off"
+                              value={slackbotSigningSecret}
+                              onChange={(e) => setSlackbotSigningSecret(e.target.value)}
+                              placeholder="Basic Information → Signing Secret (for Events)"
+                            />
+                          </div>
+                          <div className="field">
+                            <label htmlFor="slackbotAppToken">App-Level Token (xapp-)</label>
+                            <input
+                              id="slackbotAppToken"
+                              type="password"
+                              autoComplete="off"
+                              value={slackbotAppToken}
+                              onChange={(e) => setSlackbotAppToken(e.target.value)}
+                              placeholder="App-Level Tokens → authorizations:read"
+                            />
+                          </div>
+                          <div className="field">
+                            <label htmlFor="slackbotVerificationToken">
+                              Verification Token (optional)
+                            </label>
+                            <input
+                              id="slackbotVerificationToken"
+                              type="password"
+                              autoComplete="off"
+                              value={slackbotVerificationToken}
+                              onChange={(e) => setSlackbotVerificationToken(e.target.value)}
+                              placeholder="Defaults to Signing Secret if blank"
+                            />
+                          </div>
+                          {(slackbotWebhookUrl || slackbotSetup?.webhookUrl) && (
+                            <div className="field">
+                              <label htmlFor="slackbotEventUrl">
+                                Event Subscriptions Request URL (paste into Slack)
+                              </label>
+                              <textarea
+                                id="slackbotEventUrl"
+                                className="manifest-preview"
+                                readOnly
+                                rows={3}
+                                value={slackbotWebhookUrl || slackbotSetup?.webhookUrl || ""}
+                                onFocus={(e) => e.currentTarget.select()}
+                              />
+                              <p className="hint">
+                                Slack app → Event Subscriptions → Enable → paste this URL → Save.
+                                Then reinstall the app if Slack prompts.
+                              </p>
+                            </div>
+                          )}
+                          <div className="actions inline-actions">
+                            <button
+                              type="button"
+                              className="btn btn-primary"
+                              disabled={
+                                busy === "slackbot-save" ||
+                                !slackbotClientId.trim() ||
+                                !slackbotClientSecret.trim() ||
+                                !slackbotSigningSecret.trim() ||
+                                !slackbotAppToken.trim()
+                              }
+                              onClick={() => void saveAndConnectSlackbot()}
+                            >
+                              {busy === "slackbot-save" ? "Saving…" : "Save & Connect"}
+                            </button>
+                            <button
+                              type="button"
+                              className="btn"
+                              onClick={() => setSlackbotWizardOpen(false)}
+                            >
+                              Hide setup
+                            </button>
+                          </div>
+                          {slackbotMsg && <p className="hint">{slackbotMsg}</p>}
+                        </div>
+                      )}
                       {accounts.length > 0 && (
                         <ul className="composio-accounts">
                           {accounts.map((acct) => {

@@ -16,12 +16,14 @@ import {
   composioToolkitNeedsCustomAuth,
   formatComposioConnectError,
   resolveComposioToolkitAuthConfigs,
+  ComposioSlackbotSetupRequiredError,
 } from "./composioAuthConfigs.js";
 
 const DEFAULT_FEATURED_TOOLKITS = [
   "gmail",
   "github",
   "slack",
+  "slackbot",
   "notion",
   "googlecalendar",
   "googledrive",
@@ -177,19 +179,20 @@ function mcpEndpointFromSession(session: { mcp: { type?: string; url: string; he
 
 async function applyToolkitAuthConfigsToSession(
   session: { update?: (config: { authConfigs?: Record<string, string> }) => Promise<unknown> },
+  projectRoot = process.cwd(),
 ): Promise<void> {
-  const authConfigs = resolveComposioToolkitAuthConfigs();
+  const authConfigs = resolveComposioToolkitAuthConfigs(projectRoot);
   if (Object.keys(authConfigs).length === 0) return;
   if (typeof session.update !== "function") return;
   await session.update({ authConfigs });
 }
 
-function createSessionConfig(): {
+function createSessionConfig(projectRoot = process.cwd()): {
   manageConnections: { enable: boolean };
   workbench: { enable: boolean };
   authConfigs?: Record<string, string>;
 } {
-  const authConfigs = resolveComposioToolkitAuthConfigs();
+  const authConfigs = resolveComposioToolkitAuthConfigs(projectRoot);
   return {
     manageConnections: { enable: true },
     workbench: { enable: true },
@@ -212,7 +215,7 @@ export async function getOrCreateComposioSession(projectRoot = process.cwd()): P
   if (existing?.sessionId && existing.userId === userId) {
     try {
       const session = await composio.use(existing.sessionId);
-      await applyToolkitAuthConfigsToSession(session);
+      await applyToolkitAuthConfigsToSession(session, projectRoot);
       const mcp = mcpEndpointFromSession(session);
       const store: ComposioStore = {
         userId,
@@ -228,7 +231,7 @@ export async function getOrCreateComposioSession(projectRoot = process.cwd()): P
     }
   }
 
-  const session = await composio.create(userId, createSessionConfig());
+  const session = await composio.create(userId, createSessionConfig(projectRoot));
   const mcp = mcpEndpointFromSession(session);
   await writeStore(projectRoot, {
     userId,
@@ -298,7 +301,8 @@ export async function connectComposioToolkit(
   const slug = toolkit.trim().toLowerCase();
   if (!slug) throw new Error("toolkit is required");
 
-  if (composioToolkitNeedsCustomAuth(slug) && !composioToolkitAuthConfigId(slug)) {
+  if (composioToolkitNeedsCustomAuth(slug) && !composioToolkitAuthConfigId(slug, projectRoot)) {
+    if (slug === "slackbot") throw new ComposioSlackbotSetupRequiredError();
     throw new Error(composioCustomAuthSetupMessage(slug));
   }
 
@@ -306,7 +310,7 @@ export async function connectComposioToolkit(
     const { sessionId } = await getOrCreateComposioSession(projectRoot);
     const composio = composioClient();
     const session = await composio.use(sessionId);
-    await applyToolkitAuthConfigsToSession(session);
+    await applyToolkitAuthConfigsToSession(session, projectRoot);
     const connectionRequest = await session.authorize(slug, {
       callbackUrl: callbackUrl.trim() || undefined,
     });
@@ -315,6 +319,7 @@ export async function connectComposioToolkit(
     }
     return { redirectUrl: connectionRequest.redirectUrl };
   } catch (error) {
+    if (error instanceof ComposioSlackbotSetupRequiredError) throw error;
     throw new Error(formatComposioConnectError(error, slug));
   }
 }

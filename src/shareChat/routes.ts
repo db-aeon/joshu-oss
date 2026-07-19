@@ -9,6 +9,10 @@
  *   POST /api/share-chat/:shareUuid/slack/configure
  *   GET  /api/share-chat/:shareUuid/slack/manifest
  *   POST /api/share-chat/slack/events/:shareUuid
+ *   GET  /api/share-chat/:shareUuid/slack/channel
+ *   POST /api/share-chat/:shareUuid/slack/channel
+ *   POST /api/share-chat/:shareUuid/slack/channel/unlink
+ *   POST /api/share-chat/composio/triggers
  */
 
 import fs from "node:fs";
@@ -32,27 +36,69 @@ import {
   upsertShareSlackBot,
 } from "./slackRegistry.js";
 import { handleShareSlackEvent, verifySlackRequestSignature } from "./slackEvents.js";
-import { joshuConfigDir } from "../nylas/paths.js";
+import {
+  handleSlackbotEventsRequest,
+  slackbotEventsRequestUrl,
+} from "./slackbotEvents.js";
+import {
+  getShareSlackChannel,
+  normalizeSlackChannelName,
+  publicSlackChannelStatus,
+  suggestSlackChannelName,
+  unlinkShareSlackChannel,
+  upsertShareSlackChannel,
+} from "./slackChannels.js";
+import {
+  createChannelMessageTrigger,
+  createSlackbotChannel,
+  deleteTriggerInstance,
+  inviteOwnerToSlackbotChannel,
+  isComposioSlackbotConnected,
+  sendSlackbotMessage,
+} from "./composioSlackbot.js";
+import { handleComposioShareChatTrigger } from "./composioTriggers.js";
+import { isComposioEnabled } from "../composioApi.js";
+import { composioClient } from "../connectors/composio/client.js";
+import { formatJoshuSignatureRoleLine } from "../email/joshuEmailSignature.js";
+import { resolveJoshuIdentity } from "../joshuIdentity.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-/** Read assistant display name without importing joshuIdentity (avoids circular deps). */
-function resolveAssistantName(projectRoot = process.cwd()): string {
-  const fromEnv = process.env.JOSHU_NAME?.trim();
-  if (fromEnv) return fromEnv;
-  try {
-    const dir = joshuConfigDir(projectRoot);
-    if (dir) {
-      const idPath = path.join(dir, "identity.json");
-      if (fs.existsSync(idPath)) {
-        const parsed = JSON.parse(fs.readFileSync(idPath, "utf8")) as { name?: string };
-        if (parsed?.name?.trim()) return parsed.name.trim();
-      }
-    }
-  } catch {
-    /* ignore */
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+/**
+ * Companion identity for public share-chat chrome (email-signature language).
+ * Prefer full portrait (`imageUrl`) to match outbound mail; fall back to avatar.
+ */
+function resolveShareChatPersona(projectRoot = process.cwd()): {
+  name: string;
+  roleLine: string;
+  portraitUrl: string | null;
+} {
+  const identity = resolveJoshuIdentity(projectRoot);
+  const portraitUrl =
+    identity.imageUrl?.trim() || identity.avatarUrl?.trim() || null;
+  return {
+    name: identity.name.trim() || "Companion",
+    roleLine: formatJoshuSignatureRoleLine(identity.owner.displayName),
+    portraitUrl,
+  };
+}
+
+/** Photo cell HTML for the signature-style identity lockup. */
+function identityPhotoHtml(name: string, portraitUrl: string | null): string {
+  const safeName = escapeHtml(name);
+  if (portraitUrl) {
+    return `<img class="jp-identity-img" src="${escapeHtml(portraitUrl)}" alt="${safeName}" width="72" height="72" decoding="async" />`;
   }
-  return "Companion";
+  const initial = escapeHtml((name.trim().charAt(0) || "?").toUpperCase());
+  return `<span class="jp-identity-fallback" aria-hidden="true">${initial}</span>`;
 }
 
 function uiHtmlPath(): string {
@@ -102,11 +148,57 @@ function publicBase(req: Request): string {
   return `${proto}://${host}${basePath}`;
 }
 
+/** Path prefix for same-origin assets under Joshu (e.g. `/joshu`). */
+function publicPathPrefix(): string {
+  return (process.env.PUBLIC_BASE_PATH || "").replace(/\/+$/, "");
+}
+
+function publicPagesCssPath(): string | null {
+  const candidates = [
+    path.resolve(process.cwd(), "arozos/web-overlays-vanilla/joshu-public-pages.css"),
+    path.resolve(__dirname, "../../arozos/web-overlays-vanilla/joshu-public-pages.css"),
+    path.resolve(process.cwd(), "apps/share-chat/joshu-public-pages.css"),
+  ];
+  for (const p of candidates) {
+    if (fs.existsSync(p)) return p;
+  }
+  return null;
+}
+
 /**
  * Slack Events API needs the raw body for signature verification.
  * Register this BEFORE `express.json()`.
  */
 export function registerShareChatSlackEventsRoute(router: Router): void {
+  // Composio Slackbot channels: one Events URL for all mapped shares (preferred over Composio ingress).
+  router.post(
+    "/api/share-chat/slackbot/events",
+    express.raw({ type: "*/*", limit: "256kb" }),
+    async (req: Request, res: Response) => {
+      const rawBody = Buffer.isBuffer(req.body)
+        ? req.body.toString("utf8")
+        : typeof req.body === "string"
+          ? req.body
+          : "";
+      const timestamp = String(req.headers["x-slack-request-timestamp"] || "");
+      const signature = String(req.headers["x-slack-signature"] || "");
+      try {
+        const result = await handleSlackbotEventsRequest({
+          rawBody,
+          timestamp,
+          signature,
+        });
+        res.status(result.status).json(result.body);
+      } catch (err) {
+        console.error(
+          "[share-chat/slackbot-events]",
+          err instanceof Error ? err.message : String(err),
+        );
+        res.status(500).json({ error: "slackbot_events_failed" });
+      }
+    },
+  );
+
   router.post(
     "/api/share-chat/slack/events/:shareUuid",
     express.raw({ type: "*/*", limit: "256kb" }),
@@ -157,6 +249,63 @@ export function registerShareChatSlackEventsRoute(router: Router): void {
         const msg = err instanceof Error ? err.message : String(err);
         console.error("[share-chat/slack]", msg);
         res.status(500).json({ error: "slack_handler_failed" });
+      }
+    },
+  );
+}
+
+/**
+ * Composio trigger webhooks (Slackbot CHANNEL_MESSAGE_RECEIVED).
+ * Register BEFORE `express.json()`. Requires COMPOSIO_WEBHOOK_SECRET from the Composio dashboard.
+ */
+export function registerShareChatComposioTriggersRoute(router: Router): void {
+  router.post(
+    "/api/share-chat/composio/triggers",
+    express.raw({ type: "*/*", limit: "512kb" }),
+    async (req: Request, res: Response) => {
+      const secret = process.env.COMPOSIO_WEBHOOK_SECRET?.trim() || "";
+      if (!secret) {
+        res.status(503).json({
+          error: "composio_webhook_secret_missing",
+          hint: "Set COMPOSIO_WEBHOOK_SECRET from the Composio project webhook settings.",
+        });
+        return;
+      }
+      if (!isComposioEnabled()) {
+        res.status(503).json({ error: "composio_disabled" });
+        return;
+      }
+
+      const rawBody = Buffer.isBuffer(req.body)
+        ? req.body.toString("utf8")
+        : typeof req.body === "string"
+          ? req.body
+          : "";
+      const id = String(req.headers["webhook-id"] || "");
+      const signature = String(req.headers["webhook-signature"] || "");
+      const timestamp = String(req.headers["webhook-timestamp"] || "");
+
+      try {
+        const composio = composioClient();
+        const verified = await composio.triggers.verifyWebhook({
+          id,
+          payload: rawBody,
+          secret,
+          signature,
+          timestamp,
+        });
+        // Ack fast; answer asynchronously so Composio does not time out.
+        res.status(200).json({ ok: true });
+        void handleComposioShareChatTrigger(verified.payload).catch((err) => {
+          console.error(
+            "[share-chat/composio]",
+            err instanceof Error ? err.message : String(err),
+          );
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn("[share-chat/composio] webhook verify failed:", msg);
+        res.status(401).json({ error: "invalid_signature" });
       }
     },
   );
@@ -218,6 +367,15 @@ function allowChatFlagMutation(req: Request, res: Response): boolean {
 }
 
 export function registerShareChatRoutes(router: Router): void {
+  router.get("/share-chat/assets/joshu-public-pages.css", (_req: Request, res: Response) => {
+    const cssPath = publicPagesCssPath();
+    if (!cssPath) {
+      res.status(404).type("text").send("joshu-public-pages.css missing");
+      return;
+    }
+    res.type("text/css").send(fs.readFileSync(cssPath, "utf8"));
+  });
+
   router.get("/share-chat/:shareUuid", (req: Request, res: Response) => {
     const shareUuid = String(req.params.shareUuid || "").trim();
     const gate = assertPublicShareChat(shareUuid);
@@ -232,12 +390,16 @@ export function registerShareChatRoutes(router: Router): void {
       return;
     }
     let html = fs.readFileSync(htmlPath, "utf8");
-    const identityName = resolveAssistantName();
+    const persona = resolveShareChatPersona();
+    const assetBase = publicPathPrefix() || "";
     html = html
       .replaceAll("{{SHARE_UUID}}", escapeHtml(scope.uuid))
       .replaceAll("{{DISPLAY_NAME}}", escapeHtml(scope.displayName))
-      .replaceAll("{{ASSISTANT_NAME}}", escapeHtml(identityName))
-      .replaceAll("{{IS_FOLDER}}", scope.isFolder ? "folder" : "file");
+      .replaceAll("{{ASSISTANT_NAME}}", escapeHtml(persona.name))
+      .replaceAll("{{ROLE_LINE}}", escapeHtml(persona.roleLine))
+      .replaceAll("{{IDENTITY_PHOTO_HTML}}", identityPhotoHtml(persona.name, persona.portraitUrl))
+      .replaceAll("{{IS_FOLDER}}", scope.isFolder ? "folder" : "file")
+      .replaceAll("{{ASSET_BASE}}", escapeHtml(assetBase));
     res.type("html").send(html);
   });
 
@@ -252,6 +414,7 @@ export function registerShareChatRoutes(router: Router): void {
       return;
     }
     const scope = gate.scope;
+    const persona = resolveShareChatPersona();
     res.json({
       ok: true,
       uuid: scope.uuid,
@@ -259,9 +422,12 @@ export function registerShareChatRoutes(router: Router): void {
       isFolder: scope.isFolder,
       permission: scope.permission,
       chatEnabled: true,
-      assistantName: resolveAssistantName(),
+      assistantName: persona.name,
+      roleLine: persona.roleLine,
+      portraitUrl: persona.portraitUrl,
       scopeWarning: "Answers only from the shared files",
       slack: publicSlackStatus(shareUuid),
+      slackChannel: publicSlackChannelStatus(shareUuid),
     });
   });
 
@@ -470,14 +636,205 @@ export function registerShareChatRoutes(router: Router): void {
     const manifest = buildSlackAppManifest(shareUuid, scope.displayName, eventsUrl);
     res.json({ ok: true, eventsUrl, manifest });
   });
-}
 
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+  // --- Composio Slackbot KB channel (1:1 share ↔ channel) ---
+
+  router.get("/api/share-chat/:shareUuid/slack/channel", async (req: Request, res: Response) => {
+    const shareUuid = String(req.params.shareUuid || "").trim();
+    const scope = resolveShareScope(shareUuid);
+    if (!scope || !scope.valid) {
+      res.status(404).json({ error: "not_found" });
+      return;
+    }
+    const status = publicSlackChannelStatus(shareUuid);
+    let slackbotConnected = false;
+    try {
+      slackbotConnected = await isComposioSlackbotConnected();
+    } catch {
+      slackbotConnected = false;
+    }
+    let subscribe: ReturnType<
+      typeof import("./triggerSubscribe.js").getShareChatSlackbotSubscribeStatus
+    > | null = null;
+    try {
+      const mod = await import("./triggerSubscribe.js");
+      subscribe = mod.getShareChatSlackbotSubscribeStatus();
+    } catch {
+      subscribe = null;
+    }
+    res.json({
+      ok: true,
+      ...status,
+      suggestedName: suggestSlackChannelName(scope.displayName),
+      displayName: scope.displayName,
+      slackbotConnected,
+      composioEnabled: isComposioEnabled(),
+      connectorsSlackbotUrl: "/connectors/index.html#slackbot",
+      subscribe,
+    });
+  });
+
+  router.post("/api/share-chat/:shareUuid/slack/channel", async (req: Request, res: Response) => {
+    if (!allowChatFlagMutation(req, res)) return;
+    const shareUuid = String(req.params.shareUuid || "").trim();
+    const scope = resolveShareScope(shareUuid);
+    if (!scope || !scope.valid) {
+      res.status(404).json({ error: "not_found" });
+      return;
+    }
+
+    if (!isComposioEnabled()) {
+      res.status(400).json({ error: "composio_disabled" });
+      return;
+    }
+    if (!(await isComposioSlackbotConnected())) {
+      res.status(400).json({
+        error: "composio_slackbot_required",
+        hint: "Connect Slackbot in Connectors (custom Slack app auth config). This is separate from user Slack.",
+      });
+      return;
+    }
+
+    const existing = getShareSlackChannel(shareUuid);
+    if (existing?.enabled) {
+      res.status(409).json({
+        error: "channel_already_mapped",
+        channelId: existing.channelId,
+        channelName: existing.channelName,
+      });
+      return;
+    }
+
+    let channelName: string;
+    try {
+      const rawName =
+        typeof req.body?.name === "string" && req.body.name.trim()
+          ? req.body.name
+          : suggestSlackChannelName(scope.displayName);
+      channelName = normalizeSlackChannelName(rawName);
+    } catch (err) {
+      const code = err instanceof Error ? err.message : "channel_name_invalid";
+      res.status(400).json({ error: code });
+      return;
+    }
+
+    try {
+      const created = await createSlackbotChannel({ name: channelName, isPrivate: true });
+      // Private channels only include the bot until we invite humans — invite the owner so they see it.
+      const invite = await inviteOwnerToSlackbotChannel(created.channelId);
+      if (invite.error) {
+        console.warn(
+          "[share-chat/slack/channel] owner invite:",
+          invite.error,
+          "emailsTried=",
+          invite.emailsTried.join(","),
+        );
+      }
+
+      let triggerInstanceId: string | undefined;
+      let triggerError: string | undefined;
+      try {
+        triggerInstanceId = await createChannelMessageTrigger({ channelId: created.channelId });
+      } catch (trigErr) {
+        triggerError = trigErr instanceof Error ? trigErr.message : String(trigErr);
+        console.warn("[share-chat/slack/channel] trigger create failed:", triggerError);
+      }
+
+      const now = new Date().toISOString();
+      const row = upsertShareSlackChannel({
+        shareUuid,
+        channelId: created.channelId,
+        channelName: created.channelName,
+        triggerInstanceId,
+        isPrivate: created.isPrivate,
+        createdAt: now,
+        updatedAt: now,
+        enabled: true,
+      });
+
+      // Soft-enable chat sharing if the owner only created a Slack channel.
+      setShareChatEnabled(shareUuid, true);
+
+      const inviteHint = invite.invitedUserIds.length
+        ? "You should see it in Slack now."
+        : "If you do not see it yet, ask a Slack admin to invite you (private channels are hidden until you are a member).";
+      const intro =
+        `This channel answers questions about *${scope.displayName}* (shared files only).\n` +
+        `Post a message here — no @mention needed. Invite teammates from Slack as needed.`;
+      try {
+        await sendSlackbotMessage({ channel: row.channelId, text: intro });
+      } catch (introErr) {
+        console.warn(
+          "[share-chat/slack/channel] intro message failed:",
+          introErr instanceof Error ? introErr.message : String(introErr),
+        );
+      }
+
+      const needsTeamRead =
+        Boolean(triggerError) &&
+        /team:read|missing_scope/i.test(triggerError || "");
+      res.json({
+        ok: true,
+        configured: true,
+        channelId: row.channelId,
+        channelName: row.channelName,
+        isPrivate: row.isPrivate,
+        triggerInstanceId: row.triggerInstanceId || null,
+        triggerError: triggerError || null,
+        triggerHint: needsTeamRead
+          ? "Message listening failed: Slack bot token is missing team:read. Add that bot scope in the Slack app → reinstall → Disconnect & reconnect Slackbot in Connectors → Create channel again (or Save credentials to rebind)."
+          : triggerError
+            ? "Channel created, but message triggers failed — questions will not get replies until this is fixed."
+            : null,
+        invitedUserIds: invite.invitedUserIds,
+        inviteHint,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg === "channel_name_taken") {
+        res.status(409).json({
+          error: "channel_name_taken",
+          hint: "That Slack channel name is already taken. Pick a different name.",
+        });
+        return;
+      }
+      console.error("[share-chat/slack/channel]", msg);
+      res.status(500).json({ error: msg });
+    }
+  });
+
+  // Repair: invite owner into an already-created private Slackbot channel.
+  router.post("/api/share-chat/:shareUuid/slack/channel/invite-owner", async (req: Request, res: Response) => {
+    if (!allowChatFlagMutation(req, res)) return;
+    const shareUuid = String(req.params.shareUuid || "").trim();
+    const existing = getShareSlackChannel(shareUuid);
+    if (!existing?.channelId) {
+      res.status(404).json({ error: "channel_not_configured" });
+      return;
+    }
+    const invite = await inviteOwnerToSlackbotChannel(existing.channelId);
+    res.json({
+      ok: !invite.error || invite.invitedUserIds.length > 0,
+      channelId: existing.channelId,
+      channelName: existing.channelName,
+      ...invite,
+    });
+  });
+
+  router.post("/api/share-chat/:shareUuid/slack/channel/unlink", async (req: Request, res: Response) => {
+    if (!allowChatFlagMutation(req, res)) return;
+    const shareUuid = String(req.params.shareUuid || "").trim();
+    const existing = getShareSlackChannel(shareUuid);
+    if (!existing) {
+      res.json({ ok: true, configured: false });
+      return;
+    }
+    if (existing.triggerInstanceId) {
+      await deleteTriggerInstance(existing.triggerInstanceId);
+    }
+    unlinkShareSlackChannel(shareUuid);
+    res.json({ ok: true, configured: false, unlinkedChannelId: existing.channelId });
+  });
 }
 
 function notFoundHtml(chatDisabled = false): string {
@@ -485,13 +842,25 @@ function notFoundHtml(chatDisabled = false): string {
   const body = chatDisabled
     ? "The owner turned off chat sharing for these files. Ask them for a new link if you still need access."
     : "This chat link is invalid, expired, or sharing was turned off.";
+  const assetBase = publicPathPrefix() || "";
+  const cssHref = `${assetBase}/share-chat/assets/joshu-public-pages.css`;
   return `<!DOCTYPE html>
-<html lang="en"><head><meta charset="UTF-8"><title>${title}</title>
-<style>
-  body{font-family:system-ui,sans-serif;background:#f5f0eb;color:#0d0d0d;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}
-  .card{background:#fff;border:1px solid rgba(0,0,0,.12);padding:28px 32px;max-width:420px;border-radius:2px}
-  h1{font-size:18px;margin:0 0 8px} p{margin:0;opacity:.75;font-size:14px;line-height:1.4}
-</style></head>
-<body><div class="card"><h1>${title}</h1>
-<p>${body}</p></div></body></html>`;
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>${escapeHtml(title)}</title>
+<link rel="icon" href="/img/public/joshu-icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="${escapeHtml(cssHref)}">
+</head>
+<body class="jp-public">
+  <div class="jp-public-shell">
+    <main class="jp-public-panel">
+      <img class="jp-public-brand" src="/img/public/joshu-wordmark.svg" alt="Joshu">
+      <p class="jp-public-eyebrow">Chat with files</p>
+      <h1 class="jp-public-title">${escapeHtml(title)}</h1>
+      <p class="jp-public-lede">${escapeHtml(body)}</p>
+    </main>
+    <footer class="jp-public-footer"><strong>Joshu</strong> · File chat by <a href="https://joshu.me" target="_blank" rel="noopener noreferrer">joshu.me</a></footer>
+  </div>
+</body></html>`;
 }

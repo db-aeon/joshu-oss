@@ -7,77 +7,17 @@
         <title>Share To</title>
         <link rel="stylesheet" href="../../script/semantic/semantic.min.css">
         <link rel="stylesheet" href="../../script/ao.css">
+        <link rel="stylesheet" href="../../script/joshu-share-dialogs.css?v=20260717f">
         <script src="../../script/jquery.min.js"></script>
         <script src="../../script/semantic/semantic.min.js"></script>
         <script src="../../script/ao_module.js"></script>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0 user-scalable=no">
         <style>
-            body{
-                background: var(--body_background, #f5f0eb) !important;
-                margin: 0;
-                padding: 16px;
-                font-family: "Work Sans", "Helvetica Neue", Arial, sans-serif;
-                color: #0d0d0d;
-            }
-            .share-to-intro{
-                margin: 0 0 14px;
-                font-size: 14px;
-                opacity: 0.75;
-            }
-            .share-to-file{
-                margin: 0 0 18px;
-                font-size: 13px;
-                word-break: break-all;
-            }
-            .share-to-file strong{
-                font-weight: 600;
-            }
-            .share-to-options{
-                display: flex;
-                flex-direction: column;
-                gap: 10px;
-            }
-            .share-to-option{
-                display: block;
-                width: 100%;
-                text-align: left;
-                padding: 14px 16px;
-                border: 1px solid rgba(0,0,0,0.18);
-                border-radius: 2px;
-                background: #fff;
-                cursor: pointer;
-                transition: border-color 0.12s ease, background 0.12s ease;
-            }
-            .share-to-option:hover,
-            .share-to-option:focus{
-                border-color: #0057ff;
-                background: #f7f9ff;
-                outline: none;
-            }
-            .share-to-option:disabled{
-                opacity: 0.55;
-                cursor: not-allowed;
-            }
-            .share-to-option-title{
-                display: block;
-                font-size: 15px;
-                font-weight: 600;
-                margin-bottom: 4px;
-            }
-            .share-to-option-desc{
-                display: block;
-                font-size: 13px;
-                line-height: 1.35;
-                opacity: 0.72;
-            }
-            .share-to-error{
-                color: #b00020;
-                font-size: 13px;
-            }
+            body.jp-share-dialog{ padding: 16px; box-sizing: border-box; }
         </style>
     </head>
-    <body>
+    <body class="jp-share-dialog">
         <p class="share-to-intro">Choose how to share</p>
         <p class="share-to-file" id="shareToFileLabel">Loading…</p>
         <div class="share-to-options" id="shareToOptions" style="display:none;">
@@ -92,7 +32,7 @@
         </div>
 
         <script>
-            var SHARE_DIALOG_CACHE_BUST = "20260716g";
+            var SHARE_DIALOG_CACHE_BUST = "20260717f";
             var shareFiles = [];
 
             function loadSelection(){

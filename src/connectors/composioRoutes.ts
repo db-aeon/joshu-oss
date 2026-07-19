@@ -9,7 +9,13 @@ import {
   resolveComposioUserId,
   syncComposioHermesMcp,
 } from "../composioApi.js";
+import { ComposioSlackbotSetupRequiredError } from "../composioAuthConfigs.js";
 import { listGmailRegistryAccounts } from "./composio/gmailAccounts.js";
+import {
+  getSlackbotSetupStatus,
+  saveSlackbotAuthConfigFromCredentials,
+  slackbotManifestForProject,
+} from "./composio/slackbotSetup.js";
 import { refreshConnectorsRegistry } from "./registry.js";
 import { runMailSync } from "./syncHelpers.js";
 
@@ -113,7 +119,101 @@ function mountComposioHandlers(
       const result = await connectComposioToolkit(projectRoot, toolkit, callbackUrl);
       res.json({ ok: true, ...result });
     } catch (error) {
+      if (error instanceof ComposioSlackbotSetupRequiredError) {
+        res.status(400).json({
+          error: error.code,
+          code: error.code,
+          hint: error.message,
+        });
+        return;
+      }
       res.status(502).json({ error: error instanceof Error ? error.message : String(error) });
+    }
+  });
+
+  router.get(`${basePath}/slackbot/setup`, (_req: Request, res: Response) => {
+    res.json({ ok: true, ...getSlackbotSetupStatus(projectRoot) });
+  });
+
+  router.get(`${basePath}/slackbot/manifest`, (_req: Request, res: Response) => {
+    const manifest = slackbotManifestForProject(projectRoot);
+    res.json({
+      ok: true,
+      manifest,
+      manifestText: JSON.stringify(manifest, null, 2),
+      createAppUrl: "https://api.slack.com/apps?new_app=1",
+    });
+  });
+
+  router.post(`${basePath}/slackbot/setup`, async (req: Request, res: Response) => {
+    if (!isComposioEnabled()) {
+      return res.status(503).json({ error: "Composio is not configured (set COMPOSIO_API_KEY)" });
+    }
+    const body = (req.body ?? {}) as {
+      clientId?: unknown;
+      clientSecret?: unknown;
+      verificationToken?: unknown;
+      connect?: unknown;
+      callbackUrl?: unknown;
+    };
+    try {
+      const saved = await saveSlackbotAuthConfigFromCredentials(
+        {
+          clientId: readString(body.clientId),
+          clientSecret: readString(body.clientSecret),
+          signingSecret: readString(
+            (body as { signingSecret?: unknown }).signingSecret ??
+              (body as { verificationToken?: unknown }).verificationToken,
+          ),
+          appToken: readString((body as { appToken?: unknown }).appToken),
+          verificationToken: readString((body as { verificationToken?: unknown }).verificationToken),
+        },
+        projectRoot,
+      );
+
+      // Re-attach message triggers for any channels created before webhook was ready.
+      let rebind: { ok: number; failed: Array<{ shareUuid: string; error: string }> } | undefined;
+      try {
+        const { rebindShareChatSlackbotTriggers } = await import(
+          "../shareChat/triggerSubscribe.js"
+        );
+        rebind = await rebindShareChatSlackbotTriggers(projectRoot);
+      } catch (rebindErr) {
+        console.warn(
+          "[slackbot-setup] rebind triggers:",
+          rebindErr instanceof Error ? rebindErr.message : String(rebindErr),
+        );
+      }
+
+      let redirectUrl: string | undefined;
+      const shouldConnect = body.connect !== false;
+      if (shouldConnect) {
+        const callbackUrl = callbackFromRequest(req, readString(body.callbackUrl));
+        const connected = await connectComposioToolkit(projectRoot, "slackbot", callbackUrl);
+        redirectUrl = connected.redirectUrl;
+      }
+
+      res.json({
+        ok: true,
+        authConfigId: saved.authConfigId,
+        reused: saved.reused,
+        webhookUrl: saved.webhookUrl,
+        webhookEndpointId: saved.webhookEndpointId,
+        redirectUrl,
+        rebind,
+        status: getSlackbotSetupStatus(projectRoot),
+        eventSubscriptionsHint:
+          "In Slack app → Event Subscriptions, set Request URL to webhookUrl below and verify.",
+      });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      const status =
+        msg.endsWith("_required") ||
+        msg === "composio_disabled" ||
+        msg.includes("must_start_with")
+          ? 400
+          : 502;
+      res.status(status).json({ error: msg });
     }
   });
 

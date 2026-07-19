@@ -24,6 +24,24 @@ import {
   getShareChatFlag,
   clearShareChatFlag,
 } from "../src/shareChat/chatFlags.ts";
+import {
+  normalizeSlackChannelName,
+  suggestSlackChannelName,
+  upsertShareSlackChannel,
+  getShareSlackChannel,
+  getShareUuidForChannel,
+  unlinkShareSlackChannel,
+} from "../src/shareChat/slackChannels.ts";
+import { extractSlackChannelId } from "../src/shareChat/composioSlackbot.ts";
+import { handleComposioShareChatTrigger } from "../src/shareChat/composioTriggers.ts";
+import {
+  setPersistedComposioAuthConfigId,
+  getPersistedComposioAuthConfigId,
+  composioToolkitAuthConfigId,
+  resolveComposioToolkitAuthConfigs,
+  ComposioSlackbotSetupRequiredError,
+} from "../src/composioAuthConfigs.ts";
+import { buildSlackbotAppManifest } from "../src/connectors/composio/slackbotSetup.ts";
 
 function assert(cond, msg) {
   if (!cond) throw new Error(msg);
@@ -267,6 +285,110 @@ function makeScope(partial) {
   assert(getShareChatFlag(uuid, tmp) === null, "cleared flag");
   assert(isShareChatEnabled(uuid, tmp) === true, "cleared flag allows chat again");
 
+  fs.rmSync(tmp, { recursive: true, force: true });
+}
+
+// --- Slackbot channel name + registry 1:1 ---
+{
+  assert(normalizeSlackChannelName("HUA Team Notebook") === "hua-team-notebook", "normalize spaces");
+  assert(normalizeSlackChannelName("#My_Channel!") === "my-channel", "strip junk + #");
+  assert(suggestSlackChannelName("HUA Team Notebook.md") === "hua-team-notebook", "suggest from filename");
+  let threw = false;
+  try {
+    normalizeSlackChannelName("@@@");
+  } catch {
+    threw = true;
+  }
+  assert(threw, "empty after normalize throws");
+
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "joshu-share-slack-ch-"));
+  const shareA = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const shareB = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+  const now = new Date().toISOString();
+  upsertShareSlackChannel(
+    {
+      shareUuid: shareA,
+      channelId: "C11111111",
+      channelName: "kb-a",
+      isPrivate: true,
+      createdAt: now,
+      updatedAt: now,
+      enabled: true,
+    },
+    tmp,
+  );
+  assert(getShareUuidForChannel("C11111111", tmp) === shareA.toLowerCase(), "reverse lookup");
+  assert(getShareSlackChannel(shareA, tmp)?.channelName === "kb-a", "forward lookup");
+
+  let mappedConflict = false;
+  try {
+    upsertShareSlackChannel(
+      {
+        shareUuid: shareB,
+        channelId: "C11111111",
+        channelName: "kb-b",
+        isPrivate: true,
+        createdAt: now,
+        updatedAt: now,
+        enabled: true,
+      },
+      tmp,
+    );
+  } catch (e) {
+    mappedConflict = e instanceof Error && e.message === "channel_already_mapped";
+  }
+  assert(mappedConflict, "same channel cannot map to two shares");
+
+  unlinkShareSlackChannel(shareA, tmp);
+  assert(!getShareSlackChannel(shareA, tmp), "unlinked");
+  assert(!getShareUuidForChannel("C11111111", tmp), "reverse cleared");
+  fs.rmSync(tmp, { recursive: true, force: true });
+}
+
+// --- extract channel id from Composio-ish payloads ---
+{
+  assert(extractSlackChannelId({ channel: { id: "C0ABC12345" } }) === "C0ABC12345", "nested channel.id");
+  assert(extractSlackChannelId({ data: { channel_id: "G0PRIVATE01" } }) === "G0PRIVATE01", "channel_id");
+  assert(extractSlackChannelId({ ok: true }) === null, "missing id");
+}
+
+// --- Composio trigger ignores bots / unmapped channels ---
+{
+  const ignoredBot = await handleComposioShareChatTrigger({
+    triggerSlug: "SLACKBOT_CHANNEL_MESSAGE_RECEIVED",
+    payload: { channel: "C999", text: "hi", bot_id: "B1" },
+  });
+  assert(ignoredBot.ignored === "bot_message", "ignore bot_id");
+
+  const ignoredMap = await handleComposioShareChatTrigger({
+    triggerSlug: "SLACKBOT_CHANNEL_MESSAGE_RECEIVED",
+    payload: { channel: "CUNMAPPED", text: "what is this?" },
+  });
+  assert(ignoredMap.ignored === "unmapped_channel", "ignore unmapped");
+}
+
+// --- persisted Slackbot auth config (file, not env) ---
+{
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "joshu-composio-ac-"));
+  assert(!composioToolkitAuthConfigId("slackbot", tmp), "no auth config yet");
+  setPersistedComposioAuthConfigId("slackbot", "ac_test123456", tmp);
+  assert(getPersistedComposioAuthConfigId("slackbot", tmp) === "ac_test123456", "persisted id");
+  assert(composioToolkitAuthConfigId("slackbot", tmp) === "ac_test123456", "resolved from file");
+  assert(resolveComposioToolkitAuthConfigs(tmp).slackbot === "ac_test123456", "in resolve map");
+
+  const prev = process.env.JOSHU_COMPOSIO_SLACKBOT_AUTH_CONFIG_ID;
+  process.env.JOSHU_COMPOSIO_SLACKBOT_AUTH_CONFIG_ID = "ac_env_override";
+  assert(composioToolkitAuthConfigId("slackbot", tmp) === "ac_env_override", "env overrides file");
+  if (prev === undefined) delete process.env.JOSHU_COMPOSIO_SLACKBOT_AUTH_CONFIG_ID;
+  else process.env.JOSHU_COMPOSIO_SLACKBOT_AUTH_CONFIG_ID = prev;
+
+  const err = new ComposioSlackbotSetupRequiredError();
+  assert(err.code === "slackbot_setup_required", "structured setup error code");
+  assert(/Connectors/i.test(err.message), "points at Connectors wizard");
+
+  const manifest = buildSlackbotAppManifest({ botName: "Test Bot" });
+  assert(manifest.display_information?.name === "Test Bot", "manifest name");
+  assert(Array.isArray(manifest.oauth_config?.scopes?.bot), "bot scopes present");
   fs.rmSync(tmp, { recursive: true, force: true });
 }
 

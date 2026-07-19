@@ -7,93 +7,68 @@
         <title>Chat sharing</title>
         <link rel="stylesheet" href="../../script/semantic/semantic.min.css">
         <link rel="stylesheet" href="../../script/ao.css">
+        <link rel="stylesheet" href="../../script/joshu-share-dialogs.css?v=20260717f">
         <script src="../../script/jquery.min.js"></script>
         <script src="../../script/semantic/semantic.min.js"></script>
         <script src="../../script/ao_module.js"></script>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0 user-scalable=no">
         <style>
-            body{
-                background: var(--body_background, #f5f0eb) !important;
-                margin: 0;
-                font-family: "Work Sans", "Helvetica Neue", Arial, sans-serif;
-                color: #0d0d0d;
-            }
-            #chatLinkBar{
-                padding: 12px 14px 10px;
-                border-bottom: 1px solid rgba(0,0,0,0.12);
-            }
-            #chatLinkBar .label{
-                font-weight: 600;
-                margin-bottom: 4px;
-            }
-            #chatLinkHint{
-                font-size: 13px;
-                opacity: 0.72;
-                line-height: 1.35;
-                margin: 0 0 10px;
-            }
-            #chatlinkInput{
-                width: 100%;
-                box-sizing: border-box;
-                font: 13px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace;
-                padding: 8px 10px;
-                border: 1px solid rgba(0,0,0,0.2);
-                border-radius: 2px;
-                background: #fff;
-                color: #0d0d0d;
-            }
-            #chatlink{
-                display: block;
-                margin-top: 0.4em;
-                color: #0057ff !important;
-                font-size: 105%;
-                line-height: 1.35;
-                word-break: break-all;
-            }
-            #mainBody{
-                padding: 14px;
-            }
-            #fileLabel{
-                font-size: 14px;
-                margin: 0 0 12px;
-                word-break: break-all;
-            }
-            .actions{
-                display: flex;
-                flex-wrap: wrap;
-                gap: 8px;
-                justify-content: flex-end;
-                padding: 0 14px 14px;
-            }
-            .actions .ui.button{ margin: 0; }
+            #fileLabel{ margin: 0 0 10px; font-size: 0.9rem; word-break: break-all; }
+            #slackChannelStatus{ min-height: 1.2em; margin: 0 0 8px; font-size: 0.82rem; line-height: 1.4; }
+            #slackChannelName{ margin-bottom: 8px; }
         </style>
     </head>
-    <body>
-        <div id="chatLinkBar">
-            <div class="label">Public chat link</div>
-            <p id="chatLinkHint">Share this URL like a public download link. Anyone with it can ask questions about these files only.</p>
-            <div id="chatLinkLoading" style="opacity:0.7;"><i class="ui loading spinner icon"></i> Generating link…</div>
+    <body class="jp-share-dialog">
+        <div class="jp-share-shell">
+        <div id="chatLinkBar" class="jp-share-hero">
+            <div class="jp-share-hero-title">Public chat link</div>
+            <p id="chatLinkHint" class="jp-share-hero-hint">Share this URL like a public download link. Anyone with it can ask questions about these files only.</p>
+            <div id="chatLinkLoading" class="jp-share-muted"><i class="ui loading spinner icon"></i> Generating link…</div>
             <input id="chatlinkInput" type="text" readonly aria-label="Public chat link" style="display:none;">
             <a id="chatlink" href="" target="_blank" style="display:none;"></a>
         </div>
-        <div id="mainBody">
+        <div id="mainBody" class="jp-share-body">
             <p id="fileLabel">Loading…</p>
-            <p style="font-size:13px;opacity:0.72;line-height:1.4;margin:0;">
+            <p class="jp-share-muted">
                 <strong>Remove Sharing</strong> turns off the public chat (guests see “not available”).
                 This uses the same underlying file share as File sharing — if you also shared a download link for this item, that link stops working too until you enable sharing again.
             </p>
+            <div id="slackChannelSection" class="jp-share-section">
+                <div class="jp-share-label">Slack channel (team)</div>
+                <p id="slackChannelHint" class="jp-share-muted">
+                    Create a private Slack channel for this share. Teammates ask in the channel (no @mention).
+                    Requires <strong>Slackbot</strong> set up in Connectors (not the same as user Slack for approvals).
+                </p>
+                <p id="slackChannelStatus"></p>
+                <input id="slackChannelName" type="text" maxlength="80" placeholder="channel-name" aria-label="Slack channel name" style="display:none;">
+                <div class="slack-actions">
+                    <button type="button" class="ui basic button" id="btnSlackCreate" disabled style="display:none;">
+                        Create Slack channel
+                    </button>
+                    <button type="button" class="ui basic button" id="btnInviteOwner" disabled style="display:none;">
+                        Invite me
+                    </button>
+                    <button type="button" class="ui basic button" id="btnOpenConnectors" style="display:none;">
+                        Open Connectors · Slackbot
+                    </button>
+                    <button type="button" class="ui basic button" id="btnSlackUnlink" disabled style="display:none;">
+                        Unlink Slack channel
+                    </button>
+                </div>
+            </div>
         </div>
-        <div class="actions">
+        <div class="actions jp-share-actions">
             <button type="button" class="ui basic button" id="btnCopy" disabled>Copy link</button>
             <button type="button" class="ui basic button" id="btnOpen" disabled>Open chat</button>
-            <button type="button" class="ui basic button" id="btnToggle" data-share-state="inactive" disabled>
+            <button type="button" class="ui primary button jp-share-primary" id="btnToggle" data-share-state="inactive" disabled>
                 <i class="share alternate icon"></i> Enable Sharing
             </button>
         </div>
 
+        </div>
         <script>
-            var SHARE_DIALOG_CACHE_BUST = "20260716g";
+            var SHARE_DIALOG_CACHE_BUST = "20260717f";
             var shareingFileData = null;
             var shareCurrentEditingUUID = "";
             var chatSharingURL = "";
@@ -148,6 +123,7 @@
                     data: JSON.stringify({ source: "chat_share_dialog" }),
                     xhrFields: { withCredentials: true }
                 });
+                refreshSlackChannelUi(uuid);
             }
 
             function clearChatLinkUi(message){
@@ -157,6 +133,198 @@
                 $("#chatlinkInput").val("").hide();
                 $("#chatLinkLoading").html(message || `<i class="green checkmark icon"></i> Chat sharing turned off`).show();
                 setToggleInactive();
+                resetSlackChannelUi();
+            }
+
+            function resetSlackChannelUi(){
+                $("#slackChannelStatus").text("");
+                $("#slackChannelName").val("").hide();
+                $("#btnSlackCreate, #btnSlackUnlink, #btnOpenConnectors, #btnInviteOwner").hide().prop("disabled", true);
+            }
+
+            function openConnectorsSlackbot(){
+                var url = "/connectors/index.html#slackbot";
+                try {
+                    if (typeof ao_module_newfw === "function"){
+                        ao_module_newfw({
+                            url: "connectors/index.html#slackbot",
+                            width: 920,
+                            height: 720,
+                            title: "Connectors · Slackbot",
+                            appicon: "img/joshu/connectors.png"
+                        });
+                        return;
+                    }
+                } catch (e) {}
+                window.open(url, "_blank");
+            }
+
+            function refreshSlackChannelUi(uuid){
+                if (!uuid){
+                    resetSlackChannelUi();
+                    return;
+                }
+                $("#slackChannelStatus").html(`<i class="ui loading spinner icon"></i> Checking Slack…`);
+                $.ajax({
+                    url: "/joshu/api/share-chat/" + encodeURIComponent(uuid) + "/slack/channel",
+                    method: "GET",
+                    xhrFields: { withCredentials: true },
+                    success: function(data){
+                        if (!data || !data.ok){
+                            $("#slackChannelStatus").html(`<span style="color:#b00020;">Could not load Slack channel status</span>`);
+                            return;
+                        }
+                        if (data.configured && data.channelName){
+                            $("#slackChannelName").hide();
+                            $("#btnSlackCreate, #btnOpenConnectors").hide().prop("disabled", true);
+                            $("#btnSlackUnlink").show().prop("disabled", false);
+                            var listenOk = Boolean(data.triggerInstanceId);
+                            var sub = data.subscribe || {};
+                            var subOk = sub.started === true;
+                            $("#slackChannelStatus").html(
+                                `Linked to private channel <strong>#${escapeHtml(data.channelName)}</strong>` +
+                                (data.channelId ? ` <code>${escapeHtml(data.channelId)}</code>` : "") +
+                                (listenOk
+                                    ? (subOk
+                                        ? `. Ask questions there (no @mention). `
+                                        : `. Trigger attached, but <span style="color:#b00020;">Joshu is not subscribed to Composio events</span> — restart the Joshu process, then confirm Slack → Event Subscriptions Request URL is verified (Composio URL from Connectors). `)
+                                    : `. <span style="color:#b00020;">Listening is not active</span> — add bot scope <code>team:read</code>, reinstall the Slack app, Disconnect + reconnect Slackbot in Connectors, then unlink and recreate the channel (or Save credentials to rebind). `) +
+                                `Private channels stay hidden until you are a member — use <strong>Invite me</strong> if you do not see it.`
+                            );
+                            $("#btnInviteOwner").show().prop("disabled", false);
+                            return;
+                        }
+                        $("#btnSlackUnlink").hide().prop("disabled", true);
+                        $("#btnInviteOwner").hide().prop("disabled", true);
+                        $("#slackChannelName").val(data.suggestedName || "").show();
+                        if (!data.composioEnabled || !data.slackbotConnected){
+                            $("#btnSlackCreate").show().prop("disabled", true);
+                            $("#btnOpenConnectors").show().prop("disabled", false);
+                            $("#slackChannelStatus").html(
+                                `Set up <strong>Slackbot</strong> in Connectors first ` +
+                                `(manifest + Client ID / Secret — different from user Slack).`
+                            );
+                        } else {
+                            $("#btnOpenConnectors").hide();
+                            $("#btnSlackCreate").show().prop("disabled", false);
+                            $("#slackChannelStatus").text("Choose a channel name, then create.");
+                        }
+                    },
+                    error: function(){
+                        $("#slackChannelStatus").html(`<span style="color:#b00020;">Slack channel status unavailable</span>`);
+                        $("#slackChannelName").hide();
+                        $("#btnSlackCreate, #btnSlackUnlink, #btnOpenConnectors").hide();
+                    }
+                });
+            }
+
+            function createSlackChannel(){
+                if (!shareCurrentEditingUUID) return;
+                var name = ($("#slackChannelName").val() || "").trim();
+                if (!name){
+                    $("#slackChannelStatus").html(`<span style="color:#b00020;">Enter a channel name</span>`);
+                    return;
+                }
+                var btn = $("#btnSlackCreate");
+                btn.addClass("loading").prop("disabled", true);
+                $("#slackChannelStatus").html(`<i class="ui loading spinner icon"></i> Creating channel…`);
+                $.ajax({
+                    url: "/joshu/api/share-chat/" + encodeURIComponent(shareCurrentEditingUUID) + "/slack/channel",
+                    method: "POST",
+                    contentType: "application/json",
+                    data: JSON.stringify({ name: name }),
+                    xhrFields: { withCredentials: true },
+                    success: function(data){
+                        btn.removeClass("loading");
+                        if (data && data.ok){
+                            if (data.triggerHint){
+                                $("#slackChannelStatus").html(
+                                    `<span style="color:#b00020;">${escapeHtml(data.triggerHint)}</span>`
+                                );
+                                refreshSlackChannelUi(shareCurrentEditingUUID);
+                                return;
+                            }
+                            refreshSlackChannelUi(shareCurrentEditingUUID);
+                            return;
+                        }
+                        btn.prop("disabled", false);
+                        $("#slackChannelStatus").html(`<span style="color:#b00020;">Create failed</span>`);
+                    },
+                    error: function(xhr){
+                        btn.removeClass("loading").prop("disabled", false);
+                        var err = (xhr.responseJSON && xhr.responseJSON.error) || ("HTTP " + xhr.status);
+                        var hint = (xhr.responseJSON && xhr.responseJSON.hint) || "";
+                        if (err === "channel_name_taken"){
+                            $("#slackChannelStatus").html(
+                                `<span style="color:#b00020;">That name is taken in Slack. Pick another.</span>`
+                            );
+                        } else if (err === "composio_slackbot_required"){
+                            $("#slackChannelStatus").html(
+                                `<span style="color:#b00020;">Connect Slackbot in Connectors first.</span>`
+                            );
+                        } else {
+                            $("#slackChannelStatus").html(
+                                `<span style="color:#b00020;">${escapeHtml(err)}${hint ? " — " + escapeHtml(hint) : ""}</span>`
+                            );
+                        }
+                    }
+                });
+            }
+
+            function unlinkSlackChannel(){
+                if (!shareCurrentEditingUUID) return;
+                if (!confirm("Unlink this Slack channel from chat sharing? The Slack channel itself is not deleted.")) return;
+                var btn = $("#btnSlackUnlink");
+                btn.addClass("loading").prop("disabled", true);
+                $.ajax({
+                    url: "/joshu/api/share-chat/" + encodeURIComponent(shareCurrentEditingUUID) + "/slack/channel/unlink",
+                    method: "POST",
+                    contentType: "application/json",
+                    data: JSON.stringify({}),
+                    xhrFields: { withCredentials: true },
+                    success: function(){
+                        btn.removeClass("loading");
+                        refreshSlackChannelUi(shareCurrentEditingUUID);
+                    },
+                    error: function(xhr){
+                        btn.removeClass("loading").prop("disabled", false);
+                        alert("Unlink failed (" + xhr.status + ")");
+                    }
+                });
+            }
+
+            function inviteOwnerToChannel(){
+                if (!shareCurrentEditingUUID) return;
+                var btn = $("#btnInviteOwner");
+                btn.addClass("loading").prop("disabled", true);
+                $("#slackChannelStatus").html(`<i class="ui loading spinner icon"></i> Inviting you into the private channel…`);
+                $.ajax({
+                    url: "/joshu/api/share-chat/" + encodeURIComponent(shareCurrentEditingUUID) + "/slack/channel/invite-owner",
+                    method: "POST",
+                    contentType: "application/json",
+                    data: JSON.stringify({}),
+                    xhrFields: { withCredentials: true },
+                    success: function(data){
+                        btn.removeClass("loading").prop("disabled", false);
+                        if (data && data.invitedUserIds && data.invitedUserIds.length){
+                            $("#slackChannelStatus").html(
+                                `<i class="green checkmark icon"></i> Invited — check Slack for <strong>#${escapeHtml(data.channelName || "channel")}</strong>.`
+                            );
+                        } else {
+                            $("#slackChannelStatus").html(
+                                `<span style="color:#b00020;">Could not invite automatically` +
+                                (data && data.error ? ` (${escapeHtml(data.error)})` : "") +
+                                `. Ask a Slack admin to add you to the private channel` +
+                                (data && data.channelId ? ` <code>${escapeHtml(data.channelId)}</code>` : "") +
+                                `.</span>`
+                            );
+                        }
+                    },
+                    error: function(xhr){
+                        btn.removeClass("loading").prop("disabled", false);
+                        alert("Invite failed (" + xhr.status + ")");
+                    }
+                });
             }
 
             function enableSharing(btn){
@@ -276,6 +444,10 @@
                 $("#btnCopy").on("click", copyLink);
                 $("#btnOpen").on("click", openChat);
                 $("#btnToggle").on("click", toggleSharing);
+                $("#btnSlackCreate").on("click", createSlackChannel);
+                $("#btnSlackUnlink").on("click", unlinkSlackChannel);
+                $("#btnInviteOwner").on("click", inviteOwnerToChannel);
+                $("#btnOpenConnectors").on("click", openConnectorsSlackbot);
                 // Create / reuse share immediately (like File Share).
                 enableSharing($("#btnToggle"));
             });

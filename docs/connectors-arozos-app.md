@@ -25,6 +25,17 @@
 | URL | `/connectors/index.html` |
 | Shortcut | `Connectors.shortcut` |
 
+### Slackbot (share-chat KB channels)
+
+Featured toolkit **`slackbot`** is separate from user **`slack`** (approvals / agent tools) and Hermes Slack chat.
+
+1. Open Connectors → Connect apps → **Slackbot** (or `/connectors/index.html#slackbot`).
+2. Generate / copy the Slack app manifest → create the app at api.slack.com.
+3. Paste Client ID, Client Secret, and Verification Token → **Save & Connect**.
+4. Joshu creates the Composio auth config and stores `ac_…` in `.joshu/composio-auth-configs.json` (optional env override: `JOSHU_COMPOSIO_SLACKBOT_AUTH_CONFIG_ID`).
+
+API: `GET/POST /joshu/api/connectors/composio/slackbot/setup`, `GET …/slackbot/manifest`.
+
 ## Dev
 
 ```bash

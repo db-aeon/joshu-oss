@@ -1,0 +1,25 @@
+diff --git a/node_modules/@composio/core/dist/index.mjs b/node_modules/@composio/core/dist/index.mjs
+index 2ddbae8..779e1e5 100644
+--- a/node_modules/@composio/core/dist/index.mjs
++++ b/node_modules/@composio/core/dist/index.mjs
+@@ -3915,7 +3915,19 @@ var PusherService = class {
+ 			this.pusherChannel = `private-${this.clientId}_triggers`;
+ 			logger_default.debug(`[PusherService] Creating Pusher client for client ID: ${this.clientId} in cluster ${this.pusherCluster}`);
+ 			try {
+-				const { default: Pusher } = await import("pusher-js");
++				const pusherMod = await import("pusher-js");
++				// pusher-js@8 ESM: default is { Pusher }, named export is the constructor.
++				const Pusher =
++					typeof pusherMod.default === "function"
++						? pusherMod.default
++						: typeof pusherMod.Pusher === "function"
++							? pusherMod.Pusher
++							: typeof pusherMod.default?.Pusher === "function"
++								? pusherMod.default.Pusher
++								: null;
++				if (typeof Pusher !== "function") {
++					throw new Error("pusher-js constructor not found in module exports");
++				}
+ 				this.pusherClient = new Pusher(this.pusherKey, {
+ 					cluster: this.pusherCluster,
+ 					channelAuthorization: {
