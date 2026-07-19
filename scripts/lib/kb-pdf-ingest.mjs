@@ -56,6 +56,8 @@ function isPdfUnderRoot(relPath) {
   if (!norm.endsWith(".pdf")) return false;
   // Ignore junk / archive leftovers if anything still lands under .raw
   if (norm.includes("/.raw/") || norm.includes("/.git/")) return false;
+  // ArozOS trash — deleted folders still contain PDFs; never re-ingest them.
+  if (norm.includes("/.metadata/") || norm.startsWith(".metadata/")) return false;
   return true;
 }
 

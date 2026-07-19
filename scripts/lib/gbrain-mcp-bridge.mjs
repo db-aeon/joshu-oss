@@ -37,6 +37,8 @@ export function createGbrainMcpBridge(log) {
   );
   const LOG_FILE = process.env.GBRAIN_LOG_FILE?.trim();
   const REINDEX_TOUCH = GBRAIN_HOME ? path.join(GBRAIN_HOME, ".joshu-reindex-touch") : undefined;
+  /** Touch this file to force the next sync_brain with full=true (orphan purge / recovery). */
+  const FULL_SYNC_TOUCH = GBRAIN_HOME ? path.join(GBRAIN_HOME, ".joshu-full-sync-touch") : undefined;
   const FULL_SYNC_FLAG = GBRAIN_HOME ? path.join(GBRAIN_HOME, ".joshu-gbrain-needs-full-sync") : undefined;
   const VERBOSE = /^(1|true|yes)$/i.test(process.env.GBRAIN_MCP_VERBOSE?.trim() || "");
   /** After sync_brain, verify index when disk has markdown (catches silent sync failures). */
@@ -135,11 +137,38 @@ export function createGbrainMcpBridge(log) {
           logLine("sync_brain failed repeatedly — flagged for ensure-gbrain-indexed.sh full recovery");
         }
       } else {
-        syncFailureStreak = 0;
-        if (VERBOSE) {
-          logLine("sync_brain completed");
+        // MCP sync_brain has no skip_failed; blocked_by_failures still returns
+        // a tool "success" while leaving last_commit stuck (stale File Brain).
+        const resultText = extractMcpToolText(msg.result);
+        const blocked =
+          typeof resultText === "string" &&
+          (/blocked_by_failures/i.test(resultText) ||
+            /Sync blocked:/i.test(resultText));
+        if (blocked) {
+          syncFailureStreak += 1;
+          logLine(
+            `sync_brain blocked by file failures (${syncFailureStreak}/${SYNC_RETRY_MAX}) — excluding recorded paths and retrying`,
+          );
+          // Incremental sync may have left orphan pages (Manuals → trash rename).
+          pendingFullSync = true;
+          if (syncFailureStreak < SYNC_RETRY_MAX) {
+            // stageDesktopForGbrainSync gitignores sync-failures.jsonl paths
+            scheduleReindex(Math.min(30_000, 2000 * syncFailureStreak));
+          } else if (FULL_SYNC_FLAG) {
+            try {
+              appendFileSync(FULL_SYNC_FLAG, `${new Date().toISOString()} sync_brain blocked_by_failures\n`);
+            } catch {
+              /* ignore */
+            }
+            logLine("sync_brain blocked repeatedly — flagged for ensure-gbrain-indexed.sh full recovery");
+          }
+        } else {
+          syncFailureStreak = 0;
+          if (VERBOSE) {
+            logLine("sync_brain completed");
+          }
+          void verifyIndexAfterSync();
         }
-        void verifyIndexAfterSync();
       }
       if (pendingReindex) {
         pendingReindex = false;
@@ -269,18 +298,25 @@ export function createGbrainMcpBridge(log) {
     return extractMcpToolText(result);
   }
 
+  /** When true, next sync_brain uses full=true to drop orphan pages (e.g. after trash excludes). */
+  let pendingFullSync = false;
+
   function queueSyncBrainCall() {
     if (!childWriter) return;
     const id = internalIdCounter++;
     internalRequestIds.add(id);
-    if (VERBOSE) logLine(`sync_brain repo=${SYNC_ROOT}`);
+    const full = pendingFullSync;
+    pendingFullSync = false;
+    if (VERBOSE || full) logLine(`sync_brain repo=${SYNC_ROOT}${full ? " full=true" : ""}`);
     writeMessage(childWriter, {
       jsonrpc: "2.0",
       id,
       method: "tools/call",
       params: {
         name: "sync_brain",
-        arguments: { repo: SYNC_ROOT, no_pull: true },
+        // full: reconcile orphans when incremental last_commit skipped deletes
+        // (common after ArozOS trash moves + sync blocked by a bad file).
+        arguments: { repo: SYNC_ROOT, no_pull: true, ...(full ? { full: true } : {}) },
       },
     });
   }
@@ -320,8 +356,41 @@ export function createGbrainMcpBridge(log) {
 
   function shouldWatchPath(filename) {
     if (!filename) return false;
-    const lower = filename.toLowerCase();
+    const lower = filename.replace(/\\/g, "/").toLowerCase();
+    // Never react to ArozOS trash / git internals (noise + would re-index trash).
+    if (
+      lower === ".git" ||
+      lower.startsWith(".git/") ||
+      lower === ".metadata" ||
+      lower.startsWith(".metadata/")
+    ) {
+      return false;
+    }
+    if (lower.endsWith(".shortcut")) return false;
     return lower.endsWith(".md") || lower.endsWith(".mdx");
+  }
+
+  /**
+   * ArozOS "delete" is a rename into `.metadata/.trash/`. The recursive watcher
+   * often only reports the folder name (`Appliances`) — not each `.md` — so an
+   * extension-only filter would never schedule reindex and deleted folders stay
+   * in File Brain until the next periodic tick.
+   */
+  function shouldWatchFsEvent(eventType, filename) {
+    if (!filename) return eventType === "rename";
+    const lower = filename.replace(/\\/g, "/").toLowerCase();
+    if (
+      lower === ".git" ||
+      lower.startsWith(".git/") ||
+      lower === ".metadata" ||
+      lower.startsWith(".metadata/")
+    ) {
+      return false;
+    }
+    if (shouldWatchPath(filename)) return true;
+    // Directory / non-markdown rename or delete (folder trash, move, remove).
+    if (eventType === "rename") return true;
+    return false;
   }
 
   function startFilesystemWatch() {
@@ -330,8 +399,12 @@ export function createGbrainMcpBridge(log) {
       return;
     }
     try {
-      watch(DESKTOP_ROOT, { recursive: true }, (_event, filename) => {
-        if (filename && !shouldWatchPath(filename)) return;
+      watch(DESKTOP_ROOT, { recursive: true }, (eventType, filename) => {
+        if (!shouldWatchFsEvent(eventType, filename || "")) return;
+        // Folder trash / rename: prefer full sync so orphan pages drop promptly.
+        if (eventType === "rename" && filename && !shouldWatchPath(filename)) {
+          pendingFullSync = true;
+        }
         scheduleReindex();
       });
       logLine(`watching ${DESKTOP_ROOT} (debounce ${DEBOUNCE_MS}ms)`);
@@ -343,6 +416,11 @@ export function createGbrainMcpBridge(log) {
       try {
         watch(path.dirname(REINDEX_TOUCH), (_event, name) => {
           if (name === path.basename(REINDEX_TOUCH)) scheduleReindex(200);
+          if (FULL_SYNC_TOUCH && name === path.basename(FULL_SYNC_TOUCH)) {
+            pendingFullSync = true;
+            logLine("full sync requested via .joshu-full-sync-touch");
+            scheduleReindex(200);
+          }
         });
       } catch {
         /* optional */
@@ -390,6 +468,7 @@ export function createGbrainMcpBridge(log) {
         `empty index after sync (${emptyIndexStreak}): disk has ${diskMarkdown}+ markdown but 0 indexed pages`,
       );
       if (emptyIndexStreak < 3) {
+        pendingFullSync = true;
         scheduleReindex(5000);
         return;
       }
@@ -422,8 +501,9 @@ export function createGbrainMcpBridge(log) {
           return;
         }
         logLine(
-          `empty-index watchdog: disk=${report.diskMarkdown} indexed=${report.indexedPages} — scheduling reindex`,
+          `empty-index watchdog: disk=${report.diskMarkdown} indexed=${report.indexedPages} — scheduling full sync_brain`,
         );
+        pendingFullSync = true;
         scheduleReindex(500);
         if (emptyIndexStreak >= 2 && FULL_SYNC_FLAG) {
           try {

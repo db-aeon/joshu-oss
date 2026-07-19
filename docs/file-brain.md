@@ -155,7 +155,7 @@ Boot [`scripts/start-gbrain.sh`](../scripts/start-gbrain.sh):
 3. **`sync --apply --all`** + **`embed --stale`** across registered sources.
 4. **Git at `files/users/`** — [`scripts/lib/ensure-gbrain-git.sh`](../scripts/lib/ensure-gbrain-git.sh) initializes a repo + baseline commit at **`${AROZ_DATA}/files/users/`** (gbrain sync requires committed user data). Before each debounced `sync_brain`, [`scripts/lib/gbrain-desktop-git.mjs`](../scripts/lib/gbrain-desktop-git.mjs) runs **`git add -A`** there (covers all user Desktops, `joshu's files`, connectors, `.joshu/` metadata). **Never** the joshu app repo root — local dev data stays under `.local/` (gitignored). Optional override: `JOSHU_GBRAIN_GIT_ROOT`.
 
-   **Excluded from File Brain:** Desktop `HERMES.md` / `SOUL.md` (Joshu-managed Hermes context, not notes). Staging writes them into `Desktop/.gitignore` and untracks them so gbrain never indexes them. Without that, sync can fail on missing YAML frontmatter and stall local boot.
+   **Excluded from File Brain:** Desktop `HERMES.md` / `SOUL.md` (Joshu-managed Hermes context, not notes), and **`.metadata/`** (ArozOS trash + desktop metadata). Staging writes these into `Desktop/.gitignore` and untracks them so gbrain never indexes them. ArozOS “delete” moves folders into `.metadata/.trash/` — the MCP bridge watches directory renames (not only `.md` edits) and schedules a **full** `sync_brain` so orphan pages drop promptly. Without the rename watch, deleted folders stayed indexed until the next periodic reindex.
 
 Pages outside `joshu's files` (e.g. `Desktop/Investors/foo.md`) appear with slugs like `investors/foo` and `source_id` `j-<user-slug>` (not `default`).
 
@@ -235,7 +235,7 @@ That includes folders outside `joshu's files` (same scope as federated gbrain in
 
 **Limits:** text-based PDFs only today (no OCR for scanned/image PDFs). Skip dirs: hidden folders (`.git`, `.raw`, …).
 
-**File Brain activity:** While extract/wrap or reindex is running, `GET /activity` (and `/health` → `activity`, `/joshu/api/brain/status` → `activity`) reports busy state (`pdf_ingest`, `txt_ingest`, `reindex`). The File Brain desktop app shows a pulsing status pill.
+**File Brain activity:** While extract/wrap or reindex is running, `GET /activity` (and `/health` → `activity`, `/joshu/api/brain/status` → `activity`) reports busy state (`pdf_ingest`, `txt_ingest`, `reindex`). The File Brain desktop app shows a pulsing status pill. The ArozOS desktop also shows a **top-right toast** (`aroz-filebrain-toast.js`) while busy, then a brief “Indexing finished” confirmation.
 
 ### Plain text (.txt) wrapping
 
@@ -525,6 +525,7 @@ See also [`docs/local-installation.md`](local-installation.md#file-brain-gbrain)
 | Large PDF page in search but weak semantic hits | gbrain `content-sanity soft-block` skipped embeddings | Expected for very large extracts; keyword search still works |
 | Connector mail on disk but gbrain empty | Local dev: gbrain git ran in joshu app repo instead of `.local/arozos-data/files/users/` | Ensure nested git at `files/users/`; `node scripts/lib/run-stage-desktop-git.mjs "$JOSHU_DESKTOP_ROOT"` then `POST /joshu/api/brain/reindex`; remove stray `Desktop/.git` |
 | New Desktop folders not in gbrain | Git commit not run before sync | Automatic via MCP bridge (`git add -A` on `files/users/` before `sync_brain`); nudge with reindex or restart `start-gbrain-mcp-http.sh` |
+| Deleted Desktop folder still in File Brain | FS watch used to ignore non-`.md` events, so ArozOS trash (folder rename into `.metadata/.trash/`) never scheduled reindex until the periodic tick. Also: `sync_brain` blocked / trash still git-tracked. | Bridge now reindexes on directory `rename` + prefers `full=true`. `.metadata/` is gitignored. Check `gbrain-sync.log` for `sync.deletes`; `POST /joshu/api/brain/reindex` or touch `${GBRAIN_HOME}/.joshu-full-sync-touch` |
 | `gbrain desktop index` commits on `main` | Old bug: `git add -A` from Desktop cwd touched joshu root | Fix in `gbrain-desktop-git.mjs`; reword or drop mistaken commits before push |
 | Mail query returns workspace not threads | Query too broad or mirrors stale | Use mail keywords + `since: 90d`; run connector sync; check `pages?type=connector-mail` |
 | Browse shows Desktop files; Search/Query empty | Hermes or client used MCP **`search`** (default source only) | Use **`query`** with `source_id: "__all__"` + `limit`; or REST `/search` on `:8794` / Joshu `brainApi` |

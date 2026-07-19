@@ -36,6 +36,15 @@ type BrainStatus = {
       last_updated?: number;
       last_errors?: number;
     } | null;
+    txt_ingest?: {
+      active?: boolean;
+      phase?: string;
+      reason?: string;
+      last_message?: string;
+      last_ingested?: number;
+      last_updated?: number;
+      last_errors?: number;
+    } | null;
     reindex?: {
       active?: boolean;
       reindex_running?: boolean;
@@ -275,8 +284,10 @@ function App() {
 
   const pdfPhase = status?.activity?.pdf_ingest?.phase;
   const pdfActive = Boolean(status?.activity?.pdf_ingest?.active);
+  const txtPhase = status?.activity?.txt_ingest?.phase;
+  const txtActive = Boolean(status?.activity?.txt_ingest?.active);
   const reindexActive = Boolean(status?.activity?.reindex?.active);
-  const activityBusy = Boolean(status?.activity?.busy) || pdfActive || reindexActive;
+  const activityBusy = Boolean(status?.activity?.busy) || pdfActive || txtActive || reindexActive;
 
   let activityLabel = "";
   if (pdfActive && (pdfPhase === "running" || pdfPhase === "scheduled")) {
@@ -284,6 +295,11 @@ function App() {
       pdfPhase === "running"
         ? status?.activity?.pdf_ingest?.last_message || "Extracting PDFs…"
         : "PDF ingest scheduled…";
+  } else if (txtActive && (txtPhase === "running" || txtPhase === "scheduled")) {
+    activityLabel =
+      txtPhase === "running"
+        ? status?.activity?.txt_ingest?.last_message || "Ingesting text…"
+        : "Text ingest scheduled…";
   } else if (reindexActive) {
     activityLabel = status?.activity?.reindex?.reindex_running
       ? "Reindexing File Brain…"

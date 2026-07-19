@@ -24,6 +24,7 @@ from pathlib import Path
 SKIP_DIR_NAMES = {
     ".git",
     ".raw",
+    ".metadata",  # ArozOS trash + desktop metadata — never re-ingest deleted PDFs
     "node_modules",
     "__pycache__",
 }

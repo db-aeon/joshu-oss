@@ -18,16 +18,21 @@ const GIT_IDENTITY = {
 };
 
 /**
- * Desktop files that must never enter File Brain.
- * HERMES.md is Joshu-managed Hermes project context (no YAML frontmatter) —
- * gbrain sync treats it as a failed page and can hang boot on `sync --all`.
+ * Desktop paths that must never enter File Brain (gitignore + untrack).
+ * - HERMES.md / SOUL.md: Joshu-managed context without gbrain frontmatter.
+ * - .metadata/: ArozOS trash + desktop metadata — deleting a folder moves it
+ *   here; if those .md files stay git-tracked, sync never drops the live pages
+ *   (and may re-index trash).
  */
 export const GBRAIN_DESKTOP_EXCLUDE_ENTRIES = [
   "HERMES.md",
   "SOUL.md",
+  ".metadata/",
 ];
 
 const GBRAIN_GITIGNORE_MARKER = "# joshu-managed: gbrain-desktop-excludes";
+/** Paths recorded in sync-failures.jsonl that we permanently exclude. */
+const GBRAIN_SYNC_FAILURE_IGNORE_MARKER = "# joshu-managed: gbrain-sync-failure-excludes";
 
 /** @param {unknown} err */
 function gitExitCode(err) {
@@ -175,8 +180,58 @@ async function ensureBaselineCommit(root) {
 }
 
 /**
- * Keep Desktop/.gitignore excluding Joshu-managed Hermes context files from
- * gbrain's federated Desktop source. Idempotent; preserves other entries.
+ * @param {string} entry gitignore-style path (may end with `/`)
+ */
+function gitignoreEntryToRmPath(entry) {
+  return entry.replace(/\/+$/, "");
+}
+
+/**
+ * Resolve `${GBRAIN_HOME}/.gbrain/sync-failures.jsonl`.
+ * @returns {string | null}
+ */
+export function resolveGbrainSyncFailuresPath() {
+  const home = process.env.GBRAIN_HOME?.trim();
+  if (!home) return null;
+  return path.join(home, ".gbrain", "sync-failures.jsonl");
+}
+
+/**
+ * Relative Desktop paths that repeatedly block gbrain sync (MCP `sync_brain`
+ * has no `--skip-failed`). Safe subset only — no absolute / `..` paths.
+ *
+ * @returns {string[]}
+ */
+export function listGbrainSyncFailureExcludePaths() {
+  const failuresPath = resolveGbrainSyncFailuresPath();
+  if (!failuresPath || !existsSync(failuresPath)) return [];
+
+  /** @type {Set<string>} */
+  const paths = new Set();
+  let raw = "";
+  try {
+    raw = readFileSync(failuresPath, "utf8");
+  } catch {
+    return [];
+  }
+  for (const line of raw.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    try {
+      const row = JSON.parse(trimmed);
+      const rel = typeof row?.path === "string" ? row.path.trim() : "";
+      if (!rel || path.isAbsolute(rel) || rel.split(/[/\\]/).includes("..")) continue;
+      paths.add(rel.replace(/\\/g, "/"));
+    } catch {
+      /* skip corrupt lines */
+    }
+  }
+  return [...paths].sort();
+}
+
+/**
+ * Keep Desktop/.gitignore excluding Joshu-managed Hermes context, ArozOS
+ * metadata/trash, and recorded sync-failure paths. Idempotent.
  *
  * @param {string} desktopRoot
  * @returns {boolean} true when the file was created or changed
@@ -199,28 +254,60 @@ export function ensureDesktopGbrainGitignore(desktopRoot) {
   const lines = existing.split(/\r?\n/);
   const have = new Set(lines.map((l) => l.trim()).filter(Boolean));
   /** @type {string[]} */
-  const toAdd = [];
+  const staticToAdd = [];
   for (const entry of GBRAIN_DESKTOP_EXCLUDE_ENTRIES) {
-    if (!have.has(entry)) toAdd.push(entry);
+    if (!have.has(entry)) staticToAdd.push(entry);
   }
-  if (toAdd.length === 0 && have.has(GBRAIN_GITIGNORE_MARKER)) return false;
+  const failurePaths = listGbrainSyncFailureExcludePaths();
+  /** @type {string[]} */
+  const failureToAdd = [];
+  for (const rel of failurePaths) {
+    if (!have.has(rel)) failureToAdd.push(rel);
+  }
+
+  const needStaticMarker = !have.has(GBRAIN_GITIGNORE_MARKER);
+  const needFailureMarker =
+    failurePaths.length > 0 && !have.has(GBRAIN_SYNC_FAILURE_IGNORE_MARKER);
+  if (
+    staticToAdd.length === 0 &&
+    failureToAdd.length === 0 &&
+    !needStaticMarker &&
+    !needFailureMarker
+  ) {
+    return false;
+  }
 
   let next = existing;
   if (next && !next.endsWith("\n")) next += "\n";
-  if (!have.has(GBRAIN_GITIGNORE_MARKER)) {
-    if (next && !next.endsWith("\n\n")) next += next.endsWith("\n") ? "\n" : "\n\n";
-    next += `${GBRAIN_GITIGNORE_MARKER}\n`;
+  if (needStaticMarker || staticToAdd.length > 0) {
+    if (!have.has(GBRAIN_GITIGNORE_MARKER)) {
+      if (next && !next.endsWith("\n\n")) next += next.endsWith("\n") ? "\n" : "\n\n";
+      next += `${GBRAIN_GITIGNORE_MARKER}\n`;
+      have.add(GBRAIN_GITIGNORE_MARKER);
+    }
+    for (const entry of staticToAdd) {
+      next += `${entry}\n`;
+      have.add(entry);
+    }
   }
-  for (const entry of toAdd) {
-    next += `${entry}\n`;
+  if (needFailureMarker || failureToAdd.length > 0) {
+    if (!have.has(GBRAIN_SYNC_FAILURE_IGNORE_MARKER)) {
+      if (next && !next.endsWith("\n\n")) next += next.endsWith("\n") ? "\n" : "\n\n";
+      next += `${GBRAIN_SYNC_FAILURE_IGNORE_MARKER}\n`;
+      have.add(GBRAIN_SYNC_FAILURE_IGNORE_MARKER);
+    }
+    for (const entry of failureToAdd) {
+      next += `${entry}\n`;
+      have.add(entry);
+    }
   }
   writeFileSync(gitignorePath, next, "utf8");
   return true;
 }
 
 /**
- * Drop excluded Desktop files from the git index (leave on disk).
- * Already-tracked HERMES.md keeps being synced until this runs.
+ * Drop excluded Desktop paths from the git index (leave on disk).
+ * Already-tracked excludes keep being synced until this runs.
  *
  * @param {string} desktopRoot
  * @returns {Promise<boolean>} true when the index changed
@@ -230,12 +317,19 @@ async function untrackDesktopGbrainExcludes(desktopRoot) {
   if (path.basename(desktop) !== "Desktop") return false;
   if (!(await hasValidOwnGitRepo(desktop))) return false;
 
+  /** @type {string[]} */
+  const targets = [
+    ...GBRAIN_DESKTOP_EXCLUDE_ENTRIES.map(gitignoreEntryToRmPath),
+    ...listGbrainSyncFailureExcludePaths(),
+  ];
+
   let changed = false;
-  for (const entry of GBRAIN_DESKTOP_EXCLUDE_ENTRIES) {
+  for (const entry of targets) {
     try {
       const { stdout } = await runGit(desktop, ["ls-files", "--", entry]);
       if (!stdout.trim()) continue;
-      await runGit(desktop, ["rm", "--cached", "-q", "--", entry]);
+      // -r so `.metadata/` (and any nested trash) drops in one shot
+      await runGit(desktop, ["rm", "--cached", "-r", "-q", "--", entry]);
       changed = true;
     } catch {
       /* not tracked or already removed */
