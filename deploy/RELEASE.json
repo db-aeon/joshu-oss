@@ -7,5 +7,5 @@
   "gbrainRef": "fa2c7a6990a7a57b251979ef6e1988ff09529021",
   "camofoxBase": "ghcr.io/jo-inc/camofox-browser@sha256:3ab61b4742105922aab6f8c99460f55563b6f93e906975383ddce16ec8917f3f",
   "builtAt": "2026-07-21T19:17:00.000Z",
-  "notes": "Share Chat + File Share, Desktop PDF/.txt File Brain ingest, box update hardening (non-fatal snapshots, agent --no-deps), Camofox HITL fixes, Hindsight cross-version restore"
+  "notes": "Share Chat + File Share, Desktop PDF/.txt File Brain ingest, box update/edge hardening, Camofox HITL fixes, scheduling send follow-ups, guest identity chrome"
 }
