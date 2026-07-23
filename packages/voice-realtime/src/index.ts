@@ -19,6 +19,7 @@ import {
   PORT,
   speechToSpeechEnabled,
   speechToSpeechDisableReasons,
+  TWILIO_THINK_PASSWORD,
   VOICE_S2S_PROVIDER,
   webRealtimeEnabled,
   webVoiceDisableReasons,
@@ -215,6 +216,15 @@ server.on("upgrade", (req, socket, head) => {
           }
 
           if (ev === "start") {
+            // Defense in depth: Joshu Express also refuses to register PSTN routes without
+            // TWILIO_THINK_PASSWORD — reject here so a leaked media-stream URL cannot open an ungated call.
+            if (!TWILIO_THINK_PASSWORD) {
+              console.warn(
+                "[voice-realtime] rejecting Twilio media stream (TWILIO_THINK_PASSWORD unset)",
+              );
+              ws.close(1008, "think password required");
+              return;
+            }
             const start = msg.start as Record<string, unknown> | undefined;
             const streamSid = String(start?.streamSid ?? msg.streamSid ?? "");
             const callSid = String(start?.callSid ?? "");

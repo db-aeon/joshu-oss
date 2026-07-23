@@ -103,8 +103,22 @@ function mediaStreamWssUrl(secret: string, publicBasePath = envTrim("PUBLIC_BASE
   }
 }
 
+/** Strip wrapping quotes — instance.env often stores `TWILIO_THINK_PASSWORD="Falken's Maze"`. */
+function twilioThinkPassword(): string {
+  return envTrim("TWILIO_THINK_PASSWORD").replace(/^["']|["']$/g, "");
+}
+
+/**
+ * PSTN is off unless auth + stream secret + webhook + think passphrase are all set.
+ * No passphrase → no inbound voice routes (open phone without a gate is not allowed).
+ */
 function twilioGatewayEnabled(): boolean {
-  return Boolean(envTrim("TWILIO_AUTH_TOKEN") && envTrim("TWILIO_MEDIA_STREAM_SECRET") && voiceInboundWebhookUrl());
+  return Boolean(
+    envTrim("TWILIO_AUTH_TOKEN") &&
+      envTrim("TWILIO_MEDIA_STREAM_SECRET") &&
+      voiceInboundWebhookUrl() &&
+      twilioThinkPassword(),
+  );
 }
 
 /** URLs Twilio may have signed (console URL, env, trailing slash, ngrok forwarded host). */
@@ -488,7 +502,9 @@ export function registerTwilioVoiceRoutes(
   publicBasePath = envTrim("PUBLIC_BASE_PATH"),
 ): void {
   if (!twilioGatewayEnabled()) {
-    console.info("[twilio-phone] disabled (set TWILIO_AUTH_TOKEN, TWILIO_MEDIA_STREAM_SECRET, TWILIO_VOICE_WEBHOOK_URL)");
+    console.info(
+      "[twilio-phone] disabled (set TWILIO_AUTH_TOKEN, TWILIO_MEDIA_STREAM_SECRET, TWILIO_VOICE_WEBHOOK_URL, TWILIO_THINK_PASSWORD)",
+    );
     return;
   }
 
