@@ -63,6 +63,7 @@
     "test:mail-dedup": "npm run build && node scripts/check-mail-dedup.mjs",
     "test:mail-classifier-routing": "npm run build && node scripts/check-mail-classifier-routing.mjs",
     "test:owner-reply": "tsx scripts/test-owner-reply.mjs",
+    "test:coordination-scope": "tsx scripts/test-coordination-scope.mjs",
     "test:hermes-skills-policy": "npm run build && node scripts/check-hermes-skills-policy.mjs",
     "test:platform-architecture": "npm run build && node scripts/smoke-platform-architecture.mjs",
     "check:oss-boundaries": "bash scripts/check-oss-boundaries.sh",

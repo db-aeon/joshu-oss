@@ -19,6 +19,13 @@ import {
   parseEmailAddress,
 } from "./schedulingTypes.js";
 import { mailIngressCanonicalId } from "./mailDedup.js";
+import {
+  assertSpawnAllowed,
+  findOpenMeetingByScope,
+  listActiveCoordinationForScope,
+  registerCoordination,
+  resolveMailCoordinationScope,
+} from "./conversationScope.js";
 
 export type QueueIngressTaskResult = {
   queued: boolean;
@@ -196,10 +203,44 @@ export async function queueSchedulingMeetingTask(opts: {
     console.warn(`[ea-scheduling] meeting board ensure: ${(err as Error).message}`);
   });
 
-  // Safety net: one open meeting per mail thread (follow-up messages should handoff, not create).
+  // Safety net: one open meeting per coordination scope (cross-board + cross-provider).
   if (threadId) {
-    const open = await listSchedulingMeetingTasks({ filesRoot });
-    const existing = findOpenMeetingByThread(open, threadId);
+    const scope = await resolveMailCoordinationScope({
+      channel: "mail",
+      filesRoot,
+      threadId,
+      provider: opts.provider,
+      sourcePath: opts.sourcePath,
+      subject: opts.subject,
+      from: opts.from,
+    });
+    const openScheduling = await listSchedulingMeetingTasks({ filesRoot });
+    const { listOwnerReplyTasks } = await import("./ownerReplyCron.js");
+    const openOwnerReply = await listOwnerReplyTasks({ filesRoot });
+    const active = await listActiveCoordinationForScope({
+      filesRoot,
+      scope,
+      schedulingTasks: openScheduling,
+      ownerReplyTasks: openOwnerReply,
+    });
+    const gate = assertSpawnAllowed({
+      scope,
+      requestingBoard: EA_SCHEDULING_BOARD,
+      capability: "meeting_negotiation",
+      active,
+    });
+    if (!gate.ok) {
+      console.info(
+        `[ea-scheduling] coordination mutex scope=${scope.scopeId} reason=${gate.conflict.reason} task=${gate.conflict.task_id} message=${messageId}`,
+      );
+      return {
+        queued: false,
+        reason: gate.conflict.reason,
+        taskId: gate.conflict.task_id,
+      };
+    }
+
+    const existing = findOpenMeetingByScope(openScheduling, scope);
     if (existing?.task_id) {
       console.info(
         `[ea-scheduling] meeting thread dedup thread=${threadId} task=${existing.task_id} message=${messageId}`,
@@ -229,6 +270,29 @@ export async function queueSchedulingMeetingTask(opts: {
   console.info(
     `[ea-scheduling] meeting action=${actionTaken} board=${EA_SCHEDULING_BOARD} task=${result.task_id ?? "?"} message=${messageId}`,
   );
+
+  if (result.task_id && threadId && actionTaken !== "existing_active") {
+    const scope = await resolveMailCoordinationScope({
+      channel: "mail",
+      filesRoot,
+      threadId,
+      provider: opts.provider,
+      sourcePath: opts.sourcePath,
+      subject: opts.subject,
+      from: opts.from,
+    }).catch(() => null);
+    if (scope) {
+      await registerCoordination({
+        filesRoot,
+        scopeId: scope.scopeId,
+        capability: "meeting_negotiation",
+        board: EA_SCHEDULING_BOARD,
+        task_id: result.task_id,
+        channel: "mail",
+      }).catch(() => {});
+    }
+  }
+
   return {
     queued: actionTaken !== "existing_active",
     reason: actionTaken,

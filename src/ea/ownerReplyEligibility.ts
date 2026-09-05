@@ -2,6 +2,8 @@
  * Deterministic gate: owner mailed the agent Nylas inbox with a non-meeting ask.
  * Ingress files, then path D spawns ea-owner-reply. No second LLM.
  */
+import { resolveJoshuAgentEmails } from "./ingestFilters.js";
+import { resolveOwnerEmails } from "./agentAuthorization.js";
 import { parseEmailAddress } from "./schedulingTypes.js";
 
 export type OwnerReplyEligibilityInput = {
@@ -19,6 +21,11 @@ export type OwnerReplyEligibilityInput = {
    * even if the classifier tagged scheduling.
    */
   schedulingPathA?: boolean;
+  to?: string[];
+  cc?: string[];
+  projectRoot?: string;
+  /** Override agent mailbox set (tests / API). */
+  agentEmails?: Iterable<string>;
 };
 
 export type OwnerReplyEligibility = {
@@ -63,7 +70,56 @@ export function isOwnerReplyEligible(input: OwnerReplyEligibilityInput): OwnerRe
     return { eligible: false, reason: "owner_sent_update" };
   }
 
+  // Path D requires a direct owner→agent ask (agent in To, no external counterparty in To).
+  // Owner→counterparty with agent CC'd is path A scheduling — not owner-reply.
+  if (!isOwnerDirectAgentAsk({
+    from: input.from,
+    to: input.to,
+    cc: input.cc,
+    projectRoot: input.projectRoot,
+    agentEmails: input.agentEmails,
+  })) {
+    return { eligible: false, reason: "counterparty_thread" };
+  }
+
   return { eligible: true, reason: "owner_ask_agent" };
+}
+
+function normalizeEmailList(values?: string[]): string[] {
+  if (!values?.length) return [];
+  const out = new Set<string>();
+  for (const raw of values) {
+    const addr = parseEmailAddress(raw);
+    if (addr) out.add(addr);
+  }
+  return [...out];
+}
+
+/**
+ * True when the owner addressed the agent directly (agent in To, no external in To).
+ * False when owner emailed a counterparty and CC'd the agent (delegation / path A).
+ */
+export function isOwnerDirectAgentAsk(input: {
+  from?: string;
+  to?: string[];
+  cc?: string[];
+  projectRoot?: string;
+  agentEmails?: Iterable<string>;
+}): boolean {
+  const projectRoot = input.projectRoot ?? process.cwd();
+  const agentEmails = input.agentEmails
+    ? new Set([...input.agentEmails].map((e) => e.trim().toLowerCase()))
+    : resolveJoshuAgentEmails(projectRoot);
+  const ownerEmails = resolveOwnerEmails(projectRoot);
+  const fromAddr = parseEmailAddress(input.from);
+  if (!fromAddr || !ownerEmails.has(fromAddr)) return false;
+
+  const to = normalizeEmailList(input.to);
+  const agentInTo = to.some((e) => agentEmails.has(e));
+  if (!agentInTo) return false;
+
+  const externalInTo = to.filter((e) => !agentEmails.has(e) && !ownerEmails.has(e));
+  return externalInTo.length === 0;
 }
 
 /** Ingress card lines — spawn-only; ingress still must not research or send. */

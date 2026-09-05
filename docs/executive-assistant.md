@@ -66,7 +66,21 @@ Full product / Kanban / scheduling / time-block SOP: [`hermes-integration.md`](h
 - Owner Gmail + sync: [`connectors.md`](connectors.md)
 - Mail search skill order: [`integrations/hermes/skills/mail/joshu-mail/SKILL.md`](../integrations/hermes/skills/mail/joshu-mail/SKILL.md)
 
-**Classifier guard (owner→agent):** ingest classifies a **quote-stripped latest message** (not the full quoted thread). Owner mail on Nylas that the model marks `info` is forced to `track` unless the new text is empty/ack-only — so short asks on upgrade/FYI reply threads still spawn `ea-owner-reply` ([`classifier.ts`](../src/ea/classifier.ts) `biasOwnerAgentInboxClassification`).
+**Classifier guard (owner→agent):** ingest classifies a **quote-stripped latest message** (not the full quoted thread). Owner mail on Nylas that the model marks `info` is forced to `track` unless the new text is empty/ack-only — so short asks on upgrade/FYI reply threads still spawn `ea-owner-reply` ([`classifier.ts`](../src/ea/classifier.ts) `biasOwnerAgentInboxClassification`). **Counterparty threads** (owner emails an external party with the agent CC'd) take **scheduling path A**, not owner-reply path D — see coordination scope below.
+
+## Coordination scope (2026-09)
+
+One owner-facing **ask** (schedule with Michael, invite myself, etc.) must not spawn parallel workers on `ea-scheduling` and `ea-owner-reply`. **Coordination scope** mutexes spawns across boards and mail provider thread aliases (Gmail vs Nylas RFC Message-ID).
+
+| Need | Tool / API |
+|------|------------|
+| Resolve scope before spawn | MCP **`coordination_scope_resolve`** or **`coordination_list_active`** |
+| REST debug | `GET /joshu/api/coordination/scope?channel=mail&threadId=…&sourcePath=…` |
+| Conflict on create | `scheduling_create_meeting_task` / `owner_reply_create_task` return `action: existing_coordination` |
+
+Mail is **phase 1**. SMS / Slack / voice will plug into the same layer ([`src/coordination/`](../src/coordination/)). Fleet SOP: [`hermes-integration.md`](hermes-integration.md#coordination-scope-multi-channel-2026-09).
+
+Tests: `npm run test:coordination-scope` · `npm run test:owner-reply`.
 
 ## Hermes skills (factory allowlist)
 

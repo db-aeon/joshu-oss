@@ -18,11 +18,16 @@ import { buildMailIngressTaskBody } from "../src/ea/mailCron.js";
 
 const owner = "goodrich@graymediagroup.com";
 const owners = [owner, "ag@andrewgoodrich.com"];
+const agentEmail = "finn@joshu.me";
+
+process.env.JOSHU_AROZ_USER = owner;
 
 {
   const ok = isOwnerReplyEligible({
     provider: "nylas",
     from: `Andrew <${owner}>`,
+    to: [agentEmail],
+    agentEmails: [agentEmail],
     ownerEmails: owners,
     disposition: "track",
     category: "project_work",
@@ -52,6 +57,20 @@ const owners = [owner, "ag@andrewgoodrich.com"];
   });
   assert.equal(no.eligible, false);
   assert.equal(no.reason, "not_from_owner");
+}
+
+{
+  const no = isOwnerReplyEligible({
+    provider: "nylas",
+    from: owner,
+    to: ["Counterparty <ext@example.com>"],
+    cc: [agentEmail],
+    ownerEmails: owners,
+    disposition: "track",
+    category: "scheduling",
+  });
+  assert.equal(no.eligible, false);
+  assert.equal(no.reason, "counterparty_thread");
 }
 
 {
@@ -123,15 +142,17 @@ assert.match(meetKey, /^ea-owner-reply-msg-/);
   assert.equal(miss, undefined);
 }
 
-process.env.JOSHU_AROZ_USER = owner;
-const ingressBody = buildMailIngressTaskBody(
-  {
-    filesRoot: "/tmp",
-    provider: "nylas",
-    threadId: "thread-abc",
-    sourcePath: "connectors/mail/nylas/threads/thread-abc.md",
-    from: `Andrew <${owner}>`,
-    messageId: "msg-1",
+
+async function runIngressTests() {
+  const ingressBody = await buildMailIngressTaskBody(
+    {
+      filesRoot: "/tmp",
+      provider: "nylas",
+      threadId: "thread-abc",
+      sourcePath: "connectors/mail/nylas/threads/thread-abc.md",
+      from: `Andrew <${owner}>`,
+      to: [agentEmail],
+      messageId: "msg-1",
     classification: {
       category: "project_work",
       project_slug: "hermes-mcp-research",
@@ -147,23 +168,22 @@ const ingressBody = buildMailIngressTaskBody(
   },
   null,
   "finn@joshu.me",
-);
-assert.match(ingressBody, /owner_reply_eligible: true/);
-assert.match(ingressBody, /allowed_actions: file,reply/);
-assert.match(ingressBody, /owner_reply_list_tasks/);
-assert.match(ingressBody, /Path D spawn only/);
-assert.match(ingressBody, /do not research or nylas_send_message on ea-mail-ingress/);
+  );
+  assert.match(ingressBody, /owner_reply_eligible: true/);
+  assert.match(ingressBody, /allowed_actions: file,reply/);
+  assert.match(ingressBody, /owner_reply_list_tasks/);
+  assert.match(ingressBody, /Path D spawn only/);
+  assert.match(ingressBody, /do not research or nylas_send_message on ea-mail-ingress/);
 
-{
   // Owner mailed the agent; classifier tagged scheduling ("invite myself").
-  // Path D still wins — confirmation lives on ea-owner-reply, not ea-scheduling.
-  const schedulingOwnerAsk = buildMailIngressTaskBody(
+  const schedulingOwnerAsk = await buildMailIngressTaskBody(
     {
       filesRoot: "/tmp",
       provider: "nylas",
       threadId: "thread-self-reminder",
       sourcePath: "connectors/mail/nylas/threads/thread-self-reminder.md",
       from: `Andrew <${owner}>`,
+      to: [agentEmail],
       messageId: "msg-self-reminder",
       classification: {
         category: "scheduling",
@@ -179,44 +199,46 @@ assert.match(ingressBody, /do not research or nylas_send_message on ea-mail-ingr
       },
     },
     null,
-    "finn@joshu.me",
+    agentEmail,
   );
   assert.match(schedulingOwnerAsk, /owner_reply_eligible: true/);
   assert.match(schedulingOwnerAsk, /scheduling_eligible: false/);
   assert.match(schedulingOwnerAsk, /allowed_actions: file,reply/);
   assert.match(schedulingOwnerAsk, /owner_reply_list_tasks/);
   assert.doesNotMatch(schedulingOwnerAsk, /scheduling_create_meeting_task/);
-}
 
-const skipLines = ownerReplyIngressPlaybookLines(false);
-assert.equal(skipLines.length, 0);
+  const skipLines = ownerReplyIngressPlaybookLines(false);
+  assert.equal(skipLines.length, 0);
 
-const gmailIngress = buildMailIngressTaskBody(
-  {
-    filesRoot: "/tmp",
-    provider: "gmail",
-    threadId: "g1",
-    sourcePath: "connectors/mail/gmail/work/threads/g1.md",
-    from: `Andrew <${owner}>`,
-    accountEmail: owner,
-    messageId: "g-msg",
-    classification: {
-      category: "project_work",
-      project_slug: "other",
-      is_new_track: true,
-      reason: "test",
-      scheduling_hint: false,
-      authorization: {
-        agent_authorized: false,
-        scheduling_eligible: false,
-        reason: "not_copied_or_delegated",
+  const gmailIngress = await buildMailIngressTaskBody(
+    {
+      filesRoot: "/tmp",
+      provider: "gmail",
+      threadId: "g1",
+      sourcePath: "connectors/mail/gmail/work/threads/g1.md",
+      from: `Andrew <${owner}>`,
+      accountEmail: owner,
+      messageId: "g-msg",
+      classification: {
+        category: "project_work",
+        project_slug: "other",
+        is_new_track: true,
+        reason: "test",
+        scheduling_hint: false,
+        authorization: {
+          agent_authorized: false,
+          scheduling_eligible: false,
+          reason: "not_copied_or_delegated",
+        },
       },
     },
-  },
-  null,
-  "finn@joshu.me",
-);
-assert.match(gmailIngress, /owner_reply_eligible: false/);
-assert.doesNotMatch(gmailIngress, /owner_reply_list_tasks/);
+    null,
+    agentEmail,
+  );
+  assert.match(gmailIngress, /owner_reply_eligible: false/);
+  assert.doesNotMatch(gmailIngress, /owner_reply_list_tasks/);
+}
+
+await runIngressTests();
 
 console.log("owner-reply unit tests ok");

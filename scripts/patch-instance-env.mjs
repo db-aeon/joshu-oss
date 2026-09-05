@@ -2,6 +2,10 @@
 /**
  * Patch /etc/joshu/instance.env — drops duplicate keys, appends canonical rows.
  * Invoked from the instance-agent container via /opt/joshu mount (fresh after git pull).
+ *
+ * Uses write-in-place (same inode). Never `sed -i` this file from the host while
+ * containers bind-mount the *file* — GNU sed replaces the inode and the agent
+ * keeps writing the old copy. Prefer this script, or bind-mount `/etc/joshu`.
  */
 import { readFile, writeFile } from "node:fs/promises";
 

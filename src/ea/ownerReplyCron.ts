@@ -7,11 +7,14 @@ import {
   eaSchedulingKanbanAssignee,
 } from "../hermesKanbanBridge.js";
 import { parseEmailAddress } from "./schedulingTypes.js";
+import { parseThreadIdFromTaskBody, threadIdInTaskSourcePaths } from "./schedulingCron.js";
 import {
-  findOpenMeetingByThread,
-  parseThreadIdFromTaskBody,
-  threadIdInTaskSourcePaths,
-} from "./schedulingCron.js";
+  assertSpawnAllowed,
+  findOpenOwnerReplyByScope,
+  listActiveCoordinationForScope,
+  registerCoordination,
+  resolveMailCoordinationScope,
+} from "./conversationScope.js";
 import {
   EA_OWNER_REPLY_BOARD,
   EA_OWNER_REPLY_SKILL,
@@ -71,7 +74,13 @@ export function findOpenOwnerReplyByThread(
   tasks: OwnerReplyTaskSummary[],
   threadId: string,
 ): OwnerReplyTaskSummary | undefined {
-  return findOpenMeetingByThread(tasks, threadId);
+  const normalized = threadId.trim();
+  if (!normalized) return undefined;
+  return tasks.find((t) => {
+    const body = t.body ?? "";
+    if (parseThreadIdFromTaskBody(body) === normalized) return true;
+    return threadIdInTaskSourcePaths(body, normalized);
+  });
 }
 
 function ownerReplyTaskTitle(subject?: string, from?: string): string {
@@ -166,8 +175,42 @@ export async function queueOwnerReplyTask(opts: {
   });
 
   if (threadId) {
-    const open = await listOwnerReplyTasks({ filesRoot });
-    const existing = findOpenOwnerReplyByThread(open, threadId);
+    const scope = await resolveMailCoordinationScope({
+      channel: "mail",
+      filesRoot,
+      threadId,
+      provider: opts.provider,
+      sourcePath: opts.sourcePath,
+      subject: opts.subject,
+      from: opts.from,
+    });
+    const { listSchedulingMeetingTasks } = await import("./schedulingCron.js");
+    const openScheduling = await listSchedulingMeetingTasks({ filesRoot });
+    const openOwnerReply = await listOwnerReplyTasks({ filesRoot });
+    const active = await listActiveCoordinationForScope({
+      filesRoot,
+      scope,
+      schedulingTasks: openScheduling,
+      ownerReplyTasks: openOwnerReply,
+    });
+    const gate = assertSpawnAllowed({
+      scope,
+      requestingBoard: EA_OWNER_REPLY_BOARD,
+      capability: "owner_deliverable",
+      active,
+    });
+    if (!gate.ok) {
+      console.info(
+        `[ea-owner-reply] coordination mutex scope=${scope.scopeId} reason=${gate.conflict.reason} task=${gate.conflict.task_id} message=${messageId}`,
+      );
+      return {
+        queued: false,
+        reason: gate.conflict.reason,
+        taskId: gate.conflict.task_id,
+      };
+    }
+
+    const existing = findOpenOwnerReplyByScope(openOwnerReply, scope);
     if (existing?.task_id) {
       console.info(
         `[ea-owner-reply] thread dedup thread=${threadId} task=${existing.task_id} message=${messageId}`,
@@ -202,6 +245,29 @@ export async function queueOwnerReplyTask(opts: {
   console.info(
     `[ea-owner-reply] action=${actionTaken} board=${EA_OWNER_REPLY_BOARD} task=${result.task_id ?? "?"} message=${messageId}`,
   );
+
+  if (result.task_id && threadId && actionTaken !== "existing_active") {
+    const scope = await resolveMailCoordinationScope({
+      channel: "mail",
+      filesRoot,
+      threadId,
+      provider: opts.provider,
+      sourcePath: opts.sourcePath,
+      subject: opts.subject,
+      from: opts.from,
+    }).catch(() => null);
+    if (scope) {
+      await registerCoordination({
+        filesRoot,
+        scopeId: scope.scopeId,
+        capability: "owner_deliverable",
+        board: EA_OWNER_REPLY_BOARD,
+        task_id: result.task_id,
+        channel: "mail",
+      }).catch(() => {});
+    }
+  }
+
   return {
     queued: actionTaken !== "existing_active",
     reason: actionTaken,

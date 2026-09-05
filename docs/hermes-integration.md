@@ -83,6 +83,24 @@ Messages already inside a thread still get in-thread replies. Upstream: [Hermes 
 
 Hermes uses Hindsight for long-term memory. Viewer subservice: Memory app on the desktop. Index paths and MCP tools are documented in [`file-brain.md`](file-brain.md) and skill READMEs under `integrations/hermes/skills/`.
 
+## Coordination scope (multi-channel, 2026-09)
+
+Executive Assistant mail can spawn **scheduling** (`ea-scheduling`) and **owner-reply** (`ea-owner-reply`) workers from the same owner-facing ask. **Coordination scope** mutexes those spawns across Kanban boards and mail provider thread aliases (Gmail vs Nylas, linked by RFC Message-ID).
+
+| Layer | Path |
+|-------|------|
+| Core | [`src/coordination/`](../src/coordination/) |
+| Mail adapter | [`src/coordination/adapters/mail.ts`](../src/coordination/adapters/mail.ts) |
+| EA wrapper | [`src/ea/conversationScope.ts`](../src/ea/conversationScope.ts) |
+
+**Workers:** preflight with connectors MCP **`coordination_list_active`** before `scheduling_create_meeting_task` / `owner_reply_create_task`. On conflict the API returns `action: existing_coordination` — hand off to the returned `task_id`.
+
+**REST:** `GET /joshu/api/coordination/scope?channel=mail&threadId=…&sourcePath=…`
+
+Mail is **phase 1**. SMS / Slack / voice adapters will use the same registry ([`executive-assistant.md`](executive-assistant.md#coordination-scope-2026-09)). Fleet-only SOP detail: `docs/hermes-integration.md` (not in OSS tree).
+
+Tests: `npm run test:coordination-scope` · `npm run test:owner-reply`.
+
 ## Related docs
 
 - [`hermes-integration.md`](hermes-integration.md) — skills, plugins, Slack/Telegram depth, Langfuse, patches

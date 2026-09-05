@@ -15,7 +15,9 @@ services:
     volumes:
       - ./scripts/render-caddyfile.sh:/usr/local/bin/render-caddyfile.sh:ro
       - ./scripts/caddy-entrypoint.sh:/usr/local/bin/caddy-entrypoint.sh:ro
-      - /etc/joshu/instance.env:/etc/joshu/instance.env:ro
+      # Directory bind (not the file) so host `sed -i` / rewrite of instance.env
+      # stays visible inside the container. A file bind keeps the old inode.
+      - /etc/joshu:/etc/joshu:ro
       - caddy_data:/data
       - caddy_config:/config
     environment:
@@ -106,8 +108,8 @@ services:
       # Fleet Langfuse relay plugin (no pk/sk on box). Copied into image on rebuild; bind for live boxes.
       - ../.hermes/plugins/joshu-langfuse-relay:/opt/joshu/.hermes/plugins/joshu-langfuse-relay:ro
       # Product skills are seeded to $HERMES_HOME/skills/joshu/ (writable learning loop).
-      - /etc/joshu/instance.env:/etc/joshu/instance.env:ro
-      - /etc/joshu/secrets:/etc/joshu/secrets:ro
+      # Directory bind so host rewrites of instance.env are visible without recreate.
+      - /etc/joshu:/etc/joshu:ro
       - joshu_arozos:/var/lib/arozos
       - joshu_hermes:/root/.hermes
       - joshu_hindsight_home:/home/hindsight/.hindsight
@@ -137,9 +139,9 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       # GHCR creds live on the host (~/.docker/config.json); without this mount, compose pull is anonymous → 401.
       - /root/.docker:/root/.docker:ro
-      - /etc/joshu/instance.env:/etc/joshu/instance.env
-      # Writable so persona-refresh can update companion-soul.md on the host.
-      - /etc/joshu/secrets:/etc/joshu/secrets
+      # Directory bind: host `sed -i` of instance.env must not leave the agent
+      # writing Twilio rotates onto a stale inode while SSH sees a different file.
+      - /etc/joshu:/etc/joshu
       - /opt/joshu:/opt/joshu
     depends_on:
       joshu-stack:

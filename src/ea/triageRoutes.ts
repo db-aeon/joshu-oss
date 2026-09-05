@@ -34,6 +34,10 @@ import {
   queueOwnerReplyTask,
 } from "./ownerReplyCron.js";
 import { isOwnerReplyEligible } from "./ownerReplyEligibility.js";
+import {
+  listActiveCoordinationForScope,
+  resolveCoordinationScope,
+} from "./conversationScope.js";
 
 function readString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -62,6 +66,52 @@ function projectBoardSlug(raw: string): string {
 
 /** EA triage + Kanban-only scheduling ingress routes. */
 export function registerEaTriageRoutes(router: Router, opts: { projectRoot: string }): void {
+  router.get("/api/coordination/scope", async (req: Request, res: Response) => {
+    const filesRoot = filesRootFromProject(opts.projectRoot);
+    if (!filesRoot) {
+      res.status(503).json({ error: "JOSHU_FILES_ROOT unavailable" });
+      return;
+    }
+
+    const channel = readString(req.query.channel) || "mail";
+    if (channel !== "mail") {
+      res.status(400).json({ error: "only mail channel supported in phase 1" });
+      return;
+    }
+
+    const threadId = readString(req.query.threadId) || readString(req.query.thread_id);
+    if (!threadId) {
+      res.status(400).json({ error: "threadId required" });
+      return;
+    }
+
+    try {
+      const scope = await resolveCoordinationScope({
+        channel: "mail",
+        filesRoot,
+        threadId,
+        provider: readString(req.query.provider) || undefined,
+        sourcePath: readString(req.query.sourcePath) || readString(req.query.source_path) || undefined,
+        subject: readString(req.query.subject) || undefined,
+        from: readString(req.query.from) || undefined,
+        projectRoot: opts.projectRoot,
+      });
+      const [schedulingTasks, ownerReplyTasks] = await Promise.all([
+        listSchedulingMeetingTasks({ filesRoot }),
+        listOwnerReplyTasks({ filesRoot }),
+      ]);
+      const active = await listActiveCoordinationForScope({
+        filesRoot,
+        scope,
+        schedulingTasks,
+        ownerReplyTasks,
+      });
+      res.json({ ok: true, scope, active });
+    } catch (err) {
+      res.status(500).json({ error: (err as Error).message });
+    }
+  });
+
   router.get("/api/ea/scheduling/ingress", async (_req: Request, res: Response) => {
     const filesRoot = filesRootFromProject(opts.projectRoot);
     if (!filesRoot) {
@@ -181,11 +231,16 @@ export function registerEaTriageRoutes(router: Router, opts: { projectRoot: stri
         res.status(502).json({ ok: false, error: result.reason });
         return;
       }
+      const coordinationConflict =
+        result.reason === "existing_scheduling" ||
+        result.reason === "existing_owner_reply" ||
+        result.reason === "existing_coordination";
       res.json({
         ok: true,
         board: "ea-scheduling",
         task_id: result.taskId,
-        action: result.reason,
+        action: coordinationConflict ? "existing_coordination" : result.reason,
+        ...(coordinationConflict ? { conflict_reason: result.reason } : {}),
       });
     } catch (err) {
       res.status(500).json({ error: (err as Error).message });
@@ -455,11 +510,16 @@ export function registerEaTriageRoutes(router: Router, opts: { projectRoot: stri
         res.status(502).json({ ok: false, error: result.reason });
         return;
       }
+      const coordinationConflict =
+        result.reason === "existing_scheduling" ||
+        result.reason === "existing_owner_reply" ||
+        result.reason === "existing_coordination";
       res.json({
         ok: true,
         board: "ea-owner-reply",
         task_id: result.taskId,
-        action: result.reason,
+        action: coordinationConflict ? "existing_coordination" : result.reason,
+        ...(coordinationConflict ? { conflict_reason: result.reason } : {}),
       });
     } catch (err) {
       res.status(500).json({ error: (err as Error).message });

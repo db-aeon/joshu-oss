@@ -536,6 +536,37 @@ const TOOLS = [
     },
   },
   {
+    name: "coordination_scope_resolve",
+    description:
+      "Resolve coordination scope for a mail thread (cross-provider thread aliases, RFC Message-ID). Returns scopeId + facets for preflight before scheduling_create or owner_reply_create.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        channel: { type: "string", description: "mail (phase 1)" },
+        threadId: { type: "string" },
+        sourcePath: { type: "string" },
+        provider: { type: "string", description: "gmail or nylas" },
+        subject: { type: "string" },
+        from: { type: "string" },
+      },
+      required: ["threadId"],
+    },
+  },
+  {
+    name: "coordination_list_active",
+    description:
+      "List active EA coordination tasks (meeting_negotiation + owner_deliverable) for a mail thread scope.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        threadId: { type: "string" },
+        sourcePath: { type: "string" },
+        provider: { type: "string" },
+      },
+      required: ["threadId"],
+    },
+  },
+  {
     name: "scheduling_list_meeting_tasks",
     description:
       "List open meeting tasks on Kanban board ea-scheduling (ready, running, blocked, todo). Includes task body, block_reason, and recent kanban comments (outreach / handoff history). Use before claiming mail was not sent.",
@@ -970,6 +1001,30 @@ async function handleTool(name, args) {
     const qs = cal ? `?calendar_id=${encodeURIComponent(String(cal))}` : "";
     const out = await joshuDelete(`/api/nylas/events/${encodeURIComponent(args.eventId)}${qs}`);
     return { content: [{ type: "text", text: JSON.stringify(out, null, 2) }] };
+  }
+  if (name === "coordination_scope_resolve") {
+    const qs = new URLSearchParams();
+    qs.set("channel", String(args?.channel ?? "mail"));
+    qs.set("threadId", String(args?.threadId ?? args?.thread_id ?? ""));
+    if (args?.sourcePath ?? args?.source_path) {
+      qs.set("sourcePath", String(args.sourcePath ?? args.source_path));
+    }
+    if (args?.provider) qs.set("provider", String(args.provider));
+    if (args?.subject) qs.set("subject", String(args.subject));
+    if (args?.from) qs.set("from", String(args.from));
+    const out = await joshuGet(`/api/coordination/scope?${qs.toString()}`);
+    return { content: [{ type: "text", text: JSON.stringify(out, null, 2) }] };
+  }
+  if (name === "coordination_list_active") {
+    const qs = new URLSearchParams();
+    qs.set("channel", "mail");
+    qs.set("threadId", String(args?.threadId ?? args?.thread_id ?? ""));
+    if (args?.sourcePath ?? args?.source_path) {
+      qs.set("sourcePath", String(args.sourcePath ?? args.source_path));
+    }
+    if (args?.provider) qs.set("provider", String(args.provider));
+    const out = await joshuGet(`/api/coordination/scope?${qs.toString()}`);
+    return { content: [{ type: "text", text: JSON.stringify(out?.active ?? out, null, 2) }] };
   }
   if (name === "scheduling_list_meeting_tasks") {
     const out = await joshuGet("/api/ea/scheduling/meetings");

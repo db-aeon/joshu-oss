@@ -24,7 +24,14 @@ import {
 } from "./mailDedup.js";
 import type { MailAgentAuthorization } from "./agentAuthorization.js";
 import { resolveAuthorizationFromSourcePath, resolveOwnerEmails } from "./agentAuthorization.js";
-import { isOwnerReplyEligible, ownerReplyIngressPlaybookLines } from "./ownerReplyEligibility.js";
+import { resolveJoshuAgentEmails } from "./ingestFilters.js";
+import { isOwnerReplyEligible, isOwnerDirectAgentAsk, ownerReplyIngressPlaybookLines } from "./ownerReplyEligibility.js";
+import {
+  listActiveCoordinationForScope,
+  resolveMailCoordinationScope,
+} from "./conversationScope.js";
+import { listSchedulingMeetingTasks } from "./schedulingCron.js";
+import { listOwnerReplyTasks } from "./ownerReplyCron.js";
 
 export type QueueMailIngressTaskResult = {
   queued: boolean;
@@ -61,7 +68,7 @@ async function ensureProjectBoard(
   return boardSlug;
 }
 
-export function buildMailIngressTaskBody(
+export async function buildMailIngressTaskBody(
   input: AfterMirrorThreadInput & {
     messageId: string;
     classification: {
@@ -75,25 +82,80 @@ export function buildMailIngressTaskBody(
   },
   profile: ReturnType<typeof readAgentProfile>,
   assistantEmail?: string,
-): string {
+): Promise<string> {
   const fromEmail = parseEmailAddress(input.from);
   const slug = normalizeProjectSlug(input.classification.project_slug);
   const auth = input.classification.authorization;
-  // Classifier may tag owner→agent asks as scheduling ("invite myself", "put this
-  // on my calendar"). Path D still owns that mail: owner-reply does the ask and
-  // nylas_send_message. Real meeting negotiation is handed off from that worker.
+  const projectRoot = input.projectRoot ?? process.cwd();
   const schedulingHint = auth.scheduling_eligible && input.classification.scheduling_hint === true;
+  const gateAgentEmails = resolveJoshuAgentEmails(projectRoot);
+  if (assistantEmail?.trim()) {
+    gateAgentEmails.add(assistantEmail.trim().toLowerCase());
+  }
+  const directAgentAsk = isOwnerDirectAgentAsk({
+    from: input.from,
+    to: input.to,
+    cc: input.cc,
+    projectRoot,
+    agentEmails: gateAgentEmails,
+  });
+  const schedulingPathA = schedulingHint && !directAgentAsk;
+
+  let hasMeetingNegotiation = false;
+  let hasOwnerDeliverable = false;
+  let coordinationScopeId: string | undefined;
+  const threadId = input.threadId?.trim();
+  if (threadId && input.filesRoot) {
+    try {
+      const scope = await resolveMailCoordinationScope({
+        channel: "mail",
+        filesRoot: input.filesRoot,
+        threadId,
+        provider: input.provider,
+        sourcePath: input.sourcePath,
+        subject: input.subject,
+        from: input.from,
+        to: input.to,
+        cc: input.cc,
+        projectSlug: slug,
+        projectRoot,
+      });
+      coordinationScopeId = scope.scopeId;
+      const [schedulingTasks, ownerReplyTasks] = await Promise.all([
+        listSchedulingMeetingTasks({ filesRoot: input.filesRoot }),
+        listOwnerReplyTasks({ filesRoot: input.filesRoot }),
+      ]);
+      const active = await listActiveCoordinationForScope({
+        filesRoot: input.filesRoot,
+        scope,
+        schedulingTasks,
+        ownerReplyTasks,
+      });
+      hasMeetingNegotiation = active.some((a) => a.capability === "meeting_negotiation");
+      hasOwnerDeliverable = active.some((a) => a.capability === "owner_deliverable");
+    } catch {
+      /* scope preflight is best-effort at ingress body build */
+    }
+  }
+
   const ownerReplyGate = isOwnerReplyEligible({
     provider: input.provider,
     agentInbox: input.provider === "nylas",
     from: input.from,
-    ownerEmails: resolveOwnerEmails(input.projectRoot ?? process.cwd(), input.accountEmail),
+    to: input.to,
+    cc: input.cc,
+    ownerEmails: resolveOwnerEmails(projectRoot, input.accountEmail),
     disposition: "track",
     category: input.classification.category,
-    schedulingPathA: false,
+    schedulingPathA,
+    projectRoot,
+    agentEmails: gateAgentEmails,
   });
-  const ownerReplyEligible = ownerReplyGate.eligible;
-  const schedulingEligible = schedulingHint && !ownerReplyEligible;
+  const ownerReplyEligible =
+    ownerReplyGate.eligible && !hasMeetingNegotiation && !hasOwnerDeliverable;
+  const schedulingEligible =
+    schedulingHint && !ownerReplyEligible && !hasOwnerDeliverable;
+  const schedulingHandoffOnly = hasMeetingNegotiation && schedulingHint;
   const allowedActions = schedulingEligible
     ? "file,schedule"
     : ownerReplyEligible
@@ -118,6 +180,13 @@ export function buildMailIngressTaskBody(
     `owner_reply_eligible: ${ownerReplyEligible}`,
     `allowed_actions: ${allowedActions}`,
     `authorization_reason: ${JSON.stringify(auth.reason)}`,
+    ...(coordinationScopeId ? [`coordination_scope_id: ${coordinationScopeId}`] : []),
+    ...(hasMeetingNegotiation
+      ? ["coordination_note: open meeting_negotiation on scope — handoff only, do not create duplicate child."]
+      : []),
+    ...(hasOwnerDeliverable
+      ? ["coordination_note: open owner_deliverable on scope — handoff only."]
+      : []),
     "Order: (1) skill_view ea-playbook (2) read_file source_path (3) file Projects/<slug>/ (4) mail_list_track_tasks(projectSlug=…) then handoff|create (5) schedule only if allowed_actions includes schedule (5b) owner_reply spawn if owner_reply_eligible (6) Triage stub state:done → _done/ (7) kanban_complete.",
     "MCP args: projectSlug = folder slug (not board id, not nested tool_call). Stub = Triage/gmail-<account_key>-<thread_id>.stub.md (or <provider>-<thread_id>.stub.md).",
     "Job: FILE this email — match or create Projects/<slug>/ and project track.",
@@ -130,6 +199,11 @@ export function buildMailIngressTaskBody(
     ...(schedulingEligible
       ? [
           "After filing: scheduling_list_meeting_tasks by thread_id; handoff or scheduling_create_meeting_task (pass threadId) on ea-scheduling.",
+        ]
+      : []),
+    ...(schedulingHandoffOnly
+      ? [
+          "After filing: scheduling_list_meeting_tasks by thread_id; scheduling_handoff_meeting_task only — coordination scope already has open meeting_negotiation (do not scheduling_create_meeting_task).",
         ]
       : []),
     ...ownerReplyIngressPlaybookLines(ownerReplyEligible),
@@ -199,7 +273,7 @@ export async function queueMailIngressTask(
   const { filesRoot, projectRoot = process.cwd() } = input;
   const profile = readAgentProfile(projectRoot);
   const assistantEmail = readAgentGrant(projectRoot)?.email;
-  const body = buildMailIngressTaskBody(input, profile, assistantEmail);
+  const body = await buildMailIngressTaskBody(input, profile, assistantEmail);
   const canonicalId = mailIngressCanonicalId({
     rfcMessageId: input.rfcMessageId,
     messageId,

@@ -15,7 +15,7 @@ No proprietary control plane — this is **standalone self-host** only. Control-
 | --- | --- |
 | VPS public IP | `203.0.113.50` |
 | Hostname | `mybox.example.com` |
-| Release image | `ghcr.io/db-aeon/joshu-oss:0.1.43` (see [`deploy/RELEASE.json`](../../deploy/RELEASE.json)) |
+| Release image | `ghcr.io/db-aeon/joshu-oss:0.1.41` (see [`deploy/RELEASE.json`](../../deploy/RELEASE.json)) |
 
 ---
 
@@ -119,9 +119,9 @@ ACME_EMAIL=you@example.com
 # Same username you will type on the first-visit "Create account" page:
 JOSHU_AROZ_USER=yourname
 
-JOSHU_RELEASE_VERSION=0.1.43
-JOSHU_IMAGE_REF=ghcr.io/db-aeon/joshu-oss:0.1.43
-JOSHU_VOICE_IMAGE_REF=ghcr.io/db-aeon/joshu-oss-voice-realtime:0.1.43
+JOSHU_RELEASE_VERSION=0.1.41
+JOSHU_IMAGE_REF=ghcr.io/db-aeon/joshu-oss:0.1.41
+JOSHU_VOICE_IMAGE_REF=ghcr.io/db-aeon/joshu-oss-voice-realtime:0.1.41
 ```
 
 Save: **Ctrl+O** Enter, **Ctrl+X**.

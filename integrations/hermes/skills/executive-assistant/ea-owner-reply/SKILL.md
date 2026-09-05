@@ -4,7 +4,7 @@ description: Do the owner's ask then reply on that Nylas thread. Board ea-owner-
 metadata:
   hermes:
     category: executive-assistant
-    version: "1.0.0"
+    version: "1.1.0"
 ---
 
 # EA Owner Reply
@@ -32,7 +32,8 @@ kanban_show()
 ## Worker
 
 1. **`skill_view("ea-owner-reply")`** if not already loaded.
-2. **`kanban_show`** — `source_paths`, `thread_id`, `message_id`, `provider`, subject.
+2. **`coordination_list_active`** with task `thread_id` + `source_path` — if open **`meeting_negotiation`** on scope, **hand off** to that task (`scheduling_handoff_meeting_task` via ingress playbook); **never** browser-book or offer slots on this card.
+3. **`kanban_show`** — `source_paths`, `thread_id`, `message_id`, `provider`, subject.
 3. **`read_file`** the mail mirror at `${JOSHU_FILES_ROOT}/<source_path>` (once).
 4. **Do the ask** — gbrain, mail mirrors, **`web_search` / Exa** when the owner asked for research. File notes under `Projects/<slug>/` if ingress already created a folder (link; do not paste mail bodies).
 5. **`nylas_send_message`** on **this thread**:
@@ -54,7 +55,8 @@ kanban_show()
 ### MCP (Joshu connectors)
 
 - **`owner_reply_list_tasks`** — optional `threadId`
-- **`owner_reply_create_task`** — ingress only; returns `existing_thread` if open card on same thread
+- **`coordination_scope_resolve`** / **`coordination_list_active`** — preflight before create or browser book
+- **`owner_reply_create_task`** — ingress only; returns `existing_thread` or `existing_coordination` if open card on same scope
 - **`owner_reply_handoff_task`** — later mail on the same thread (ingress)
 
 Call **`mcp_joshu_connectors_owner_reply_*`**.

@@ -4,7 +4,7 @@ description: Meeting-mail scheduling. Kanban ea-sched-*; Calendly fallback.
 metadata:
   hermes:
     category: executive-assistant
-    version: "4.23.0"
+    version: "4.24.0"
 ---
 
 # EA Scheduling
@@ -40,12 +40,15 @@ When the owner asks in jChat (not a Kanban worker): "what meetings need follow-u
 
 When **`ea-mail-ingress`** filing is done and the ingress task has **`scheduling_eligible: true`**:
 
+0. **`coordination_list_active`** with ingress `thread_id` + `source_path` — if open task on scope, **handoff only** (skip create).
 1. **`scheduling_list_meeting_tasks`** — match open/blocked meeting on **`ea-scheduling`** by `thread_id` / subject.
 2. **Match** → **`scheduling_handoff_meeting_task`** with neutral summary of this mail.
 3. **No match** → **`scheduling_create_meeting_task`** — always pass **`threadId`** + **`provider`** from the ingress body (Joshu dedupes: returns `action: existing_thread` if an open meeting already exists for that thread → then **`scheduling_handoff_meeting_task`** instead).
 4. For **owner intro handoff** ("Copying [companion] to suggest times") you may offer slots + `nylas_send_message` **without** a meeting task — see [Owner self-introduction handoff](#owner-self-introduction-handoff-companion-intro-reply). **Study the thread first** — [Study the thread before sending](#study-the-thread-before-sending).
 
 **Hard stop:** If ingress has **`agent_authorized: false`** or **`scheduling_eligible: false`** — do not create meeting tasks, do not send mail. File-only mail is not your job on that card.
+
+**One booking per coordination scope:** After a successful browser booking on a counterparty appointment link, **`kanban_complete`** immediately — never re-navigate the same URL in the same task. Preflight with **`coordination_list_active`** before create or book.
 
 **HITL defer at ingress:** If the mail ingress worker chose path **C** ([ea-playbook scheduling decision gate](../ea-playbook/SKILL.md#scheduling-decision-gate-mail-ingress-step-5)), there is **no meeting task** for you on this mail — owner review notes are in `Projects/<slug>/`. Do not create one retroactively unless the owner explicitly asks in jChat.
 

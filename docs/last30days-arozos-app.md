@@ -172,7 +172,7 @@ Ships in `npm run build:deploy` → image includes `dist/last30days-app/` and `a
 - `dist/last30days/` (server routes + runner)
 - Surgical **`server.js`** patch — add `registerLast30DaysRoutes` import + call (do **not** rsync a dev-built `server.js` over the whole host `dist/`)
 - `dist/last30days-app/` → `arozos/subservice/last30days/app/` (built UI assets)
-- `integrations/last30days-skill/` snapshot **baked into the image** (`vps:predeploy` runs `sync-last30days-skill.sh`). Compose does **not** bind-mount it — a gitignored empty host dir used to shadow the engine and 400 Research. A second copy lives at `/opt/joshu/.image/last30days-skill` as a fallback.
+- `integrations/last30days-skill/` snapshot **baked into the image** (`vps:predeploy` runs `sync-last30days-skill.sh`). Compose does **not** bind-mount it — a gitignored empty host dir used to shadow the engine and 400 Research. A second copy lives at `/opt/joshu/.image/last30days-skill` as a fallback. If Research 400s `engine missing`, see [troubleshooting #19b3](vps-sandbox/troubleshooting-and-lessons.md).
 - **`LAST30DAYS_PYTHON`** — engine requires **Python ≥ 3.12**. Image **0.1.39+** installs via `uv python install 3.12` at `/opt/joshu/.local/python312/bin/python3.12` (container `ENV`). Older boxes: set the same path in `/etc/joshu/instance.env` after manual uv install.
 - Recreate `joshu-stack`; hard-refresh ArozOS desktop
 

@@ -90,7 +90,7 @@ Returned inline from heartbeat response (max 1 in-flight per type):
 
 | type | Payload | Agent behavior |
 | --- | --- | --- |
-| `update` | `{ imageRef, voiceImageRef?, hermesRef?, version?, hostGitRequired?, syncDistFromImage?, repoRef?, requiresSnap? }` | Optional GCS snap; optional `git pull` in `/opt/joshu`; **`syncDistFromImage`** (default true) copies `dist/` from pulled image to host mount; patch `instance.env` (`JOSHU_IMAGE_REF`, **`JOSHU_VOICE_IMAGE_REF`**); `pull` + `up -d --force-recreate` for `joshu-stack`; when `JOSHU_VOICE_MODE=realtime_s2s`, **`pull` + `--force-recreate voice-realtime`** from GHCR (profile `voice-rt`); wait for `/joshu/api/instance/health` (includes `components.dist`) |
+| `update` | `{ imageRef, voiceImageRef?, hermesRef?, version?, hostGitRequired?, syncDistFromImage?, repoRef?, requiresSnap? }` | Optional GCS snap; optional `git pull` in `/opt/joshu`; **`syncDistFromImage`** (default true) copies `dist/` **and** gitignored `integrations/last30days-skill/` from the pulled image to host mounts; patch `instance.env` (`JOSHU_IMAGE_REF`, **`JOSHU_VOICE_IMAGE_REF`**); `pull` + `up -d --force-recreate` for `joshu-stack`; when `JOSHU_VOICE_MODE=realtime_s2s`, **`pull` + `--force-recreate voice-realtime`** from GHCR (profile `voice-rt`); wait for `/joshu/api/instance/health` (includes `components.dist`) |
 | `rollback` | `{ imageRef, version? }` | Same as `update` (restores `rollbackImageRef` from control plane) |
 | `restart` | `{ services?: string[] }` | `docker compose restart` subset or all |
 | `rotate_secrets` | `{ secrets: { KEY: "value" } }` | Write `/etc/joshu/instance.env`, restart joshu |
@@ -132,7 +132,7 @@ Agent rejects commands with skewed `issuedAt` > 5 minutes or invalid signature.
 | Field | Purpose |
 | --- | --- |
 | `hostGitRequired` | When `true`, agent runs `git fetch/checkout/pull` in `/opt/joshu` before compose (updates bind-mounted `vps-start.sh`) |
-| `syncDistFromImage` | When `true` (default), after `docker compose pull` the agent copies `/opt/joshu/dist` (and `packages/box-state/dist`) from the pulled image onto the host bind mount and writes `dist/.release-provenance.json`. Prevents stale host `dist/` from shadowing the image. **`instance.env` is patched only after dist sync succeeds** (same target version) so rollback cannot leave env at N−1 while dist stays at N. |
+| `syncDistFromImage` | When `true` (default), after `docker compose pull` the agent copies `/opt/joshu/dist` (and `packages/box-state/dist`, `integrations/last30days-skill`) from the pulled image onto the host bind mounts and writes `dist/.release-provenance.json`. Prevents stale/empty host dirs from shadowing the image. **`instance.env` is patched only after dist sync succeeds** (same target version) so rollback cannot leave env at N−1 while dist stays at N. |
 | `repoRef` | Git ref to checkout (default: control-plane `JOSHU_REPO_REF`, usually `main`) |
 | `requiresSnap` | When `true` (default) and `JOSHU_SNAPSHOT_GCS_BUCKET` is set, agent POSTs `/joshu/api/box/snap` before pulling the image |
 | `changelog` | Operator notes (not consumed by agent) |
