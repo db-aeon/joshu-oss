@@ -34,15 +34,16 @@ kanban_show()
 1. **`skill_view("ea-owner-reply")`** if not already loaded.
 2. **`coordination_list_active`** with task `thread_id` + `source_path` — if open **`meeting_negotiation`** on scope, **hand off** to that task (`scheduling_handoff_meeting_task` via ingress playbook); **never** browser-book or offer slots on this card.
 3. **`kanban_show`** — `source_paths`, `thread_id`, `message_id`, `provider`, subject.
-3. **`read_file`** the mail mirror at `${JOSHU_FILES_ROOT}/<source_path>` (once).
-4. **Do the ask** — gbrain, mail mirrors, **`web_search` / Exa** when the owner asked for research. File notes under `Projects/<slug>/` if ingress already created a folder (link; do not paste mail bodies).
-5. **`nylas_send_message`** on **this thread**:
+4. **`read_file`** the mail mirror at `${JOSHU_FILES_ROOT}/<source_path>` (once).
+5. **Do the ask** — gbrain, mail mirrors, **`web_search` / Exa** when the owner asked for research. File notes under `Projects/<slug>/` if ingress already created a folder (link; do not paste mail bodies).
+   - **Status / thread replies:** when the owner marks items DONE, KEEP, or gives carryover updates (common on morning/shutdown pointer threads), update the relevant project files and/or `Planning/daily-review-*.md` checkboxes, then ack in the reply. For **morning review** or **shutdown** pointer subjects, `skill_view('ea-morning-review')` or `skill_view('ea-shutdown')` and follow their interactive steps.
+6. **`nylas_send_message`** on **this thread**:
    - `replyToMessageId` = ingress `message_id`
    - parent **subject** (must match or Joshu returns `reply_subject_mismatch`)
    - `sourcePath` = mirror path
    - Owner-only recipients bypass action guard; mixed threads may prompt SMS.
-6. **`kanban_complete`** if the deliverable was emailed. **`kanban_block("awaiting owner")`** only if the reply asked a **real** question the owner must answer.
-7. Never **delete/trash** Gmail or Nylas. Never send **scheduling slots** — `scheduling_list_meeting_tasks` / hand off to **`ea-scheduling`**.
+7. **`kanban_complete`** if the deliverable was emailed. **`kanban_block("awaiting owner")`** only if the reply asked a **real** question the owner must answer.
+8. Never **delete/trash** Gmail or Nylas. Never send **scheduling slots** — `scheduling_list_meeting_tasks` / hand off to **`ea-scheduling`**.
 
 ### Forbidden
 

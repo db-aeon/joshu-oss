@@ -18,7 +18,7 @@ Bridges **yesterday → today**: read yesterday's time-block plan, draft **`Plan
 | Mode | Trigger |
 |------|---------|
 | **Prep (async)** | `EA morning` cron — `skill_view('ea-morning-review')` then follow **Morning prep** below |
-| **Interactive** | Owner: "morning review", "what's left from yesterday", "let's plan the day", opens `@Planning/daily-review-*.md`, or references yesterday's time block |
+| **Interactive** | Owner: "morning review", "what's left from yesterday", "let's plan the day", opens `@Planning/daily-review-*.md`, references yesterday's time block, or **replies by email** on the morning pointer thread (same steps as jChat) |
 
 Pair with **`ea-shutdown`** the prior evening so yesterday's review is honest.
 
@@ -62,9 +62,9 @@ Run at start of owner workday **before** the pointer email.
    If it does **not** exist and the calendar is stable, write `Planning/.time-block-plan-{today}.json` + render Excalidraw as *proposal* (owner may change in interactive step). If owner prefers review-first, skip render and note "Run time block after morning review."
 7. **Pointer email** — short Nylas message to `primaryWorkEmail` (see **Email (morning pointer)**). Do **not** send the old 500-word standalone brief unless `daily-review` prep failed.
 
-## Interactive morning review (jChat)
+## Interactive morning review (jChat or email)
 
-When the owner engages:
+When the owner engages in **jChat** or **replies on the agent mailbox thread** (including the morning pointer):
 
 1. Load **`Planning/daily-review-{today}.md`** and **`yesterday_plan`** file if linked.
 2. **Walk the last workday** — for each unchecked block in retrospective:
@@ -82,6 +82,8 @@ When the owner engages:
 7. Tell owner to open **`Planning/time-block-{today}.excalidraw`** in jWhiteboard.
 
 Keep the session **short** (5–10 min). One question batch at a time if async.
+
+**Email:** substantive owner replies on the pointer thread are routed through **`ea-owner-reply`** like any other owner→agent mail. When you handle one (via owner-reply worker or jChat), parse DONE/KEEP lines from the new text and update `Planning/daily-review-*.md` the same as above, then ack in-thread.
 
 ## Email (morning pointer)
 

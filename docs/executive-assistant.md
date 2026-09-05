@@ -66,7 +66,7 @@ Full product / Kanban / scheduling / time-block SOP: [`hermes-integration.md`](h
 - Owner Gmail + sync: [`connectors.md`](connectors.md)
 - Mail search skill order: [`integrations/hermes/skills/mail/joshu-mail/SKILL.md`](../integrations/hermes/skills/mail/joshu-mail/SKILL.md)
 
-**Classifier guard (owner→agent):** ingest classifies a **quote-stripped latest message** (not the full quoted thread). Owner mail on Nylas that the model marks `info` is forced to `track` unless the new text is empty/ack-only — so short asks on upgrade/FYI reply threads still spawn `ea-owner-reply` ([`classifier.ts`](../src/ea/classifier.ts) `biasOwnerAgentInboxClassification`). **Counterparty threads** (owner emails an external party with the agent CC'd) take **scheduling path A**, not owner-reply path D — see coordination scope below.
+**Classifier guard (owner→agent):** ingest classifies a **quote-stripped latest message** (not the full quoted thread). Substantive owner mail on the agent Nylas inbox is forced to **`track` / `owner_note`** — never silently archived as `info` or left as `owner_sent_update` (includes thread replies with DONE/KEEP status). Pure one-line acks (Thanks, OK) may stay `info`. See [`ownerAgentInboxMail.ts`](../src/ea/ownerAgentInboxMail.ts) and [`biasOwnerAgentInboxClassification`](../src/ea/classifier.ts). **Counterparty threads** (owner emails an external party with the agent CC'd) take **scheduling path A**, not owner-reply path D — see coordination scope below.
 
 ## Coordination scope (2026-09)
 

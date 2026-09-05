@@ -56,7 +56,7 @@ Gmail tools use Composio toolkit version **`20260506_01`** (override with `JOSHU
 | Day 0 / scheduling context | `buildThreadBodyPreview` / `readMirrorBodyPreview` | Latest `###` section, with optional **tail of the prior** section so short replies retain thread context |
 | **EA mail disposition** (noise / info / track) | `buildClassifierBodyPreview` / `readClassifierBodyPreview` | Latest section **only**, with **reply quotes stripped** (`On … wrote:`, Original Message, trailing `>` lines) via [`emailReplyQuotes.ts`](../src/connectors/emailReplyQuotes.ts) |
 
-Owner mail on the agent Nylas inbox that the model still marks `info` is forced to `track` unless the quote-stripped body is empty/ack-only ([`biasOwnerAgentInboxClassification`](../src/ea/classifier.ts)) — so short asks on upgrade/FYI reply threads still queue `ea-mail-ingress` → `ea-owner-reply`. Test: `npm run test:mail-classifier-routing`.
+Substantive owner mail on the agent Nylas inbox is forced to `track` / `owner_note` — never silently archived as `info` or left as `owner_sent_update` (includes thread replies with DONE/KEEP status). Pure one-line acks may stay `info`. See [`ownerAgentInboxMail.ts`](../src/ea/ownerAgentInboxMail.ts) and [`biasOwnerAgentInboxClassification`](../src/ea/classifier.ts). Test: `npm run test:mail-classifier-routing`.
 
 Test (plaintext): `npx tsx scripts/test-email-plaintext.mjs`.
 

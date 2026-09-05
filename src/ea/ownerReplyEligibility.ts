@@ -66,6 +66,8 @@ export function isOwnerReplyEligible(input: OwnerReplyEligibilityInput): OwnerRe
   }
 
   const category = (input.category ?? "").trim().toLowerCase();
+  // owner_sent_update should not reach here after biasOwnerAgentInboxClassification;
+  // block only if classifier still tagged it without a substantive override.
   if (category === "owner_sent_update") {
     return { eligible: false, reason: "owner_sent_update" };
   }
@@ -78,6 +80,8 @@ export function isOwnerReplyEligible(input: OwnerReplyEligibilityInput): OwnerRe
     cc: input.cc,
     projectRoot: input.projectRoot,
     agentEmails: input.agentEmails,
+    ownerEmails: input.ownerEmails,
+    provider: input.provider,
   })) {
     return { eligible: false, reason: "counterparty_thread" };
   }
@@ -105,20 +109,33 @@ export function isOwnerDirectAgentAsk(input: {
   cc?: string[];
   projectRoot?: string;
   agentEmails?: Iterable<string>;
+  ownerEmails?: Iterable<string>;
+  /** When nylas, inbound owner mail on the agent grant counts even if To is empty. */
+  provider?: string;
 }): boolean {
   const projectRoot = input.projectRoot ?? process.cwd();
   const agentEmails = input.agentEmails
     ? new Set([...input.agentEmails].map((e) => e.trim().toLowerCase()))
     : resolveJoshuAgentEmails(projectRoot);
-  const ownerEmails = resolveOwnerEmails(projectRoot);
+  const ownerEmails = input.ownerEmails
+    ? normalizeOwnerSet(input.ownerEmails)
+    : resolveOwnerEmails(projectRoot);
   const fromAddr = parseEmailAddress(input.from);
   if (!fromAddr || !ownerEmails.has(fromAddr)) return false;
 
   const to = normalizeEmailList(input.to);
+  const cc = normalizeEmailList(input.cc);
   const agentInTo = to.some((e) => agentEmails.has(e));
-  if (!agentInTo) return false;
-
+  const agentInCc = cc.some((e) => agentEmails.has(e));
   const externalInTo = to.filter((e) => !agentEmails.has(e) && !ownerEmails.has(e));
+
+  // Agent Nylas inbox: delivered mail may omit To; owner inbound is always to the agent.
+  if ((input.provider ?? "").trim().toLowerCase() === "nylas") {
+    if (externalInTo.length > 0) return false;
+    return agentInTo || agentInCc || to.length === 0;
+  }
+
+  if (!agentInTo) return false;
   return externalInTo.length === 0;
 }
 

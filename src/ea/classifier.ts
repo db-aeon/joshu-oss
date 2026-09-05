@@ -56,7 +56,11 @@ project_slug: optional HINT for Projects/<slug>/ (lowercase-hyphen). Use null wh
 
 is_new_track: hint only — true when likely a new work item; false when clearly a reply/update.
 
-owner_sent_update: owner replying in an existing thread with no new ask — disposition=info, is_new_track=false. If the owner delegates work (e.g. "Copying the companion to suggest times") → disposition=track, category may be scheduling.
+owner_sent_update: owner replying in an existing thread with no new ask — disposition=info, is_new_track=false. **Exception:** owner mail on the **agent Nylas inbox** with substantive new text (status updates, DONE markers, questions, directives) is always disposition=track, category=owner_note — never info/owner_sent_update.
+
+CRITICAL — agent inbox owner mail:
+- Any substantive owner message on the agent Nylas inbox (including thread replies marking items DONE, KEEP, or giving status) → disposition=track, category=owner_note.
+- Only pure one-line acks (Thanks, OK, Got it) may stay disposition=info.
 
 CRITICAL — reply quotes / owner asks:
 - Classify ONLY the sender's NEW text. Ignore quoted reply tails ("On … wrote:", ">", Original Message) and prior companion outbound.
@@ -108,8 +112,9 @@ export function normalizeForIngressRouting(
 }
 
 /**
- * Safety net: owner mail on the agent Nylas inbox must not be archived as info when the
- * new (quote-stripped) body has a real ask. LLM often keys off quoted companion FYI.
+ * Safety net: substantive owner mail on the agent Nylas inbox must not be archived as
+ * info/owner_sent_update. LLM often keys off quoted companion FYI or treats DONE lists
+ * as passive updates.
  */
 export function biasOwnerAgentInboxClassification(opts: {
   classification: InboundMailClassification;
@@ -122,7 +127,6 @@ export function biasOwnerAgentInboxClassification(opts: {
   const c = opts.classification;
   const provider = (opts.provider ?? "").trim().toLowerCase();
   if (provider !== "nylas") return c;
-  if (c.disposition !== "info") return c;
 
   const fromAddr = parseEmailAddress(opts.from);
   if (!fromAddr) return c;
@@ -138,12 +142,21 @@ export function biasOwnerAgentInboxClassification(opts: {
 
   const category =
     c.category === "owner_sent_update" ? ("owner_note" as MailCategory) : c.category;
-  return normalizeForIngressRouting({
-    ...c,
-    disposition: "track",
-    category,
-    reason: `${c.reason} (owner_nylas_info_override)`.slice(0, 200),
-  });
+
+  if (
+    c.disposition === "info" ||
+    c.disposition === "noise" ||
+    c.category === "owner_sent_update"
+  ) {
+    return normalizeForIngressRouting({
+      ...c,
+      disposition: "track",
+      category,
+      reason: `${c.reason} (owner_nylas_substantive_override)`.slice(0, 200),
+    });
+  }
+
+  return c;
 }
 
 export async function classifyInboundMail(opts: {

@@ -98,6 +98,8 @@ export async function buildMailIngressTaskBody(
     cc: input.cc,
     projectRoot,
     agentEmails: gateAgentEmails,
+    ownerEmails: resolveOwnerEmails(projectRoot, input.accountEmail),
+    provider: input.provider,
   });
   const schedulingPathA = schedulingHint && !directAgentAsk;
 

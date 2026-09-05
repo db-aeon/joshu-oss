@@ -11,6 +11,13 @@ import {
   normalizeForIngressRouting,
 } from "../dist/ea/classifier.js";
 import {
+  isCadenceReviewReplySubject,
+  isOwnerSubstantiveBody,
+  ownerAgentInboxMailClassification,
+  shouldForceTrackOwnerAgentInbox,
+} from "../dist/ea/ownerAgentInboxMail.js";
+import { isOwnerReplyEligible } from "../dist/ea/ownerReplyEligibility.js";
+import {
   buildClassifierBodyPreview,
   buildThreadBodyPreview,
 } from "../dist/connectors/mirrorBodyPreview.js";
@@ -124,7 +131,31 @@ const fixed = biasOwnerAgentInboxClassification({
   classifierBodyPreview: classPreview,
 });
 assert(fixed.disposition === "track", "owner nylas info → track");
-assert(fixed.reason.includes("owner_nylas_info_override"), "override tagged in reason");
+assert(fixed.reason.includes("owner_nylas_substantive_override"), "override tagged in reason");
+
+// track + owner_sent_update → track + owner_note (Andrew DONE list case)
+const sentUpdate = {
+  disposition: "track",
+  confidence: 0.9,
+  category: "owner_sent_update",
+  project_slug: null,
+  is_new_track: false,
+  reason: "Owner status update on cadence thread",
+};
+const andrewDoneList = `• Cascades cistern board vote - DONE
+• St. Mary RE decision (reply Courtney)
+• St. Faith's Confirmation - DONE
+• mom's annuity-vs-Ally - DONE
+Scituate ideas - KEEP`;
+const fixedUpdate = biasOwnerAgentInboxClassification({
+  classification: sentUpdate,
+  provider: "nylas",
+  from: "Andrew Goodrich <goodrich@graymediagroup.com>",
+  ownerEmails: ["goodrich@graymediagroup.com", "ag@andrewgoodrich.com"],
+  classifierBodyPreview: andrewDoneList,
+});
+assert(fixedUpdate.disposition === "track", "owner_sent_update substantive → track");
+assert(fixedUpdate.category === "owner_note", "owner_sent_update → owner_note");
 
 // Pure ack stays info
 const ack = biasOwnerAgentInboxClassification({
@@ -145,5 +176,30 @@ const stranger = biasOwnerAgentInboxClassification({
   classifierBodyPreview: classPreview,
 });
 assert(stranger.disposition === "info", "non-owner info unchanged");
+
+// Deterministic owner agent inbox gate
+assert(isOwnerSubstantiveBody(andrewDoneList), "DONE list is substantive");
+assert(
+  shouldForceTrackOwnerAgentInbox({
+    provider: "nylas",
+    from: "goodrich@graymediagroup.com",
+    bodyPreview: andrewDoneList,
+    ownerEmails: ["goodrich@graymediagroup.com"],
+  }),
+  "force track owner DONE reply",
+);
+assert(isCadenceReviewReplySubject("Re: Morning review ready — Thu 9/3"));
+const ownerClass = ownerAgentInboxMailClassification();
+assert(ownerClass.disposition === "track" && ownerClass.category === "owner_note");
+const ownerReply = isOwnerReplyEligible({
+  provider: "nylas",
+  from: "goodrich@graymediagroup.com",
+  to: ["finn@joshu.me"],
+  ownerEmails: ["goodrich@graymediagroup.com"],
+  disposition: "track",
+  category: "owner_note",
+  agentEmails: ["finn@joshu.me"],
+});
+assert(ownerReply.eligible === true, "owner_note owner-reply eligible");
 
 console.log("mail-classifier-routing checks ok");

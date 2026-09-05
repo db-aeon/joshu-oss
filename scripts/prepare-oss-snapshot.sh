@@ -61,6 +61,8 @@ rsync -a "${RSYNC_DELETE[@]}" \
   --exclude 'docs/vps-sandbox/session-2026-06-11-learning-browser-sync.md' \
   --exclude 'docs/vps-sandbox/session-2026-06-30-fleet-image-0.1.30-patrick.md' \
   --exclude 'docs/vps-sandbox/hotpatch-running-box.md' \
+  --exclude 'docs/vps-sandbox/existing-box-image-vs-host.md' \
+  --exclude 'scripts/upgrade-fleet-box-image.sh' \
   --exclude 'docs/vps-sandbox/credential-isolation-langfuse-relay.md' \
   --exclude 'docs/vps-sandbox/update-hardening-todo.md' \
   --exclude 'docs/vps-sandbox/control-plane.md' \

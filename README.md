@@ -1,5 +1,6 @@
 <div align="center">
   <h1>Joshu</h1>
+  <p><b>A local-first, always-on AI app workspace and box stack.</b></p>
 
   [![Release](https://img.shields.io/github/v/release/db-aeon/joshu-oss?display_name=release&label=release&color=blue)](https://github.com/db-aeon/joshu-oss/releases/latest)
   [![Docker image](https://img.shields.io/github/v/release/db-aeon/joshu-oss?display_name=release&label=ghcr.io%2Fdb--aeon%2Fjoshu--oss&logo=docker&logoColor=white)](https://github.com/db-aeon/joshu-oss/pkgs/container/joshu-oss)
@@ -8,6 +9,14 @@
 </div>
 
 ---
+
+**Joshu** is an open-source, local-first app workspace for always-on deployments. It integrates the [Hermes Agent](https://github.com/NousResearch/hermes-agent) with a suite of desktop-class web apps — a private, self-hosted AI executive assistant environment you run on your own box.
+
+> **Looking for a managed, one-click box?**  
+> Visit [joshu.me](https://joshu.me) for the hosted service (separate from this AGPL self-host tree).
+
+> **Early stage**  
+> This repository is early. We have gotten the stack running for community self-host, but expect rough edges and breaking changes. Provided as-is, no warranty.
 
 ## What is Joshu?
 
@@ -20,14 +29,6 @@ Joshu is a different take on AI agents: instead of an AI trying to drive your la
 - **Hindsight memory** — Long-term recall wired in as the memory provider.
 - **Your box** — The stack runs on a dedicated Ubuntu VPS (Hetzner, DO, etc.) or locally for development — not a shared multi-tenant runtime in the open-source path.
 - **Skills & apps** — Hermes skills plus Joshu desktop apps (jChat, jMail, Connectors, Schedules, last30days, Telephone, Welcome, and more). Build new apps with the [App SDK](docs/app-sdk.md).
-
-> **Looking for a managed, one-click box?**  
-> Visit [joshu.me](https://joshu.me) for the hosted service (separate from this AGPL self-host tree).
-
-> **Early stage**  
-> This repository is early. We have gotten the stack running for community self-host, but expect rough edges and breaking changes. Provided as-is, no warranty.
->
-
 
 ## Quick start (local development)
 

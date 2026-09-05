@@ -20,6 +20,10 @@ import {
   resolveAgentAuthorizationForMirror,
   resolveOwnerEmails,
 } from "./agentAuthorization.js";
+import {
+  ownerAgentInboxMailClassification,
+  shouldForceTrackOwnerAgentInbox,
+} from "./ownerAgentInboxMail.js";
 import type { AfterMirrorThreadInput, InboundMailClassification } from "./triageTypes.js";
 export type { AfterMirrorThreadInput, TriageProvider } from "./triageTypes.js";
 export {
@@ -268,15 +272,29 @@ export async function createTriageStubAfterMirror(input: AfterMirrorThreadInput)
   }
 
   if (runClassifier && !shouldSkipSchedulingIngest({ from, receivedAt, projectRoot })) {
-    let classification = await classifyInboundMail({ subject, from, bodyPreview });
-    if (projectRoot) {
-      classification = biasOwnerAgentInboxClassification({
-        classification,
+    let classification: InboundMailClassification;
+    if (
+      projectRoot &&
+      shouldForceTrackOwnerAgentInbox({
         provider,
         from,
+        bodyPreview,
         ownerEmails: resolveOwnerEmails(projectRoot, input.accountEmail),
-        classifierBodyPreview: bodyPreview,
-      });
+      })
+    ) {
+      classification = ownerAgentInboxMailClassification();
+      console.info(`[triage] owner agent inbox mail ${provider}/${threadId}`);
+    } else {
+      classification = await classifyInboundMail({ subject, from, bodyPreview });
+      if (projectRoot) {
+        classification = biasOwnerAgentInboxClassification({
+          classification,
+          provider,
+          from,
+          ownerEmails: resolveOwnerEmails(projectRoot, input.accountEmail),
+          classifierBodyPreview: bodyPreview,
+        });
+      }
     }
     if (await routeMailByClassification(input, classification, latestMessageId, dedupKey)) {
       return;
