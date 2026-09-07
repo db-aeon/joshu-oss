@@ -319,20 +319,12 @@ apply_hermes_stale_stream_keepalive() {
     || echo "[vps-start] WARN: stale-stream keepalive patch failed" >&2
 }
 
-# Kanban worker prompt must not leak into api_server/SMS when kanban tools are pinned.
+# Kanban worker prompt must not leak into owner api_server sessions when kanban tools are pinned.
 apply_hermes_kanban_guidance_gate() {
   local script="${JOSHU_SCRIPTS_ROOT}/apply-hermes-kanban-guidance-gate.sh"
   [[ -f "${script}" ]] || return 0
   HERMES_DIR="${HERMES_DIR}" bash "${script}" \
     || echo "[vps-start] WARN: kanban guidance gate patch failed" >&2
-}
-
-# SMS uses X-Hermes-Platform-Toolsets: sms for a lean tool surface on api_server.
-apply_hermes_api_server_platform_toolsets() {
-  local script="${JOSHU_SCRIPTS_ROOT}/apply-hermes-api-server-platform-toolsets.sh"
-  [[ -f "${script}" ]] || return 0
-  HERMES_DIR="${HERMES_DIR}" bash "${script}" \
-    || echo "[vps-start] WARN: api_server platform toolsets patch failed" >&2
 }
 
 # Joshu twilioSmsGateway owns SMS ingress — not Hermes' native SMS platform.
@@ -366,7 +358,6 @@ apply_hermes_read_file_utf8_patch
 apply_hermes_ea_kanban_no_autodecompose
 apply_hermes_stale_stream_keepalive
 apply_hermes_kanban_guidance_gate
-apply_hermes_api_server_platform_toolsets
 apply_hermes_joshu_disable_native_sms_platform
 apply_hermes_terminal_secrets_guard
 bootstrap_hermes_learning_skills

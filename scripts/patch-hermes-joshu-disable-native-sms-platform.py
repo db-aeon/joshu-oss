@@ -2,7 +2,7 @@
 """Respect platforms.sms.enabled: false when TWILIO_* creds are present.
 
 Joshu boxes route inbound SMS through twilioSmsGateway.ts → Hermes api_server
-(with platform_toolsets.sms). Hermes' native SMS platform is a separate Twilio
+(same platform_toolsets as jChat). Hermes' native SMS platform is a separate Twilio
 webhook listener and requires SMS_WEBHOOK_URL — enabling it alongside Joshu
 shows a scary admin warning and would duplicate ingress if misconfigured.
 

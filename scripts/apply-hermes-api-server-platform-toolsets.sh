@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# X-Hermes-Platform-Toolsets header for api_server chat completions — see patch script.
+# Optional legacy patch — not applied at VPS boot (see patch script docstring).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

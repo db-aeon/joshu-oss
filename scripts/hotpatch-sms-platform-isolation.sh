@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Hotpatch Patrick (or any box): SMS platform isolation + Kanban worker prompt gate.
+# Hotpatch a box: Kanban worker prompt gate (SMS/jChat share api_server toolsets).
 #
-# - Joshu: twilioSmsGateway.js + hermesApi.js (platform_toolsets.sms header)
-# - Hermes: kanban guidance gate + X-Hermes-Platform-Toolsets on api_server
-# - Recreates joshu-stack (ensureJoshuHermesConfig writes platform_toolsets.sms)
+# - Joshu: twilioSmsGateway.js + hermesApi.js (SMS uses default api_server; no platform header)
+# - Hermes: kanban guidance gate only
+# - Restarts joshu-stack to reload dist
 #
 # Usage:
 #   bash scripts/hotpatch-sms-platform-isolation.sh root@patrick.box.joshu.me
@@ -32,7 +32,6 @@ rsync -az \
   "${ROOT_DIR}/dist/twilioSmsGateway.js" \
   "${ROOT_DIR}/dist/hermesApi.js" \
   "${ROOT_DIR}/scripts/patch-hermes-kanban-guidance-gate.py" \
-  "${ROOT_DIR}/scripts/patch-hermes-api-server-platform-toolsets.py" \
   "${TARGET}:${REMOTE_TMP}/"
 rsync -az "${ROOT_DIR}/dist/meteredProviders/" "${TARGET}:${REMOTE_TMP}/meteredProviders/"
 
@@ -46,56 +45,22 @@ mkdir -p /opt/joshu/dist/meteredProviders
 install -m 0644 "${REMOTE_TMP}/meteredProviders/config.js" /opt/joshu/dist/meteredProviders/config.js
 
 cd /opt/joshu/deploy
-ENV_FILE=/etc/joshu/instance.env
 
 echo "[sms-platform-hotpatch] restart joshu-stack (reload dist; avoid --force-recreate — wipes Hermes patches)…"
 docker compose -f docker-compose.yml --env-file "${ENV_FILE}" restart joshu-stack
 
-echo "[sms-platform-hotpatch] wait for platform_toolsets.sms (ensureJoshuHermesConfig on boot)…"
 CID=""
 for _i in $(seq 1 36); do
   CID="$(docker compose -f docker-compose.yml --env-file "${ENV_FILE}" ps -q joshu-stack | head -1)"
   [[ -n "${CID}" ]] || { sleep 5; continue; }
-  if docker exec "${CID}" python3 -c "
-import yaml, sys
-from pathlib import Path
-cfg = yaml.safe_load(Path('/root/.hermes/config.yaml').read_text())
-sms = (cfg.get('platform_toolsets') or {}).get('sms') or []
-sys.exit(0 if 'hermes-api-server' in sms else 1)
-" 2>/dev/null; then
-    echo "[sms-platform-hotpatch] platform_toolsets.sms includes hermes-api-server"
-    break
-  fi
-  sleep 5
+  break
 done
-
 CID="$(docker compose -f docker-compose.yml --env-file "${ENV_FILE}" ps -q joshu-stack | head -1)"
 [[ -n "${CID}" ]] || { echo "[sms-platform-hotpatch] no joshu-stack container"; exit 1; }
 
-if ! docker exec "${CID}" python3 -c "
-import yaml, sys
-from pathlib import Path
-cfg = yaml.safe_load(Path('/root/.hermes/config.yaml').read_text())
-sms = (cfg.get('platform_toolsets') or {}).get('sms') or []
-sys.exit(0 if 'hermes-api-server' in sms else 1)
-" 2>/dev/null; then
-  echo "[sms-platform-hotpatch] boot sync slow — writing platform_toolsets.sms directly…"
-  docker exec "${CID}" node --input-type=module -e "
-import { readFileSync, writeFileSync } from 'fs';
-import YAML from '/opt/joshu/node_modules/yaml/dist/index.js';
-const p='/root/.hermes/config.yaml';
-const c=YAML.parse(readFileSync(p,'utf8'));
-c.platform_toolsets=c.platform_toolsets||{};
-c.platform_toolsets.sms=['hermes-api-server','mcp-gbrain','mcp-joshu-connectors','memory','session_search','skills'];
-writeFileSync(p, YAML.stringify(c));
-"
-fi
-
-echo "[sms-platform-hotpatch] apply Hermes patches inside running container…"
+echo "[sms-platform-hotpatch] apply Hermes kanban guidance gate inside container…"
 docker cp "${REMOTE_TMP}/patch-hermes-kanban-guidance-gate.py" "${CID}:/tmp/patch-hermes-kanban-guidance-gate.py"
-docker cp "${REMOTE_TMP}/patch-hermes-api-server-platform-toolsets.py" "${CID}:/tmp/patch-hermes-api-server-platform-toolsets.py"
 docker exec "${CID}" env HERMES_DIR=/opt/hermes-agent python3 /tmp/patch-hermes-kanban-guidance-gate.py
-docker exec "${CID}" env HERMES_DIR=/opt/hermes-agent python3 /tmp/patch-hermes-api-server-platform-toolsets.py
 
 echo "[sms-platform-hotpatch] restart Hermes gateway (reload patched Python)…"
 docker exec "${CID}" bash -lc '
@@ -111,11 +76,10 @@ docker exec "${CID}" bash -lc '
   sleep 2
 '
 
-echo "[sms-platform-hotpatch] verify Hermes patches…"
+echo "[sms-platform-hotpatch] verify Hermes kanban guidance gate…"
 docker exec "${CID}" grep -rn "joshu-kanban-guidance-worker-env-gate-v1" /opt/hermes-agent/run_agent.py /opt/hermes-agent/agent/agent_init.py /opt/hermes-agent/agent/system_prompt.py 2>/dev/null | head -3
-docker exec "${CID}" grep -n "joshu-api-server-platform-toolsets-v1" /opt/hermes-agent/gateway/platforms/api_server.py | head -1
 
 rm -rf "${REMOTE_TMP}"
 
-echo "[sms-platform-hotpatch] done — send test SMS and check Langfuse (session sms:+…)"
+echo "[sms-platform-hotpatch] done — send test SMS; Langfuse session sms:+… should use api_server tools (no worker prompt)"
 EOF

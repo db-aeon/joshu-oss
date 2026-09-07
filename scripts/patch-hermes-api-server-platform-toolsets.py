@@ -1,11 +1,8 @@
 #!/usr/bin/env python3
-"""Honor X-Hermes-Platform-Toolsets on POST /v1/chat/completions.
+"""Optional: honor X-Hermes-Platform-Toolsets on POST /v1/chat/completions.
 
-Joshu SMS uses platform_toolsets.sms (hermes-api-server + MCP + memory/search/skills;
-no kanban worker prompt) via header X-Hermes-Platform-Toolsets: sms while still hitting
-api_server :8642.
-
-Works across Hermes api_server layouts (pre/post v0.14 gateway session-key work).
+Legacy Joshu patch — no longer applied at boot (SMS/jChat share platform_toolsets.api_server).
+Kept for boxes that already have the marker applied; harmless when the header is omitted.
 
 Idempotent. Target: $HERMES_DIR/gateway/platforms/api_server.py
 """

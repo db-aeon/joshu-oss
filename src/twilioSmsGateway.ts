@@ -9,11 +9,7 @@ import express from "express";
 import twilio from "twilio";
 
 import { handleSmsApprovalIngress } from "./actionGuard/smsIngress.js";
-import {
-  SMS_HERMES_PLATFORM_TOOLSETS,
-  type HermesApiRunner,
-  type HermesChatMessage,
-} from "./hermesApi.js";
+import type { HermesApiRunner, HermesChatMessage } from "./hermesApi.js";
 import { buildOwnerTimeSystemMessage } from "./ownerLocalTime.js";
 import { markdownSpeechPlaintext } from "./markdownSpeechPlaintext.js";
 import {
@@ -178,7 +174,6 @@ export function registerTwilioSmsRoutes(
             sessionKey,
             messages,
             signal: AbortSignal.timeout(180_000),
-            platformToolsetsKey: SMS_HERMES_PLATFORM_TOOLSETS,
           },
           {},
         );
