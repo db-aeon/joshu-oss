@@ -1096,7 +1096,7 @@ def main() -> None:
         print(f"[joshu] web root not a directory: {web}", file=sys.stderr)
         sys.exit(1)
 
-    root = Path(__file__).resolve().parent.parent
+    root = Path(os.environ["APP_DIR"]).resolve() if os.environ.get("APP_DIR") else Path(__file__).resolve().parent.parent
     overlay, theme_file, asset_root, branded = _resolve_theme_paths(root)
     release_version = _read_release_version(root)
     theme_link = f'<link rel="stylesheet" href="./{theme_file}?v={OVERLAY_VERSION}">'

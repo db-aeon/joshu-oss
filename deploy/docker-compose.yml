@@ -33,35 +33,22 @@ services:
     network_mode: host
     env_file:
       - ${JOSHU_COMPOSE_ENV_FILE:-./.env.vps.example}
+    # hotfix vps-start > .image (0.1.44+) > baked /opt/joshu/scripts (0.1.43 seed).
+    command:
+      - bash
+      - -c
+      - |
+        if [ -f /opt/joshu/hotfix/scripts/vps-start.sh ]; then
+          exec bash /opt/joshu/hotfix/scripts/vps-start.sh
+        elif [ -f /opt/joshu/.image/scripts/vps-start.sh ]; then
+          exec bash /opt/joshu/.image/scripts/vps-start.sh
+        else
+          exec bash /opt/joshu/scripts/vps-start.sh
+        fi
     volumes:
-      # Optional hotfix mounts (0.1.7+ bakes these in; keep for bootstrapping without rebuild).
-      - ./scripts/vps-start.sh:/opt/joshu/scripts/vps-start.sh:ro
-      - ../scripts/patch-camofox-single-tab.mjs:/opt/joshu/scripts/patch-camofox-single-tab.mjs:ro
-      - ../scripts/patch-camofox-vnc-watcher.sh:/opt/joshu/scripts/patch-camofox-vnc-watcher.sh:ro
-      - ../scripts/camofox-vnc-watcher.sh:/opt/joshu/scripts/camofox-vnc-watcher.sh:ro
-      # jterm: Hermes must not cat instance.env / GHCR secrets (until baked in image).
-      - ../scripts/patch-hermes-terminal-secrets-guard.mjs:/opt/joshu/scripts/patch-hermes-terminal-secrets-guard.mjs:ro
-      - ../scripts/apply-hermes-hitl-patch.sh:/opt/joshu/scripts/apply-hermes-hitl-patch.sh:ro
-      # Hermes v0.20+ patch applicators (re-applied on boot; bind so operators can iterate without image rebuild).
-      - ../scripts/apply-hermes-langfuse-patches.sh:/opt/joshu/scripts/apply-hermes-langfuse-patches.sh:ro
-      - ../scripts/apply-hermes-content-filter-patch.sh:/opt/joshu/scripts/apply-hermes-content-filter-patch.sh:ro
-      - ../scripts/apply-hermes-read-file-utf8-patch.sh:/opt/joshu/scripts/apply-hermes-read-file-utf8-patch.sh:ro
-      - ../scripts/apply-hermes-ea-kanban-no-autodecompose.sh:/opt/joshu/scripts/apply-hermes-ea-kanban-no-autodecompose.sh:ro
-      - ../scripts/apply-hermes-stale-stream-keepalive.sh:/opt/joshu/scripts/apply-hermes-stale-stream-keepalive.sh:ro
-      - ../scripts/apply-hermes-kanban-ws-base-path-patch.sh:/opt/joshu/scripts/apply-hermes-kanban-ws-base-path-patch.sh:ro
-      - ../scripts/apply-hermes-invoke-tool-post-hook-patch.sh:/opt/joshu/scripts/apply-hermes-invoke-tool-post-hook-patch.sh:ro
-      - ../scripts/patch-hermes-langfuse-openrouter.py:/opt/joshu/scripts/patch-hermes-langfuse-openrouter.py:ro
-      - ../scripts/patch-hermes-content-filter-v020.py:/opt/joshu/scripts/patch-hermes-content-filter-v020.py:ro
-      - ../scripts/patch-hermes-read-file-utf8.py:/opt/joshu/scripts/patch-hermes-read-file-utf8.py:ro
-      - ../scripts/patch-hermes-ea-kanban-no-autodecompose.py:/opt/joshu/scripts/patch-hermes-ea-kanban-no-autodecompose.py:ro
-      - ../scripts/patch-hermes-stale-stream-keepalive.py:/opt/joshu/scripts/patch-hermes-stale-stream-keepalive.py:ro
-      - ../scripts/patch-hermes-camofox-tab-resync.mjs:/opt/joshu/scripts/patch-hermes-camofox-tab-resync.mjs:ro
-      - ../scripts/patch-hermes-camofox-ensure-tab.mjs:/opt/joshu/scripts/patch-hermes-camofox-ensure-tab.mjs:ro
-      - ../scripts/patch-hermes-camofox-action-guard.mjs:/opt/joshu/scripts/patch-hermes-camofox-action-guard.mjs:ro
-      - ../scripts/patch-hermes-terminal-mail-guard.mjs:/opt/joshu/scripts/patch-hermes-terminal-mail-guard.mjs:ro
-      - ../scripts/lib:/opt/joshu/scripts/lib:ro
-      - ../scripts/bootstrap-joshu-files.sh:/opt/joshu/scripts/bootstrap-joshu-files.sh:ro
-      - ../scripts/bootstrap-executive-assistant.sh:/opt/joshu/scripts/bootstrap-executive-assistant.sh:ro
+      # Image owns boot. Do not bind-mount host scripts/ over the image.
+      # Optional overlay: files in hotfix/scripts win at boot (empty dir is safe).
+      - ../hotfix/scripts:/opt/joshu/hotfix/scripts:ro
       - ../templates/ea:/opt/joshu/templates/ea:ro
       - ../dist:/opt/joshu/dist:ro
       # dist/ is synced from pulled image by instance-agent (syncDistFromImage) — not updated by git pull.
@@ -81,30 +68,6 @@ services:
       - ../arozos/web-overlays-vanilla:/opt/joshu/arozos/web-overlays-vanilla:ro
       # Public Chat-with-files HTML (git pull without image rebuild). Also in dist/shareChat/ui/.
       - ../apps/share-chat:/opt/joshu/apps/share-chat:ro
-      - ../scripts/apply_arozos_joshu_theme.py:/opt/joshu/scripts/apply_arozos_joshu_theme.py:ro
-      - ../scripts/rebind-gbrain-owner.sh:/opt/joshu/scripts/rebind-gbrain-owner.sh:ro
-      - ../scripts/start-gbrain.sh:/opt/joshu/scripts/start-gbrain.sh:ro
-      - ../scripts/install-gbrain.sh:/opt/joshu/scripts/install-gbrain.sh:ro
-      - ../scripts/setup-gbrain-schema.sh:/opt/joshu/scripts/setup-gbrain-schema.sh:ro
-      - ../scripts/start-hermes-dashboard.sh:/opt/joshu/scripts/start-hermes-dashboard.sh:ro
-      - ../scripts/stop-gbrain.sh:/opt/joshu/scripts/stop-gbrain.sh:ro
-      - ../scripts/repair-gbrain-pglite.sh:/opt/joshu/scripts/repair-gbrain-pglite.sh:ro
-      - ../scripts/start-gbrain-mcp-http.sh:/opt/joshu/scripts/start-gbrain-mcp-http.sh:ro
-      - ../scripts/gbrain-mcp-http-server.mjs:/opt/joshu/scripts/gbrain-mcp-http-server.mjs:ro
-      - ../scripts/ensure-gbrain-indexed.sh:/opt/joshu/scripts/ensure-gbrain-indexed.sh:ro
-      - ../scripts/ensure-last30days-python.sh:/opt/joshu/scripts/ensure-last30days-python.sh:ro
-      - ../scripts/ensure-last30days-engine.sh:/opt/joshu/scripts/ensure-last30days-engine.sh:ro
-      - ../scripts/ensure-hermes-gbrain-mcp.mjs:/opt/joshu/scripts/ensure-hermes-gbrain-mcp.mjs:ro
-      - ../scripts/joshu-connectors-mcp-http-server.mjs:/opt/joshu/scripts/joshu-connectors-mcp-http-server.mjs:ro
-      - ../scripts/start-joshu-connectors-mcp.sh:/opt/joshu/scripts/start-joshu-connectors-mcp.sh:ro
-      - ../scripts/composio-mcp-guard-proxy.mjs:/opt/joshu/scripts/composio-mcp-guard-proxy.mjs:ro
-      - ../scripts/start-composio-mcp-guard.sh:/opt/joshu/scripts/start-composio-mcp-guard.sh:ro
-      - ../scripts/hermes-cron-bridge.py:/opt/joshu/scripts/hermes-cron-bridge.py:ro
-      - ../scripts/hermes-kanban-bridge.py:/opt/joshu/scripts/hermes-kanban-bridge.py:ro
-      - ../scripts/bootstrap-hermes-learning-skills.sh:/opt/joshu/scripts/bootstrap-hermes-learning-skills.sh:ro
-      - ../scripts/merge-hermes-factory-skill.mjs:/opt/joshu/scripts/merge-hermes-factory-skill.mjs:ro
-      - ../scripts/render-time-block-excalidraw.mjs:/opt/joshu/scripts/render-time-block-excalidraw.mjs:ro
-      - ../scripts/gather-time-block-input.mjs:/opt/joshu/scripts/gather-time-block-input.mjs:ro
       # Fleet Langfuse relay plugin (no pk/sk on box). Copied into image on rebuild; bind for live boxes.
       - ../.hermes/plugins/joshu-langfuse-relay:/opt/joshu/.hermes/plugins/joshu-langfuse-relay:ro
       # Product skills are seeded to $HERMES_HOME/skills/joshu/ (writable learning loop).

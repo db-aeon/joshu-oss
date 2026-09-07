@@ -9,7 +9,6 @@
 
 ---
 
-
 > **Looking for a managed, one-click box?**  
 > Visit [joshu.me](https://joshu.me) for the hosted service (separate from this AGPL self-host tree).
 

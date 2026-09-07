@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Honor X-Hermes-Platform-Toolsets on POST /v1/chat/completions.
 
-Joshu SMS uses platform_toolsets.sms (memory + session_search + skills, no kanban)
-via header X-Hermes-Platform-Toolsets: sms while still hitting api_server :8642.
+Joshu SMS uses platform_toolsets.sms (hermes-api-server + MCP + memory/search/skills;
+no kanban worker prompt) via header X-Hermes-Platform-Toolsets: sms while still hitting
+api_server :8642.
 
 Works across Hermes api_server layouts (pre/post v0.14 gateway session-key work).
 

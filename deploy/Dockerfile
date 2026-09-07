@@ -268,9 +268,16 @@ RUN node scripts/copy-runtime-assets.mjs --check \
 # Bake a second copy outside integrations/ so a future bind-mount cannot shadow it.
 RUN test -f integrations/last30days-skill/skills/last30days/scripts/last30days.py \
     || (echo "ERROR: last30days engine missing; run scripts/sync-last30days-skill.sh before docker build" >&2; exit 1)
+# Boot scripts: unshadowable copy. Compose used to bind-mount host /opt/joshu/scripts over
+# the image, so a stale clone skipped jNotes/md-editor even on a current GHCR tag.
+# CMD uses .image/vps-start.sh; optional host hotfix/scripts overlays at boot.
 RUN mkdir -p /opt/joshu/.image \
     && cp -a integrations/last30days-skill /opt/joshu/.image/last30days-skill \
-    && test -f /opt/joshu/.image/last30days-skill/skills/last30days/scripts/last30days.py
+    && cp -a ${APP_DIR}/scripts /opt/joshu/.image/scripts \
+    && chmod +x /opt/joshu/.image/scripts/vps-start.sh \
+    && test -f /opt/joshu/.image/last30days-skill/skills/last30days/scripts/last30days.py \
+    && test -f /opt/joshu/.image/scripts/vps-start.sh \
+    && test -f /opt/joshu/.image/scripts/lib/arozos-desktop-shortcuts.sh
 
 # Camofox 1.6+ ships plugins.vnc.enabled=false; ENABLE_VNC alone never loads the plugin.
 RUN python3 - <<'PY'
@@ -307,4 +314,4 @@ ENV PATH="/root/.bun/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin
 
 EXPOSE 8787 8788
 
-CMD ["bash", "/opt/joshu/scripts/vps-start.sh"]
+CMD ["bash", "/opt/joshu/.image/scripts/vps-start.sh"]

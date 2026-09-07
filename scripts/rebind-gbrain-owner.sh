@@ -3,8 +3,9 @@
 set -euo pipefail
 
 APP_DIR="${APP_DIR:-/opt/joshu}"
+SCRIPTS_DIR="${JOSHU_SCRIPTS_ROOT:-${APP_DIR}/scripts}"
 # shellcheck source=lib/joshu-files-paths.sh
-source "${APP_DIR}/scripts/lib/joshu-files-paths.sh"
+source "${SCRIPTS_DIR}/lib/joshu-files-paths.sh"
 
 load_env_file() {
   local f="$1"

@@ -50,10 +50,46 @@ ENV_FILE=/etc/joshu/instance.env
 
 echo "[sms-platform-hotpatch] restart joshu-stack (reload dist; avoid --force-recreate — wipes Hermes patches)…"
 docker compose -f docker-compose.yml --env-file "${ENV_FILE}" restart joshu-stack
-sleep 20
+
+echo "[sms-platform-hotpatch] wait for platform_toolsets.sms (ensureJoshuHermesConfig on boot)…"
+CID=""
+for _i in $(seq 1 36); do
+  CID="$(docker compose -f docker-compose.yml --env-file "${ENV_FILE}" ps -q joshu-stack | head -1)"
+  [[ -n "${CID}" ]] || { sleep 5; continue; }
+  if docker exec "${CID}" python3 -c "
+import yaml, sys
+from pathlib import Path
+cfg = yaml.safe_load(Path('/root/.hermes/config.yaml').read_text())
+sms = (cfg.get('platform_toolsets') or {}).get('sms') or []
+sys.exit(0 if 'hermes-api-server' in sms else 1)
+" 2>/dev/null; then
+    echo "[sms-platform-hotpatch] platform_toolsets.sms includes hermes-api-server"
+    break
+  fi
+  sleep 5
+done
 
 CID="$(docker compose -f docker-compose.yml --env-file "${ENV_FILE}" ps -q joshu-stack | head -1)"
 [[ -n "${CID}" ]] || { echo "[sms-platform-hotpatch] no joshu-stack container"; exit 1; }
+
+if ! docker exec "${CID}" python3 -c "
+import yaml, sys
+from pathlib import Path
+cfg = yaml.safe_load(Path('/root/.hermes/config.yaml').read_text())
+sms = (cfg.get('platform_toolsets') or {}).get('sms') or []
+sys.exit(0 if 'hermes-api-server' in sms else 1)
+" 2>/dev/null; then
+  echo "[sms-platform-hotpatch] boot sync slow — writing platform_toolsets.sms directly…"
+  docker exec "${CID}" node --input-type=module -e "
+import { readFileSync, writeFileSync } from 'fs';
+import YAML from '/opt/joshu/node_modules/yaml/dist/index.js';
+const p='/root/.hermes/config.yaml';
+const c=YAML.parse(readFileSync(p,'utf8'));
+c.platform_toolsets=c.platform_toolsets||{};
+c.platform_toolsets.sms=['hermes-api-server','mcp-gbrain','mcp-joshu-connectors','memory','session_search','skills'];
+writeFileSync(p, YAML.stringify(c));
+"
+fi
 
 echo "[sms-platform-hotpatch] apply Hermes patches inside running container…"
 docker cp "${REMOTE_TMP}/patch-hermes-kanban-guidance-gate.py" "${CID}:/tmp/patch-hermes-kanban-guidance-gate.py"

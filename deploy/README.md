@@ -28,7 +28,7 @@ JOSHU_IMAGE_TAG=0.1.14 JOSHU_IMAGE_REPO=ghcr.io/YOUR_ORG/joshu-sandbox JOSHU_IMA
 
 Pushes **`ghcr.io/YOUR_ORG/joshu-sandbox:<tag>`** and **`ghcr.io/YOUR_ORG/joshu-voice-realtime:<tag>`** (override with `JOSHU_VOICE_IMAGE_REPO` / `JOSHU_VOICE_IMAGE_REF`).
 
-Current stable pin: [`deploy/RELEASE.json`](RELEASE.json) (**`0.1.43`**).
+Current stable pin: [`deploy/RELEASE.json`](RELEASE.json) (**`0.1.44`**).
 
 After `npm run hermes:update`, `npm run vps:sync-hermes-pin` runs automatically (also invoked by `vps:build-image`).
 After bumping `camofoxBase`, run `npm run vps:sync-camofox-pin` before rebuild.
@@ -132,16 +132,15 @@ docker compose -f deploy/docker-compose.yml --env-file /etc/joshu/instance.env -
 
 Cloud-init (control-plane provision) runs `bootstrap-vps.sh`, which clones the repo to **`/opt/joshu`** and starts compose from `/opt/joshu/deploy`.
 
-**Host bind-mounts:** Compose overlays several paths from the **host** clone at `/opt/joshu`:
+**Host bind-mounts:** Compose overlays a few paths from the **host** clone at `/opt/joshu`. **Boot scripts are not bind-mounted** — CMD is `/opt/joshu/.image/scripts/vps-start.sh`. Optional overlay: `hotfix/scripts/` (`bash scripts/hotpatch-boot.sh`).
 
 | Host path | Container path | Lane |
 | --- | --- | --- |
 | `dist/` | `/opt/joshu/dist/` | B — API hotfix / `syncDistFromImage` |
+| `hotfix/scripts/` | `/opt/joshu/hotfix/scripts/` | A — boot overlay (empty = image) |
 | `integrations/hermes/skills/` | `/opt/joshu/integrations/hermes/skills/` | A — factory skills source for bootstrap |
 | `integrations/hermes/skills-enabled.yaml` | same | A — Hermes allowlist / bundled denylist |
-| `scripts/render-time-block-excalidraw.mjs`, `gather-time-block-input.mjs` | `/opt/joshu/scripts/` | A — EA time-block pipeline |
 | `templates/ea/` | `/opt/joshu/templates/ea/` | A — EA filesystem seeds |
-| `deploy/scripts/vps-start.sh`, selected `scripts/` | `/opt/joshu/scripts/` | A — boot / MCP |
 | `arozos/web-overlays-vanilla/` | `/opt/joshu/arozos/web-overlays-vanilla/` | A — vanilla shell overlays |
 | `apps/share-chat/` | `/opt/joshu/apps/share-chat/` | A — public Chat with files HTML |
 
@@ -149,7 +148,8 @@ Cloud-init (control-plane provision) runs `bootstrap-vps.sh`, which clones the r
 
 | You changed | Update path |
 | --- | --- |
-| Skills, MCP scripts, `vps-start.sh`, templates (bind-mounted paths) | `git pull` on host → recreate `joshu-stack` |
+| Boot scripts (`vps-start.sh`, `scripts/lib`, MCP start/patch) | New image, **or** `bash scripts/hotpatch-boot.sh root@host <path>` |
+| Factory skills, templates (still bind-mounted) | rsync those trees → recreate `joshu-stack` |
 | Compiled Joshu API (`src/` → `dist/`) | Sync host `dist/` from image (below) → recreate |
 | `deploy/Dockerfile`, Hermes pin, `deploy/runtime/package.json` | New image tag → pull → dist sync → recreate |
 

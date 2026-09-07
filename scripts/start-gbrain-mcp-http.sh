@@ -2,14 +2,15 @@
 # Start Joshu-supervised gbrain MCP HTTP server (one gbrain serve + :8794).
 set -euo pipefail
 
-APP_DIR="${APP_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+APP_DIR="${APP_DIR:-/opt/joshu}"
+SCRIPTS_DIR="${JOSHU_SCRIPTS_ROOT:-${APP_DIR}/scripts}"
 # shellcheck source=lib/gbrain-env.sh
-source "${APP_DIR}/scripts/lib/gbrain-env.sh"
+source "${SCRIPTS_DIR}/lib/gbrain-env.sh"
 gbrain_env_init "${BASH_SOURCE[0]}"
 
 AROZ_DATA="${AROZ_DATA:-/var/lib/arozos}"
 # shellcheck source=lib/joshu-files-paths.sh
-source "${APP_DIR}/scripts/lib/joshu-files-paths.sh"
+source "${SCRIPTS_DIR}/lib/joshu-files-paths.sh"
 joshu_files_resolve_paths "${APP_DIR}" 2>/dev/null || true
 export JOSHU_FILES_ROOT JOSHU_DESKTOP_ROOT JOSHU_AROZ_USER GBRAIN_SOURCE AROZ_DATA
 
@@ -21,17 +22,17 @@ gbrain_require_pglite_brain
 GBRAIN_BIN="${GBRAIN_BIN:-gbrain}"
 
 # One PGLite holder: stop stale serve/sync before MCP HTTP spawns gbrain serve.
-bash "${APP_DIR}/scripts/stop-gbrain.sh"
+bash "${SCRIPTS_DIR}/stop-gbrain.sh"
 gbrain_repair_pglite_config_if_needed
 
 if ! gbrain_run sync --dry-run >/dev/null 2>&1; then
   echo "[gbrain-mcp-http] WARN: PGLite open failed; attempting repair (GBRAIN_REPAIR_PGLITE=1)" >&2
-  GBRAIN_REPAIR_PGLITE=1 bash "${APP_DIR}/scripts/repair-gbrain-pglite.sh" || true
+  GBRAIN_REPAIR_PGLITE=1 bash "${SCRIPTS_DIR}/repair-gbrain-pglite.sh" || true
 fi
 
 # Ensure Desktop git repo before MCP server starts (sync_brain needs it).
 # shellcheck source=lib/ensure-gbrain-git.sh
-source "${APP_DIR}/scripts/lib/ensure-gbrain-git.sh"
+source "${SCRIPTS_DIR}/lib/ensure-gbrain-git.sh"
 if [[ -n "${JOSHU_DESKTOP_ROOT:-}" ]]; then
   ensure_gbrain_git_repo "${JOSHU_DESKTOP_ROOT}"
 fi
@@ -81,7 +82,7 @@ start_server_once() {
     rm -f "${GBRAIN_MCP_HTTP_PID_FILE}"
   fi
 
-  nohup node "${APP_DIR}/scripts/gbrain-mcp-http-server.mjs" >>"${GBRAIN_LOG_FILE}" 2>&1 &
+  nohup node "${SCRIPTS_DIR}/gbrain-mcp-http-server.mjs" >>"${GBRAIN_LOG_FILE}" 2>&1 &
   server_pid=$!
   printf '%s\n' "${server_pid}" > "${GBRAIN_MCP_HTTP_PID_FILE}"
 
@@ -112,8 +113,8 @@ fi
 
 if [[ "${GBRAIN_MCP_AUTO_REPAIR:-true}" =~ ^(1|true|yes)$ ]]; then
   echo "[gbrain-mcp-http] attempting PGLite repair before retry" >&2
-  GBRAIN_REPAIR_PGLITE=1 bash "${APP_DIR}/scripts/repair-gbrain-pglite.sh" || true
-  bash "${APP_DIR}/scripts/stop-gbrain.sh" || true
+  GBRAIN_REPAIR_PGLITE=1 bash "${SCRIPTS_DIR}/repair-gbrain-pglite.sh" || true
+  bash "${SCRIPTS_DIR}/stop-gbrain.sh" || true
   if start_server_once; then
     exit 0
   fi

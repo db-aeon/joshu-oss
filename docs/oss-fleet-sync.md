@@ -102,7 +102,7 @@ Vanilla self-host and fleet **without** a design pack use `arozos/web-overlays-v
 | Login / first account | Overlay `login.html`, `user.html`, `joshu-auth-pages.css` |
 | Desktop favicon | `arozos/icons/icon.svg` (from [`joshu-public/app/icon.svg`](https://github.com/db-aeon/joshu-public)) → `img/public/joshu-icon.svg` |
 | System Settings | Wordmark sidebar, About/Overview HTML, **Joshu** tab under About, Vendor tab hidden, `en-us` locale alias |
-| VPS hot refresh | `deploy/docker-compose.yml` bind-mounts `web-overlays-vanilla/` + theme script; `vps-start.sh` re-runs apply on boot |
+| VPS hot refresh | Image-baked `vps-start.sh` (`.image/scripts`) re-runs theme apply; `web-overlays-vanilla/` still host-mounted |
 
 **Gotcha:** `applocale` uses `navigator.language.toLowerCase()` → `en-us`, but stock ArozOS locale files only define `en-US`. Theme apply merges a Joshu overlay and mirrors `en-US` → `en-us`.
 

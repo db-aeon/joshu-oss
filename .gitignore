@@ -29,6 +29,10 @@ portable-soul/
 # Ephemeral bundle from scripts/hotpatch-last30days-multimodal.sh (older versions staged here).
 .hotpatch-last30days-staging/
 
+# On-box boot overlay (hotfix/scripts/.gitkeep is tracked; never commit live patches).
+hotfix/scripts/**
+!hotfix/scripts/.gitkeep
+
 # Caddyfile is generated at container start from instance.env (see deploy/Caddyfile.template).
 deploy/Caddyfile
 

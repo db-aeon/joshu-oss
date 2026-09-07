@@ -95,7 +95,7 @@ npm run dev:arozos             # full stack — registers jNotes + hides MDEdito
 
 After `dev:arozos`, double-click a `.md` on the Desktop — it should open **jNotes**, not MDEditor or jWhiteboard.
 
-**Existing VPS boxes:** a `0.1.43` health pin is not enough. Host compose bind-mounts `scripts/lib/`; if that clone predates jNotes, the live ArozOS volume never gets `md-editor`. See [existing-box-image-vs-host.md](vps-sandbox/existing-box-image-vs-host.md).
+**Existing VPS boxes:** a `0.1.43` health pin is not enough on images whose compose still bind-mounts host `scripts/lib/`. Current images use `.image/scripts` CMD — pull + recreate installs jNotes from the template. See [existing-box-image-vs-host.md](vps-sandbox/existing-box-image-vs-host.md).
 The full-stack command builds from `apps/md-editor/` and syncs the generated bundle
 into the live ArozOS data tree; no checked-in app bundle is needed.
 

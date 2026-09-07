@@ -3,6 +3,7 @@
 set -euo pipefail
 
 APP_DIR="${APP_DIR:-/opt/joshu}"
+export APP_DIR
 CAMOFOX_APP_DIR="${CAMOFOX_APP_DIR:-/app}"
 HERMES_DIR="${HERMES_DIR:-/opt/hermes-agent}"
 HERMES_HOME="${HERMES_HOME:-/root/.hermes}"
@@ -18,6 +19,43 @@ JOSHU_PORT="${JOSHU_PORT:-8788}"
 PUBLIC_BASE_PATH="${PUBLIC_BASE_PATH:-/joshu}"
 JOSHU_HEALTH_URL="${JOSHU_HEALTH_URL:-http://127.0.0.1:${JOSHU_PORT}${PUBLIC_BASE_PATH}/api/instance/health}"
 PUBLIC_AROZ_PORT="${PUBLIC_AROZ_PORT:-8787}"
+
+# Image owns boot. Host /opt/joshu/scripts may still be a stale bind-mount on old compose.
+# Prefer /opt/joshu/.image/scripts (never mounted), overlay /opt/joshu/hotfix/scripts if present.
+IMAGE_SCRIPTS="${JOSHU_IMAGE_SCRIPTS:-${APP_DIR}/.image/scripts}"
+HOTFIX_SCRIPTS="${JOSHU_HOTFIX_SCRIPTS:-${APP_DIR}/hotfix/scripts}"
+JOSHU_SCRIPTS_ROOT="${JOSHU_SCRIPTS_ROOT:-/run/joshu-boot-scripts}"
+
+init_joshu_boot_scripts() {
+  mkdir -p "${JOSHU_SCRIPTS_ROOT}"
+  if [[ -d "${IMAGE_SCRIPTS}" ]]; then
+    rsync -a --delete "${IMAGE_SCRIPTS}/" "${JOSHU_SCRIPTS_ROOT}/"
+    echo "[vps-start] boot scripts from ${IMAGE_SCRIPTS}"
+  else
+    rsync -a "${APP_DIR}/scripts/" "${JOSHU_SCRIPTS_ROOT}/"
+    echo "[vps-start] WARN: missing ${IMAGE_SCRIPTS}; seeded from ${APP_DIR}/scripts" >&2
+  fi
+  if [[ -d "${HOTFIX_SCRIPTS}" ]] \
+    && find "${HOTFIX_SCRIPTS}" -type f ! -name '.gitkeep' -print -quit | grep -q .; then
+    rsync -a "${HOTFIX_SCRIPTS}/" "${JOSHU_SCRIPTS_ROOT}/"
+    echo "[vps-start] boot overlay from ${HOTFIX_SCRIPTS}"
+  fi
+  # ESM .mjs in JOSHU_SCRIPTS_ROOT must resolve npm deps (image node_modules lives under APP_DIR).
+  ln -sfn "${APP_DIR}/node_modules" "${JOSHU_SCRIPTS_ROOT}/node_modules"
+  export JOSHU_SCRIPTS_ROOT IMAGE_SCRIPTS HOTFIX_SCRIPTS
+}
+
+# Resolve a path relative to scripts/ (hotfix wins via the merged tree).
+boot_file() {
+  local rel="${1#scripts/}"
+  rel="${rel#/}"
+  printf '%s' "${JOSHU_SCRIPTS_ROOT}/${rel}"
+}
+
+init_joshu_boot_scripts
+
+# Boot .mjs files run from JOSHU_SCRIPTS_ROOT (/run/joshu-boot-scripts); resolve npm deps from APP_DIR.
+export NODE_PATH="${APP_DIR}/node_modules${NODE_PATH:+:${NODE_PATH}}"
 
 load_env_file() {
   local env_file="$1"
@@ -216,7 +254,7 @@ EOF
 # Gateway reads ~/.hermes/.env at process start; restart if already running with stale env.
 # gateway.pid is JSON in current Hermes — see scripts/lib/hermes-gateway.sh.
 # shellcheck source=/dev/null
-source "${APP_DIR}/scripts/lib/hermes-gateway.sh"
+source "${JOSHU_SCRIPTS_ROOT}/lib/hermes-gateway.sh"
 
 # Control-plane companion persona → identity.json + Hermes SOUL.md (needs ArozOS user paths).
 sync_companion_identity() {
@@ -226,19 +264,19 @@ sync_companion_identity() {
     -d '{"forceSoul":true}' >/dev/null 2>&1; then
     echo "[vps-start] companion identity synced via Joshu API"
   else
-    local script="${APP_DIR}/scripts/sync-companion-identity.mjs"
+    local script="${JOSHU_SCRIPTS_ROOT}/sync-companion-identity.mjs"
     if [[ -f "${script}" && -f "${APP_DIR}/dist/companionIdentitySync.js" ]]; then
       node "${script}" --force-soul || echo "[vps-start] WARN: sync-companion-identity failed" >&2
     fi
   fi
-  if [[ "${JOSHU_VOICE_MODE:-realtime_s2s}" == "realtime_s2s" && -x "${APP_DIR}/scripts/generate-voice-instant-ack.sh" ]]; then
-    bash "${APP_DIR}/scripts/generate-voice-instant-ack.sh" \
+  if [[ "${JOSHU_VOICE_MODE:-realtime_s2s}" == "realtime_s2s" && -x "${JOSHU_SCRIPTS_ROOT}/generate-voice-instant-ack.sh" ]]; then
+    bash "${JOSHU_SCRIPTS_ROOT}/generate-voice-instant-ack.sh" \
       || echo "[vps-start] WARN: voice instant ack generation failed" >&2
   fi
 }
 
 apply_hermes_langfuse_patches() {
-  local script="${APP_DIR}/scripts/apply-hermes-langfuse-patches.sh"
+  local script="${JOSHU_SCRIPTS_ROOT}/apply-hermes-langfuse-patches.sh"
   [[ -f "${script}" ]] || return 0
   HERMES_DIR="${HERMES_DIR}" bash "${script}" || echo "[vps-start] WARN: Langfuse Hermes patches failed" >&2
 }
@@ -247,35 +285,35 @@ apply_hermes_kanban_ws_patch() {
   if [[ "${JOSHU_HERMES_DASHBOARD_DIRECT:-true}" =~ ^(1|true|yes)$ ]]; then
     return 0
   fi
-  local script="${APP_DIR}/scripts/apply-hermes-kanban-ws-base-path-patch.sh"
+  local script="${JOSHU_SCRIPTS_ROOT}/apply-hermes-kanban-ws-base-path-patch.sh"
   [[ -f "${script}" ]] || return 0
   HERMES_DIR="${HERMES_DIR}" bash "${script}" || echo "[vps-start] WARN: Kanban WebSocket base-path patch failed" >&2
 }
 
 apply_hermes_content_filter_patch() {
-  local script="${APP_DIR}/scripts/apply-hermes-content-filter-patch.sh"
+  local script="${JOSHU_SCRIPTS_ROOT}/apply-hermes-content-filter-patch.sh"
   [[ -f "${script}" ]] || return 0
   HERMES_DIR="${HERMES_DIR}" bash "${script}" || echo "[vps-start] WARN: content filter patch failed" >&2
 }
 
 # head -c sample + errors=replace → trailing U+FFFD was false-binary on UTF-8 .md.
 apply_hermes_read_file_utf8_patch() {
-  local script="${APP_DIR}/scripts/apply-hermes-read-file-utf8-patch.sh"
+  local script="${JOSHU_SCRIPTS_ROOT}/apply-hermes-read-file-utf8-patch.sh"
   [[ -f "${script}" ]] || return 0
   HERMES_DIR="${HERMES_DIR}" bash "${script}" || echo "[vps-start] WARN: read_file UTF-8 patch failed" >&2
 }
 
 # EA scheduling/mail: one card → one worker. Skip auto_decompose + keep block_loop off triage.
 apply_hermes_ea_kanban_no_autodecompose() {
-  local script="${APP_DIR}/scripts/apply-hermes-ea-kanban-no-autodecompose.sh"
+  local script="${JOSHU_SCRIPTS_ROOT}/apply-hermes-ea-kanban-no-autodecompose.sh"
   [[ -f "${script}" ]] || return 0
   HERMES_DIR="${HERMES_DIR}" bash "${script}" \
     || echo "[vps-start] WARN: EA kanban no-autodecompose patch failed" >&2
 }
 
-# Keepalive frames must not refresh stale-stream timer (Patrick Slack hang 2026-08-24).
+# Keepalive frames must not refresh stale-stream timer (Slack hang 2026-08-24).
 apply_hermes_stale_stream_keepalive() {
-  local script="${APP_DIR}/scripts/apply-hermes-stale-stream-keepalive.sh"
+  local script="${JOSHU_SCRIPTS_ROOT}/apply-hermes-stale-stream-keepalive.sh"
   [[ -f "${script}" ]] || return 0
   HERMES_DIR="${HERMES_DIR}" bash "${script}" \
     || echo "[vps-start] WARN: stale-stream keepalive patch failed" >&2
@@ -283,7 +321,7 @@ apply_hermes_stale_stream_keepalive() {
 
 # Kanban worker prompt must not leak into api_server/SMS when kanban tools are pinned.
 apply_hermes_kanban_guidance_gate() {
-  local script="${APP_DIR}/scripts/apply-hermes-kanban-guidance-gate.sh"
+  local script="${JOSHU_SCRIPTS_ROOT}/apply-hermes-kanban-guidance-gate.sh"
   [[ -f "${script}" ]] || return 0
   HERMES_DIR="${HERMES_DIR}" bash "${script}" \
     || echo "[vps-start] WARN: kanban guidance gate patch failed" >&2
@@ -291,7 +329,7 @@ apply_hermes_kanban_guidance_gate() {
 
 # SMS uses X-Hermes-Platform-Toolsets: sms for a lean tool surface on api_server.
 apply_hermes_api_server_platform_toolsets() {
-  local script="${APP_DIR}/scripts/apply-hermes-api-server-platform-toolsets.sh"
+  local script="${JOSHU_SCRIPTS_ROOT}/apply-hermes-api-server-platform-toolsets.sh"
   [[ -f "${script}" ]] || return 0
   HERMES_DIR="${HERMES_DIR}" bash "${script}" \
     || echo "[vps-start] WARN: api_server platform toolsets patch failed" >&2
@@ -299,7 +337,7 @@ apply_hermes_api_server_platform_toolsets() {
 
 # Joshu twilioSmsGateway owns SMS ingress — not Hermes' native SMS platform.
 apply_hermes_joshu_disable_native_sms_platform() {
-  local script="${APP_DIR}/scripts/apply-hermes-joshu-disable-native-sms-platform.sh"
+  local script="${JOSHU_SCRIPTS_ROOT}/apply-hermes-joshu-disable-native-sms-platform.sh"
   [[ -f "${script}" ]] || return 0
   HERMES_DIR="${HERMES_DIR}" bash "${script}" \
     || echo "[vps-start] WARN: disable native SMS platform patch failed" >&2
@@ -308,7 +346,7 @@ apply_hermes_joshu_disable_native_sms_platform() {
 # Block Hermes terminal from reading instance.env / secrets (jterm zero-shared-keys).
 # Bind-mounted from host until baked into the next sandbox image.
 apply_hermes_terminal_secrets_guard() {
-  local script="${APP_DIR}/scripts/patch-hermes-terminal-secrets-guard.mjs"
+  local script="${JOSHU_SCRIPTS_ROOT}/patch-hermes-terminal-secrets-guard.mjs"
   local terminal_tool="${HERMES_DIR}/tools/terminal_tool.py"
   [[ -f "${script}" && -f "${terminal_tool}" ]] || return 0
   node "${script}" "${terminal_tool}" \
@@ -316,7 +354,7 @@ apply_hermes_terminal_secrets_guard() {
 }
 
 bootstrap_hermes_learning_skills() {
-  local script="${APP_DIR}/scripts/bootstrap-hermes-learning-skills.sh"
+  local script="${JOSHU_SCRIPTS_ROOT}/bootstrap-hermes-learning-skills.sh"
   [[ -f "${script}" ]] || return 0
   HERMES_HOME="${HERMES_HOME}" APP_DIR="${APP_DIR}" bash "${script}" || echo "[vps-start] WARN: hermes learning skills seed failed" >&2
 }
@@ -337,7 +375,7 @@ restart_hermes_gateway_if_running
 
 # Image 0.1.6 predates gbrain MCP in dist/hermesApi.js; merge MCP block at boot.
 ensure_hermes_gbrain_mcp_config() {
-  local script="${APP_DIR}/scripts/ensure-hermes-gbrain-mcp.mjs"
+  local script="${JOSHU_SCRIPTS_ROOT}/ensure-hermes-gbrain-mcp.mjs"
   if [[ ! -f "${script}" ]]; then
     echo "[vps-start] ${script} missing; gbrain MCP not configured" >&2
     return 0
@@ -393,7 +431,7 @@ start_connectors_mcp_watchdog() {
         last_ok=1
       else
         echo "[vps-start] connectors MCP unhealthy — restarting (${health_url})" >&2
-        bash "${APP_DIR}/scripts/start-joshu-connectors-mcp.sh" || true
+        bash "${JOSHU_SCRIPTS_ROOT}/start-joshu-connectors-mcp.sh" || true
         reload_hermes_gateway_after_config_change
         last_ok=0
       fi
@@ -416,7 +454,7 @@ start_composio_mcp_guard_watchdog() {
         last_ok=1
       else
         echo "[vps-start] composio MCP guard unhealthy — restarting (${health_url})" >&2
-        bash "${APP_DIR}/scripts/start-composio-mcp-guard.sh" || true
+        bash "${JOSHU_SCRIPTS_ROOT}/start-composio-mcp-guard.sh" || true
         reload_hermes_gateway_after_config_change
         last_ok=0
       fi
@@ -445,12 +483,12 @@ start_gbrain_mcp_with_retries() {
   local attempts="${GBRAIN_MCP_BOOT_RETRIES:-3}"
   local n=1
   while [[ "${n}" -le "${attempts}" ]]; do
-    if bash "${APP_DIR}/scripts/start-gbrain-mcp-http.sh"; then
+    if bash "${JOSHU_SCRIPTS_ROOT}/start-gbrain-mcp-http.sh"; then
       return 0
     fi
     echo "[vps-start] gbrain MCP HTTP start failed (attempt ${n}/${attempts})" >&2
     if [[ "${n}" -lt "${attempts}" ]]; then
-      GBRAIN_REPAIR_PGLITE=1 bash "${APP_DIR}/scripts/repair-gbrain-pglite.sh" || true
+      GBRAIN_REPAIR_PGLITE=1 bash "${JOSHU_SCRIPTS_ROOT}/repair-gbrain-pglite.sh" || true
       sleep 5
     fi
     n=$((n + 1))
@@ -462,10 +500,10 @@ start_gbrain_stack() {
   export GBRAIN_HOME="${GBRAIN_HOME:-/root/.gbrain}"
   if ! command -v gbrain >/dev/null 2>&1; then
     echo "[vps-start] gbrain missing from image; running install-gbrain.sh"
-    bash "${APP_DIR}/scripts/install-gbrain.sh"
+    bash "${JOSHU_SCRIPTS_ROOT}/install-gbrain.sh"
   fi
   export GBRAIN_BOOT_QUICK="${GBRAIN_BOOT_QUICK:-true}"
-  if ! bash "${APP_DIR}/scripts/start-gbrain.sh"; then
+  if ! bash "${JOSHU_SCRIPTS_ROOT}/start-gbrain.sh"; then
     if [[ "${JOSHU_GBRAIN_OPTIONAL:-true}" =~ ^(1|true|yes)$ ]]; then
       echo "[vps-start] WARN: gbrain quick boot failed; desktop up, file brain may be degraded" >&2
     else
@@ -487,13 +525,13 @@ start_gbrain_stack() {
   (
     sleep 45
     echo "[vps-start] gbrain catch-up reindex via ensure-gbrain-indexed (soft)"
-    bash "${APP_DIR}/scripts/ensure-gbrain-indexed.sh" --soft \
+    bash "${JOSHU_SCRIPTS_ROOT}/ensure-gbrain-indexed.sh" --soft \
       >>"${GBRAIN_HOME}/gbrain-full-boot.log" 2>&1 || true
   ) >>"${GBRAIN_HOME}/gbrain-full-boot.log" 2>&1 &
   (
     sleep 180
     echo "[vps-start] gbrain index health check (3m)"
-    bash "${APP_DIR}/scripts/ensure-gbrain-indexed.sh" \
+    bash "${JOSHU_SCRIPTS_ROOT}/ensure-gbrain-indexed.sh" \
       >>"${GBRAIN_HOME}/gbrain-full-boot.log" 2>&1 || true
   ) >>"${GBRAIN_HOME}/gbrain-full-boot.log" 2>&1 &
 }
@@ -516,7 +554,7 @@ start_gbrain_mcp_watchdog() {
       if [[ -z "${body}" ]] || ! echo "${body}" | grep -q '"ok":true'; then
         stuck_sessions=0
         echo "[vps-start] gbrain MCP HTTP unhealthy — restarting (${health_url})" >&2
-        bash "${APP_DIR}/scripts/start-gbrain-mcp-http.sh" || true
+        bash "${JOSHU_SCRIPTS_ROOT}/start-gbrain-mcp-http.sh" || true
         continue
       fi
       if echo "${body}" | grep -q '"session_ready":true'; then
@@ -527,14 +565,14 @@ start_gbrain_mcp_watchdog() {
       if [[ "${stuck_sessions}" -ge 20 ]]; then
         echo "[vps-start] gbrain MCP session stuck (no session_ready) — restarting" >&2
         stuck_sessions=0
-        bash "${APP_DIR}/scripts/start-gbrain-mcp-http.sh" || true
+        bash "${JOSHU_SCRIPTS_ROOT}/start-gbrain-mcp-http.sh" || true
       fi
     done
   ) &
 }
 
 start_gbrain_empty_index_watchdog() {
-  local ensure_script="${APP_DIR}/scripts/ensure-gbrain-indexed.sh"
+  local ensure_script="${JOSHU_SCRIPTS_ROOT}/ensure-gbrain-indexed.sh"
   local interval_sec="${GBRAIN_EMPTY_INDEX_WATCHDOG_SEC:-300}"
   [[ -f "${ensure_script}" ]] || return 0
   (
@@ -671,7 +709,7 @@ repair_camfox_server_js() {
     echo "[vps-start] repairing Camofox server.js (duplicate route closer)" >&2
     sed -i 's/}););/});/g' "$f"
   fi
-  local patch_script="${APP_DIR}/scripts/patch-camofox-single-tab.mjs"
+  local patch_script="${JOSHU_SCRIPTS_ROOT}/patch-camofox-single-tab.mjs"
   # Re-apply when HITL markers are missing OR when launchOptions still lack window size
   # (Camofox 1.6 fingerprints ~1920x1080 without window: — jWeb looks too wide).
   local needs_hitl_patch=0
@@ -694,7 +732,7 @@ repair_camfox_server_js() {
 # Idle-shutdown + warm-on-open relaunches Xvfb on the same :99, so :5900 stays dead
 # and jWeb instant-disconnects (noVNC 1011). Overlay before Camofox starts the watcher.
 repair_camfox_vnc_watcher() {
-  local patch_script="${APP_DIR}/scripts/patch-camofox-vnc-watcher.sh"
+  local patch_script="${JOSHU_SCRIPTS_ROOT}/patch-camofox-vnc-watcher.sh"
   local watcher="${CAMOFOX_APP_DIR}/plugins/vnc/vnc-watcher.sh"
   [[ -x "${patch_script}" && -f "${watcher}" ]] || return 0
   bash "${patch_script}" "${watcher}" || echo "[vps-start] WARN: Camofox vnc-watcher overlay failed" >&2
@@ -834,7 +872,7 @@ else
 fi
 
 start_hindsight_postgres_if_needed
-if ! bash "${APP_DIR}/scripts/start-hindsight.sh"; then
+if ! bash "${JOSHU_SCRIPTS_ROOT}/start-hindsight.sh"; then
   if [[ "${JOSHU_HINDSIGHT_OPTIONAL:-true}" =~ ^(1|true|yes)$ ]]; then
     echo "[vps-start] Hindsight did not start; continuing (JOSHU_HINDSIGHT_OPTIONAL)"
   else
@@ -845,7 +883,7 @@ fi
 
 if [[ "${AROZOS_ENABLED:-false}" =~ ^(1|true|yes)$ ]]; then
   # shellcheck source=../../scripts/lib/arozos-desktop-shortcuts.sh
-  source "${APP_DIR}/scripts/lib/arozos-desktop-shortcuts.sh"
+  source "${JOSHU_SCRIPTS_ROOT}/lib/arozos-desktop-shortcuts.sh"
 
   if [[ ! -f "${AROZ_DATA}/.joshu-bootstrapped" ]]; then
     rsync -a "${AROZ_TEMPLATE}/" "${AROZ_DATA}/"
@@ -861,9 +899,9 @@ if [[ "${AROZOS_ENABLED:-false}" =~ ^(1|true|yes)$ ]]; then
   fi
   mkdir -p "${AROZ_DATA}/files"
   if [[ -n "${JOSHU_AROZ_USER:-}" ]]; then
-    JOSHU_REBIND_SKIP_GBRAIN_START=true bash "${APP_DIR}/scripts/rebind-gbrain-owner.sh" || true
+    JOSHU_REBIND_SKIP_GBRAIN_START=true bash "${JOSHU_SCRIPTS_ROOT}/rebind-gbrain-owner.sh" || true
   else
-    bash "${APP_DIR}/scripts/bootstrap-joshu-files.sh" || true
+    bash "${JOSHU_SCRIPTS_ROOT}/bootstrap-joshu-files.sh" || true
   fi
   install_all_joshu_desktop_shortcuts
   # Commercial / fleet images bake the JDL pack at /opt/joshu-design. Prefer it even when
@@ -871,7 +909,7 @@ if [[ "${AROZOS_ENABLED:-false}" =~ ^(1|true|yes)$ ]]; then
   if [[ -z "${JOSHU_DESIGN_PACK:-}" && -f /opt/joshu-design/arozos/web-overlays/aroz-paper-shell.css ]]; then
     export JOSHU_DESIGN_PACK=/opt/joshu-design
   fi
-  python3 "${APP_DIR}/scripts/apply_arozos_joshu_theme.py" "${AROZ_DATA}/web/" || true
+  python3 "${JOSHU_SCRIPTS_ROOT}/apply_arozos_joshu_theme.py" "${AROZ_DATA}/web/" || true
   # OSS vanilla apply used to skip img/joshu/ — keep shortcuts working even on older images.
   if [[ -d "${APP_DIR}/arozos/icons" ]]; then
     mkdir -p "${AROZ_DATA}/web/img/joshu"
@@ -911,7 +949,7 @@ for _pkg in app-sdk box-state email-signature; do
 done
 
 ensure_last30days_python() {
-  local script="${APP_DIR}/scripts/ensure-last30days-python.sh"
+  local script="${JOSHU_SCRIPTS_ROOT}/ensure-last30days-python.sh"
   [[ -f "${script}" ]] || return 0
   bash "${script}" || echo "[vps-start] WARN: last30days Python 3.12 ensure failed" >&2
 }
@@ -919,7 +957,7 @@ ensure_last30days_python
 
 # Source so LAST30DAYS_ENGINE_ROOT (image fallback) is visible to node.
 ensure_last30days_engine() {
-  local script="${APP_DIR}/scripts/ensure-last30days-engine.sh"
+  local script="${JOSHU_SCRIPTS_ROOT}/ensure-last30days-engine.sh"
   [[ -f "${script}" ]] || return 0
   # shellcheck disable=SC1090
   source "${script}" || echo "[vps-start] WARN: last30days engine ensure failed" >&2
@@ -934,7 +972,7 @@ for _ in $(seq 1 60); do curl -fsS "${JOSHU_HEALTH_URL}" >/dev/null 2>&1 && brea
 sync_companion_identity
 
 export JOSHU_CONNECTORS_API_BASE="${JOSHU_CONNECTORS_API_BASE:-http://127.0.0.1:8788/joshu}"
-if ! bash "${APP_DIR}/scripts/start-joshu-connectors-mcp.sh"; then
+if ! bash "${JOSHU_SCRIPTS_ROOT}/start-joshu-connectors-mcp.sh"; then
   if [[ "${JOSHU_GBRAIN_OPTIONAL:-true}" =~ ^(1|true|yes)$ ]]; then
     echo "[vps-start] WARN: connectors MCP HTTP failed; continuing" >&2
   else
@@ -945,7 +983,7 @@ fi
 wait_for_mcp_http_health "http://127.0.0.1:${JOSHU_CONNECTORS_MCP_PORT:-8795}/health" "connectors MCP" 60 || true
 
 if [[ "${JOSHU_ACTION_GUARD_ENABLED:-false}" =~ ^(1|true|yes)$ ]] || [[ -n "${COMPOSIO_API_KEY:-}" ]]; then
-  if ! bash "${APP_DIR}/scripts/start-composio-mcp-guard.sh"; then
+  if ! bash "${JOSHU_SCRIPTS_ROOT}/start-composio-mcp-guard.sh"; then
     if [[ "${JOSHU_GBRAIN_OPTIONAL:-true}" =~ ^(1|true|yes)$ ]]; then
       echo "[vps-start] WARN: composio MCP guard failed; continuing" >&2
     else
@@ -984,7 +1022,7 @@ if [[ "${JOSHU_HERMES_DASHBOARD_ENABLED:-true}" =~ ^(1|true|yes)$ ]]; then
     export HERMES_DASHBOARD_PUBLIC_URL="${dashboard_public}"
     export JOSHU_HERMES_DASHBOARD_SHORTCUT_PATH="${JOSHU_HERMES_DASHBOARD_SHORTCUT_PATH:-${HERMES_DASHBOARD_PUBLIC_URL}/}"
   fi
-  if ! bash "${APP_DIR}/scripts/start-hermes-dashboard.sh"; then
+  if ! bash "${JOSHU_SCRIPTS_ROOT}/start-hermes-dashboard.sh"; then
     if [[ "${JOSHU_HERMES_DASHBOARD_OPTIONAL:-true}" =~ ^(1|true|yes)$ ]]; then
       echo "[vps-start] WARN: Hermes dashboard failed to start; continuing" >&2
     else
@@ -995,7 +1033,7 @@ if [[ "${JOSHU_HERMES_DASHBOARD_ENABLED:-true}" =~ ^(1|true|yes)$ ]]; then
   # Shortcut install runs earlier (before ArozOS); refresh Hermes Admin URL now that public URL is resolved.
   if [[ "${AROZOS_ENABLED:-false}" =~ ^(1|true|yes)$ ]]; then
     # shellcheck source=../../scripts/lib/arozos-desktop-shortcuts.sh
-    source "${APP_DIR}/scripts/lib/arozos-desktop-shortcuts.sh"
+    source "${JOSHU_SCRIPTS_ROOT}/lib/arozos-desktop-shortcuts.sh"
     install_hermes_admin_shortcuts
   fi
 fi

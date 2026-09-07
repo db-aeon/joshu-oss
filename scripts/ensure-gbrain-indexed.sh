@@ -4,13 +4,14 @@
 set -euo pipefail
 
 APP_DIR="${APP_DIR:-/opt/joshu}"
+SCRIPTS_DIR="${JOSHU_SCRIPTS_ROOT:-${APP_DIR}/scripts}"
 # shellcheck source=lib/gbrain-env.sh
-source "${APP_DIR}/scripts/lib/gbrain-env.sh"
+source "${SCRIPTS_DIR}/lib/gbrain-env.sh"
 gbrain_env_init "${BASH_SOURCE[0]}"
 
 AROZ_DATA="${AROZ_DATA:-/var/lib/arozos}"
 # shellcheck source=lib/joshu-files-paths.sh
-source "${APP_DIR}/scripts/lib/joshu-files-paths.sh"
+source "${SCRIPTS_DIR}/lib/joshu-files-paths.sh"
 joshu_files_resolve_paths "${APP_DIR}" 2>/dev/null || true
 export JOSHU_FILES_ROOT JOSHU_DESKTOP_ROOT JOSHU_AROZ_USER GBRAIN_SOURCE AROZ_DATA
 
@@ -46,7 +47,7 @@ log() {
 assess_index() {
   JOSHU_DESKTOP_ROOT="${JOSHU_DESKTOP_ROOT:-}" \
     GBRAIN_MCP_HTTP_URL="${GBRAIN_MCP_HTTP_URL}" \
-    node "${APP_DIR}/scripts/lib/gbrain-index-health.mjs" --json "${JOSHU_DESKTOP_ROOT:-}"
+    node "${SCRIPTS_DIR}/lib/gbrain-index-health.mjs" --json "${JOSHU_DESKTOP_ROOT:-}"
 }
 
 full_sync_cooldown_active() {
@@ -66,15 +67,15 @@ mark_full_sync() {
 run_soft_reindex() {
   log "soft recovery: ensure git + MCP reindex touch"
   # shellcheck source=lib/ensure-gbrain-git.sh
-  source "${APP_DIR}/scripts/lib/ensure-gbrain-git.sh"
+  source "${SCRIPTS_DIR}/lib/ensure-gbrain-git.sh"
   if [[ -n "${JOSHU_DESKTOP_ROOT:-}" ]]; then
     ensure_gbrain_git_repo "${JOSHU_DESKTOP_ROOT}"
-    node "${APP_DIR}/scripts/lib/run-stage-desktop-git.mjs" "${JOSHU_DESKTOP_ROOT}" \
+    node "${SCRIPTS_DIR}/lib/run-stage-desktop-git.mjs" "${JOSHU_DESKTOP_ROOT}" \
       >>"${GBRAIN_LOG_FILE}" 2>&1 || true
   fi
   if ! curl -fsS "${GBRAIN_MCP_HTTP_URL%/}/health" 2>/dev/null | grep -q '"session_ready":true'; then
     log "MCP HTTP not ready — starting"
-    bash "${APP_DIR}/scripts/start-gbrain-mcp-http.sh" >>"${GBRAIN_LOG_FILE}" 2>&1 || true
+    bash "${SCRIPTS_DIR}/start-gbrain-mcp-http.sh" >>"${GBRAIN_LOG_FILE}" 2>&1 || true
   fi
   touch_file="${GBRAIN_HOME}/.joshu-reindex-touch"
   mkdir -p "${GBRAIN_HOME}"
@@ -85,9 +86,9 @@ run_full_sync() {
   log "full recovery: GBRAIN_BOOT_QUICK=false start-gbrain + MCP HTTP"
   mark_full_sync
   export GBRAIN_BOOT_QUICK=false
-  bash "${APP_DIR}/scripts/stop-gbrain.sh" >>"${GBRAIN_LOG_FILE}" 2>&1 || true
-  bash "${APP_DIR}/scripts/start-gbrain.sh" >>"${GBRAIN_LOG_FILE}" 2>&1
-  bash "${APP_DIR}/scripts/start-gbrain-mcp-http.sh" >>"${GBRAIN_LOG_FILE}" 2>&1
+  bash "${SCRIPTS_DIR}/stop-gbrain.sh" >>"${GBRAIN_LOG_FILE}" 2>&1 || true
+  bash "${SCRIPTS_DIR}/start-gbrain.sh" >>"${GBRAIN_LOG_FILE}" 2>&1
+  bash "${SCRIPTS_DIR}/start-gbrain-mcp-http.sh" >>"${GBRAIN_LOG_FILE}" 2>&1
 }
 
 report="$(assess_index || true)"

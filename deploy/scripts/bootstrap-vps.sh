@@ -38,6 +38,8 @@ chmod 700 /etc/joshu
 if [[ ! -d "${INSTALL_DIR}/.git" ]]; then
   git clone --depth 1 --branch "${JOSHU_REF}" "${JOSHU_REPO}" "${INSTALL_DIR}"
 fi
+# Compose always binds this overlay; empty = use image-baked boot scripts.
+mkdir -p "${INSTALL_DIR}/hotfix/scripts"
 
 if [[ ! -f "${ENV_FILE}" ]]; then
   cp "${INSTALL_DIR}/deploy/.env.vps.example" "${ENV_FILE}"

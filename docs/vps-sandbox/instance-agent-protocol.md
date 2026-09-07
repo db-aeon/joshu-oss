@@ -131,7 +131,7 @@ Agent rejects commands with skewed `issuedAt` > 5 minutes or invalid signature.
 
 | Field | Purpose |
 | --- | --- |
-| `hostGitRequired` | When `true`, agent runs `git fetch/checkout/pull` in `/opt/joshu` before compose (updates bind-mounted `vps-start.sh`) |
+| `hostGitRequired` | When `true`, agent runs `git fetch/checkout/pull` in `/opt/joshu` before compose. Default **false** (no GH creds). Boot scripts are image-baked (`.image/scripts`); do not rely on this for `vps-start.sh`. |
 | `syncDistFromImage` | When `true` (default), after `docker compose pull` the agent copies `/opt/joshu/dist` (and `packages/box-state/dist`, `integrations/last30days-skill`) from the pulled image onto the host bind mounts and writes `dist/.release-provenance.json`. Prevents stale/empty host dirs from shadowing the image. **`instance.env` is patched only after dist sync succeeds** (same target version) so rollback cannot leave env at N−1 while dist stays at N. |
 | `repoRef` | Git ref to checkout (default: control-plane `JOSHU_REPO_REF`, usually `main`) |
 | `requiresSnap` | When `true` (default) and `JOSHU_SNAPSHOT_GCS_BUCKET` is set, agent POSTs `/joshu/api/box/snap` before pulling the image |

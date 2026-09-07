@@ -61,7 +61,7 @@ should_skip() {
     docs/README.md|docs/joshu-identity.md|docs/day0-cold-start.md|docs/hermes-customizations.md|docs/box-state.md)
       return 0
       ;;
-    docs/vps-sandbox/first-provisioning-notes.md|docs/vps-sandbox/troubleshooting-and-lessons.md|docs/vps-sandbox/session-*|docs/vps-sandbox/hotpatch-running-box.md|docs/vps-sandbox/provider-choices.md|docs/vps-sandbox/voice-*|docs/vps-sandbox/web-voice.md|docs/vps-sandbox/phone-voice-local-test.md|docs/vps-sandbox/credential-isolation-langfuse-relay.md|docs/vps-sandbox/update-hardening-todo.md|docs/vps-sandbox/README.md|docs/vps-sandbox/control-plane.md)
+    docs/vps-sandbox/first-provisioning-notes.md|docs/vps-sandbox/troubleshooting-and-lessons.md|docs/vps-sandbox/session-*|docs/vps-sandbox/hotpatch-running-box.md|docs/vps-sandbox/existing-box-image-vs-host.md|docs/vps-sandbox/twilio-a2p-sms.md|docs/vps-sandbox/provider-choices.md|docs/vps-sandbox/voice-*|docs/vps-sandbox/web-voice.md|docs/vps-sandbox/phone-voice-local-test.md|docs/vps-sandbox/credential-isolation-langfuse-relay.md|docs/vps-sandbox/update-hardening-todo.md|docs/vps-sandbox/README.md|docs/vps-sandbox/control-plane.md)
       return 0
       ;;
     docs/design/brand-guidelines.md|docs/README.oss.md|docs/box-state.oss.md|docs/vps-sandbox/README.oss.md|docs/design/README.oss.md)

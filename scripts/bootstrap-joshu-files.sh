@@ -4,8 +4,10 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP_DIR="${APP_DIR:-/opt/joshu}"
-if [[ ! -d "${APP_DIR}/scripts" ]]; then
+SCRIPTS_DIR="${JOSHU_SCRIPTS_ROOT:-${APP_DIR}/scripts}"
+if [[ ! -d "${SCRIPTS_DIR}" ]]; then
   APP_DIR="${ROOT_DIR}"
+  SCRIPTS_DIR="${APP_DIR}/scripts"
 fi
 
 if [[ -f "${ROOT_DIR}/.env" ]]; then
@@ -68,12 +70,12 @@ for desktop in "${desktops[@]}"; do
   bootstrap_user_desktop "${desktop}"
 done
 
-if [[ -x "${APP_DIR}/scripts/joshu-box-factory-apply.sh" ]]; then
-  APP_DIR="${APP_DIR}" AROZ_DATA="${AROZ_DATA}" bash "${APP_DIR}/scripts/joshu-box-factory-apply.sh" || {
-    if [[ -x "${APP_DIR}/scripts/bootstrap-executive-assistant.sh" ]]; then
-      APP_DIR="${APP_DIR}" AROZ_DATA="${AROZ_DATA}" bash "${APP_DIR}/scripts/bootstrap-executive-assistant.sh" || true
+if [[ -x "${SCRIPTS_DIR}/joshu-box-factory-apply.sh" ]]; then
+  APP_DIR="${APP_DIR}" AROZ_DATA="${AROZ_DATA}" bash "${SCRIPTS_DIR}/joshu-box-factory-apply.sh" || {
+    if [[ -x "${SCRIPTS_DIR}/bootstrap-executive-assistant.sh" ]]; then
+      APP_DIR="${APP_DIR}" AROZ_DATA="${AROZ_DATA}" bash "${SCRIPTS_DIR}/bootstrap-executive-assistant.sh" || true
     fi
   }
-elif [[ -x "${APP_DIR}/scripts/bootstrap-executive-assistant.sh" ]]; then
-  APP_DIR="${APP_DIR}" AROZ_DATA="${AROZ_DATA}" bash "${APP_DIR}/scripts/bootstrap-executive-assistant.sh" || true
+elif [[ -x "${SCRIPTS_DIR}/bootstrap-executive-assistant.sh" ]]; then
+  APP_DIR="${APP_DIR}" AROZ_DATA="${AROZ_DATA}" bash "${SCRIPTS_DIR}/bootstrap-executive-assistant.sh" || true
 fi

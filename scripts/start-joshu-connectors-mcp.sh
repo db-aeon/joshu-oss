@@ -2,7 +2,8 @@
 # Start thin Joshu connectors MCP HTTP server (Hermes actions + sync).
 set -euo pipefail
 
-APP_DIR="${APP_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
+APP_DIR="${APP_DIR:-/opt/joshu}"
+SCRIPTS_DIR="${JOSHU_SCRIPTS_ROOT:-${APP_DIR}/scripts}"
 export JOSHU_CONNECTORS_MCP_PORT="${JOSHU_CONNECTORS_MCP_PORT:-8795}"
 export JOSHU_CONNECTORS_MCP_HOST="${JOSHU_CONNECTORS_MCP_HOST:-127.0.0.1}"
 
@@ -50,7 +51,7 @@ if [[ -f "${PID_FILE}" ]]; then
   stop_stale_connectors_mcp
 fi
 
-nohup node "${APP_DIR}/scripts/joshu-connectors-mcp-http-server.mjs" >>"${LOG_FILE}" 2>&1 &
+nohup node "${SCRIPTS_DIR}/joshu-connectors-mcp-http-server.mjs" >>"${LOG_FILE}" 2>&1 &
 echo $! >"${PID_FILE}"
 
 for _ in 1 2 3 4 5 6 7 8 9 10; do

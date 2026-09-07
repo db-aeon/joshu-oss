@@ -2,7 +2,8 @@
 # Start Composio MCP guard proxy (Hermes → local :8796 → Composio cloud with write gate).
 set -euo pipefail
 
-APP_DIR="${APP_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
+APP_DIR="${APP_DIR:-/opt/joshu}"
+SCRIPTS_DIR="${JOSHU_SCRIPTS_ROOT:-${APP_DIR}/scripts}"
 export JOSHU_COMPOSIO_MCP_GUARD_PORT="${JOSHU_COMPOSIO_MCP_GUARD_PORT:-8796}"
 export JOSHU_COMPOSIO_MCP_GUARD_HOST="${JOSHU_COMPOSIO_MCP_GUARD_HOST:-127.0.0.1}"
 _joshu_port="${JOSHU_PORT:-8788}"
@@ -47,7 +48,7 @@ if [[ -f "${PID_FILE}" ]]; then
   stop_stale_guard
 fi
 
-nohup node "${APP_DIR}/scripts/composio-mcp-guard-proxy.mjs" >>"${LOG_FILE}" 2>&1 &
+nohup node "${SCRIPTS_DIR}/composio-mcp-guard-proxy.mjs" >>"${LOG_FILE}" 2>&1 &
 echo $! >"${PID_FILE}"
 
 for _ in 1 2 3 4 5 6 7 8 9 10; do

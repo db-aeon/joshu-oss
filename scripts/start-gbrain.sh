@@ -3,13 +3,14 @@
 set -euo pipefail
 
 APP_DIR="${APP_DIR:-/opt/joshu}"
+SCRIPTS_DIR="${JOSHU_SCRIPTS_ROOT:-${APP_DIR}/scripts}"
 AROZ_DATA="${AROZ_DATA:-/var/lib/arozos}"
 export PATH="${HOME}/.bun/bin:/usr/local/bin:${PATH}"
 # shellcheck source=lib/gbrain-env.sh
-source "${APP_DIR}/scripts/lib/gbrain-env.sh"
+source "${SCRIPTS_DIR}/lib/gbrain-env.sh"
 gbrain_env_init "${BASH_SOURCE[0]}"
 # shellcheck source=lib/joshu-files-paths.sh
-source "${APP_DIR}/scripts/lib/joshu-files-paths.sh"
+source "${SCRIPTS_DIR}/lib/joshu-files-paths.sh"
 GBRAIN_HOME="${GBRAIN_HOME:-${HOME}/.gbrain}"
 GBRAIN_BIN="${GBRAIN_BIN:-gbrain}"
 GBRAIN_LOG_FILE="${GBRAIN_LOG_FILE:-${GBRAIN_HOME}/gbrain-sync.log}"
@@ -80,9 +81,9 @@ fi
 export GBRAIN_HOME
 mkdir -p "${GBRAIN_HOME}" "$(dirname "${GBRAIN_LOG_FILE}")"
 
-bash "${APP_DIR}/scripts/stop-gbrain.sh"
+bash "${SCRIPTS_DIR}/stop-gbrain.sh"
 
-bash "${APP_DIR}/scripts/bootstrap-joshu-files.sh"
+bash "${SCRIPTS_DIR}/bootstrap-joshu-files.sh"
 gbrain_repair_pglite_config_if_needed
 
 joshu_files_resolve_paths "${APP_DIR}"
@@ -90,7 +91,7 @@ if [[ -n "${JOSHU_DESKTOP_ROOT:-}" ]]; then
   echo "[gbrain] ArozOS desktop: ${JOSHU_DESKTOP_ROOT}"
   echo "[gbrain] Joshu files root: ${JOSHU_FILES_ROOT}"
   # shellcheck source=lib/ensure-gbrain-git.sh
-  source "${APP_DIR}/scripts/lib/ensure-gbrain-git.sh"
+  source "${SCRIPTS_DIR}/lib/ensure-gbrain-git.sh"
   ensure_gbrain_git_repo "${JOSHU_DESKTOP_ROOT}"
   # sync.repo_path + slug map to files under joshu's files (filesystem source of record).
   # slugs like journals/2026-05-24-todo land here, not Desktop/journals/.
@@ -191,7 +192,7 @@ fi
 if [[ "${quick_boot}" != "true" ]]; then
   if [[ -n "${JOSHU_DESKTOP_ROOT:-}" ]]; then
     echo "[gbrain] staging Desktop git tree before initial sync"
-    node "${APP_DIR}/scripts/lib/run-stage-desktop-git.mjs" "${JOSHU_DESKTOP_ROOT}" 2>>"${GBRAIN_LOG_FILE}" || true
+    node "${SCRIPTS_DIR}/lib/run-stage-desktop-git.mjs" "${JOSHU_DESKTOP_ROOT}" 2>>"${GBRAIN_LOG_FILE}" || true
   fi
 
   echo "[gbrain] initial sync + embed (all registered sources)"
@@ -234,7 +235,7 @@ else
   rm -f "${GBRAIN_HOME}/gbrain-embed.pid"
 fi
 
-bash "${APP_DIR}/scripts/setup-gbrain-schema.sh" || true
+bash "${SCRIPTS_DIR}/setup-gbrain-schema.sh" || true
 
 if [[ "${quick_boot}" == "true" ]]; then
   echo "[gbrain] quick boot complete"

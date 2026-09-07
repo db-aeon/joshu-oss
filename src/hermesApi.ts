@@ -313,11 +313,18 @@ function getConfiguredJoshuPluginNames(): string[] {
 /** jChat and voice brain both hit Hermes gateway platform `api_server`. */
 const INTERACTIVE_HERMES_PLATFORMS = ["api_server"] as const;
 
-/** Twilio SMS uses api_server :8642 with a lean platform_toolsets.sms surface. */
+/** Twilio SMS uses api_server :8642 with platform_toolsets.sms (owner companion surface). */
 export const SMS_HERMES_PLATFORM_TOOLSETS = "sms";
 
-/** Owner SMS: memory + search + skills — no kanban/terminal/browser. */
-const DEFAULT_SMS_PLATFORM_TOOLSETS = ["memory", "session_search", "skills"] as const;
+/** Owner SMS: companion tools (files, MCP, memory) — not a Kanban worker surface. */
+const DEFAULT_SMS_PLATFORM_TOOLSETS = [
+  "hermes-api-server",
+  "mcp-gbrain",
+  "mcp-joshu-connectors",
+  "memory",
+  "session_search",
+  "skills",
+] as const;
 
 /**
  * Global `config.toolsets` includes `kanban` (orchestrator gating), but platform
@@ -344,7 +351,7 @@ function syncInteractivePlatformKanbanToolsets(config: ConfigRecord): boolean {
   return changed;
 }
 
-/** SMS gateway: dedicated Hermes platform_toolsets key (no kanban worker tools). */
+/** SMS gateway: dedicated Hermes platform_toolsets key (owner companion, not worker mode). */
 function syncSmsPlatformToolsets(config: ConfigRecord): boolean {
   const platformToolsets = asRecord(config.platform_toolsets);
   const desired = [...DEFAULT_SMS_PLATFORM_TOOLSETS];

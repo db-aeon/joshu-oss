@@ -1,0 +1,2 @@
+# Host overlay for boot scripts. Empty means “use the image” (.image/scripts).
+# Patch on demand: bash scripts/hotpatch-boot.sh root@box scripts/lib/arozos-desktop-shortcuts.sh
