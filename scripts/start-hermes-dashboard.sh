@@ -38,6 +38,14 @@ if [[ ! "${JOSHU_HERMES_DASHBOARD_ENABLED:-true}" =~ ^(1|true|yes)$ ]]; then
   exit 0
 fi
 
+# Public hermes-admin.* without Caddy basic auth can add stdio MCPs and reveal API keys.
+if [[ -n "${CUSTOMER_DOMAIN:-}" && -z "${JOSHU_HERMES_DASHBOARD_PASSWORD:-}" ]]; then
+  if [[ ! "${JOSHU_HERMES_DASHBOARD_ALLOW_INSECURE:-}" =~ ^(1|true|yes)$ ]]; then
+    echo "[hermes-dashboard] refusing to start: set JOSHU_HERMES_DASHBOARD_PASSWORD in instance.env" >&2
+    exit 0
+  fi
+fi
+
 if ! command -v "${HERMES_BIN}" >/dev/null 2>&1; then
   echo "[hermes-dashboard] ${HERMES_BIN} not found" >&2
   exit 1

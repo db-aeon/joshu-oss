@@ -12,14 +12,21 @@ import { handleSmsApprovalIngress } from "./actionGuard/smsIngress.js";
 import type { HermesApiRunner, HermesChatMessage } from "./hermesApi.js";
 import { buildOwnerTimeSystemMessage } from "./ownerLocalTime.js";
 import { markdownSpeechPlaintext } from "./markdownSpeechPlaintext.js";
+import { recordProactiveFeedback, parseFeedbackKeyword, parseTaskActionKeyword } from "./proactive/feedback.js";
+import { parseProactiveTaskRef } from "./proactive/blockReason.js";
+import { handleProactiveTaskAction } from "./proactive/replyRouter.js";
+import { composeProactiveMessage } from "./proactive/composeMessage.js";
+import { resolveProactiveOwnerReply } from "./proactive/resolveOwnerReply.js";
+import { readProactiveState } from "./proactive/state.js";
+import { resolveJoshuFilesPaths } from "./joshuFilesPaths.js";
 import {
   envTrim,
-  normalizePhone,
   ownerSmsPhone,
   phonesMatch,
   sendSms,
   twilioSmsAccountReady,
 } from "./twilioSmsSend.js";
+import { resolveOwnerSmsSessionKey } from "./twilioSmsSession.js";
 
 export { twilioSmsGatewayEnabled } from "./twilioSmsSend.js";
 
@@ -161,8 +168,79 @@ export function registerTwilioSmsRoutes(
         }
         if (!body.trim()) return;
 
+        const projectRoot = process.cwd();
+        const taskAction = parseTaskActionKeyword(body);
+        if (taskAction) {
+          const paths = resolveJoshuFilesPaths(projectRoot);
+          if (paths?.filesRoot) {
+            const acted = await handleProactiveTaskAction({
+              action: taskAction,
+              body: body.trim(),
+              filesRoot: paths.filesRoot,
+              projectRoot,
+            });
+            if (acted.action === "completed" || acted.action === "kept") {
+              const ack = await composeProactiveMessage({
+                kind: "reply_ack",
+                projectRoot,
+                ownerReplySnippet: body.trim(),
+              });
+              await sendSms(from, ack);
+              return;
+            }
+          }
+        }
+
+        const feedbackKeyword = parseFeedbackKeyword(body);
+        if (feedbackKeyword) {
+          const fb = await recordProactiveFeedback(body, projectRoot);
+          if (fb.ok) {
+            await sendSms(from, fb.message);
+          }
+          return;
+        }
+
+        const paths = resolveJoshuFilesPaths(projectRoot);
+        const state = readProactiveState(projectRoot);
+        const hasProactiveRef =
+          Boolean(parseProactiveTaskRef(body)) ||
+          Boolean(state.lastNudge && state.feedbackPending);
+        // SMS rides api_server (no Hermes platform idle-reset — that would hit jChat).
+        // Rotate the session key after the same idle window as Slack/Telegram.
+        const sessionKey = resolveOwnerSmsSessionKey(from, projectRoot);
+
+        if (hasProactiveRef && paths?.filesRoot) {
+          const resolved = await resolveProactiveOwnerReply({
+            body: body.trim(),
+            filesRoot: paths.filesRoot,
+            projectRoot,
+            sessionKey,
+            baseSystemPrompt: systemPrompt,
+            runner,
+          });
+          if (resolved.action === "resolved" && resolved.replyText) {
+            await sendSms(from, resolved.replyText);
+            return;
+          }
+          if (resolved.action === "fallback_routed") {
+            let ack = await composeProactiveMessage({
+              kind: "reply_ack",
+              projectRoot,
+              ownerReplySnippet: body.trim(),
+            });
+            if (resolved.schedulingWokenTaskIds?.length) {
+              ack = `${ack} I'm also picking up the scheduling follow-up now.`;
+            }
+            await sendSms(from, ack);
+            return;
+          }
+          if (resolved.action === "error") {
+            console.warn("[twilio-sms] proactive resolve failed:", resolved.reason);
+          }
+          // ignored → fall through to normal SMS chat
+        }
+
         await runner.ensureGatewayReady();
-        const sessionKey = `sms:${normalizePhone(from)}`;
         const messages: HermesChatMessage[] = [
           buildOwnerTimeSystemMessage(process.cwd()),
           { role: "system", content: systemPrompt },

@@ -27,6 +27,7 @@ See [`templates/ea/FILING.md`](../templates/ea/FILING.md) for filing rules the c
 | Owner→agent asks | Ready Kanban on `ea-owner-reply` | `ea-owner-reply` |
 | Daily plan | `Planning/time-block-*.excalidraw` | `ea-time-block` |
 | Morning / shutdown | `Planning/daily-review-*.md` | `ea-morning-review`, `ea-shutdown` |
+| Proactive owner nudges | `.joshu/proactive/state.json` + Kanban blocked tasks | `joshu-proactive` (compose/reply/hygiene/evolve); hourly tick localhost-only; **owner nudge replies use a dedicated Hermes session** `proactive:resolve:<taskId>` (not SMS history) with Resolve context |
 
 **Rule:** one canonical file per artifact; link elsewhere. Mail bodies stay in `connectors/mail/` mirrors — do not duplicate into project files.
 
@@ -81,6 +82,19 @@ One owner-facing **ask** (schedule with Michael, invite myself, etc.) must not s
 Mail is **phase 1**. SMS / Slack / voice will plug into the same layer ([`src/coordination/`](../src/coordination/)). Fleet SOP: [`hermes-integration.md`](hermes-integration.md#coordination-scope-multi-channel-2026-09).
 
 Tests: `npm run test:coordination-scope` · `npm run test:owner-reply`.
+
+## Proactive owner nudges (2026-09)
+
+Hourly sweep (`POST /api/proactive/tick`, localhost-only) picks blocked Kanban cards needing owner input and sends SMS/email nudges (1/day default). Owner replies route through [`resolveOwnerReply.ts`](../src/proactive/resolveOwnerReply.ts):
+
+| Piece | Behavior |
+|-------|----------|
+| Resolve session | `proactive:resolve:<taskId>` — isolated from SMS/jChat history |
+| SMS idle | Owner chat uses `sms:<e164>:<epoch>` rotated after `JOSHU_HERMES_MESSAGING_IDLE_MINUTES` ([`twilioSmsSession.ts`](../src/twilioSmsSession.ts)) |
+| Project → scheduling | Fallback + resolve prompt: wake linked `ea-scheduling` tasks via [`schedulingHandoff.ts`](../src/proactive/schedulingHandoff.ts) when owner approves on a project track |
+| Ops unblock | `POST /joshu/api/ea/scheduling/meetings/:taskId/unblock` (localhost) |
+
+Skill: [`joshu-proactive`](../integrations/hermes/skills/proactive/joshu-proactive/SKILL.md). Tests: `npm run test:proactive`.
 
 ## Hermes skills (factory allowlist)
 

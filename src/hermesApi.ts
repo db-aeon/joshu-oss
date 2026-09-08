@@ -52,6 +52,7 @@ import {
 import { buildOwnerTimeSystemMessage } from "./ownerLocalTime.js";
 import { readAgentProfile } from "./nylas/profile.js";
 import { isValidIanaTimezone, normalizeIanaTimezone } from "./ianaTimezone.js";
+import { sanitizeHermesMcpServers } from "./hermesMcpAllowlist.js";
 
 const execFile = promisify(execFileCb);
 const HERMES_GATEWAY_PID_FILE = path.join(homedir(), ".hermes", "gateway.pid");
@@ -90,7 +91,7 @@ import {
 const DEFAULT_JOSHU_HERMES_MODEL = JOSHU_OPENROUTER_DEFAULT_MODEL;
 const DEFAULT_JOSHU_HERMES_PROVIDER = "openrouter";
 const DEFAULT_JOSHU_HERMES_TOOLSETS =
-  '["mcp-gbrain", "mcp-joshu-connectors", "kanban", "hermes-cli", "browser"]';
+  '["mcp-gbrain", "mcp-joshu-connectors", "kanban", "hermes-cli", "browser", "joshu-desktop", "joshu-app-gui"]';
 /** Cap concurrent Hermes cron agent runs (env > config.yaml > unbounded in upstream Hermes). */
 const DEFAULT_JOSHU_HERMES_CRON_MAX_PARALLEL = 2;
 
@@ -169,6 +170,7 @@ export async function applyComposioMcpToHermesConfig(endpoint: ComposioMcpEndpoi
     }
   }
   config.mcp_servers = mcpServers;
+  if (applyMcpServerAllowlist(config)) changed = true;
 
   let toolsets = parseToolsets(config.toolsets);
   if (toolsets.length === 0) toolsets = parseToolsets(envString("JOSHU_HERMES_TOOLSETS", DEFAULT_JOSHU_HERMES_TOOLSETS));
@@ -201,6 +203,15 @@ type ConfigRecord = Record<string, unknown>;
 
 function asRecord(value: unknown): ConfigRecord {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as ConfigRecord) : {};
+}
+
+/** Drop stdio / command MCP extras; keep Joshu-managed + extra HTTP MCPs. */
+function applyMcpServerAllowlist(config: ConfigRecord): boolean {
+  const { servers, stripped } = sanitizeHermesMcpServers(config.mcp_servers);
+  if (stripped.length === 0) return false;
+  config.mcp_servers = servers;
+  console.warn(`[hermes-api] stripped untrusted MCP servers from config.yaml: ${stripped.join(", ")}`);
+  return true;
 }
 
 function asStringArray(value: unknown): string[] {
@@ -314,18 +325,19 @@ function getConfiguredJoshuPluginNames(): string[] {
 const INTERACTIVE_HERMES_PLATFORMS = ["api_server"] as const;
 
 /**
- * Global `config.toolsets` includes `kanban` (orchestrator gating), but platform
- * tool resolution uses `platform_toolsets.api_server` — default `hermes-api-server`
- * alone omits native `kanban_*`. Pin `kanban` on interactive platforms.
+ * Global `config.toolsets` includes product toolsets, but platform tool resolution
+ * uses `platform_toolsets.api_server` — default `hermes-api-server` alone omits
+ * native `kanban_*`, `desktop_open`, and `app_gui_action`. Pin them on interactive platforms.
  */
 function syncInteractivePlatformKanbanToolsets(config: ConfigRecord): boolean {
   const platformToolsets = asRecord(config.platform_toolsets);
   let changed = false;
+  const required = ["kanban", "joshu-desktop", "joshu-app-gui"] as const;
   for (const platform of INTERACTIVE_HERMES_PLATFORMS) {
     const existing = asStringArray(platformToolsets[platform]);
     const desired = existing.length > 0 ? [...existing] : ["hermes-api-server"];
-    if (!desired.includes("kanban")) {
-      desired.push("kanban");
+    for (const name of required) {
+      if (!desired.includes(name)) desired.push(name);
     }
     if (JSON.stringify(existing) !== JSON.stringify(desired)) {
       platformToolsets[platform] = desired;
@@ -1744,7 +1756,19 @@ export class HermesApiRunner extends EventEmitter {
     if (!toolsets.includes("kanban")) {
       toolsets.push("kanban");
     }
-    if (pluginNames.includes("joshu-desktop") && !toolsets.includes("joshu-desktop")) {
+    // Product desktop open (jNotes, jChat, …) — always on, same as joshu-app-gui.
+    {
+      const plugins = asRecord(config.plugins);
+      const enabled = asStringArray(plugins.enabled);
+      if (!enabled.includes("joshu-desktop")) {
+        enabled.push("joshu-desktop");
+        changed = true;
+        pluginsChanged = true;
+      }
+      plugins.enabled = enabled;
+      config.plugins = plugins;
+    }
+    if (!toolsets.includes("joshu-desktop")) {
       toolsets.push("joshu-desktop");
       changed = true;
     }
@@ -1921,8 +1945,9 @@ export class HermesApiRunner extends EventEmitter {
     }
 
     config.mcp_servers = mcpServers;
+    if (applyMcpServerAllowlist(config)) changed = true;
 
-    const composioServer = asRecord(mcpServers.composio);
+    const composioServer = asRecord(asRecord(config.mcp_servers).composio);
     const composioSessionActive =
       composioServer.enabled !== false &&
       typeof composioServer.url === "string" &&

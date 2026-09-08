@@ -28,7 +28,9 @@ JOSHU_IMAGE_TAG=0.1.14 JOSHU_IMAGE_REPO=ghcr.io/YOUR_ORG/joshu-sandbox JOSHU_IMA
 
 Pushes **`ghcr.io/YOUR_ORG/joshu-sandbox:<tag>`** and **`ghcr.io/YOUR_ORG/joshu-voice-realtime:<tag>`** (override with `JOSHU_VOICE_IMAGE_REPO` / `JOSHU_VOICE_IMAGE_REF`).
 
-Current stable pin: [`deploy/RELEASE.json`](RELEASE.json) (**`0.1.44`**).
+Current stable pin: [`deploy/RELEASE.json`](RELEASE.json) (**`0.1.43`**).
+
+**Fleet WIP (2026-09):** live boxes may run **`0.1.44`** image tag + host hotpatches ahead of the next `RELEASE.json` bump. After security fixes land, cut **`0.1.44`** (MCP allowlist, dashboard auth gate) and rebuild — do not leave mixed `dist/` trees on boxes after `rotate_secrets` or stack recreate ([hotpatch-running-box.md](../docs/vps-sandbox/hotpatch-running-box.md#dist-atomicity-after-secret-rotation-or-recreate)).
 
 After `npm run hermes:update`, `npm run vps:sync-hermes-pin` runs automatically (also invoked by `vps:build-image`).
 After bumping `camofoxBase`, run `npm run vps:sync-camofox-pin` before rebuild.

@@ -3,6 +3,7 @@ import type { NextFunction, Request, Response, Router } from "express";
 import { CwmBackendError, CwmInputError } from "./excalidraw/errors.js";
 import { CwmBoardService } from "./excalidraw/service.js";
 import { CwmBoardStore } from "./excalidraw/store.js";
+import { isDesktopBrowserOrLocalRequest } from "./httpLocalhost.js";
 import { resolveJoshuFilesPaths } from "./joshuFilesPaths.js";
 
 export const CWM_API_BASE = "/api/excalidraw/cwm";
@@ -12,10 +13,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 export function isLocalhostRequest(req: Request): boolean {
-  const ip = req.ip ?? req.socket.remoteAddress ?? "";
-  if (ip === "127.0.0.1" || ip === "::1" || ip === "::ffff:127.0.0.1") return true;
-  const host = (req.hostname ?? "").toLowerCase();
-  return host === "127.0.0.1" || host === "localhost";
+  return isDesktopBrowserOrLocalRequest(req);
 }
 
 /** Match the files API: echo only localhost origins used by ArozOS subservices. */

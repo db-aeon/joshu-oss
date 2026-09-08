@@ -98,7 +98,9 @@ fi
 if [ "${direct}" = true ] && [ -n "${HERMES_DASHBOARD_DOMAIN}" ]; then
   AUTH_USER="${JOSHU_HERMES_DASHBOARD_USER:-admin}"
   BCRYPT=""
-  if [ -n "${JOSHU_HERMES_DASHBOARD_PASSWORD:-}" ]; then
+  if [ -z "${JOSHU_HERMES_DASHBOARD_PASSWORD:-}" ]; then
+    echo "[render-caddyfile] SKIP hermes-admin vhost: JOSHU_HERMES_DASHBOARD_PASSWORD unset (unauthenticated dashboard can add stdio MCPs)" >&2
+  else
     # Prefer the in-image caddy binary (works inside the container); fall back to
     # docker on hosts that lack a caddy binary.
     if command -v caddy >/dev/null 2>&1; then
@@ -108,26 +110,24 @@ if [ "${direct}" = true ] && [ -n "${HERMES_DASHBOARD_DOMAIN}" ]; then
       BCRYPT="$(docker run --rm caddy:2-alpine caddy hash-password --plaintext "${JOSHU_HERMES_DASHBOARD_PASSWORD}" 2>/dev/null || true)"
     fi
     if [ -z "${BCRYPT}" ]; then
-      echo "[render-caddyfile] WARN: could not bcrypt JOSHU_HERMES_DASHBOARD_PASSWORD; Hermes admin vhost will rely on session token only" >&2
+      echo "[render-caddyfile] SKIP hermes-admin vhost: could not bcrypt JOSHU_HERMES_DASHBOARD_PASSWORD" >&2
+    else
+      {
+        echo ""
+        echo "# Hermes dashboard — served at site root (upstream :9119); no Joshu path-prefix proxy"
+        echo "${HERMES_DASHBOARD_DOMAIN} {"
+        echo "	encode gzip"
+        echo "	basicauth {"
+        echo "		${AUTH_USER} ${BCRYPT}"
+        echo "	}"
+        echo "	# Hermes binds 127.0.0.1 and rejects non-loopback Host (GHSA-ppp5-vxwm-4cf7)"
+        echo "	reverse_proxy 127.0.0.1:${HERMES_DASHBOARD_PORT:-9119} {"
+        echo "		header_up Host 127.0.0.1:${HERMES_DASHBOARD_PORT:-9119}"
+        echo "	}"
+        echo "}"
+      } >>"${OUT}"
     fi
   fi
-
-  {
-    echo ""
-    echo "# Hermes dashboard — served at site root (upstream :9119); no Joshu path-prefix proxy"
-    echo "${HERMES_DASHBOARD_DOMAIN} {"
-    echo "	encode gzip"
-    if [ -n "${BCRYPT}" ]; then
-      echo "	basicauth {"
-      echo "		${AUTH_USER} ${BCRYPT}"
-      echo "	}"
-    fi
-    echo "	# Hermes binds 127.0.0.1 and rejects non-loopback Host (GHSA-ppp5-vxwm-4cf7)"
-    echo "	reverse_proxy 127.0.0.1:${HERMES_DASHBOARD_PORT:-9119} {"
-    echo "		header_up Host 127.0.0.1:${HERMES_DASHBOARD_PORT:-9119}"
-    echo "	}"
-    echo "}"
-  } >>"${OUT}"
 fi
 
 echo "[render-caddyfile] wrote ${OUT} (direct=${direct} hermes=${HERMES_DASHBOARD_DOMAIN:-off})"

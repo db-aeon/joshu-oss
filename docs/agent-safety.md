@@ -249,6 +249,8 @@ This keeps SDK and MCP paths aligned without relying on Composio-hosted modifier
 | `execute_code` / `curl` → Joshu Nylas send | REST gate | — |
 | Hermes `terminal` → `nylas email send` | Terminal mail guard patch | Custom/obfuscated shell |
 | `execute_code` / `curl` → arbitrary external URL | Not gated by Joshu | Egress allowlist (out of scope v1) |
+| Hermes `mcp_servers` **stdio** (`command` / `args`) | Stripped on gateway sync (`hermesMcpAllowlist.ts`) | Extra **HTTP** MCPs still allowed |
+| Public Hermes Admin without basic auth | Caddy omits `hermes-admin` vhost; dashboard does not start | Rotate keys if a box was ever exposed |
 | Composio Gmail send | Hard MCP policy | — |
 | Agent delete/trash | Hard MCP policy | — |
 | Hermes browser click/type/press | Browser gate + owner channel when `browserGateWrites` | navigate-only; evaluate/submit unhooked; Hermes fail-open if Joshu unreachable |
@@ -277,6 +279,7 @@ This keeps SDK and MCP paths aligned without relying on Composio-hosted modifier
 | `SLACK_ALLOWED_USERS` | Required allowlist of Slack member IDs (`U…`) for Hermes chat |
 | `SLACK_HOME_CHANNEL`, `SLACK_ALLOWED_CHANNELS` | Optional Hermes Slack routing |
 | `JOSHU_COMPOSIO_MCP_GUARD_PORT` | Guard proxy port (default 8796) |
+| `JOSHU_HERMES_DASHBOARD_PASSWORD` | Caddy basic auth for `hermes-admin.*`; empty → vhost and dashboard stay off |
 
 See [`.env.example`](../.env.example) for full list.
 
@@ -336,9 +339,47 @@ npm run dev:safety-settings # Vite only on :3010
 
 ---
 
+## Hermes Admin incident (2026-09)
+
+Fleet incident: **unauthenticated public Hermes Admin** let an attacker add a **stdio MCP dropper** (`lab-beacon-*`) that mined XMR and could read secrets via the dashboard **`env/reveal`** API. Full operator timeline: [troubleshooting — Hermes Admin unauthenticated](vps-sandbox/troubleshooting-and-lessons.md#hermes-admin-unauthenticated-stdio-mcp-miner).
+
+### Attack surface (now mitigated in code)
+
+| Vector | What happened | Mitigation (2026-09-07+) |
+|--------|---------------|---------------------------|
+| Public `hermes-admin.*` with **empty** `JOSHU_HERMES_DASHBOARD_PASSWORD` | Caddy published the vhost; `header_up Host 127.0.0.1:9119` bypasses Hermes DNS-rebind check | No vhost without bcrypt password; dashboard does not start on fleet boxes |
+| **`hermes mcp add --command python3`** (stdio) | RCE + persistence via crontab; miner under `/usr_*vt/…/dns-filter` | **`hermesMcpAllowlist.ts`** strips unknown stdio MCPs on every gateway sync; test: `npm run test:hermes-mcp-allowlist` |
+| Dashboard **MCP form** + in-memory registry | Cleaning `config.yaml` alone was insufficient — dashboard respawned the server | Remove MCP from config **and** restart gateway **and** dashboard |
+| Dashboard **`env/reveal`** | Leaked OpenRouter, Exa, `API_SERVER_KEY`, Slack tokens, Telegram allow-list | Rotate vendor keys; regenerate Slack at api.slack.com (not CP-mintable) |
+
+### Compromise vs exposure (Sep 2026 fleet scan)
+
+| Status | Boxes |
+|--------|--------|
+| **Confirmed malware** (miner or `lab-beacon` in logs) | **Patrick**, **Clara** |
+| **Exposed** (unauth admin HTTP 200, empty dashboard password; rotate keys as precaution) | Gideon, Tess, Finn, Mina, Joe, Kaelen, Joshua, Cleo, Alex, Debra |
+| **Not this campaign** | Owner HTTP MCP **`known_quantity`** (legitimate) |
+
+Best marker on Patrick: dashboard logout **2026-09-06 09:52Z** from **`149.102.245.71`** (Datacamp VPN). Treat that IP as hostile unless confirmed otherwise.
+
+### Post-incident checklist (existing fleet box)
+
+1. **Lock admin:** `bash deploy/scripts/ensure-instance-env-secrets.sh /etc/joshu/instance.env` → recreate **Caddy**; unauth curl must return **401**.
+2. **Contain MCP/miner:** strip stdio extras; kill miner; remove `/usr_bwvt`, `/usr_npvf`, `/etc/.dd`; restart gateway + dashboard. Keep `config.yaml.bak-malware-*` as evidence — do not restore.
+3. **Rotate secrets:** OpenRouter, Exa, `API_SERVER_KEY` / `HERMES_API_KEY` / `JOSHU_READ_API_KEY` via control-plane `scripts/rotate-exposed-vendor-keys.ts` (see troubleshooting doc). **Slack:** regenerate bot + app tokens in Slack app settings → Safety or `~/.hermes/.env`.
+4. **Verify allowlist:** after gateway sync, `mcp_servers` in `config.yaml` must have **no** `command`/`args` stdio entries except Joshu-managed servers.
+5. **Dist integrity:** after `rotate_secrets` or `--force-recreate joshu-stack`, host **`/opt/joshu/dist/` must match the release image** — never hotpatch a single `dist/*.js` without syncing the full tree ([hotpatch-running-box.md](vps-sandbox/hotpatch-running-box.md#dist-atomicity-after-secret-rotation-or-recreate)).
+
+### Provision hardening (control plane)
+
+New boxes: CP mints **`JOSHU_HERMES_DASHBOARD_PASSWORD`** in `instance.env` (`sandboxEnv.ts`). See [zero-touch-provisioning.md](https://github.com/db-aeon/joshu-control-plane/blob/main/docs/zero-touch-provisioning.md) in the control-plane repo.
+
+---
+
 ## Out of scope (v1)
 
 - Egress allowlist for `execute_code` / arbitrary `curl`
+- Stripping extra **HTTP** MCP servers the owner added (stdio is stripped)
 - Stripping API keys from shell environment
 - Full owner ↔ agent chat demux on approval SMS (chat and approvals share one inbound webhook; Y/N is handled first)
 - Composio-hosted `beforeExecute` modifiers (Joshu-owned only)

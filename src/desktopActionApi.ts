@@ -2,18 +2,12 @@ import type { Request, Response, Router } from "express";
 
 import { drainDesktopActions, enqueueDesktopAction, isValidDesktopAction } from "./desktopActionQueue.js";
 import type { DesktopAction } from "./desktopActionTypes.js";
-
-function isLocalhost(req: Request): boolean {
-  const ip = req.ip ?? req.socket.remoteAddress ?? "";
-  if (ip === "127.0.0.1" || ip === "::1" || ip === "::ffff:127.0.0.1") return true;
-  const host = (req.hostname ?? "").toLowerCase();
-  return host === "127.0.0.1" || host === "localhost";
-}
+import { isDirectLocalhostRequest } from "./httpLocalhost.js";
 
 export function registerDesktopActionRoutes(router: Router): void {
   router.post("/api/desktop-actions/enqueue", (req: Request, res: Response) => {
-    if (!isLocalhost(req)) {
-      res.status(403).json({ error: "localhost only" });
+    if (!isDirectLocalhostRequest(req)) {
+      res.status(403).json({ error: "desktop-actions is localhost-only" });
       return;
     }
     const body = (req.body ?? {}) as { sessionKey?: string; action?: unknown };
@@ -27,8 +21,8 @@ export function registerDesktopActionRoutes(router: Router): void {
   });
 
   router.get("/api/desktop-actions/drain", (req: Request, res: Response) => {
-    if (!isLocalhost(req)) {
-      res.status(403).json({ error: "localhost only" });
+    if (!isDirectLocalhostRequest(req)) {
+      res.status(403).json({ error: "desktop-actions is localhost-only" });
       return;
     }
     const sessionKey = typeof req.query.sessionKey === "string" ? req.query.sessionKey.trim() : "";

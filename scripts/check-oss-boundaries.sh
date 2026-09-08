@@ -84,6 +84,7 @@ PROPRIETARY_REF_ALLOW=(
   deploy/docker-compose.yml
   scripts/install-proprietary-apps.sh
   src/hermesLearning.ts
+  src/proactive/proactiveCronJobs.ts
 )
 
 is_proprietary_ref_allowed() {

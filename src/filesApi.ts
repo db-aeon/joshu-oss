@@ -1,13 +1,11 @@
 import type { Request, Response, Router } from "express";
 import fs from "node:fs";
 import path from "node:path";
+import { isDesktopBrowserOrLocalRequest } from "./httpLocalhost.js";
 import { resolveJoshuFilesPaths } from "./joshuFilesPaths.js";
 
 function isLocalhost(req: Request): boolean {
-  const ip = req.ip ?? req.socket.remoteAddress ?? "";
-  if (ip === "127.0.0.1" || ip === "::1" || ip === "::ffff:127.0.0.1") return true;
-  const host = (req.hostname ?? "").toLowerCase();
-  return host === "127.0.0.1" || host === "localhost";
+  return isDesktopBrowserOrLocalRequest(req);
 }
 
 /** Resolve a user path under a root; reject traversal. */
@@ -85,6 +83,10 @@ export function registerFilesRoutes(router: Router): void {
 
   router.get("/api/files/context", (req, res) => {
     setFilesApiCors(req, res);
+    if (!isLocalhost(req)) {
+      res.status(403).json({ error: "files/context is desktop-session-only" });
+      return;
+    }
     const paths = resolveJoshuFilesPaths(process.cwd());
     if (!paths) {
       res.status(503).json({ error: "joshu files paths unavailable" });

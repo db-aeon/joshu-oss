@@ -998,8 +998,8 @@ fi
 
 if [[ "${JOSHU_HERMES_DASHBOARD_ENABLED:-true}" =~ ^(1|true|yes)$ ]]; then
   if [[ -n "${CUSTOMER_DOMAIN:-}" && -z "${JOSHU_HERMES_DASHBOARD_PASSWORD:-}" ]]; then
-    echo "[vps-start] WARN: set JOSHU_HERMES_DASHBOARD_PASSWORD in instance.env (Hermes admin can read/write API keys)" >&2
-  fi
+    echo "[vps-start] SKIP Hermes dashboard: JOSHU_HERMES_DASHBOARD_PASSWORD unset (public admin can add stdio MCPs and read API keys)" >&2
+  else
   dashboard_public="${HERMES_DASHBOARD_PUBLIC_URL:-}"
   if [[ -z "${dashboard_public}" && -n "${CUSTOMER_DOMAIN:-}" ]]; then
     if [[ "${JOSHU_HERMES_DASHBOARD_DIRECT:-true}" =~ ^(1|true|yes)$ ]]; then
@@ -1022,10 +1022,11 @@ if [[ "${JOSHU_HERMES_DASHBOARD_ENABLED:-true}" =~ ^(1|true|yes)$ ]]; then
     fi
   fi
   # Shortcut install runs earlier (before ArozOS); refresh Hermes Admin URL now that public URL is resolved.
-  if [[ "${AROZOS_ENABLED:-false}" =~ ^(1|true|yes)$ ]]; then
-    # shellcheck source=../../scripts/lib/arozos-desktop-shortcuts.sh
-    source "${JOSHU_SCRIPTS_ROOT}/lib/arozos-desktop-shortcuts.sh"
-    install_hermes_admin_shortcuts
+    if [[ "${AROZOS_ENABLED:-false}" =~ ^(1|true|yes)$ ]]; then
+      # shellcheck source=../../scripts/lib/arozos-desktop-shortcuts.sh
+      source "${JOSHU_SCRIPTS_ROOT}/lib/arozos-desktop-shortcuts.sh"
+      install_hermes_admin_shortcuts
+    fi
   fi
 fi
 

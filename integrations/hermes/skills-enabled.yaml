@@ -3,7 +3,7 @@
 # Agent-created skills in ~/.hermes/skills/ are never auto-disabled (Hermes learning loop).
 # Optional extras: JOSHU_HERMES_SKILLS_ENABLED=name1,name2
 # Regenerate after Hermes pin bump: npm run hermes:sync-skills-policy
-# Bundled discovered: 190 | Enabled: 13 | Computed disabled: 178
+# Bundled discovered: 190 | Enabled: 14 | Computed disabled: 177
 enabled:
   - ea-morning-review
   - ea-owner-reply
@@ -17,4 +17,5 @@ enabled:
   - joshu-brain
   - joshu-browser
   - joshu-mail
+  - joshu-proactive
   - mcporter

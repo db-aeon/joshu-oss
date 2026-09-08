@@ -12,19 +12,21 @@ import {
   stopGbrainStack,
   writeDefaultIdentity,
 } from "@joshu/box-state";
+import { isDirectLocalhostRequest } from "./httpLocalhost.js";
 
 function isBoxMutatingAllowed(req: Request): boolean {
-  const ip = req.ip ?? req.socket.remoteAddress ?? "";
-  if (ip === "127.0.0.1" || ip === "::1" || ip === "::ffff:127.0.0.1") return true;
-  const host = (req.hostname ?? "").toLowerCase();
-  return host === "127.0.0.1" || host === "localhost";
+  return isDirectLocalhostRequest(req);
 }
 
 export function registerBoxStateRoutes(
   router: Router,
   deps?: { onHardResetComplete?: () => void | Promise<void> },
 ): void {
-  router.get("/api/box/status", (_req: Request, res: Response) => {
+  router.get("/api/box/status", (req: Request, res: Response) => {
+    if (!isDirectLocalhostRequest(req)) {
+      res.status(403).json({ error: "box status is localhost-only" });
+      return;
+    }
     try {
       const paths = resolveBoxPaths(process.cwd());
       res.json(getBoxStatus(paths));
@@ -33,7 +35,11 @@ export function registerBoxStateRoutes(
     }
   });
 
-  router.get("/api/box/snapshots", async (_req: Request, res: Response) => {
+  router.get("/api/box/snapshots", async (req: Request, res: Response) => {
+    if (!isDirectLocalhostRequest(req)) {
+      res.status(403).json({ error: "box snapshots is localhost-only" });
+      return;
+    }
     try {
       const paths = resolveBoxPaths(process.cwd());
       const snapshots = await listSnapshots(paths);

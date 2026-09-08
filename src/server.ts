@@ -61,6 +61,8 @@ import { registerComposioRoutes } from "./composioRoutes.js";
 import { registerConnectorRoutes } from "./connectors/routes.js";
 import { registerConnectorComposioRoutes } from "./connectors/composioRoutes.js";
 import { registerEaTriageRoutes } from "./ea/triageRoutes.js";
+import { registerProactiveRoutes } from "./proactive/routes.js";
+import { setProactiveHermesRunner } from "./proactive/composeMessage.js";
 import { registerActionGuardRoutes } from "./actionGuard/routes.js";
 import { registerOwnerChannelRoutes } from "./ownerChannel/routes.js";
 import { registerSafetySettingsRoutes } from "./safetySettings/routes.js";
@@ -360,6 +362,7 @@ function buildAppRouter(): {
 
   registerTwilioVoiceRoutes(router, runner, PUBLIC_BASE_PATH);
   registerTwilioSmsRoutes(router, runner, PUBLIC_BASE_PATH);
+  setProactiveHermesRunner(runner);
 
   registerBrainRoutes(router);
   // Share-chat JSON routes register after express.json() below.
@@ -487,6 +490,7 @@ function buildAppRouter(): {
   registerConnectorComposioRoutes(router, { projectRoot: PROJECT_ROOT, runner });
   registerConnectorRoutes(router, { projectRoot: PROJECT_ROOT, runner });
   registerEaTriageRoutes(router, { projectRoot: PROJECT_ROOT });
+  registerProactiveRoutes(router, { projectRoot: PROJECT_ROOT });
   registerSafetySettingsRoutes(router, { projectRoot: PROJECT_ROOT, hermesBinary: HERMES_BIN, runner });
   registerTelephoneRoutes(router, { projectRoot: PROJECT_ROOT });
   registerOwnerChannelRoutes(router, { projectRoot: PROJECT_ROOT });

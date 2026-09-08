@@ -14,6 +14,7 @@ import {
   readDistProvenance,
   type DistProvenanceStatus,
 } from "./distProvenance.js";
+import { isDirectLocalhostRequest } from "./httpLocalhost.js";
 import { resolveJoshuIdentity } from "./joshuIdentity.js";
 import { resolveLast30DaysEngine } from "./last30days/config.js";
 import {
@@ -76,10 +77,7 @@ function probeTcpLocal(port: number, timeoutMs = 2500): Promise<boolean> {
 }
 
 function isLocalhostRequest(req: Request): boolean {
-  const ip = req.ip ?? req.socket.remoteAddress ?? "";
-  if (ip === "127.0.0.1" || ip === "::1" || ip === "::ffff:127.0.0.1") return true;
-  const host = (req.hostname ?? "").toLowerCase();
-  return host === "127.0.0.1" || host === "localhost";
+  return isDirectLocalhostRequest(req);
 }
 
 export interface InstanceHealthReport {

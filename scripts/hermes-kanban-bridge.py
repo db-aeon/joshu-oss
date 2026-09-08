@@ -460,6 +460,43 @@ def _dispatch(payload: Dict[str, Any]) -> Dict[str, Any]:
             "task": _task_summary(refreshed, include_body=True) if refreshed else {"task_id": task_id},
         }
 
+    if action == "complete":
+        task_id = str(payload.get("task_id") or "").strip()
+        comment = payload.get("comment")
+        author = str(payload.get("author") or "joshu").strip() or "joshu"
+        if not task_id:
+            return {"success": False, "error": "task_id is required"}
+        if comment is None or not str(comment).strip():
+            return {"success": False, "error": "comment is required for complete (audit trail)"}
+        task = kanban_db.get_task(conn, task_id)
+        if not task:
+            return {"success": False, "error": f"task {task_id} not found"}
+        if str(task.status or "") == "done":
+            return {
+                "success": True,
+                "task_id": task_id,
+                "action_taken": "already_done",
+                "task": _task_summary(task),
+            }
+        complete_fn = getattr(kanban_db, "complete_task", None)
+        if callable(complete_fn):
+            ok = complete_fn(conn, task_id)
+        else:
+            conn.execute("UPDATE tasks SET status = ? WHERE id = ?", ("done", task_id))
+            conn.commit()
+            ok = True
+        if not ok:
+            return {"success": False, "error": f"could not complete task {task_id}"}
+        comment_id = kanban_db.add_comment(conn, task_id, author=author, body=str(comment).strip())
+        refreshed = kanban_db.get_task(conn, task_id)
+        return {
+            "success": True,
+            "task_id": task_id,
+            "action_taken": "completed",
+            "comment_id": comment_id,
+            "task": _task_summary(refreshed) if refreshed else {"task_id": task_id},
+        }
+
     return {"success": False, "error": f"unknown action: {action}"}
 
 

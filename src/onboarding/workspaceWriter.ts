@@ -10,6 +10,7 @@ import { writeJoshuIdentity } from "../joshuIdentity.js";
 import type { OnboardingDraft } from "./types.js";
 import { DEFAULT_ONBOARDING_STATE, type OnboardingState } from "./types.js";
 import { syncEaCronJobs } from "./eaCronJobs.js";
+import { resolveEaCronDraft } from "./resyncEaCronFromBox.js";
 import { bootstrapEaSchedulingKanban } from "./eaKanbanBootstrap.js";
 import {
   EA_LAYOUT_VERSION,
@@ -266,6 +267,25 @@ export async function completeOnboarding(
       `[onboarding] EA cron v2 synced (created=${cronResult.created}, updated=${cronResult.updated}, ` +
         `deduped=${cronResult.deduped}, morning=${cronResult.schedules.morning}, evening=${cronResult.schedules.eod})`,
     );
+  }
+
+  try {
+    const { syncProactiveCron } = await import("../proactive/proactiveCronJobs.js");
+    const proactiveCron = await syncProactiveCron(projectRoot);
+    console.info(`[onboarding] proactive cron: ${proactiveCron}`);
+  } catch (err) {
+    console.warn(`[onboarding] proactive cron sync skipped: ${(err as Error).message}`);
+  }
+
+  try {
+    const draft = resolveEaCronDraft(projectRoot);
+    if (draft) {
+      const { syncProactiveHygieneCron } = await import("../proactive/hygieneCronJobs.js");
+      const proactiveHygieneCron = await syncProactiveHygieneCron(draft);
+      console.info(`[onboarding] proactive hygiene cron: ${proactiveHygieneCron}`);
+    }
+  } catch (err) {
+    console.warn(`[onboarding] proactive hygiene cron sync skipped: ${(err as Error).message}`);
   }
 
   return { filesRoot, projectsRoot: projects };

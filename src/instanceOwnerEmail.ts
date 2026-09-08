@@ -7,17 +7,11 @@
 import type { Request, Response, Router } from "express";
 
 import { buildJoshuSignedEmailHtml } from "./email/joshuEmailSignature.js";
+import { isDirectLocalhostRequest } from "./httpLocalhost.js";
 import { resolveJoshuIdentity } from "./joshuIdentity.js";
 import { sendMessage } from "./nylas/client.js";
 import { readAgentGrant } from "./nylas/store.js";
 import { substituteTelephonePlaceholders } from "./telephoneSettings/emailPlaceholders.js";
-
-function isLocalhostRequest(req: Request): boolean {
-  const ip = req.ip ?? req.socket.remoteAddress ?? "";
-  if (ip === "127.0.0.1" || ip === "::1" || ip === "::ffff:127.0.0.1") return true;
-  const host = (req.hostname ?? "").toLowerCase();
-  return host === "127.0.0.1" || host === "localhost";
-}
 
 function readString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -36,7 +30,7 @@ export function registerInstanceOwnerEmailRoutes(
   opts: { projectRoot: string },
 ): void {
   router.post("/api/instance/send-owner-email", async (req: Request, res: Response) => {
-    if (!isLocalhostRequest(req)) {
+    if (!isDirectLocalhostRequest(req)) {
       res.status(403).json({ error: "send-owner-email is localhost-only" });
       return;
     }

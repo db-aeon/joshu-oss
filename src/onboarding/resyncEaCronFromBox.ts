@@ -13,6 +13,8 @@ export type ResyncEaCronFromBoxResult = {
   timezone?: string;
   timezoneChanged?: boolean;
   cron?: SyncEaCronJobsResult;
+  proactiveCron?: string;
+  proactiveHygieneCron?: string;
   error?: string;
 };
 
@@ -71,10 +73,28 @@ export async function resyncEaCronFromBox(projectRoot: string): Promise<ResyncEa
     };
   }
 
+  let proactiveCron: string | undefined;
+  try {
+    const { syncProactiveCron } = await import("../proactive/proactiveCronJobs.js");
+    proactiveCron = await syncProactiveCron(projectRoot);
+  } catch (err) {
+    console.warn(`[ea-cron] proactive cron sync: ${(err as Error).message}`);
+  }
+
+  let proactiveHygieneCron: string | undefined;
+  try {
+    const { syncProactiveHygieneCron } = await import("../proactive/hygieneCronJobs.js");
+    proactiveHygieneCron = await syncProactiveHygieneCron(draft);
+  } catch (err) {
+    console.warn(`[ea-cron] proactive hygiene cron sync: ${(err as Error).message}`);
+  }
+
   return {
     ok: true,
     timezone: tzResult.timezone,
     timezoneChanged: tzResult.changed,
     cron,
+    proactiveCron,
+    proactiveHygieneCron,
   };
 }

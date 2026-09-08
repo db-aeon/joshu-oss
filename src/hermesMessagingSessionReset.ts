@@ -2,6 +2,11 @@
  * Joshu product default: Slack + Telegram idle-reset after 30 minutes.
  * jChat (api_server) stays on Hermes global `session_reset.mode: none`.
  *
+ * Owner SMS also uses the `api_server` pipe (same toolsets as jChat), so it cannot
+ * share Hermes `reset_by_platform` without resetting jChat. SMS idle is enforced
+ * in `twilioSmsSession.ts` by rotating `sms:<e164>:<epoch>` after the same idle
+ * window (`JOSHU_HERMES_MESSAGING_IDLE_MINUTES`).
+ *
  * Hermes `config.yaml` `session_reset` maps only to the *default* policy.
  * Per-platform overrides are `reset_by_platform` on GatewayConfig, loaded from
  * `~/.hermes/gateway.json` (and ignored in yaml unless a future Hermes maps it).

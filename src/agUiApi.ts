@@ -20,6 +20,7 @@ import {
 import type { AppGuiAction } from "./appGuiActionTypes.js";
 import { drainDesktopActionsForChat, desktopActionFromHermesToolRaw } from "./desktopActionApi.js";
 import { isComposioEnabled, syncComposioHermesMcp } from "./composioApi.js";
+import { isDesktopBrowserOrLocalRequest } from "./httpLocalhost.js";
 import {
   buildAppAgentSessionId,
   buildAppAgentSystemMessages,
@@ -180,10 +181,7 @@ function isHermesChatMessage(m: HermesChatMessage): boolean {
 }
 
 function isLocalhostAgUi(req: Request): boolean {
-  const ip = req.ip ?? req.socket.remoteAddress ?? "";
-  if (ip === "127.0.0.1" || ip === "::1" || ip === "::ffff:127.0.0.1") return true;
-  const host = (req.hostname ?? "").toLowerCase();
-  return host === "127.0.0.1" || host === "localhost";
+  return isDesktopBrowserOrLocalRequest(req);
 }
 
 /** Permit local ArozOS subservices on :8787 to stream AG-UI runs from :8788. */
@@ -256,6 +254,10 @@ export function registerAgUiRoutes(
   });
 
   router.post("/api/ag-ui/run", async (req: Request, res: Response) => {
+    if (!isDesktopBrowserOrLocalRequest(req)) {
+      res.status(403).json({ error: "ag-ui is desktop-session-only" });
+      return;
+    }
     await loadAppManifests(projectRoot);
     const input = (req.body ?? {}) as RunAgentInput;
     const threadId = readString(input.threadId) || readString(input.runId) || `agui-${Date.now()}`;

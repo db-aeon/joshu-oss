@@ -8,13 +8,7 @@ import {
   isValidAppGuiAction,
 } from "./appGuiActionQueue.js";
 import { buildAppAgentSessionId } from "./agUiAppContext.js";
-
-function isLocalhost(req: Request): boolean {
-  const ip = req.ip ?? req.socket.remoteAddress ?? "";
-  if (ip === "127.0.0.1" || ip === "::1" || ip === "::ffff:127.0.0.1") return true;
-  const host = (req.hostname ?? "").toLowerCase();
-  return host === "127.0.0.1" || host === "localhost";
-}
+import { isDirectLocalhostRequest } from "./httpLocalhost.js";
 
 function readString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -47,8 +41,8 @@ export function describeDisallowedAppGuiAction(action: AppGuiAction): string {
 
 export function registerAppGuiActionRoutes(router: Router, projectRoot: string): void {
   router.post("/api/app-gui-actions/enqueue", async (req: Request, res: Response) => {
-    if (!isLocalhost(req)) {
-      res.status(403).json({ error: "localhost only" });
+    if (!isDirectLocalhostRequest(req)) {
+      res.status(403).json({ error: "app-gui-actions is localhost-only" });
       return;
     }
     await loadAppManifests(projectRoot).catch(() => undefined);
@@ -68,8 +62,8 @@ export function registerAppGuiActionRoutes(router: Router, projectRoot: string):
   });
 
   router.get("/api/app-gui-actions/drain", async (req: Request, res: Response) => {
-    if (!isLocalhost(req)) {
-      res.status(403).json({ error: "localhost only" });
+    if (!isDirectLocalhostRequest(req)) {
+      res.status(403).json({ error: "app-gui-actions is localhost-only" });
       return;
     }
     const sessionKey = readString(req.query.sessionKey);
