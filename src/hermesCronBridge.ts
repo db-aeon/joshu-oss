@@ -24,7 +24,7 @@ export type CronBridgeResult = {
 export type CronBridgeJobSummary = {
   job_id?: string;
   name?: string;
-  schedule?: string;
+  schedule?: string | { expr?: string; kind?: string; display?: string };
   prompt?: string;
   skills?: string[];
   script?: string;

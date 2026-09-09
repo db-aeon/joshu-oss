@@ -23,7 +23,41 @@ export type ProactiveHygieneSummary = {
   closed: number;
   ambiguous: number;
   skipped: number;
+  active?: number;
   ranAt: string;
+};
+
+/** Card queued by hygiene for optional stale_review owner nudge (hourly tick). */
+export type HygieneAmbiguousItem = {
+  taskId: string;
+  board: string;
+  title: string;
+  blockReason: string | null;
+  queuedAt: string;
+};
+
+export type HygieneCandidateHints = {
+  createdAtMs: number | null;
+  isDateStale: boolean;
+  latestHardDateMs: number | null;
+  ageDays: number | null;
+};
+
+export type HygieneCandidate = {
+  taskId: string;
+  board: string;
+  title: string;
+  blockReason: string | null;
+  projectSlug?: string;
+  hints: HygieneCandidateHints;
+};
+
+export type HygienePlan = {
+  planId: string;
+  createdAt: string;
+  candidateCount: number;
+  totalBlocked: number;
+  candidates: HygieneCandidate[];
 };
 
 export type ProactiveState = {
@@ -39,6 +73,10 @@ export type ProactiveState = {
   hygieneLastRunAt?: string | null;
   hygieneClosedTaskIds?: string[];
   lastHygieneSummary?: ProactiveHygieneSummary | null;
+  /** Ambiguous hygiene cards — hourly tick may send stale_review nudges. */
+  hygieneAmbiguousQueue?: HygieneAmbiguousItem[];
+  /** Owner-local date YYYY-MM-DD when last ea-onboarding nudge was sent. */
+  lastOnboardingNudgeDate?: string | null;
 };
 
 export type ProactiveCandidate = {

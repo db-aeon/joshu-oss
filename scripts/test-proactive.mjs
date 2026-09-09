@@ -9,8 +9,10 @@ import assert from "node:assert/strict";
 import { blockReasonNeedsOwnerInput, parseProactiveTaskRef } from "../src/proactive/blockReason.js";
 import {
   applyProactiveFeedbackKeyword,
+  parseFeedbackKeyword,
   parseTaskActionKeyword,
 } from "../src/proactive/feedback.js";
+import { ensureCadenceHintLine, PROACTIVE_CADENCE_HINT } from "../src/proactive/composeMessage.js";
 import { isWithinProactiveWindow, parseMinutesSinceMidnight } from "../src/proactive/workingHours.js";
 import {
   canSendNudge,
@@ -19,9 +21,15 @@ import {
 } from "../src/proactive/state.js";
 import { applySentNudge } from "../src/proactive/tick.js";
 import { extractHardDates, isDateStaleForNudge } from "../src/proactive/stale.js";
-import { rankCandidate } from "../src/proactive/prioritize.js";
+import { rankCandidate, isProjectActiveForNudge } from "../src/proactive/prioritize.js";
 import { extractSchedulingTaskIdsFromText } from "../src/proactive/schedulingHandoff.js";
-import { proactiveResolveSessionKey } from "../src/proactive/resolveOwnerReply.js";
+import { proactiveResolveSessionKey, buildProactiveResolveSystemMessage } from "../src/proactive/resolveOwnerReply.js";
+import { normalizeKanbanCreatedAtMs } from "../src/proactive/crossBoardKanban.js";
+import { sortHygieneCandidates } from "../src/proactive/hygienePrepare.js";
+import { pickTopStaleReviewCandidate, recordHygieneRun } from "../src/proactive/hygieneRecord.js";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 
 const defaultPrefs = {
   allowMorePerDay: false,
@@ -148,6 +156,95 @@ const defaultPrefs = {
 {
   assert.equal(proactiveResolveSessionKey("t_abc"), "proactive:resolve:t_abc");
   assert.equal(proactiveResolveSessionKey(""), "proactive:resolve:unknown");
+}
+
+// kanban created_at normalization
+{
+  assert.equal(normalizeKanbanCreatedAtMs(1_700_000_000), 1_700_000_000_000);
+  assert.equal(normalizeKanbanCreatedAtMs(1_700_000_000_000), 1_700_000_000_000);
+}
+
+// hygiene sort: date-stale before non-stale
+{
+  const sorted = sortHygieneCandidates([
+    {
+      board: "ea-scheduling",
+      task_id: "t_new",
+      title: "Active follow-up",
+      status: "blocked",
+      created_at_ms: Date.UTC(2026, 8, 1),
+    },
+    {
+      board: "ea-scheduling",
+      task_id: "t_old",
+      title: "Interview Aug 12, 2025",
+      status: "blocked",
+      created_at_ms: Date.UTC(2026, 0, 1),
+    },
+  ]);
+  assert.equal(sorted[0]?.task_id, "t_old");
+}
+
+// hygiene record + stale_review queue
+{
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "proactive-hygiene-"));
+  const state = recordHygieneRun(root, {
+    closedTaskIds: ["t_done"],
+    ambiguous: [{ taskId: "t_maybe", board: "project-x", title: "Stale?" }],
+    skipped: 1,
+    active: 2,
+  });
+  assert.ok(state.hygieneLastRunAt);
+  assert.ok(state.hygieneClosedTaskIds?.includes("t_done"));
+  assert.equal(state.hygieneAmbiguousQueue?.length, 1);
+  const stale = pickTopStaleReviewCandidate(state);
+  assert.equal(stale?.taskId, "t_maybe");
+  fs.rmSync(root, { recursive: true, force: true });
+}
+
+// feedback keywords — short fuzzy replies
+{
+  assert.equal(parseFeedbackKeyword("MORE"), "MORE");
+  assert.equal(parseFeedbackKeyword("more please"), "MORE");
+  assert.equal(parseFeedbackKeyword("yeah useful"), "USEFUL");
+  assert.equal(parseFeedbackKeyword("Tell me more about the scheduling thread please"), null);
+}
+
+// cadence hint appended to nudges
+{
+  const withRef = ensureCadenceHintLine("Hey Dan — quick one.\nRef: pj/t_abc", "nudge");
+  assert.ok(withRef.includes(PROACTIVE_CADENCE_HINT));
+  assert.ok(withRef.indexOf(PROACTIVE_CADENCE_HINT) < withRef.indexOf("Ref:"));
+}
+
+// project about.md status gates hourly nudges
+{
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "joshu-nudge-status-"));
+  const filesRoot = path.join(root, "files");
+  const proj = path.join(filesRoot, "Projects", "google-labs-gpm");
+  fs.mkdirSync(proj, { recursive: true });
+  fs.writeFileSync(path.join(proj, "about.md"), "---\nstatus: done\n---\n");
+  assert.equal(isProjectActiveForNudge(filesRoot, "google-labs-gpm"), false);
+  fs.writeFileSync(path.join(proj, "about.md"), "|---\n|status: active\n---\n");
+  assert.equal(isProjectActiveForNudge(filesRoot, "google-labs-gpm"), true);
+  assert.equal(isProjectActiveForNudge(filesRoot, "missing-slug"), true);
+  assert.equal(isProjectActiveForNudge(filesRoot, undefined), true);
+  fs.rmSync(root, { recursive: true, force: true });
+}
+
+// proactive resolve asks for project-slug reconcile on project boards
+{
+  const msg = buildProactiveResolveSystemMessage(
+    { taskId: "t_ae1c68af", board: "project-google-labs-gpm", title: "Jaclyn" },
+    "they rejected me",
+  );
+  assert.ok(msg.content.includes("Project reconcile"));
+  assert.ok(msg.content.includes("mail_list_track_tasks"));
+  const sched = buildProactiveResolveSystemMessage(
+    { taskId: "t_meet", board: "ea-scheduling" },
+    "ok send it",
+  );
+  assert.equal(sched.content.includes("Project reconcile"), false);
 }
 
 console.log("proactive: all tests passed");

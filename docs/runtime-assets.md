@@ -40,6 +40,7 @@ npm run test:runtime-assets                           # src + dest exist
 |------|------------------------|
 | Vite desktop apps (jMail, last30days, jTerm) | `npm run build:<app>` → `dist/<app>/` → Dockerfile `rsync` into the ArozOS template. Add **both** the package.json script and the Dockerfile rsync line. |
 | Skills, MCP `.mjs`, vanilla overlays | Compose bind-mount from `/opt/joshu`. `git pull` + recreate. |
+| Factory YAML (`manifest.yaml`, `onboarding-prompts.yaml`) | Compose bind-mount from `/opt/joshu/factory/`. `git pull` + recreate. |
 | This list (API-served static) | Copy into `dist/` beside compiled JS. |
 
 See [share-chat.md — Packaging](share-chat.md#packaging-vps), [hotpatch-running-box.md](vps-sandbox/hotpatch-running-box.md), [app-sdk.md](app-sdk.md) (Vite apps).

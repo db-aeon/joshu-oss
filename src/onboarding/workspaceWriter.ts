@@ -259,6 +259,24 @@ export async function completeOnboarding(
     console.warn(`[onboarding] EA Kanban bootstrap skipped: ${kanbanResult.error ?? "unknown"}`);
   }
 
+  try {
+    const { reconcileOnboardingBoard } = await import("./reconcileOnboardingBoard.js");
+    const reconcileResult = await reconcileOnboardingBoard(projectRoot);
+    if (!reconcileResult.ok) {
+      console.warn(`[onboarding] reconcile skipped: ${reconcileResult.error ?? "unknown"}`);
+    }
+  } catch (err) {
+    console.warn(`[onboarding] reconcile skipped: ${(err as Error).message}`);
+  }
+
+  try {
+    const { syncOnboardingReconcileCron } = await import("./onboardingCronJobs.js");
+    const onboardingCron = await syncOnboardingReconcileCron(projectRoot);
+    console.info(`[onboarding] onboarding reconcile cron: ${onboardingCron}`);
+  } catch (err) {
+    console.warn(`[onboarding] onboarding reconcile cron sync skipped: ${(err as Error).message}`);
+  }
+
   const cronResult = await syncEaCronJobs(resolved);
   if (!cronResult.ok) {
     console.warn(`[onboarding] EA cron sync skipped: ${cronResult.error ?? "unknown error"}`);

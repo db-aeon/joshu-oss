@@ -7,6 +7,8 @@ import { resolveJoshuIdentity } from "../joshuIdentity.js";
 import { readAgentProfile } from "../nylas/profile.js";
 import { buildOwnerTimeSystemMessage } from "../ownerLocalTime.js";
 import { markdownSpeechPlaintext } from "../markdownSpeechPlaintext.js";
+import { isOnboardingKanbanBody, parseOnboardingPromptIdFromBody } from "../onboarding/promptState.js";
+import { ownerSmsPhone } from "../twilioSmsSend.js";
 import type { FeedbackKeyword } from "./feedback.js";
 import type { ProactiveCandidate } from "./types.js";
 
@@ -74,6 +76,24 @@ function buildComposeUserPrompt(input: ProactiveComposeInput): string {
     if (c.body?.trim()) {
       lines.push(`Task context (trimmed): ${c.body.trim().slice(0, 400)}`);
     }
+    if (c.board === "ea-onboarding" || isOnboardingKanbanBody(c.body)) {
+      const promptId = parseOnboardingPromptIdFromBody(c.body);
+      lines.push(
+        "This is a setup checklist item (onboarding), not mail or scheduling work.",
+      );
+      if (promptId === "owner-mobile-sms") {
+        const hasSms = Boolean(ownerSmsPhone(input.projectRoot ?? process.cwd()));
+        lines.push(
+          hasSms
+            ? "Ask the owner to confirm or add their mobile in the Telephone app or Welcome profile if needed."
+            : "The owner has no mobile on file yet — this message may deliver by email. Ask them to add their mobile in the Telephone app or Welcome (Schedule & email) so you can reach them by SMS for approvals and updates.",
+        );
+      } else if (promptId === "connect-work-gmail") {
+        lines.push(
+          "Ask them to open Connectors and connect work Gmail + calendar.",
+        );
+      }
+    }
     lines.push(`Append final line exactly: Ref: pj/${c.taskId}`);
   }
 
@@ -111,6 +131,24 @@ function ensureRefLine(text: string, taskId: string | undefined): string {
   return `${text.trim()}\n${ref}`;
 }
 
+/** Deterministic cadence hint — Hermes compose often omits MORE/LESS/USEFUL. */
+export const PROACTIVE_CADENCE_HINT =
+  "Reply MORE for more check-ins, LESS for once a day, or USEFUL if this helped.";
+
+export function ensureCadenceHintLine(text: string, kind: ProactiveComposeKind): string {
+  if (kind !== "nudge" && kind !== "stale_review") return text.trim();
+  const trimmed = text.trim();
+  if (/\bMORE\b/i.test(trimmed) && /\bLESS\b/i.test(trimmed)) return trimmed;
+
+  const refIdx = trimmed.search(/\nRef:\s*pj\/t_/i);
+  if (refIdx >= 0) {
+    const before = trimmed.slice(0, refIdx).trimEnd();
+    const after = trimmed.slice(refIdx).trimStart();
+    return `${before}\n${PROACTIVE_CADENCE_HINT}\n${after}`;
+  }
+  return `${trimmed}\n${PROACTIVE_CADENCE_HINT}`;
+}
+
 function fallbackCompose(input: ProactiveComposeInput): string {
   const identity = resolveJoshuIdentity(input.projectRoot ?? process.cwd());
   const profile = readAgentProfile(input.projectRoot);
@@ -141,8 +179,10 @@ function fallbackCompose(input: ProactiveComposeInput): string {
     const base =
       input.kind === "stale_review"
         ? `Hey ${owner} — "${title}" might be done. Reply DONE to close it or KEEP if it's still live.`
-        : `Hey ${owner} — quick one on "${title}". I'm blocked and need your call. Reply here with what you want me to do. Was this useful? MORE for more check-ins, LESS for once a day.`;
-    return ensureRefLine(base, c.taskId);
+        : `Hey ${owner} — quick one on "${title}". I'm blocked and need your call. Reply here with what you want me to do.`;
+    let out = ensureRefLine(base, c.taskId);
+    out = ensureCadenceHintLine(out, input.kind);
+    return out;
   }
 
   return `Let me know if you need anything, ${owner}.`;
@@ -180,10 +220,12 @@ async function composeViaHermes(runner: HermesApiRunner, input: ProactiveCompose
 
   const plain = markdownSpeechPlaintext(finalText).trim();
   if (!plain) throw new Error("empty_compose_response");
+  let out = plain;
   if (input.candidate?.taskId && (input.kind === "nudge" || input.kind === "stale_review")) {
-    return ensureRefLine(plain, input.candidate.taskId);
+    out = ensureRefLine(out, input.candidate.taskId);
+    out = ensureCadenceHintLine(out, input.kind);
   }
-  return plain;
+  return out;
 }
 
 /** Owner-facing proactive text — Hermes + SOUL.md when available, warm fallback otherwise. */

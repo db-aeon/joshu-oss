@@ -25,11 +25,14 @@ See [`templates/ea/FILING.md`](../templates/ea/FILING.md) for filing rules the c
 | Multi-step / HITL | Kanban + project board | `ea-project-kanban` |
 | Calendar / meetings | Live Google/Nylas + scheduling tasks | `ea-scheduling` |
 | Owner→agent asks | Ready Kanban on `ea-owner-reply` | `ea-owner-reply` |
+| Setup debt (Connectors, mobile, …) | Kanban on `ea-onboarding` | `ea-onboarding` |
 | Daily plan | `Planning/time-block-*.excalidraw` | `ea-time-block` |
 | Morning / shutdown | `Planning/daily-review-*.md` | `ea-morning-review`, `ea-shutdown` |
-| Proactive owner nudges | `.joshu/proactive/state.json` + Kanban blocked tasks | `joshu-proactive` (compose/reply/hygiene/evolve); hourly tick localhost-only; **owner nudge replies use a dedicated Hermes session** `proactive:resolve:<taskId>` (not SMS history) with Resolve context |
+| Proactive owner nudges | `.joshu/proactive/state.json` + Kanban blocked tasks | `joshu-proactive` (compose/reply/hygiene/evolve); hourly tick localhost-only; **owner nudge replies use a dedicated Hermes session** `proactive:resolve:<taskId>` (not SMS history) with Resolve context; **`ea-onboarding`** cards excluded from hygiene auto-close |
 
 **Rule:** one canonical file per artifact; link elsewhere. Mail bodies stay in `connectors/mail/` mirrors — do not duplicate into project files.
+
+**Project lifecycle:** `Projects/<slug>/` (`about.md` `status`) is the unit that can be “over.” `mail_track` cards are waiting-on attachments. After mail file/handoff, or when the owner reports an outcome on SMS/jChat/voice, **Project reconcile** (ea-playbook) lists all open tracks on that slug and completes ones the signal supersedes. Hourly nudges skip projects whose `about.md` status is not `active`.
 
 ## Identity at runtime
 
@@ -46,6 +49,8 @@ Skills must use live profile data, not example names:
 ## Onboarding
 
 Day-1 setup: [`welcome-onboarding.md`](welcome-onboarding.md) — Welcome wizard seeds project folders and Hermes crons.
+
+**Setup debt after Welcome:** incomplete Connectors / owner mobile surface as blocked cards on Kanban board **`ea-onboarding`**, driven by [`factory/onboarding-prompts.yaml`](../factory/onboarding-prompts.yaml) and hourly proactive nudges (email when no SMS on file). See Welcome doc § Setup checklist.
 
 Optional mail analysis: [`day0-cold-start.md`](day0-cold-start.md) — run **Analyze mail for setup (Day 0)** in Connectors after Gmail is connected.
 
@@ -93,6 +98,12 @@ Hourly sweep (`POST /api/proactive/tick`, localhost-only) picks blocked Kanban c
 | SMS idle | Owner chat uses `sms:<e164>:<epoch>` rotated after `JOSHU_HERMES_MESSAGING_IDLE_MINUTES` ([`twilioSmsSession.ts`](../src/twilioSmsSession.ts)) |
 | Project → scheduling | Fallback + resolve prompt: wake linked `ea-scheduling` tasks via [`schedulingHandoff.ts`](../src/proactive/schedulingHandoff.ts) when owner approves on a project track |
 | Ops unblock | `POST /joshu/api/ea/scheduling/meetings/:taskId/unblock` (localhost) |
+| **Project reconcile** | ea-playbook: after mail or owner outcome, close sibling tracks on the same slug; `about.md` `status: done` when nothing is left waiting |
+| **Daily hygiene** | MCP `proactive_hygiene_prepare` → per-card agent review → `proactive_hygiene_record`; ambiguous cards → hourly `stale_review` nudges |
+| **Cross-board Kanban** | [`crossBoardKanban.ts`](../src/proactive/crossBoardKanban.ts) — all boards on this box (not multi-box) |
+| **Meeting blackout** | Hourly tick skips nudges when Google Calendar FreeBusy shows owner in a busy block (+ 5 min pre-buffer) |
+| **Cadence hints** | Every nudge/stale_review includes MORE/LESS/USEFUL line (deterministic append if Hermes compose omits it) |
+| **Inactive projects** | Hourly tick skips `mail_track` when `Projects/<slug>/about.md` `status` is not `active` |
 
 Skill: [`joshu-proactive`](../integrations/hermes/skills/proactive/joshu-proactive/SKILL.md). Tests: `npm run test:proactive`.
 

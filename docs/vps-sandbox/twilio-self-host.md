@@ -249,7 +249,11 @@ TWILIO_SMS_WEBHOOK_URL=https://<host>/joshu/api/twilio/sms/inbound
 TWILIO_OWNER_CALLER=+1…                   # optional env fallback; or set owner mobile in Telephone
 ```
 
-Health: `GET /joshu/api/twilio/sms/health`. Keywords STOP / HELP / START are handled locally. When action guard is enabled, inbound **Y** / **N** (also yes/no/approve/deny) is consumed as HITL approval **before** Hermes chat — see [`agent-safety.md`](../agent-safety.md#owner-approval-sms).
+Health: `GET /joshu/api/twilio/sms/health` (env only — not delivery). Keywords STOP / HELP / START are handled locally.
+
+**Outbound length (2026-09-08):** Joshu GSM-folds Unicode (em-dash → `-`) and caps bodies at **640 characters**. US carriers reject long concatenated SMS (Twilio **30019**, often 10+ UCS-2 segments). If inbound is 200 but the owner never gets a reply, check the Twilio Messages list for `undelivered` / **30019**.
+
+When action guard is enabled, inbound **short** Y / N (also `yes`/`no`/`ok`/`okay`/`approve`/`deny`, or those plus a few words) is consumed as HITL approval **before** Hermes chat. Conversational SMS starting with “Ok …” / “Yes …” is **not** an approval. If nothing is pending, the message falls through to chat — see [`agent-safety.md`](../agent-safety.md#owner-approval-sms).
 
 **Hermes tool surface:** SMS uses the same **`api_server`** pipe and **`platform_toolsets.api_server`** as jChat. Apply `scripts/patch-hermes-kanban-guidance-gate.py` via `apply-hermes-kanban-guidance-gate.sh` at boot so the Kanban worker system prompt does not leak onto owner chat. Optional: `TWILIO_SMS_SYSTEM_PROMPT` for per-box SMS copy.
 
@@ -264,6 +268,7 @@ Health: `GET /joshu/api/twilio/sms/health`. Keywords STOP / HELP / START are han
 | [`voice-realtime.md`](voice-realtime.md) | S2S service, passphrase UX, lock clips |
 | [`voice-think-speak.md`](voice-think-speak.md) | When Realtime speaks vs Hermes `think` |
 | [`telephone-arozos-app.md`](../telephone-arozos-app.md) | Number display + passphrase UI |
+| [`agent-safety.md`](../agent-safety.md#owner-approval-sms) | Short Y/N SMS approvals vs conversational “Ok …” |
 | [Twilio A2P 10DLC](https://www.twilio.com/docs/messaging/compliance/a2p-10dlc/quickstart) | SMS compliance (self-host); managed fleet has a private per-box runbook |
 | [`hetzner-quickstart.md`](hetzner-quickstart.md) | Box install before Twilio |
 | [`.env.example`](../../.env.example) / [`deploy/.env.vps.example`](../../deploy/.env.vps.example) | Env knobs |

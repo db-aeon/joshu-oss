@@ -51,9 +51,12 @@ export function proactiveResolveSessionKey(taskId: string): string {
 function skillForBoard(board: string): string {
   if (board === "ea-scheduling") return "ea-scheduling";
   if (board === "ea-owner-reply") return "ea-owner-reply";
+  if (board === "ea-onboarding") return "ea-onboarding";
   if (board.startsWith("project-")) return "ea-project-kanban";
   return "joshu-proactive";
 }
+
+export { skillForBoard };
 
 /**
  * Comment owner text onto the Kanban card and clear feedbackPending so the next
@@ -126,6 +129,9 @@ export function buildProactiveResolveSystemMessage(
     "4. Do the work their reply authorizes (mail, schedule, file updates, complete/unblock/re-block as appropriate).",
     context.board.startsWith("project-")
       ? "4b. If this project track ties to ea-scheduling (thread_id / meeting_negotiation), load ea-scheduling, find the open meeting task, and send the authorized follow-up — do not only update project files."
+      : null,
+    context.board.startsWith("project-")
+      ? "4c. skill_view('ea-playbook') Project reconcile: mail_list_track_tasks for this project slug and complete sibling tracks this outcome supersedes. Do not only complete this one card. If nothing remains waiting, set about.md status: done."
       : null,
     "5. Reply to the owner with what you did or what you still need — conversational, not a status footer.",
     "Do not invent a thin 'got it, picking that up' ack without looking at the card.",

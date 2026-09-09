@@ -290,7 +290,7 @@ Action-guard approvals use **owner SMS only** (Telephone owner mobile or `TWILIO
 
 API: `GET /joshu/api/connectors/owner-channel/status`, `POST /joshu/api/owner-channel/await` (MCP proxy), `POST /joshu/api/owner-channel/test`.
 
-Gate stays **Joshu-owned** (`mcpToolPolicy`, MCP proxy, REST gates, browser gate). Owner SMS is notification + Y/N ingress only.
+Gate stays **Joshu-owned** (`mcpToolPolicy`, MCP proxy, REST gates, browser gate). Owner SMS is notification + short Y/N ingress only (conversational “Ok …” is chat — see [`agent-safety.md`](agent-safety.md#owner-approval-sms)).
 
 ## Action guard (owner approval for writes)
 

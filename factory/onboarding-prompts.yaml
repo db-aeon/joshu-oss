@@ -1,0 +1,21 @@
+# Ship-with-release onboarding prompts — reconciled to ea-onboarding Kanban board.
+# Add new entries with introducedIn when features ship; reconcile creates cards on upgrade.
+schemaVersion: 1
+prompts:
+  - id: connect-work-gmail
+    title: Connect work Gmail and calendar
+    introducedIn: "0.1.44"
+    required: true
+    nudgeEligible: true
+    deepLink: Connectors
+    completeWhen: workGmailConnected
+    idempotencyKey: onboarding:connect-work-gmail
+
+  - id: owner-mobile-sms
+    title: Add your mobile for SMS and voice
+    introducedIn: "0.1.44"
+    required: true
+    nudgeEligible: true
+    deepLink: Telephone
+    completeWhen: ownerMobileConfigured
+    idempotencyKey: onboarding:owner-mobile-sms

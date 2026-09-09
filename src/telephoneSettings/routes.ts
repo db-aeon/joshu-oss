@@ -62,6 +62,13 @@ export function registerTelephoneRoutes(
         return;
       }
       writeTelephoneSettingsFile(updates, projectRoot);
+      if (updates.ownerCaller !== undefined) {
+        void import("../onboarding/reconcileOnboardingBoard.js")
+          .then(({ reconcileOnboardingBoard }) => reconcileOnboardingBoard(projectRoot))
+          .catch((err) => {
+            console.warn(`[onboarding] reconcile after telephone save: ${(err as Error).message}`);
+          });
+      }
       const notes: string[] = [];
       if (updates.thinkPassword !== undefined) {
         notes.push("Passphrase saved. New inbound calls will use it immediately.");

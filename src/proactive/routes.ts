@@ -16,6 +16,9 @@ import {
 import { sweepProactiveCandidates, pickTopProactiveCandidate } from "./sweep.js";
 import { runProactiveTick, applySentNudge } from "./tick.js";
 import { deliverProactiveNudge } from "./delivery.js";
+import { prepareHygienePlan, readHygienePlan } from "./hygienePrepare.js";
+import { recordHygieneRun } from "./hygieneRecord.js";
+import { isOwnerAvailableForProactive } from "./meetingWindow.js";
 
 function readBool(value: unknown): boolean {
   return value === true || value === "true" || value === 1 || value === "1";
@@ -56,9 +59,15 @@ export function registerProactiveRoutes(router: Router, opts: { projectRoot: str
     }
     const profile = readAgentProfile(opts.projectRoot);
     const tz = profile?.timezone?.trim();
+    const today = tz ? ownerLocalDateString(tz) : new Date().toISOString().slice(0, 10);
     const state = readProactiveState(opts.projectRoot, tz);
     try {
-      const candidates = await sweepProactiveCandidates({ filesRoot: paths.filesRoot, state });
+      const candidates = await sweepProactiveCandidates({
+        filesRoot: paths.filesRoot,
+        projectRoot: opts.projectRoot,
+        state,
+        today,
+      });
       res.json({ ok: true, count: candidates.length, candidates });
     } catch (err) {
       res.status(500).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
@@ -98,12 +107,25 @@ export function registerProactiveRoutes(router: Router, opts: { projectRoot: str
     }
     const taskId = typeof req.body?.taskId === "string" ? req.body.taskId.trim() : "";
     let candidate = taskId
-      ? (await sweepProactiveCandidates({ filesRoot: paths.filesRoot, state })).find(
-          (c) => c.taskId === taskId,
-        )
-      : await pickTopProactiveCandidate({ filesRoot: paths.filesRoot, state });
+      ? (await sweepProactiveCandidates({
+          filesRoot: paths.filesRoot,
+          projectRoot: opts.projectRoot,
+          state,
+          today,
+        })).find((c) => c.taskId === taskId)
+      : await pickTopProactiveCandidate({
+          filesRoot: paths.filesRoot,
+          projectRoot: opts.projectRoot,
+          state,
+          today,
+        });
     if (!candidate) {
       res.status(404).json({ ok: false, error: "no_candidate" });
+      return;
+    }
+    const meeting = await isOwnerAvailableForProactive(opts.projectRoot);
+    if (!meeting.ok) {
+      res.status(409).json({ ok: false, error: meeting.reason ?? "owner_in_meeting", busyUntil: meeting.busyUntil });
       return;
     }
     const delivery = await deliverProactiveNudge({ candidate, projectRoot: opts.projectRoot });
@@ -111,14 +133,18 @@ export function registerProactiveRoutes(router: Router, opts: { projectRoot: str
       res.status(502).json({ ok: false, error: delivery.error ?? "delivery_failed" });
       return;
     }
-    state = applySentNudge(state, {
-      taskId: candidate.taskId,
-      board: candidate.board,
-      title: candidate.title,
-      blockReason: candidate.blockReason,
-      sentAt: new Date().toISOString(),
-      channel: delivery.channel ?? "unknown",
-    });
+    state = applySentNudge(
+      state,
+      {
+        taskId: candidate.taskId,
+        board: candidate.board,
+        title: candidate.title,
+        blockReason: candidate.blockReason,
+        sentAt: new Date().toISOString(),
+        channel: delivery.channel ?? "unknown",
+      },
+      today,
+    );
     writeProactiveState(state, opts.projectRoot);
     res.json({ ok: true, candidate, channel: delivery.channel });
   });
@@ -154,7 +180,63 @@ export function registerProactiveRoutes(router: Router, opts: { projectRoot: str
       hygieneLastRunAt: state.hygieneLastRunAt ?? null,
       hygieneClosedTaskIds: state.hygieneClosedTaskIds ?? [],
       lastHygieneSummary: state.lastHygieneSummary ?? null,
+      hygieneAmbiguousQueue: state.hygieneAmbiguousQueue ?? [],
     });
+  });
+
+  router.post("/api/proactive/hygiene/prepare", async (req: Request, res: Response) => {
+    if (!requireLocalhost(req, res)) return;
+    try {
+      const plan = await prepareHygienePlan(opts.projectRoot);
+      res.json({ ok: true, plan });
+    } catch (err) {
+      res.status(500).json({
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  });
+
+  router.get("/api/proactive/hygiene/plan", (req: Request, res: Response) => {
+    if (!requireLocalhost(req, res)) return;
+    const plan = readHygienePlan(opts.projectRoot);
+    if (!plan) {
+      res.status(404).json({ ok: false, error: "no_hygiene_plan" });
+      return;
+    }
+    res.json({ ok: true, plan });
+  });
+
+  router.post("/api/proactive/hygiene/record", (req: Request, res: Response) => {
+    if (!requireLocalhost(req, res)) return;
+    const body = req.body ?? {};
+    const closedTaskIds = Array.isArray(body.closedTaskIds)
+      ? body.closedTaskIds.filter((id: unknown): id is string => typeof id === "string")
+      : [];
+    const ambiguous = Array.isArray(body.ambiguous)
+      ? body.ambiguous.filter(
+          (item: unknown): item is Record<string, unknown> =>
+            item !== null && typeof item === "object",
+        )
+      : [];
+    const state = recordHygieneRun(opts.projectRoot, {
+      closedTaskIds,
+      ambiguous: ambiguous.map((item: Record<string, unknown>) => ({
+        taskId: String(item.taskId ?? item.task_id ?? "").trim(),
+        board: String(item.board ?? "").trim(),
+        title: typeof item.title === "string" ? item.title : undefined,
+        blockReason:
+          typeof item.blockReason === "string"
+            ? item.blockReason
+            : typeof item.block_reason === "string"
+              ? item.block_reason
+              : null,
+      })),
+      skipped: typeof body.skipped === "number" ? body.skipped : undefined,
+      active: typeof body.active === "number" ? body.active : undefined,
+      summary: typeof body.summary === "string" ? body.summary : undefined,
+    });
+    res.json({ ok: true, state });
   });
 
   router.post("/api/proactive/owner-reply", async (req: Request, res: Response) => {

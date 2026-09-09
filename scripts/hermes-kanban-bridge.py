@@ -57,6 +57,9 @@ def _task_summary(task: Any, *, include_body: bool = False) -> Dict[str, Any]:
         "assignee": task.assignee,
         "idempotency_key": getattr(task, "idempotency_key", None),
     }
+    created = getattr(task, "created_at", None)
+    if created is not None:
+        out["created_at"] = created
     if include_body:
         out["body"] = task.body
     return out
@@ -118,7 +121,7 @@ def _create_task(conn: Any, board: str, **kwargs: Any) -> str:
 
 
 # EA scheduling + mail ingress boards: tasks must be created with assignee → ready (never triage).
-EA_KANBAN_BOARDS = frozenset({"ea-scheduling", "ea-sched-ingress", "ea-mail-ingress", "ea-owner-reply"})
+EA_KANBAN_BOARDS = frozenset({"ea-scheduling", "ea-sched-ingress", "ea-mail-ingress", "ea-owner-reply", "ea-onboarding"})
 
 
 def _parse_parents(raw: Any) -> Optional[List[str]]:

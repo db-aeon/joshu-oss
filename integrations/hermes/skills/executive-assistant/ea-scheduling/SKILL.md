@@ -358,5 +358,3 @@ Best,
 ```
 
 3. The meeting is **confirmed via email** — no further browser retries. Optional: `GOOGLECALENDAR_CREATE_EVENT` placeholder on owner calendar ("Awaiting [name]'s invite").
-
-See also `references/investor-response-classification.md` (Calendly security blocks) in **`ea-playbook`**.

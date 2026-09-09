@@ -107,5 +107,12 @@ export async function refreshConnectorsRegistry(projectRoot: string): Promise<Co
     console.warn(`[connectors] could not write registry: ${(err as Error).message}`);
   });
 
+  // Best-effort — auto-complete onboarding cards when connectors change.
+  void import("../onboarding/reconcileOnboardingBoard.js")
+    .then(({ reconcileOnboardingBoard }) => reconcileOnboardingBoard(projectRoot))
+    .catch((err) => {
+      console.warn(`[onboarding] reconcile after connectors refresh: ${(err as Error).message}`);
+    });
+
   return registry;
 }

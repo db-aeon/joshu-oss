@@ -4,7 +4,7 @@ description: Triage mail to Projects. Not drips—use ea-project-kanban.
 metadata:
   hermes:
     category: executive-assistant
-    version: "2.21.0"
+    version: "2.22.0"
 ---
 
 # EA Playbook — Triage & rollups
@@ -22,7 +22,7 @@ Layout: `docs/executive-assistant.md` · `docs/executive-assistant.md#gtd-worksp
 | **Mail ingress Kanban** | `ea-mail-ingress` task (`kind: mail_ingress`) | **MAIL INGRESS mode** — file to `Projects/<slug>/`, `mail_*` track, optional scheduling or owner-reply child |
 | **Triage stub** | Thin stub (`source_path`, headers only) | Same filing loop; policy flags on ingress Kanban task |
 | **Morning / evening / weekly cron** | Hermes jobs with `skills: ["ea-playbook"]` | Summary email + journals — **not** batch triage drain |
-| **On demand** | jChat user message | Rollup, situation report, or in-chat capture |
+| **On demand** | jChat / SMS / voice | Rollup, situation report, in-chat capture, or [Project reconcile](#project-reconcile) when the owner reports an outcome |
 | **Multi-step / HITL project** | User asks for parallel steps, approvals, follow-ups | **Defer** to **`ea-project-kanban`** — **not** mail ingress |
 
 More triggers will be added later as separate cron jobs or skills; do not invent them until documented here.
@@ -33,7 +33,7 @@ For **each** stub in the active snapshot:
 
 1. Read stub frontmatter (`source_path`, `subject`, `from`) — **do not** copy the email body into the stub.
 2. Read the thread at `${JOSHU_FILES_ROOT}/<source_path>`.
-3. **Choose or create** `Projects/<slug>/` (existing project from `about.md` title/outcome, or `Projects/other/`, or new folder from `_template/`).
+3. **Choose or create** `Projects/<slug>/` — see [Canonical project matching](#canonical-project-matching).
 4. **Update project docs** (filesystem writes only):
    - `about.md` — urgency/importance, deadline, `status` if changing lifecycle, `owner_decisions_pending` if principal must decide
    - `todo.md` — add/refresh rows (**Waiting on** / **Blocker** columns); **link** to thread via `source_path` (see Link discipline)
@@ -62,6 +62,42 @@ Use the stub's `source_path` (relative to `${JOSHU_FILES_ROOT}`). Relative markd
 
 Do **not** duplicate thread bodies, Kanban card bodies, or chat transcripts into project files. Hindsight owns chat recall; connectors own mail.
 
+## Canonical project matching
+
+`Projects/<slug>/` is the lifecycle unit. `mail_track` cards are waiting-on attachments to that slug — not independent work items.
+
+When matching a signal (mail, SMS, jChat, voice) to a project:
+
+1. Prefer an existing folder whose **`about.md` title or outcome already covers this work** (same company, role, deal, partnership). gbrain and prior tracks help, but **title/outcome wins over a new slug**.
+2. Do **not** invent forks like `<slug>-role`, `<slug>-interview`, or `<slug>-follow-up` when a parent folder already exists.
+3. Create a new folder from `_template/` only when no existing `about.md` covers it (or file `Projects/other/`).
+4. After filing, run [Project reconcile](#project-reconcile) whenever waiting may have changed.
+
+## Project reconcile
+
+**Channel-agnostic.** Mail, owner SMS, jChat, and voice use this same procedure when a signal may change whether a project is still waiting.
+
+Run it when:
+
+- Mail ingress finished file + `mail_handoff_track_task` / `mail_create_track_task` (step 4b).
+- The owner reports an **outcome** on an existing project (“they rejected me”, “deal’s dead”, “we’re done waiting on X”) — not a new note dump (that stays [In-chat idea capture](#in-chat-idea-capture-the-owner-riffing-in-conversation)).
+- A proactive nudge reply is an outcome for the project, not only the nudged card.
+
+Do **not** use category tables (recruiting vs investor vs vendor). One question: **given this project’s outcome, this signal, and all open tracks, is anything still waiting?**
+
+### Procedure
+
+1. **Match slug** — [Canonical project matching](#canonical-project-matching). Do not create a new folder for an outcome on work you already track.
+2. **Update docs** — `about.md` / journal / `todo.md` Waiting on from this signal (link mail; do not paste bodies).
+3. **`mail_list_track_tasks(projectSlug="<folder-slug>")`** — all open tracks on this slug, not only the matched thread.
+4. Judge each open track:
+   - **This signal supersedes it** → `kanban_complete` + comment (one line: why, cite the signal).
+   - **Still waiting on owner or an external party** → leave blocked.
+5. If **nothing remains waiting** on the project: set `about.md` `status: done` and complete remaining open tracks on the slug.
+6. A project may stay `status: active` with some tracks closed.
+
+`mail_handoff_track_task` stays **neutral** (delivery only). Reconcile is this step, using `kanban_complete` + `about.md`.
+
 ## Mail ingress (ea-mail-ingress)
 
 When your Kanban task body includes `kind: mail_ingress`, run this **short-circuit** — no browse-until-found loops.
@@ -72,14 +108,15 @@ When your Kanban task body includes `kind: mail_ingress`, run this **short-circu
 2. **Read ingress body fields:** `agent_authorized`, `scheduling_eligible`, `owner_reply_eligible`, `allowed_actions`, `source_path`, `thread_id`, `message_id`, `account_key`, `provider`, `coordination_scope_id`. Triage stub is a pointer only.
 3. **Coordination preflight (2026-09):** Before spawning scheduling or owner-reply children, call **`coordination_list_active`** (or **`coordination_scope_resolve`**) with `threadId` + `sourcePath`. If an open **`meeting_negotiation`** exists on scope → **handoff only** (`scheduling_handoff_meeting_task`); never **`scheduling_create_meeting_task`**. If open **`owner_deliverable`** exists → **`owner_reply_handoff_task`** only. Joshu API mutexes cross-board spawns; treat `action: existing_coordination` as handoff to returned `task_id`.
 3. **`read_file` the mail mirror** at `${JOSHU_FILES_ROOT}/<source_path>` (once). Then file:
-   - Match existing `Projects/<slug>/` (thread, gbrain, `about.md`) **or** create minimal `about.md` / `todo.md` / `journal_*` from `_template/`.
-   - Prefer known slug from gbrain / prior tracks over inventing new folders.
+   - Match existing `Projects/<slug>/` via [Canonical project matching](#canonical-project-matching) **or** create minimal `about.md` / `todo.md` / `journal_*` from `_template/`.
+   - Prefer known slug from gbrain / prior tracks / **`about.md` title+outcome** over inventing new folders.
    - Skip AppleDouble `._*` and other sidecar noise in search results.
 4. **Track via Joshu MCP** (args are **flat** — never nest `tool_call`, never use `slug`):
    - `mail_list_track_tasks(projectSlug="<folder-slug>")` — folder name only, e.g. `joshu-product-development` (board is `project-<slug>`).
    - **Match** → `mail_handoff_track_task(taskId=…, projectSlug=…, sourcePath=…, messageId=…, summary=…)`.
    - **No match** → `mail_create_track_task(…, projectSlug=…, threadId=…, messageId=…, sourcePath=…)` (**blocked**).
-5. **Scheduling decision** — only when **`scheduling_eligible: true`** (see [Scheduling decision gate](#scheduling-decision-gate-mail-ingress-step-5)). If **`agent_authorized: false`** or **`allowed_actions: file`** — **stop after step 4**; no scheduling child, no outbound mail, no calendar probes.
+4b. **[Project reconcile](#project-reconcile)** on that slug — list **all** open tracks, complete ones this mail supersedes, set `about.md` `status: done` if nothing is left waiting. Do this even when the new mail created a **new** track (sibling cards may already be waiting).
+5. **Scheduling decision** — only when **`scheduling_eligible: true`** (see [Scheduling decision gate](#scheduling-decision-gate-mail-ingress-step-5)). If **`agent_authorized: false`** or **`allowed_actions: file`** — **stop after step 4b**; no scheduling child, no outbound mail, no calendar probes.
 5b. **Owner-reply (path D)** — when **`owner_reply_eligible: true`** (owner mailed **agent Nylas** with a non-meeting ask). After filing: **`owner_reply_list_tasks`** by `thread_id` → match → **`owner_reply_handoff_task`**; else **`owner_reply_create_task`** (pass **`threadId`** + **`provider`** + **`from`**). If Joshu returns `existing_thread`, handoff. **Do not** research or **`nylas_send_message`** on this ingress card — the **`ea-owner-reply`** worker does that. Skip path D when you took scheduling **path A** (meeting worker owns outbound).
 6. **Stub done:** open `Triage/gmail-<account_key>-<thread_id>.stub.md` (or `Triage/<provider>-<thread_id>.stub.md` when no account_key) — set `state: done`, move to `Triage/_done/`. Prefer that path; do not recursive-search for stubs.
 7. **`kanban_complete`** the ingress card.
@@ -187,7 +224,7 @@ Skip stubs already `done`.
 
 **Scheduling (after filing, not at ingest):** Do not route stubs to `ea-sched-ingress` at triage time. When mail content is scheduling-related, complete project filing first, then run the [scheduling decision gate](#scheduling-decision-gate-mail-ingress-step-5) (paths A/B/C). Standalone cold scheduling → file under **`Projects/other/`** then path **A** only when clearly a new ask.
 
-**Scheduling inside a project thread:** When the meeting is the next action for an already-filed project (investor reply, partner thread, waitlist onboarding), keep it on that project's slug — update `todo.md` **Waiting on**, then run the scheduling child on `ea-scheduling`. See `references/investor-response-classification.md`.
+**Scheduling inside a project thread:** When the meeting is the next action for an already-filed project (partner thread, waitlist onboarding, follow-up call), keep it on that project's slug — update `todo.md` **Waiting on**, then run the scheduling child on `ea-scheduling`.
 
 When promoting from `Projects/other/`, move scheduling meeting context with the project if you later create a dedicated slug.
 
@@ -235,7 +272,9 @@ After categorizing, update the project's `todo.md` (add/refresh task rows + Wait
 
 the owner often uses jChat (or voice) to dump ideas, follow-ups, and product thoughts in real-time — the conversational equivalent of "Another note to file." These are **not mail stubs**.
 
-**Pattern signals:**
+**Outcome vs note dump:** If the owner reports that an **existing project** is no longer waiting (“I just got off a call and they rejected me”, “the deal died”, “that role closed”), this is **not** capture. Match the slug and run [Project reconcile](#project-reconcile) — close superseded tracks, update `about.md`. Do not only journal a sticky-note.
+
+**Pattern signals (note dump):**
 - Owner says "add to my list of follow-ups" or "jot this down"
 - Stream of short messages: "I want to X" / "Also Y" / "And I need Z"
 - "Riffing with you" or "while I think of it"
@@ -301,7 +340,7 @@ When the owner sends the **same content** to multiple recipients (investor updat
 
 **Bounces and auto-replies from broadcast recipients** (e.g. Carol's OOO auto-reply, Mendel's pitch-form auto-response, Mail Delivery Failed notices) are **related notifications** — file them under the same project as the parent broadcast, not as standalone items. Note them in the parent thread's journal entry rather than creating separate entries for each.
 
-**Investor / broadcast response classification**: When responses come back from a bulk send, each reply needs its own triage within the same parent project. See `references/investor-response-classification.md` for the full classification table (info vs scheduling vs referral vs OOO).
+**Broadcast / bulk-send replies:** When responses come back from a bulk send, file each reply on the **same parent project**. Then run [Project reconcile](#project-reconcile) — conversational closure or “nothing left to do” completes waiting tracks; a real ask (schedule, follow-up, referral) stays open. Do not invent a per-category table.
 
 ### Same-sender batch incoming notifications
 
@@ -515,10 +554,6 @@ When the owner says "let's answer your inbound mail", "let's answer my mail", "c
 **Delivery failures (2):**
 • MAILER-DAEMON — one newsletter recipient bounced
 ```
-
-### Resolved-by-owner investor replies
-
-Investor broadcast replies where the owner already handled the reply himself (asked a question, made a closing remark) and the investor replied back with a natural resolution do NOT need a new todo row. Note them in the project journal under a single "Investor newsletter follow-up" heading and close the stub. The existing `references/investor-response-classification.md` covers the classification table — add "the owner already replied" as a terminal state: file and note only.
 
 ## Hermes skill-backed crons
 

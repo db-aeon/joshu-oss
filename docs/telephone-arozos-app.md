@@ -27,7 +27,7 @@ Related: [`vps-sandbox/twilio-self-host.md`](vps-sandbox/twilio-self-host.md) (b
 
 From `TWILIO_PHONE_NUMBER` (set in `instance.env` after you buy a Twilio number — see [`twilio-self-host.md`](vps-sandbox/twilio-self-host.md)) or an optional override in `settings.json`. Displayed as a formatted number; copy uses E.164. Managed fleet boxes get this at provision.
 
-**SMS:** the same number can send/receive SMS when A2P 10DLC is registered on the owning Twilio account ([Twilio A2P quickstart](https://www.twilio.com/docs/messaging/compliance/a2p-10dlc/quickstart)). Managed fleet: private per-box runbook managed fleet A2P runbook (not in OSS). OSS self-host: [`twilio-self-host.md`](vps-sandbox/twilio-self-host.md) (SMS gateway env + SmsUrl).
+**SMS:** the same number can send/receive SMS when A2P 10DLC is registered on the owning Twilio account ([Twilio A2P quickstart](https://www.twilio.com/docs/messaging/compliance/a2p-10dlc/quickstart)). Owner chat replies are GSM-folded and capped at 640 characters (Twilio **30019** on longer UCS-2 essays). Short **Y** / **N** / **ok** is action-guard approval; “Ok on …” in a sentence is chat. Managed fleet: private per-box runbook managed fleet A2P runbook (not in OSS). OSS self-host: [`twilio-self-host.md`](vps-sandbox/twilio-self-host.md) (SMS gateway env + SmsUrl).
 
 ### Owner mobile
 

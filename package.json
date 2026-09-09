@@ -65,6 +65,8 @@
     "test:owner-reply": "tsx scripts/test-owner-reply.mjs",
     "test:coordination-scope": "tsx scripts/test-coordination-scope.mjs",
     "test:proactive": "tsx scripts/test-proactive.mjs",
+    "test:onboarding-reconcile": "tsx scripts/test-onboarding-reconcile.mjs",
+    "test:sms-send": "tsx scripts/test-sms-send.mjs",
     "test:hermes-skills-policy": "npm run build && node scripts/check-hermes-skills-policy.mjs",
     "test:hermes-mcp-allowlist": "tsx scripts/test-hermes-mcp-allowlist.mjs",
     "test:platform-architecture": "npm run build && node scripts/smoke-platform-architecture.mjs",

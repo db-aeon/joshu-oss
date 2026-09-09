@@ -62,6 +62,8 @@ services:
       # Source of truth: image COPY + /opt/joshu/.image/last30days-skill fallback.
       # Operator hotpatch: docker cp into the container (or next image).
       - ../factory/manifest.yaml:/opt/joshu/factory/manifest.yaml:ro
+      # Onboarding registry — operator hotfix without image rebuild (same lane as manifest).
+      - ../factory/onboarding-prompts.yaml:/opt/joshu/factory/onboarding-prompts.yaml:ro
       - ../arozos/system-setting:/opt/joshu/arozos/system-setting:ro
       - ../arozos/locale:/opt/joshu/arozos/locale:ro
       # Vanilla shell overlays — git pull updates chrome without image rebuild (OSS default theme).

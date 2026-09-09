@@ -6,6 +6,7 @@
 # Bundled discovered: 190 | Enabled: 14 | Computed disabled: 177
 enabled:
   - ea-morning-review
+  - ea-onboarding
   - ea-owner-reply
   - ea-playbook
   - ea-project-kanban

@@ -106,7 +106,7 @@ export function registerTwilioSmsRoutes(
   const webhookUrl = smsInboundWebhookUrl()!;
   const systemPrompt =
     envTrim("TWILIO_SMS_SYSTEM_PROMPT") ||
-    "You are Joshu on SMS with the box owner. Reply in concise plain text — no markdown, tables, or long URLs. Keep replies short enough for a text message.";
+    "You are Joshu on SMS with the box owner. Reply in concise plain text - no markdown, tables, or long URLs. Keep replies under 500 characters so the carrier will deliver them.";
 
   router.post("/api/twilio/sms/inbound", express.urlencoded({ extended: false }), (req, res) => {
     const sig = req.headers["x-twilio-signature"];

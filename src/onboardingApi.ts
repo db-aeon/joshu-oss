@@ -1,6 +1,7 @@
 import type { Request, Response, Router } from "express";
 import fs from "node:fs";
 import path from "node:path";
+import { isDesktopBrowserOrLocalRequest } from "./httpLocalhost.js";
 import { isNylasConfigured } from "./nylas/config.js";
 import { readAgentProfile } from "./nylas/profile.js";
 import { readAgentGrant } from "./nylas/store.js";
@@ -97,6 +98,13 @@ function readDraftBody(body: unknown): OnboardingDraft | null {
 
 function readOnboardingState(projectRoot: string): OnboardingState {
   return readJsonFile<OnboardingState>(onboardingStatePath(projectRoot)) ?? DEFAULT_ONBOARDING_STATE;
+}
+
+/** Setup status for Welcome/desktop UI — not a public anonymous API. */
+function requireDesktopOrLocal(req: Request, res: Response): boolean {
+  if (isDesktopBrowserOrLocalRequest(req)) return true;
+  res.status(403).json({ ok: false, error: "setup-status requires desktop session or localhost" });
+  return false;
 }
 
 export function registerOnboardingRoutes(router: Router, opts: { projectRoot: string }): void {
@@ -197,6 +205,17 @@ export function registerOnboardingRoutes(router: Router, opts: { projectRoot: st
         return;
       }
       res.json(result);
+    } catch (err) {
+      res.status(500).json({ error: (err as Error).message });
+    }
+  });
+
+  router.get("/api/onboarding/setup-status", async (req: Request, res: Response) => {
+    if (!requireDesktopOrLocal(req, res)) return;
+    try {
+      const { getOnboardingSetupStatus } = await import("./onboarding/reconcileOnboardingBoard.js");
+      const status = await getOnboardingSetupStatus(opts.projectRoot);
+      res.json(status);
     } catch (err) {
       res.status(500).json({ error: (err as Error).message });
     }

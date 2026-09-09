@@ -38,7 +38,37 @@ const TASK_ACTION_MAP: Record<string, TaskActionKeyword> = {
 
 export function parseFeedbackKeyword(body: string): FeedbackKeyword | null {
   const normalized = body.trim().replace(/\s+/g, " ").toUpperCase();
-  return KEYWORD_MAP[normalized] ?? null;
+  if (KEYWORD_MAP[normalized]) return KEYWORD_MAP[normalized];
+
+  // Short replies to nudge cadence prompts (e.g. "more please", "less", "useful").
+  if (normalized.length > 48) return null;
+  if (/\bNOT USEFUL\b/.test(normalized) || /\bNOTUSEFUL\b/.test(normalized)) {
+    return "NOT_USEFUL";
+  }
+  const wordCount = normalized.split(" ").length;
+  if (/\bUSEFUL\b/.test(normalized) && wordCount <= 4) return "USEFUL";
+  if (
+    /\bMORE\b/.test(normalized) &&
+    wordCount <= 4 &&
+    !/\bTELL ME MORE\b/.test(normalized) &&
+    !/\bMORE ABOUT\b/.test(normalized)
+  ) {
+    return "MORE";
+  }
+  if (/\bLESS\b/.test(normalized) && wordCount <= 4) return "LESS";
+  if (/\bEVENINGS OK\b/.test(normalized) || /\bEVENINGSOK\b/.test(normalized)) {
+    return "EVENINGS_OK";
+  }
+  if (/\bWEEKENDS OK\b/.test(normalized) || /\bWEEKENDSOK\b/.test(normalized)) {
+    return "WEEKENDS_OK";
+  }
+  if (/\bNO EVENINGS\b/.test(normalized) || /\bNOEVENINGS\b/.test(normalized)) {
+    return "NO_EVENINGS";
+  }
+  if (/\bNO WEEKENDS\b/.test(normalized) || /\bNOWEEKENDS\b/.test(normalized)) {
+    return "NO_WEEKENDS";
+  }
+  return null;
 }
 
 /** Exact-match owner task action (stale review). */
@@ -78,6 +108,9 @@ function applyKeyword(state: ProactiveState, keyword: FeedbackKeyword): Proactiv
       break;
     case "NO_WEEKENDS":
       next.preferences.allowWeekends = false;
+      break;
+    case "USEFUL":
+      next.preferences.notes.push(`positive feedback at ${new Date().toISOString()}`);
       break;
     default:
       break;

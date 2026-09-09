@@ -25,13 +25,16 @@ export function proactiveHygieneCronSchedule(draft: OnboardingDraft): string {
   return `${minute} ${hour} * * 1-5`;
 }
 
-function buildHygienePrompt(draft: OnboardingDraft): string {
+export function buildHygienePrompt(draft: OnboardingDraft): string {
   const owner = draft.ownerName?.trim() || "the owner";
   return (
     `Use skill ${PROACTIVE_HYGIENE_SKILL}. Hygiene mode for ${owner}. ` +
-    `skill_view('${PROACTIVE_HYGIENE_SKILL}') — review up to 20 oldest/most date-stale blocked Kanban cards. ` +
-    `Auto-complete high-confidence stale cards; do not nudge owner for ambiguous ones in this pass. ` +
-    `Update .joshu/proactive/state.json hygiene fields via REST if exposed, or comment counts on cards.`
+    `Step 1: MCP proactive_hygiene_prepare (cross-board blocked scan — do NOT use execute_code, SQLite, or Desktop scripts). ` +
+    `Step 2: For each candidate in the plan: kanban_show → gbrain query on source_paths → classify. ` +
+    `High confidence stale → kanban_complete + audit comment (cite evidence). ` +
+    `Ambiguous → skip auto-close (record in proactive_hygiene_record). Still active → leave blocked. ` +
+    `Step 3: proactive_hygiene_record with closedTaskIds, ambiguous[], skipped, active counts. ` +
+    `Forbidden: kanban-sqlite.md, execute_code, write_file scripts on Desktop, direct state.json edits.`
   );
 }
 
@@ -43,15 +46,24 @@ async function listJobs(): Promise<CronBridgeJobSummary[]> {
   return Array.isArray(result.jobs) ? result.jobs : [];
 }
 
+function cronScheduleExpr(schedule: CronBridgeJobSummary["schedule"]): string | null {
+  if (typeof schedule === "string") return schedule;
+  if (schedule && typeof schedule === "object" && typeof schedule.expr === "string") {
+    return schedule.expr;
+  }
+  return null;
+}
+
 /** Idempotent install of daily proactive hygiene cron (Hermes agent). */
 export async function syncProactiveHygieneCron(
   draft: OnboardingDraft,
 ): Promise<"created" | "updated" | "skipped"> {
   const schedule = proactiveHygieneCronSchedule(draft);
+  const prompt = buildHygienePrompt(draft);
   const payload = {
     schedule,
     name: PROACTIVE_HYGIENE_CRON_JOB_NAME,
-    prompt: buildHygienePrompt(draft),
+    prompt,
     deliver: "local",
     skills: [PROACTIVE_HYGIENE_SKILL],
   };
@@ -59,10 +71,12 @@ export async function syncProactiveHygieneCron(
   const existing = await listJobs();
   const match = existing.find((j) => j.name === PROACTIVE_HYGIENE_CRON_JOB_NAME);
   if (match?.job_id) {
+    const scheduleExpr = cronScheduleExpr(match.schedule);
     const alreadyInstalled =
-      match.schedule === schedule &&
+      scheduleExpr === schedule &&
       match.enabled !== false &&
-      (match.skills?.includes(PROACTIVE_HYGIENE_SKILL) ?? true);
+      (match.skills?.includes(PROACTIVE_HYGIENE_SKILL) ?? true) &&
+      match.prompt === prompt;
     if (alreadyInstalled) return "skipped";
     const result = await callCronBridge({ action: "update", job_id: match.job_id, ...payload });
     if (!result.success) {

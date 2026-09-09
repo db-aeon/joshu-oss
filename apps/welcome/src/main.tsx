@@ -778,7 +778,7 @@ function App() {
               </Field>
               <Field
                 label="Your mobile (optional)"
-                hint="SMS approvals and recognizing you on inbound calls. You can also set this later in Telephone."
+                hint="SMS approvals and recognizing you on inbound calls. If you skip this, Joshu will nudge you to add it in Telephone or Welcome."
               >
                 <input
                   type="tel"

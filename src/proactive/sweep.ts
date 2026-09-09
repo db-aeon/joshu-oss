@@ -1,62 +1,51 @@
-import { callKanbanBridge } from "../hermesKanbanBridge.js";
+import { listBlockedOnBoard } from "./crossBoardKanban.js";
 import { listKanbanBoardSlugs } from "./boards.js";
 import { blockReasonNeedsOwnerInput } from "./blockReason.js";
-import { projectSlugFromBoard, rankCandidate, sortCandidates } from "./prioritize.js";
+import {
+  projectSlugFromBoard,
+  rankCandidate,
+  sortCandidates,
+  isProjectActiveForNudge,
+  applyRankBoost,
+} from "./prioritize.js";
 import { isDateStaleForNudge } from "./stale.js";
 import type { ProactiveCandidate, ProactiveState } from "./types.js";
-import { wasTaskNudgedToday } from "./state.js";
+import { wasTaskNudgedToday, wasOnboardingNudgedToday } from "./state.js";
+import { EA_ONBOARDING_KANBAN_BOARD } from "../hermesKanbanBridge.js";
+import {
+  isOnboardingCandidateSuppressed,
+  isOnboardingSetupDebt,
+  ONBOARDING_RANK_BOOST,
+} from "../onboarding/onboardingProactive.js";
+import { isOnboardingKanbanBody } from "../onboarding/promptState.js";
 
-async function listBlockedOnBoard(
-  board: string,
-  opts: { limit?: number; includeActivity?: boolean },
-): Promise<
-  Array<{
-    task_id: string;
-    title?: string;
-    status?: string;
-    body?: string;
-    block_reason?: string | null;
-  }>
-> {
-  const result = await callKanbanBridge({
-    action: "list",
-    board,
-    status: "blocked",
-    limit: opts.limit ?? 50,
-    include_body: true,
-    include_activity: opts.includeActivity ?? true,
-  });
-  if (!result.success || !result.tasks) return [];
-  return result.tasks
-    .map((t) => ({
-      task_id: t.task_id?.trim() ?? "",
-      title: t.title,
-      status: t.status,
-      body: t.body,
-      block_reason: t.block_reason ?? null,
-    }))
-    .filter((t) => t.task_id.length > 0);
-}
-
-function toCandidate(
+async function toCandidate(
   row: {
     task_id: string;
     title?: string;
     status?: string;
     body?: string;
     block_reason?: string | null;
+    created_at_ms?: number | null;
   },
   board: string,
   filesRoot: string,
-): ProactiveCandidate | null {
+  projectRoot: string,
+): Promise<ProactiveCandidate | null> {
   if (row.status !== "blocked") return null;
   if (!blockReasonNeedsOwnerInput(row.block_reason)) return null;
 
   const taskText = `${row.title ?? ""}\n${row.body ?? ""}`;
-  if (isDateStaleForNudge(taskText)) return null;
+  if (!isOnboardingKanbanBody(row.body) && isDateStaleForNudge(taskText)) return null;
+
+  if (isOnboardingCandidateSuppressed(projectRoot, board, row.body)) return null;
 
   const projectSlug = projectSlugFromBoard(board);
-  return rankCandidate(
+  if (!isProjectActiveForNudge(filesRoot, projectSlug)) return null;
+
+  const createdAt =
+    row.created_at_ms != null ? new Date(row.created_at_ms).toISOString() : null;
+  let candidate = rankCandidate(
     {
       taskId: row.task_id,
       board,
@@ -65,23 +54,36 @@ function toCandidate(
       blockReason: row.block_reason ?? null,
       body: row.body,
       projectSlug,
+      createdAt,
     },
     filesRoot,
   );
+
+  if (board === EA_ONBOARDING_KANBAN_BOARD && (await isOnboardingSetupDebt(projectRoot, board))) {
+    candidate = applyRankBoost(candidate, -ONBOARDING_RANK_BOOST);
+  }
+
+  return candidate;
 }
 
 /** Collect blocked owner-input tasks across all Kanban boards on the box. */
 export async function sweepProactiveCandidates(opts: {
   filesRoot: string;
+  projectRoot: string;
   state: ProactiveState;
+  today?: string;
 }): Promise<ProactiveCandidate[]> {
-  const { filesRoot, state } = opts;
+  const { filesRoot, projectRoot, state } = opts;
+  const today = opts.today;
+  const onboardingCapHit =
+    today != null && wasOnboardingNudgedToday(state, today);
   const raw: ProactiveCandidate[] = [];
 
   for (const board of listKanbanBoardSlugs()) {
+    if (onboardingCapHit && board === EA_ONBOARDING_KANBAN_BOARD) continue;
     const rows = await listBlockedOnBoard(board, { limit: 50 });
     for (const row of rows) {
-      const c = toCandidate(row, board, filesRoot);
+      const c = await toCandidate(row, board, filesRoot, projectRoot);
       if (c && !wasTaskNudgedToday(state, c.taskId)) raw.push(c);
     }
   }
@@ -91,7 +93,9 @@ export async function sweepProactiveCandidates(opts: {
 
 export async function pickTopProactiveCandidate(opts: {
   filesRoot: string;
+  projectRoot: string;
   state: ProactiveState;
+  today?: string;
 }): Promise<ProactiveCandidate | null> {
   const candidates = await sweepProactiveCandidates(opts);
   return candidates[0] ?? null;

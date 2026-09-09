@@ -820,6 +820,50 @@ const TOOLS = [
       required: ["projectSlug", "title", "body"],
     },
   },
+  {
+    name: "proactive_hygiene_prepare",
+    description:
+      "Scan all Kanban boards on this box for blocked cards (oldest / date-stale first, max 20). Writes hygiene-plan.json. Use at start of daily hygiene — do not use SQLite or Desktop scripts.",
+    inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "proactive_hygiene_plan",
+    description: "Read the current proactive hygiene plan prepared by proactive_hygiene_prepare.",
+    inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "proactive_hygiene_record",
+    description:
+      "Record daily hygiene run results into .joshu/proactive/state.json (closed ids, ambiguous queue, counts). Call after reviewing all plan candidates.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        closedTaskIds: { type: "array", items: { type: "string" } },
+        ambiguous: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              taskId: { type: "string" },
+              board: { type: "string" },
+              title: { type: "string" },
+              blockReason: { type: "string" },
+            },
+            required: ["taskId", "board"],
+          },
+        },
+        skipped: { type: "number" },
+        active: { type: "number" },
+        summary: { type: "string" },
+      },
+    },
+  },
+  {
+    name: "proactive_sweep",
+    description:
+      "List ranked proactive nudge candidates (owner-input blocked cards). Debug / jChat — not for hygiene cron.",
+    inputSchema: { type: "object", properties: {} },
+  },
 ];
 
 /** @type {Map<string, { transport: StreamableHTTPServerTransport; server: Server }>} */
@@ -1183,6 +1227,28 @@ async function handleTool(name, args) {
       name: args?.name,
       description: args?.description,
     });
+    return { content: [{ type: "text", text: JSON.stringify(out, null, 2) }] };
+  }
+  if (name === "proactive_hygiene_prepare") {
+    const out = await joshuPost("/api/proactive/hygiene/prepare", {});
+    return { content: [{ type: "text", text: JSON.stringify(out, null, 2) }] };
+  }
+  if (name === "proactive_hygiene_plan") {
+    const out = await joshuGet("/api/proactive/hygiene/plan");
+    return { content: [{ type: "text", text: JSON.stringify(out, null, 2) }] };
+  }
+  if (name === "proactive_hygiene_record") {
+    const out = await joshuPost("/api/proactive/hygiene/record", {
+      closedTaskIds: args?.closedTaskIds ?? args?.closed_task_ids,
+      ambiguous: args?.ambiguous,
+      skipped: args?.skipped,
+      active: args?.active,
+      summary: args?.summary,
+    });
+    return { content: [{ type: "text", text: JSON.stringify(out, null, 2) }] };
+  }
+  if (name === "proactive_sweep") {
+    const out = await joshuPost("/api/proactive/sweep", {});
     return { content: [{ type: "text", text: JSON.stringify(out, null, 2) }] };
   }
   return {

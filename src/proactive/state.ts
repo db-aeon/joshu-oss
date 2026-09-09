@@ -26,6 +26,8 @@ export function factoryProactiveState(localDate: string): ProactiveState {
     hygieneLastRunAt: null,
     hygieneClosedTaskIds: [],
     lastHygieneSummary: null,
+    hygieneAmbiguousQueue: [],
+    lastOnboardingNudgeDate: null,
   };
 }
 
@@ -92,6 +94,36 @@ export function readProactiveState(projectRoot = process.cwd(), timezone?: strin
         parsed.lastHygieneSummary && typeof parsed.lastHygieneSummary === "object"
           ? (parsed.lastHygieneSummary as ProactiveState["lastHygieneSummary"])
           : null,
+      hygieneAmbiguousQueue: Array.isArray(parsed.hygieneAmbiguousQueue)
+        ? parsed.hygieneAmbiguousQueue
+            .filter(
+              (q): q is NonNullable<ProactiveState["hygieneAmbiguousQueue"]>[number] =>
+                q &&
+                typeof q === "object" &&
+                typeof (q as { taskId?: unknown }).taskId === "string" &&
+                typeof (q as { board?: unknown }).board === "string",
+            )
+            .map((q) => ({
+              taskId: q.taskId.trim(),
+              board: q.board.trim(),
+              title:
+                typeof q.title === "string" && q.title.trim() ? q.title.trim() : "(untitled)",
+              blockReason:
+                typeof q.blockReason === "string"
+                  ? q.blockReason
+                  : q.blockReason === null
+                    ? null
+                    : null,
+              queuedAt:
+                typeof q.queuedAt === "string" && q.queuedAt.trim()
+                  ? q.queuedAt.trim()
+                  : new Date().toISOString(),
+            }))
+        : [],
+      lastOnboardingNudgeDate:
+        typeof parsed.lastOnboardingNudgeDate === "string"
+          ? parsed.lastOnboardingNudgeDate.trim()
+          : null,
     };
 
     return rolloverProactiveState(state, today);
@@ -124,6 +156,10 @@ export function canSendNudge(state: ProactiveState): { ok: boolean; reason?: str
     return { ok: false, reason: "daily_cap_reached" };
   }
   return { ok: true };
+}
+
+export function wasOnboardingNudgedToday(state: ProactiveState, today: string): boolean {
+  return state.lastOnboardingNudgeDate === today;
 }
 
 export function wasTaskNudgedToday(state: ProactiveState, taskId: string): boolean {

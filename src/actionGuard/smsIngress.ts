@@ -4,7 +4,8 @@ import { ownerSmsPhone, phonesMatch, sendSms } from "../twilioSmsSend.js";
 
 /**
  * Handle inbound owner SMS as an action-guard Y/N reply.
- * Returns true when the message was consumed (approval, denial, or no-pending notice).
+ * Returns true when the message was consumed as an approval or denial.
+ * If nothing is pending, returns false so conversational "ok" / "yes" reaches Hermes.
  */
 export async function handleSmsApprovalIngress(
   from: string,
@@ -18,8 +19,7 @@ export async function handleSmsApprovalIngress(
 
   const open = listOpenPending(projectRoot);
   if (open.length === 0) {
-    await sendSms(from, "No pending Joshu action to approve.");
-    return true;
+    return false;
   }
 
   // Resolve the most recently created open pending.

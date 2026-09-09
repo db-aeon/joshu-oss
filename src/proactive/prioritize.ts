@@ -4,6 +4,42 @@ import path from "node:path";
 import type { ProactiveCandidate } from "./types.js";
 import { latestHardDateMs } from "./stale.js";
 
+export type ProjectLifecycleStatus = "active" | "someday" | "reference" | "done";
+
+const LIFECYCLE_STATUSES = new Set<ProjectLifecycleStatus>(["active", "someday", "reference", "done"]);
+
+/** Read about.md `status:` (optional leading `|` from some editors). */
+export function readProjectLifecycleStatus(
+  filesRoot: string,
+  projectSlug: string | undefined,
+): ProjectLifecycleStatus | null {
+  if (!projectSlug) return null;
+  const aboutPath = path.join(filesRoot, "Projects", projectSlug, "about.md");
+  if (!fs.existsSync(aboutPath)) return null;
+  try {
+    const text = fs.readFileSync(aboutPath, "utf8");
+    const match = /^[|]*status:\s*(\S+)/im.exec(text);
+    const raw = match?.[1]?.trim().toLowerCase().replace(/[|,]/g, "");
+    if (raw && LIFECYCLE_STATUSES.has(raw as ProjectLifecycleStatus)) {
+      return raw as ProjectLifecycleStatus;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Hourly nudge may send for this project. Missing about.md / status → fail open (still nudge).
+ * Non-active lifecycle (done / someday / reference) → skip.
+ */
+export function isProjectActiveForNudge(filesRoot: string, projectSlug: string | undefined): boolean {
+  if (!projectSlug) return true;
+  const status = readProjectLifecycleStatus(filesRoot, projectSlug);
+  if (status === null) return true;
+  return status === "active";
+}
+
 /** Extract YAML-ish frontmatter urgency / deadline from about.md. */
 export function readProjectSignals(filesRoot: string, projectSlug: string | undefined): {
   urgency: number | null;
@@ -102,6 +138,14 @@ export function rankCandidate(
       taskPriority: input.priority,
       ageHours: Math.round(ageHours * 10) / 10,
     },
+  };
+}
+
+/** Apply setup-debt or other rank adjustments after base scoring. */
+export function applyRankBoost(candidate: ProactiveCandidate, boost: number): ProactiveCandidate {
+  return {
+    ...candidate,
+    rankScore: candidate.rankScore + boost,
   };
 }
 

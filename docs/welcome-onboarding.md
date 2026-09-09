@@ -24,13 +24,31 @@ Human SOP: [`executive-assistant.md`](executive-assistant.md). Welcome seeds pro
 | Sync | Profile, identity, project folders, EA layout files |
 | Hermes | Owner timezone → `config.yaml` + `HERMES_TIMEZONE` |
 | Crons | Upsert **EA morning**, **EA evening**, **EA weekly** from working hours ([`syncEaCronJobs`](../src/onboarding/eaCronJobs.ts)) |
-| Kanban | Bootstrap **`ea-scheduling`** board |
+| Kanban | Bootstrap **`ea-scheduling`** board + reconcile **`ea-onboarding`** setup cards |
+| Setup crons | Install **Joshu onboarding reconcile** (daily) + proactive tick/hygiene |
 
 On first success the UI shows a **You're set up** summary (projects, cron times, work email) with **Open jChat** / **Open Connectors** — not just a one-line banner.
 
 **Double-submit:** The UI blocks repeat clicks; the API serializes `/complete` and cron sync dedupes jobs by name. Historically, two rapid **Finish setup** clicks (before this hardening) could create **duplicate** EA evening/weekly jobs because Hermes allows duplicate names — see [`schedules-arozos-app.md`](schedules-arozos-app.md#duplicate-ea-cron-jobs).
 
 **Open manually:** desktop **Welcome** shortcut ([`docs/arozos-desktop-shortcuts.md`](arozos-desktop-shortcuts.md)), or after **hard factory reset** ([`docs/box-state.md`](box-state.md#hard-factory-reset)) — which also clears Hindsight, gbrain, Composio connections, agent skills in `~/.hermes/skills/`, and EA cron jobs in `~/.hermes/cron/`.
+
+## Setup checklist (`ea-onboarding`)
+
+Welcome is the **front door**; incomplete setup after **Finish setup** surfaces on Hermes board **`ea-onboarding`** as blocked Kanban cards (toast-like registry in [`factory/onboarding-prompts.yaml`](../factory/onboarding-prompts.yaml)).
+
+| v1 prompt | Auto-complete when |
+|-----------|-------------------|
+| Connect work Gmail + calendar | Composio Gmail connected (Connectors) |
+| `owner-mobile-sms` | `resolveOwnerCaller` — Telephone settings, Welcome, or `TWILIO_OWNER_CALLER` |
+
+Welcome can finish without a mobile. **Reconcile** ([`reconcileOnboardingBoard`](../src/onboarding/reconcileOnboardingBoard.ts)) runs on Finish setup, connector changes, and daily cron; cards auto-close when predicates pass. If `owner-mobile-sms` is still open, the hourly proactive tick nudges the owner — **by email** when no number is on file ([`delivery.ts`](../src/proactive/delivery.ts) SMS → email fallback), asking them to add it in **Telephone** or Welcome.
+
+Setup status for desktop UI: `GET /joshu/api/onboarding/setup-status` (same-origin browser session or localhost only).
+
+**Reconcile triggers:** Finish setup, Connectors refresh, Telephone `ownerCaller` save, and daily Hermes cron **`Joshu onboarding reconcile`** (`scripts/onboarding-reconcile.sh` → `node scripts/run-onboarding-reconcile.mjs`). There is **no** public HTTP reconcile endpoint — ops run in-process inside the container.
+
+**VPS ship lane:** [`factory/onboarding-prompts.yaml`](../factory/onboarding-prompts.yaml) is compose bind-mounted (same lane as `factory/manifest.yaml`); `git pull` + recreate. Compiled reconcile code lives in host `dist/onboarding/` ([`hotpatch-running-box.md`](vps-sandbox/hotpatch-running-box.md)).
 
 ## Wizard steps
 
@@ -62,7 +80,7 @@ Options are defined in `BIG_PICTURE_PRIORITIES` in [`src/onboarding/options.ts`]
 |-------|---------|
 | Work email | Daily Brief / pointer destination → `profile.json` `primaryWorkEmail` |
 | Personal email | Optional → `personalEmail` (calendar free/busy union) |
-| Your mobile | Optional → `communicationContacts.sms` and `.joshu/telephone/settings.json` `ownerCaller` (SMS approvals + voice greeting). Same field as **Telephone**. |
+| Your mobile | Optional at Welcome → `communicationContacts.sms` and `.joshu/telephone/settings.json` `ownerCaller`. If skipped, **`ea-onboarding`** + proactive SMS/email nudge until set (Telephone or Welcome). |
 | Timezone | Required on complete — IANA dropdown (`Intl.supportedValuesOf('timeZone')`) |
 | Working hours | Drive **EA morning / evening / weekly** cron times |
 
@@ -109,6 +127,7 @@ Mounted under `PUBLIC_BASE_PATH` (default `/joshu`). JSON body routes require `e
 | `GET` | `/joshu/api/onboarding/draft` | `{ draft }` or `{ draft: null }` |
 | `PUT` | `/joshu/api/onboarding/draft` | Save partial progress (`ownerName` + `assistantName` required) |
 | `POST` | `/joshu/api/onboarding/complete` | Seed Projects + mark complete; `timezone` required |
+| `GET` | `/joshu/api/onboarding/setup-status` | Open required setup prompts + predicate snapshot (desktop session or localhost only) |
 | `POST` | `/joshu/api/onboarding/resync-ea-crons` | Ops repair: re-sync timezone + EA crons from draft or Nylas profile; dedupes duplicate job names |
 
 ### Box secrets (Connect AI)
@@ -142,6 +161,12 @@ Mounted under `PUBLIC_BASE_PATH` (default `/joshu`). JSON body routes require `e
 | Auto-launch overlay | [`arozos/web-overlays-vanilla/aroz-onboarding-launch.js`](../arozos/web-overlays-vanilla/aroz-onboarding-launch.js) |
 | EA templates | [`templates/ea/`](../templates/ea/) |
 | EA cron sync | [`src/onboarding/eaCronJobs.ts`](../src/onboarding/eaCronJobs.ts) |
+| Setup prompt registry | [`factory/onboarding-prompts.yaml`](../factory/onboarding-prompts.yaml), [`src/onboarding/promptRegistry.ts`](../src/onboarding/promptRegistry.ts) |
+| Predicates + prompt state | [`src/onboarding/promptPredicates.ts`](../src/onboarding/promptPredicates.ts), [`src/onboarding/promptState.ts`](../src/onboarding/promptState.ts) |
+| Kanban reconcile | [`src/onboarding/reconcileOnboardingBoard.ts`](../src/onboarding/reconcileOnboardingBoard.ts), [`src/onboarding/eaOnboardingKanbanBootstrap.ts`](../src/onboarding/eaOnboardingKanbanBootstrap.ts) |
+| Daily reconcile cron | [`src/onboarding/onboardingCronJobs.ts`](../src/onboarding/onboardingCronJobs.ts), [`scripts/onboarding-reconcile.sh`](../scripts/onboarding-reconcile.sh) |
+| Proactive rank boost | [`src/onboarding/onboardingProactive.ts`](../src/onboarding/onboardingProactive.ts) |
+| `ea-onboarding` skill | [`integrations/hermes/skills/executive-assistant/ea-onboarding/`](../integrations/hermes/skills/executive-assistant/ea-onboarding/SKILL.md) |
 | Playbook skill | [`integrations/hermes/skills/executive-assistant/ea-playbook/`](../integrations/hermes/skills/executive-assistant/ea-playbook/SKILL.md) |
 
 ## Dev

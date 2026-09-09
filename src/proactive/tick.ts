@@ -1,6 +1,8 @@
 import { readAgentProfile } from "../nylas/profile.js";
 import { resolveJoshuFilesPaths } from "../joshuFilesPaths.js";
 import { deliverProactiveNudge } from "./delivery.js";
+import { pickTopStaleReviewCandidate } from "./hygieneRecord.js";
+import { isOwnerAvailableForProactive } from "./meetingWindow.js";
 import { pickTopProactiveCandidate } from "./sweep.js";
 import {
   canSendNudge,
@@ -9,7 +11,7 @@ import {
   rolloverProactiveState,
   writeProactiveState,
 } from "./state.js";
-import type { ProactiveLastNudge, ProactiveState, ProactiveTickResult } from "./types.js";
+import type { ProactiveCandidate, ProactiveLastNudge, ProactiveState, ProactiveTickResult } from "./types.js";
 import { isWithinProactiveWindow } from "./workingHours.js";
 
 export type RunProactiveTickOpts = {
@@ -18,7 +20,24 @@ export type RunProactiveTickOpts = {
   dryRun?: boolean;
 };
 
-/** Deterministic hourly entry — no LLM. */
+function staleReviewToCandidate(item: {
+  taskId: string;
+  board: string;
+  title: string;
+  blockReason: string | null;
+}): ProactiveCandidate {
+  return {
+    taskId: item.taskId,
+    board: item.board,
+    title: item.title,
+    status: "blocked",
+    blockReason: item.blockReason,
+    rankScore: 500,
+    rankSignals: {},
+  };
+}
+
+/** Deterministic hourly entry — no LLM on sweep; compose may use Hermes. */
 export async function runProactiveTick(opts: RunProactiveTickOpts = {}): Promise<ProactiveTickResult> {
   const projectRoot = opts.projectRoot ?? process.cwd();
   const paths = resolveJoshuFilesPaths(projectRoot);
@@ -47,17 +66,43 @@ export async function runProactiveTick(opts: RunProactiveTickOpts = {}): Promise
     return { ok: true, action: "skipped", reason: cap.reason ?? "daily_cap" };
   }
 
-  const candidate = await pickTopProactiveCandidate({ filesRoot: paths.filesRoot, state });
+  let candidate = await pickTopProactiveCandidate({
+    filesRoot: paths.filesRoot,
+    projectRoot,
+    state,
+    today,
+  });
+  let nudgeKind: "nudge" | "stale_review" = "nudge";
+
+  if (!candidate) {
+    const stale = pickTopStaleReviewCandidate(state);
+    if (stale) {
+      candidate = staleReviewToCandidate(stale);
+      nudgeKind = "stale_review";
+    }
+  }
+
   if (!candidate) {
     writeProactiveState(state, projectRoot);
     return { ok: true, action: "skipped", reason: "no_candidates" };
+  }
+
+  const meeting = await isOwnerAvailableForProactive(projectRoot);
+  if (!meeting.ok) {
+    writeProactiveState(state, projectRoot);
+    return {
+      ok: true,
+      action: "skipped",
+      reason: meeting.reason ?? "owner_in_meeting",
+      candidate,
+    };
   }
 
   if (opts.dryRun) {
     return { ok: true, action: "skipped", reason: "dry_run", candidate };
   }
 
-  const delivery = await deliverProactiveNudge({ candidate, projectRoot });
+  const delivery = await deliverProactiveNudge({ candidate, projectRoot, nudgeKind });
   if (!delivery.delivered) {
     return {
       ok: false,
@@ -77,25 +122,32 @@ export async function runProactiveTick(opts: RunProactiveTickOpts = {}): Promise
     body: delivery.body,
   };
 
-  state = applySentNudge(state, lastNudge);
+  state = applySentNudge(state, lastNudge, today);
   writeProactiveState(state, projectRoot);
 
   console.info(
-    `[proactive] nudge sent task=${candidate.taskId} board=${candidate.board} channel=${delivery.channel}`,
+    `[proactive] ${nudgeKind} sent task=${candidate.taskId} board=${candidate.board} channel=${delivery.channel}`,
   );
 
   return { ok: true, action: "sent", candidate, channel: delivery.channel, nudge: lastNudge };
 }
 
-export function applySentNudge(state: ProactiveState, nudge: ProactiveLastNudge): ProactiveState {
+export function applySentNudge(
+  state: ProactiveState,
+  nudge: ProactiveLastNudge,
+  today?: string,
+): ProactiveState {
   const nudgedTaskIds = state.nudgedTaskIds.includes(nudge.taskId)
     ? state.nudgedTaskIds
     : [...state.nudgedTaskIds, nudge.taskId];
+  const lastOnboardingNudgeDate =
+    nudge.board === "ea-onboarding" && today ? today : state.lastOnboardingNudgeDate ?? null;
   return {
     ...state,
     sentCount: state.sentCount + 1,
     lastNudge: nudge,
     feedbackPending: true,
     nudgedTaskIds,
+    lastOnboardingNudgeDate,
   };
 }

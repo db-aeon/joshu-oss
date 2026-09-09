@@ -142,6 +142,8 @@ Cloud-init (control-plane provision) runs `bootstrap-vps.sh`, which clones the r
 | `hotfix/scripts/` | `/opt/joshu/hotfix/scripts/` | A — boot overlay (empty = image) |
 | `integrations/hermes/skills/` | `/opt/joshu/integrations/hermes/skills/` | A — factory skills source for bootstrap |
 | `integrations/hermes/skills-enabled.yaml` | same | A — Hermes allowlist / bundled denylist |
+| `factory/manifest.yaml` | `/opt/joshu/factory/manifest.yaml` | A — skills bootstrap release stamp |
+| `factory/onboarding-prompts.yaml` | `/opt/joshu/factory/onboarding-prompts.yaml` | A — setup-debt Kanban registry |
 | `templates/ea/` | `/opt/joshu/templates/ea/` | A — EA filesystem seeds |
 | `arozos/web-overlays-vanilla/` | `/opt/joshu/arozos/web-overlays-vanilla/` | A — vanilla shell overlays |
 | `apps/share-chat/` | `/opt/joshu/apps/share-chat/` | A — public Chat with files HTML |
