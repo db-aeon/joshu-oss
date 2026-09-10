@@ -1,5 +1,5 @@
 import type { Request, Response, Router } from "express";
-import { callKanbanBridge } from "../hermesKanbanBridge.js";
+import { callKanbanBridge, eaKanbanCreateDefaults } from "../hermesKanbanBridge.js";
 import { resolveJoshuFilesPaths } from "../joshuFilesPaths.js";
 import {
   commentSchedulingMeetingTask,
@@ -712,6 +712,7 @@ export function registerEaTriageRoutes(router: Router, opts: { projectRoot: stri
       const result = await callKanbanBridge({
         action: "create",
         board: boardSlug,
+        ...eaKanbanCreateDefaults(boardSlug),
         title,
         body: taskBody,
         triage: true,

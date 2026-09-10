@@ -29,6 +29,7 @@ import {
   resolveOwnerThreadVisibilityFromSourcePath,
 } from "../ea/ownerMailVisibility.js";
 import { buildReplySubjectMismatchError, replySubjectsMatch } from "./replySubject.js";
+import { loadNylasSendAttachments } from "./attachments.js";
 
 function readString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -150,10 +151,18 @@ export function registerNylasRoutes(router: Router, opts: { projectRoot: string 
       res.status(400).json({ error: "subject and body are required" });
       return;
     }
+    const filesPaths = resolveJoshuFilesPaths(opts.projectRoot);
+    let attachments;
+    try {
+      attachments = loadNylasSendAttachments(body.attachments, filesPaths?.desktopRoot);
+    } catch (err) {
+      res.status(400).json({ error: (err as Error).message });
+      return;
+    }
     const replyToMessageId = readString(body.replyToMessageId) || undefined;
     const sourcePath = readString(body.sourcePath) || readString(body.source_path) || undefined;
     if (!isJmailOwnerSend(req) && (replyToMessageId || sourcePath)) {
-      const filesRoot = resolveJoshuFilesPaths(opts.projectRoot)?.filesRoot ?? null;
+      const filesRoot = filesPaths?.filesRoot ?? null;
       const auth = await resolveOutboundMailAuthorization({
         filesRoot,
         projectRoot: opts.projectRoot,
@@ -213,7 +222,7 @@ export function registerNylasRoutes(router: Router, opts: { projectRoot: string 
         );
       }
       if (sourcePath) {
-        const filesRoot = resolveJoshuFilesPaths(opts.projectRoot)?.filesRoot ?? null;
+        const filesRoot = filesPaths?.filesRoot ?? null;
         if (filesRoot) {
           const visibility = await resolveOwnerThreadVisibilityFromSourcePath({
             filesRoot,
@@ -253,6 +262,7 @@ export function registerNylasRoutes(router: Router, opts: { projectRoot: string 
         subject,
         body: bodyHtml,
         replyToMessageId,
+        attachments,
       });
       // After sync approval (or guard off), rewrite meeting block_reason so
       // "awaiting owner approval" does not linger once mail has left.
@@ -261,7 +271,18 @@ export function registerNylasRoutes(router: Router, opts: { projectRoot: string 
         body,
         outcome: { kind: "delivered", messageId: id },
       });
-      res.json({ ok: true, messageId: id, from: agent.email, to: to.map((r) => r.email), cc: cc?.map((r) => r.email) });
+      res.json({
+        ok: true,
+        messageId: id,
+        from: agent.email,
+        to: to.map((r) => r.email),
+        cc: cc?.map((r) => r.email),
+        attachments: attachments.map((att) => ({
+          filename: att.filename,
+          contentType: att.contentType,
+          size: att.size,
+        })),
+      });
     } catch (err) {
       res.status(502).json({ error: (err as Error).message });
     }

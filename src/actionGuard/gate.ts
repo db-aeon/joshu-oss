@@ -11,6 +11,7 @@ import {
   waitForPendingDecision,
 } from "./pending.js";
 import { notifyOwnerForApproval } from "../ownerChannel/notify.js";
+import { attachmentSummaryNames } from "../nylas/attachments.js";
 
 function readString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -187,6 +188,7 @@ export async function awaitOwnerApproval(
 
 export function buildNylasSendSummary(args: Record<string, unknown>): Record<string, unknown> {
   const body = readString(args.body);
+  const attachmentNames = attachmentSummaryNames(args.attachments);
   const kanbanTaskId =
     readString(args.kanbanTaskId) ||
     readString(args.kanban_task_id) ||
@@ -207,6 +209,7 @@ export function buildNylasSendSummary(args: Record<string, unknown>): Record<str
     ...(typeof args.ownerOnThread === "boolean" ? { ownerOnThread: args.ownerOnThread } : {}),
     ...(args.ownerCcAdded === true ? { ownerCcAdded: true } : {}),
     ...(threadContextSnippet ? { threadContextSnippet } : {}),
+    ...(attachmentNames ? { attachments: attachmentNames } : {}),
   };
 }
 

@@ -311,6 +311,14 @@ apply_hermes_ea_kanban_no_autodecompose() {
     || echo "[vps-start] WARN: EA kanban no-autodecompose patch failed" >&2
 }
 
+# Kanban worker self-exit after complete/block + orphan reap (Finn zombie #61923).
+apply_hermes_kanban_worker_terminate_on_complete() {
+  local script="${JOSHU_SCRIPTS_ROOT}/apply-hermes-kanban-worker-terminate-on-complete.sh"
+  [[ -f "${script}" ]] || return 0
+  HERMES_DIR="${HERMES_DIR}" bash "${script}" \
+    || echo "[vps-start] WARN: kanban worker terminate-on-complete patch failed" >&2
+}
+
 # Keepalive frames must not refresh stale-stream timer (Slack hang 2026-08-24).
 apply_hermes_stale_stream_keepalive() {
   local script="${JOSHU_SCRIPTS_ROOT}/apply-hermes-stale-stream-keepalive.sh"
@@ -356,6 +364,7 @@ apply_hermes_kanban_ws_patch
 apply_hermes_content_filter_patch
 apply_hermes_read_file_utf8_patch
 apply_hermes_ea_kanban_no_autodecompose
+apply_hermes_kanban_worker_terminate_on_complete
 apply_hermes_stale_stream_keepalive
 apply_hermes_kanban_guidance_gate
 apply_hermes_joshu_disable_native_sms_platform

@@ -5,6 +5,7 @@
 import {
   callKanbanBridge,
   EA_ONBOARDING_KANBAN_BOARD,
+  eaKanbanCreateDefaults,
   eaSchedulingKanbanAssignee,
 } from "../hermesKanbanBridge.js";
 import { resolveJoshuFilesPaths } from "../joshuFilesPaths.js";
@@ -90,6 +91,7 @@ async function upsertBlockedOnboardingTask(
   const create = await callKanbanBridge({
     action: "create",
     board: EA_ONBOARDING_KANBAN_BOARD,
+    ...eaKanbanCreateDefaults(EA_ONBOARDING_KANBAN_BOARD),
     title: prompt.title,
     body: buildOnboardingTaskBody(prompt),
     assignee: eaSchedulingKanbanAssignee(),

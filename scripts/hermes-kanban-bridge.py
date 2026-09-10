@@ -148,6 +148,12 @@ def _optional_create_kwargs(sig_params: Any, payload: Dict[str, Any]) -> Dict[st
     parents = _parse_parents(payload.get("parents"))
     if "parents" in sig_params and parents:
         out["parents"] = parents
+    max_runtime = payload.get("max_runtime_seconds")
+    if "max_runtime_seconds" in sig_params and max_runtime is not None:
+        try:
+            out["max_runtime_seconds"] = int(max_runtime)
+        except (TypeError, ValueError):
+            pass
     return out
 
 

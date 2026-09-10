@@ -1,6 +1,7 @@
 import { connectorStatePath } from "../connectors/paths.js";
 import {
   callKanbanBridge,
+  eaKanbanCreateDefaults,
   ensureEaSchedIngressBoard,
   ensureEaSchedulingBoard,
   eaSchedulingKanbanAssignee,
@@ -252,6 +253,7 @@ export async function queueSchedulingMeetingTask(opts: {
   const result = await callKanbanBridge({
     action: "create",
     board: EA_SCHEDULING_BOARD,
+    ...eaKanbanCreateDefaults(EA_SCHEDULING_BOARD),
     title,
     body,
     assignee: eaSchedulingKanbanAssignee(),
@@ -592,6 +594,7 @@ export async function queueSchedulingIngressTask(
   const result = await callKanbanBridge({
     action: "create",
     board: EA_SCHED_INGRESS_BOARD,
+    ...eaKanbanCreateDefaults(EA_SCHED_INGRESS_BOARD),
     title: ingressTaskTitle(input.subject, input.from),
     body,
     assignee: eaSchedulingKanbanAssignee(),

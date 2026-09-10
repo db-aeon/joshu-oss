@@ -3,6 +3,7 @@
  */
 import {
   callKanbanBridge,
+  eaKanbanCreateDefaults,
   ensureEaOwnerReplyBoard,
   eaSchedulingKanbanAssignee,
 } from "../hermesKanbanBridge.js";
@@ -222,6 +223,7 @@ export async function queueOwnerReplyTask(opts: {
   const result = await callKanbanBridge({
     action: "create",
     board: EA_OWNER_REPLY_BOARD,
+    ...eaKanbanCreateDefaults(EA_OWNER_REPLY_BOARD),
     title,
     body,
     assignee: eaSchedulingKanbanAssignee(),

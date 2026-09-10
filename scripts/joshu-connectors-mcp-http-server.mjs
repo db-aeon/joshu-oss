@@ -323,6 +323,25 @@ const TOOLS = [
           type: "string",
           description: "Alias for threadId",
         },
+        attachments: {
+          type: "array",
+          description:
+            "Optional files to attach. Each entry is a Desktop-relative path string or { path, filename?, contentType? }. Paths must live under JOSHU_DESKTOP_ROOT (e.g. Projects/foo/deck.pptx). Max 5 files / 25MB each by default.",
+          items: {
+            oneOf: [
+              { type: "string" },
+              {
+                type: "object",
+                properties: {
+                  path: { type: "string", description: "Path under ArozOS Desktop" },
+                  filename: { type: "string", description: "Override attachment filename" },
+                  contentType: { type: "string", description: "MIME type override" },
+                },
+                required: ["path"],
+              },
+            ],
+          },
+        },
       },
       required: ["to", "subject", "body"],
     },
@@ -926,6 +945,9 @@ async function handleTool(name, args) {
       ...(sourcePath ? { sourcePath: String(sourcePath) } : {}),
       ...(kanbanTaskId ? { kanbanTaskId: String(kanbanTaskId) } : {}),
       ...(threadId ? { threadId: String(threadId) } : {}),
+      ...(Array.isArray(args.attachments) && args.attachments.length > 0
+        ? { attachments: args.attachments }
+        : {}),
     });
     return { content: [{ type: "text", text: JSON.stringify(out, null, 2) }] };
   }

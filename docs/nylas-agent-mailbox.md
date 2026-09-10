@@ -59,7 +59,7 @@ Grant file: `${AROZ_DATA}/files/users/<user>/.joshu/nylas/agent.json` (`grantId`
 | GET | `/joshu/api/nylas/messages` | List/search (`q`, `unread`, `limit`) |
 | GET | `/joshu/api/nylas/messages/:id` | Full message (body, headers) |
 | PATCH | `/joshu/api/nylas/messages/:id` | Update (`unread`, `starred`) |
-| POST | `/joshu/api/nylas/messages/send` | Outbound mail (plain / light-markdown `body` → HTML with linkified URLs; API appends HTML signature). Optional `replyToMessageId`, `sourcePath` / `source_path`, `cc`, `bcc`. **Agent sends:** auto-CC owner `primaryWorkEmail` on external recipients; action guard SMS warns when owner was not on prior thread messages — see [Owner visibility](#owner-visibility-on-external-mail). **jMail** owner compose bypasses auto-CC and action guard. |
+| POST | `/joshu/api/nylas/messages/send` | Outbound mail (plain / light-markdown `body` → HTML with linkified URLs; API appends HTML signature). Optional `replyToMessageId`, `sourcePath` / `source_path`, `cc`, `bcc`, **`attachments`** (Desktop-relative paths — see [Outbound attachments](#outbound-attachments)). **Agent sends:** auto-CC owner `primaryWorkEmail` on external recipients; action guard SMS warns when owner was not on prior thread messages — see [Owner visibility](#owner-visibility-on-external-mail). Action-guard approval lists attachment filenames. **jMail** owner compose bypasses auto-CC and action guard (attachments not in jMail UI yet — Hermes/MCP only). |
 | POST | `/joshu/api/nylas/test-send` | `{ "to": "you@…" }` smoke test |
 | GET | `/joshu/api/nylas/profile` | Read agent profile |
 | POST | `/joshu/api/nylas/profile` | Update agent profile (incl. EA dials: `spendingThreshold`, `urgentChannel`, `workingHoursStart`, `workingHoursEnd`) |
@@ -85,6 +85,25 @@ Grant file: `${AROZ_DATA}/files/users/<user>/.joshu/nylas/agent.json` (`grantId`
 **Multi-recipient send:** `to` accepts a string or array; use **`cc`** / **`bcc`** for additional guests — do not put `"a@x.com, b@y.com"` in a single `to` string ([`src/nylas/recipients.ts`](../src/nylas/recipients.ts)).
 
 **Thread replies:** when `replyToMessageId` is set, `subject` must match the parent message (only `Re:` / `Fwd:` prefix differences allowed). Decorating the subject (availability, names, task titles) returns **`400` `reply_subject_mismatch`** with `expectedSubject` + `hint` — the API does **not** mutate the subject ([`src/nylas/replySubject.ts`](../src/nylas/replySubject.ts)). Gmail/Google fork conversations when the subject changes even if reply headers are set. Retry with the exact parent subject from the thread mirror.
+
+### Outbound attachments
+
+Hermes **`nylas_send_message`** (and this REST route) accept optional **`attachments`**: an array of Desktop-relative path strings or `{ "path", "filename?", "contentType?" }` objects. Paths resolve under **`JOSHU_DESKTOP_ROOT`** (ArozOS Desktop sandbox — same tree as Hermes `write_file` / owner-reply deliverables). Example:
+
+```json
+{
+  "to": "owner@example.com",
+  "subject": "Re: Deck request",
+  "body": "Attached — 4-slide brief as requested.",
+  "replyToMessageId": "…",
+  "sourcePath": "connectors/mail/nylas/…/threads/….md",
+  "attachments": ["Projects/demo/deck.pptx"]
+}
+```
+
+Limits (env-overridable): **`JOSHU_NYLAS_MAX_ATTACHMENTS`** (default 5), **`JOSHU_NYLAS_MAX_ATTACHMENT_BYTES`** (default 25 MiB per file). Action-guard approval SMS/Slack includes attachment filenames. Relay mode (fleet boxes without `NYLAS_API_KEY`) base64-encodes files through the control-plane Nylas proxy. **Not supported yet:** inbound attachment download into gbrain mirrors; jMail UI attach picker; CID inline images in body.
+
+Implementation: [`src/nylas/attachments.ts`](../src/nylas/attachments.ts). Owner-reply skill: [`ea-owner-reply`](../integrations/hermes/skills/executive-assistant/ea-owner-reply/SKILL.md).
 
 ### Owner visibility on external mail
 

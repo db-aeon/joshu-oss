@@ -28,6 +28,8 @@ CONTENT_FILTER_PATCH_SCRIPT="${ROOT_DIR}/scripts/apply-hermes-content-filter-pat
 READ_FILE_UTF8_PATCH_SCRIPT="${ROOT_DIR}/scripts/apply-hermes-read-file-utf8-patch.sh"
 STALE_STREAM_KEEPALIVE_PATCH_SCRIPT="${ROOT_DIR}/scripts/apply-hermes-stale-stream-keepalive.sh"
 INVOKE_TOOL_POST_HOOK_PATCH_SCRIPT="${ROOT_DIR}/scripts/apply-hermes-invoke-tool-post-hook-patch.sh"
+KANBAN_WORKER_TERMINATE_PATCH_SCRIPT="${ROOT_DIR}/scripts/apply-hermes-kanban-worker-terminate-on-complete.sh"
+EA_KANBAN_NO_AUTODECOMPOSE_PATCH_SCRIPT="${ROOT_DIR}/scripts/apply-hermes-ea-kanban-no-autodecompose.sh"
 
 # Match deploy/Dockerfile image extras; local dev may use broader extras via HERMES_LOCAL_EXTRAS.
 HERMES_IMAGE_EXTRAS="${HERMES_IMAGE_EXTRAS:-cli,pty,mcp,acp,google,bedrock,web,youtube,voice,messaging}"
@@ -364,6 +366,12 @@ apply_content_filter_patch_if_needed() {
   fi
   if [[ -x "${INVOKE_TOOL_POST_HOOK_PATCH_SCRIPT}" ]]; then
     HERMES_DIR="${HERMES_DIR}" bash "${INVOKE_TOOL_POST_HOOK_PATCH_SCRIPT}" || true
+  fi
+  if [[ -x "${EA_KANBAN_NO_AUTODECOMPOSE_PATCH_SCRIPT}" ]]; then
+    HERMES_DIR="${HERMES_DIR}" bash "${EA_KANBAN_NO_AUTODECOMPOSE_PATCH_SCRIPT}" || true
+  fi
+  if [[ -x "${KANBAN_WORKER_TERMINATE_PATCH_SCRIPT}" ]]; then
+    HERMES_DIR="${HERMES_DIR}" bash "${KANBAN_WORKER_TERMINATE_PATCH_SCRIPT}" || true
   fi
 }
 

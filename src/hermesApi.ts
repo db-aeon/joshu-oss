@@ -709,6 +709,8 @@ export class HermesApiRunner extends EventEmitter {
   private workspaceScopeLogged = false;
   private syncedLangfuseUserId = "";
   private mcpGatewayWatchdogTimer: ReturnType<typeof setInterval> | null = null;
+  private kanbanOrphanReaperTimer: ReturnType<typeof setInterval> | null = null;
+  private kanbanOrphanReapInFlight = false;
   private lastConnectorsMcpHealthy = true;
   private gatewayMcpReloadPending = false;
   private mcpGatewayReloadInFlight = false;
@@ -1446,6 +1448,42 @@ export class HermesApiRunner extends EventEmitter {
       void this.reviveGatewayIfDead();
       void this.syncGatewayWithMcpHealth();
     }, 30_000);
+    this.startKanbanOrphanReaper();
+  }
+
+  /** Kill Hermes Kanban CLI workers when DB says task is no longer running. */
+  private startKanbanOrphanReaper(): void {
+    const raw = process.env.JOSHU_KANBAN_ORPHAN_REAP_SECONDS?.trim() ?? "60";
+    const seconds = Number.parseInt(raw, 10);
+    if (!Number.isFinite(seconds) || seconds <= 0) return;
+    if (this.kanbanOrphanReaperTimer) return;
+    this.kanbanOrphanReaperTimer = setInterval(() => {
+      void this.runKanbanOrphanReaper();
+    }, seconds * 1000);
+  }
+
+  private async runKanbanOrphanReaper(): Promise<void> {
+    if (this.kanbanOrphanReapInFlight) return;
+    this.kanbanOrphanReapInFlight = true;
+    try {
+      const { spawnHermesPython } = await import("./hermesVoiceRuntime.js");
+      const { stdout, stderr, code } = await spawnHermesPython("hermes-kanban-orphan-reaper.py", []);
+      if (code !== 0) {
+        const detail = stderr.trim() || stdout.trim();
+        if (detail) {
+          console.warn(`[hermes-api] kanban orphan reaper exit ${code}: ${detail}`);
+        }
+        return;
+      }
+      const parsed = JSON.parse(stdout.trim() || "{}") as { killed_count?: number };
+      if (parsed.killed_count && parsed.killed_count > 0) {
+        console.warn(`[hermes-api] kanban orphan reaper killed ${parsed.killed_count} worker(s)`);
+      }
+    } catch (err) {
+      console.warn(`[hermes-api] kanban orphan reaper failed: ${(err as Error).message}`);
+    } finally {
+      this.kanbanOrphanReapInFlight = false;
+    }
   }
 
   /** SIGTERM/pkill must not leave chat down until someone opens jChat status. */

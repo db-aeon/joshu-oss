@@ -2,6 +2,7 @@ import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import {
   callKanbanBridge,
+  eaKanbanCreateDefaults,
   ensureEaMailIngressBoard,
   eaSchedulingKanbanAssignee,
 } from "../hermesKanbanBridge.js";
@@ -298,6 +299,7 @@ export async function queueMailIngressTask(
   const result = await callKanbanBridge({
     action: "create",
     board: EA_MAIL_INGRESS_BOARD,
+    ...eaKanbanCreateDefaults(EA_MAIL_INGRESS_BOARD),
     title: mailIngressTaskTitle(input.subject, input.from),
     body,
     assignee: eaSchedulingKanbanAssignee(),
@@ -406,6 +408,7 @@ export async function queueMailTrackTask(opts: {
   const result = await callKanbanBridge({
     action: "create",
     board,
+    ...eaKanbanCreateDefaults(board),
     title,
     body,
     assignee: eaSchedulingKanbanAssignee(),

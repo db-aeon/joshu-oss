@@ -41,6 +41,7 @@ kanban_show()
    - `replyToMessageId` = ingress `message_id`
    - parent **subject** (must match or Joshu returns `reply_subject_mismatch`)
    - `sourcePath` = mirror path
+   - **`attachments`** — when the deliverable is a file (`.pptx`, `.pdf`, …), pass Desktop-relative paths, e.g. `["Projects/<slug>/deck.pptx"]` or `[{ "path": "Projects/<slug>/deck.pptx" }]`. Do not paste long paths in the body when a file attach is intended.
    - Owner-only recipients bypass action guard; mixed threads may prompt SMS.
 7. **`kanban_complete`** if the deliverable was emailed. **`kanban_block("awaiting owner")`** only if the reply asked a **real** question the owner must answer.
 8. Never **delete/trash** Gmail or Nylas. Never send **scheduling slots** — `scheduling_list_meeting_tasks` / hand off to **`ea-scheduling`**.

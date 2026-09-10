@@ -4,6 +4,11 @@ import { nylasProxyCall } from "./relayTransport.js";
 import type { NylasAgentRecord } from "./store.js";
 import { normalizeRfcMessageId, parseRfcMessageIdFromHeaders, type MailHeader } from "../connectors/rfcMessageId.js";
 import type { MailRecipient } from "./recipients.js";
+import {
+  attachmentWireFromBuffer,
+  type NylasSendAttachment,
+  type NylasSendAttachmentWire,
+} from "./attachments.js";
 
 function assertNylasReady(): void {
   if (!isNylasConfigured()) throw new Error("Nylas is not configured");
@@ -71,6 +76,16 @@ export async function createAgentAccount(email: string): Promise<NylasAgentRecor
   };
 }
 
+function mapNylasAttachments(attachments?: NylasSendAttachment[]) {
+  if (!attachments?.length) return undefined;
+  return attachments.map((att) => ({
+    filename: att.filename,
+    contentType: att.contentType,
+    content: att.content,
+    size: att.size,
+  }));
+}
+
 export async function sendMessage(
   grantId: string,
   opts: {
@@ -81,16 +96,25 @@ export async function sendMessage(
     body: string;
     from: string;
     replyToMessageId?: string;
+    attachments?: NylasSendAttachment[];
   },
 ): Promise<string> {
   assertNylasReady();
   if (opts.to.length === 0) throw new Error("at least one to recipient is required");
 
+  const nylasAttachments = mapNylasAttachments(opts.attachments);
+
   if (useRelay()) {
+    const wireAttachments: NylasSendAttachmentWire[] | undefined = opts.attachments?.length
+      ? opts.attachments.map(attachmentWireFromBuffer)
+      : undefined;
     return nylasProxyCall<string>({
       op: "sendMessage",
       grantId,
-      args: opts as unknown as Record<string, unknown>,
+      args: {
+        ...opts,
+        attachments: wireAttachments,
+      } as unknown as Record<string, unknown>,
     });
   }
 
@@ -112,6 +136,7 @@ export async function sendMessage(
       subject: opts.subject,
       body: opts.body,
       ...(opts.replyToMessageId ? { replyToMessageId: opts.replyToMessageId } : {}),
+      ...(nylasAttachments ? { attachments: nylasAttachments } : {}),
     },
   });
 

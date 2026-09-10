@@ -103,7 +103,33 @@ export type KanbanCreatePayload = KanbanBridgePayload & {
   scheduled_at?: string;
   /** Parent task ids for dependency promotion. */
   parents?: string[];
+  /** Optional dispatcher kill switch for runaway workers (seconds). */
+  max_runtime_seconds?: number;
 };
+
+const DEFAULT_EA_KANBAN_MAX_RUNTIME_SECONDS = 28_800;
+
+/** Forward max_runtime_seconds on EA creates; optional cap on project-* boards. */
+export function eaKanbanCreateDefaults(board: string): Pick<KanbanCreatePayload, "max_runtime_seconds"> {
+  const eaBoards = EA_KANBAN_BOARDS as readonly string[];
+  if (eaBoards.includes(board)) {
+    const raw = process.env.JOSHU_KANBAN_MAX_RUNTIME_EA?.trim();
+    const seconds = raw ? Number.parseInt(raw, 10) : DEFAULT_EA_KANBAN_MAX_RUNTIME_SECONDS;
+    if (Number.isFinite(seconds) && seconds > 0) {
+      return { max_runtime_seconds: seconds };
+    }
+    return {};
+  }
+  if (board.startsWith("project-")) {
+    const raw = process.env.JOSHU_KANBAN_MAX_RUNTIME_PROJECT?.trim();
+    if (!raw) return {};
+    const seconds = Number.parseInt(raw, 10);
+    if (Number.isFinite(seconds) && seconds > 0) {
+      return { max_runtime_seconds: seconds };
+    }
+  }
+  return {};
+}
 
 /** Idempotent board setup for EA scheduling workers. */
 export async function ensureEaSchedulingBoard(filesRoot: string): Promise<KanbanBridgeResult> {

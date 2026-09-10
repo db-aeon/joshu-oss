@@ -86,7 +86,9 @@ One owner-facing **ask** (schedule with Michael, invite myself, etc.) must not s
 
 Mail is **phase 1**. SMS / Slack / voice will plug into the same layer ([`src/coordination/`](../src/coordination/)). Fleet SOP: [`hermes-integration.md`](hermes-integration.md#coordination-scope-multi-channel-2026-09).
 
-Tests: `npm run test:coordination-scope` · `npm run test:owner-reply`.
+Tests: `npm run test:coordination-scope` · `npm run test:owner-reply` · `npm run test:nylas-attachments`.
+
+**Owner-reply deliverables:** when the ask produces a file (`.pptx`, `.pdf`, …), attach it via `nylas_send_message` **`attachments`** (Desktop-relative paths) — do not paste long filesystem paths in the email body. See [nylas-agent-mailbox.md — Outbound attachments](nylas-agent-mailbox.md#outbound-attachments).
 
 ## Proactive owner nudges (2026-09)
 
