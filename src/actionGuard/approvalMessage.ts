@@ -68,6 +68,14 @@ export function formatApprovalMessage(actionId: string, summary: Record<string, 
   if (bcc) lines.push(`BCC: ${bcc}`);
   if (subject) lines.push(`Subject: ${String(subject)}`);
   if (textPreview) lines.push(`Text: ${String(textPreview)}`);
+
+  if (actionId === "nylas_send_message" && summary.ownerOnThread === false) {
+    const ccNote = summary.ownerCcAdded === true ? " Owner CC added." : "";
+    lines.push(`Note: You were not on prior messages in this thread.${ccNote}`);
+    const snippet = readString(summary.threadContextSnippet);
+    if (snippet) lines.push(`Context: ${snippet}`);
+  }
+
   if (body) {
     lines.push("", String(body));
   }

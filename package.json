@@ -63,6 +63,7 @@
     "test:mail-dedup": "npm run build && node scripts/check-mail-dedup.mjs",
     "test:mail-classifier-routing": "npm run build && node scripts/check-mail-classifier-routing.mjs",
     "test:owner-reply": "tsx scripts/test-owner-reply.mjs",
+    "test:owner-mail-visibility": "tsx scripts/test-owner-mail-visibility.mjs",
     "test:coordination-scope": "tsx scripts/test-coordination-scope.mjs",
     "test:proactive": "tsx scripts/test-proactive.mjs",
     "test:onboarding-reconcile": "tsx scripts/test-onboarding-reconcile.mjs",

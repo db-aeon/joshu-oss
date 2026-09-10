@@ -24,6 +24,10 @@ import { respondNylasSendGate } from "../actionGuard/nylasSendGateResponse.js";
 import { applySchedulingSendFollowup } from "../ea/schedulingSendFollowup.js";
 import { resolveJoshuFilesPaths } from "../joshuFilesPaths.js";
 import { resolveOutboundMailAuthorization } from "../ea/agentAuthorization.js";
+import {
+  ensureOwnerCcOnExternalSend,
+  resolveOwnerThreadVisibilityFromSourcePath,
+} from "../ea/ownerMailVisibility.js";
 import { buildReplySubjectMismatchError, replySubjectsMatch } from "./replySubject.js";
 
 function readString(value: unknown): string {
@@ -185,7 +189,52 @@ export function registerNylasRoutes(router: Router, opts: { projectRoot: string 
         return;
       }
     }
-    const gate = await gateNylasSendRequest(req, body, opts.projectRoot);
+    // Owner visibility: auto-CC primary work email on external sends; surface thread context for action guard.
+    let ownerOnThread: boolean | undefined;
+    let ownerCcAdded = false;
+    let threadContextSnippet: string | undefined;
+    if (!isJmailOwnerSend(req)) {
+      const ccResult = ensureOwnerCcOnExternalSend({
+        to,
+        cc,
+        bcc,
+        projectRoot: opts.projectRoot,
+      });
+      cc = ccResult.cc;
+      ownerCcAdded = ccResult.ownerCcAdded;
+      if (ownerCcAdded) {
+        const threadRef =
+          readString(body.threadId) ||
+          readString(body.thread_id) ||
+          sourcePath ||
+          "";
+        console.info(
+          `[nylas-send] owner_cc_enforced to=${to.map((r) => r.email).join(",")} thread=${threadRef}`,
+        );
+      }
+      if (sourcePath) {
+        const filesRoot = resolveJoshuFilesPaths(opts.projectRoot)?.filesRoot ?? null;
+        if (filesRoot) {
+          const visibility = await resolveOwnerThreadVisibilityFromSourcePath({
+            filesRoot,
+            sourcePath,
+            projectRoot: opts.projectRoot,
+          });
+          if (visibility) {
+            ownerOnThread = visibility.ownerOnThread;
+            threadContextSnippet = visibility.threadContextSnippet;
+          }
+        }
+      }
+    }
+    const gateBody: Record<string, unknown> = {
+      ...body,
+      cc,
+      ...(ownerOnThread !== undefined ? { ownerOnThread } : {}),
+      ...(ownerCcAdded ? { ownerCcAdded: true } : {}),
+      ...(threadContextSnippet ? { threadContextSnippet } : {}),
+    };
+    const gate = await gateNylasSendRequest(req, gateBody, opts.projectRoot);
     if (!respondNylasSendGate(res, gate)) {
       return;
     }

@@ -241,7 +241,7 @@ const TOOLS = [
   {
     name: "nylas_send_message",
     description:
-      "Send email from the Nylas agent mailbox. Use to + cc for multi-party scheduling (one reply-all). Do not pass comma-separated addresses in to. When replyToMessageId is set, subject must match the parent message exactly (only Re:/Fwd: prefix differences allowed) or the API returns reply_subject_mismatch — do not decorate subjects.",
+      "Send email from the Nylas agent mailbox. Use to + cc for multi-party scheduling (one reply-all). Do not pass comma-separated addresses in to. When replyToMessageId is set, subject must match the parent message exactly (only Re:/Fwd: prefix differences allowed) or the API returns reply_subject_mismatch — do not decorate subjects. Joshu auto-CCs the owner's primary work email on external sends. When mail ingress has owner_on_thread: false, summarize the counterparty ask in the first external reply body.",
     inputSchema: {
       type: "object",
       properties: {

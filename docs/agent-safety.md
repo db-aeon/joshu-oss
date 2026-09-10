@@ -143,6 +143,7 @@ Before an **agent write** that affects third parties, Joshu texts the owner on *
 | Composio read/meta tools (`COMPOSIO_SEARCH_TOOLS`, list/read) | **No** |
 | jMail owner compose | **No** |
 | Mail to owner `primaryWorkEmail` only | **No** when `bypassOwnerOnlyRecipients: true` (default) |
+| External mail (counterparty recipients) | **Auto-CC** owner primary work email (API-enforced); approval SMS warns when owner was not on prior thread messages |
 | Browser click/type/press | **Yes** when `browserGateWrites: true` (default **off**) |
 | Browser navigate/scroll/snapshot | **No** |
 | Browser evaluate/submit | Classified as writes; Hermes patch does not hook them yet |
@@ -166,6 +167,16 @@ camofox_click / camofox_type / camofox_press
 **Fail-open:** if Hermes cannot reach Joshu (`POST …/browser` errors), the patch logs a warning and allows the write (same pattern as other Hermes guards).
 
 **Deny/timeout:** Hermes receives a success-shaped browser stub; no click/type/press occurs.
+
+### Owner visibility on external mail
+
+Joshu enforces that the owner stays visible on counterparty mail:
+
+1. **Auto-CC** — `POST …/nylas/messages/send` appends the owner's **primary work email** to `cc` on any send that includes external recipients (not owner-only, not agent-only). jMail owner compose bypasses this path.
+2. **Ingress flag** — mail ingress tasks include `owner_on_thread: true|false` from the thread mirror. When `false`, agents should summarize the counterparty ask in the first external reply.
+3. **Action-guard SMS** — when `ownerOnThread: false`, the approval message includes a note and a short context snippet from the latest non-agent message on the thread.
+
+This is **soft policy** (no hard 403 block). Action guard remains the approval gate.
 
 ### Enable conditions
 

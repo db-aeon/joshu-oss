@@ -105,7 +105,7 @@ When your Kanban task body includes `kind: mail_ingress`, run this **short-circu
 ### Required order (do not reorder)
 
 1. **`skill_view('ea-playbook')`** — this section (required; do **not** load `ea-project-kanban`).
-2. **Read ingress body fields:** `agent_authorized`, `scheduling_eligible`, `owner_reply_eligible`, `allowed_actions`, `source_path`, `thread_id`, `message_id`, `account_key`, `provider`, `coordination_scope_id`. Triage stub is a pointer only.
+2. **Read ingress body fields:** `agent_authorized`, `owner_on_thread`, `scheduling_eligible`, `owner_reply_eligible`, `allowed_actions`, `source_path`, `thread_id`, `message_id`, `account_key`, `provider`, `coordination_scope_id`. Triage stub is a pointer only. When **`owner_on_thread: false`**, the companion was pulled into a thread without the owner on prior messages — visibility risk; external replies must CC owner (API enforced) and include brief counterparty context.
 3. **Coordination preflight (2026-09):** Before spawning scheduling or owner-reply children, call **`coordination_list_active`** (or **`coordination_scope_resolve`**) with `threadId` + `sourcePath`. If an open **`meeting_negotiation`** exists on scope → **handoff only** (`scheduling_handoff_meeting_task`); never **`scheduling_create_meeting_task`**. If open **`owner_deliverable`** exists → **`owner_reply_handoff_task`** only. Joshu API mutexes cross-board spawns; treat `action: existing_coordination` as handoff to returned `task_id`.
 3. **`read_file` the mail mirror** at `${JOSHU_FILES_ROOT}/<source_path>` (once). Then file:
    - Match existing `Projects/<slug>/` via [Canonical project matching](#canonical-project-matching) **or** create minimal `about.md` / `todo.md` / `journal_*` from `_template/`.

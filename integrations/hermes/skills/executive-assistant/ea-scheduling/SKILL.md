@@ -4,7 +4,7 @@ description: Meeting-mail scheduling. Kanban ea-sched-*; Calendly fallback.
 metadata:
   hermes:
     category: executive-assistant
-    version: "4.24.0"
+    version: "4.25.0"
 ---
 
 # EA Scheduling
@@ -191,6 +191,8 @@ Responses include **`timeAnchor`** (owner-local now) and per-event **`localDate`
 
 6. **Re-check sent mail** on this thread (Nylas + owner Gmail mirrors) so you don't duplicate outreach or report "not sent" when a prior session already emailed the wrong person.
 
+7. **Owner visibility (`owner_on_thread: false` on ingress):** The owner was not CC'd on prior messages in this thread. Joshu **auto-CCs** the owner's primary work email on every external `nylas_send_message` — you do not need to add it manually, but your first external reply **must** include 1–2 sentences summarizing what the counterparty asked so the owner has context when Gmail threading breaks.
+
 4. **After ingress handoff**: **you** decide:
    - **Actionable** — confirmed slot → **`google_calendar_find_free_slots`** for that window → if free, book
    - **Still waiting** — "let me find a time", vague deferral → **`kanban_block`** (no book)
@@ -202,6 +204,8 @@ Responses include **`timeAnchor`** (owner-local now) and per-event **`localDate`
 ### Action guard + `nylas_send_message`
 
 Outbound mail hits **owner SMS approval** when action guard is enabled. Joshu may block up to **30 minutes** waiting for the owner; Hermes MCP tool calls often **timeout around 120s** first.
+
+Joshu **auto-CCs** the owner's primary work email on external sends (API-enforced). When you were not on prior thread messages (`owner_on_thread: false`), the approval SMS includes a **context snippet** from the counterparty — still write a brief summary in your reply body.
 
 **Always pass `kanbanTaskId`** (this meeting task id, e.g. `t_…`) and preferably `threadId` on `nylas_send_message`. Joshu rewrites this task's `block_reason` after approve/deny/timeout so status does not stay on "awaiting owner approval" after mail delivers (or after a denied/failed gate).
 

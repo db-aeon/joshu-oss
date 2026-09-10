@@ -59,7 +59,7 @@ Grant file: `${AROZ_DATA}/files/users/<user>/.joshu/nylas/agent.json` (`grantId`
 | GET | `/joshu/api/nylas/messages` | List/search (`q`, `unread`, `limit`) |
 | GET | `/joshu/api/nylas/messages/:id` | Full message (body, headers) |
 | PATCH | `/joshu/api/nylas/messages/:id` | Update (`unread`, `starred`) |
-| POST | `/joshu/api/nylas/messages/send` | Outbound mail (plain / light-markdown `body` → HTML with linkified URLs; API appends HTML signature). Optional `replyToMessageId`, `sourcePath` / `source_path`, `cc`, `bcc` |
+| POST | `/joshu/api/nylas/messages/send` | Outbound mail (plain / light-markdown `body` → HTML with linkified URLs; API appends HTML signature). Optional `replyToMessageId`, `sourcePath` / `source_path`, `cc`, `bcc`. **Agent sends:** auto-CC owner `primaryWorkEmail` on external recipients; action guard SMS warns when owner was not on prior thread messages — see [Owner visibility](#owner-visibility-on-external-mail). **jMail** owner compose bypasses auto-CC and action guard. |
 | POST | `/joshu/api/nylas/test-send` | `{ "to": "you@…" }` smoke test |
 | GET | `/joshu/api/nylas/profile` | Read agent profile |
 | POST | `/joshu/api/nylas/profile` | Update agent profile (incl. EA dials: `spendingThreshold`, `urgentChannel`, `workingHoursStart`, `workingHoursEnd`) |
@@ -85,6 +85,16 @@ Grant file: `${AROZ_DATA}/files/users/<user>/.joshu/nylas/agent.json` (`grantId`
 **Multi-recipient send:** `to` accepts a string or array; use **`cc`** / **`bcc`** for additional guests — do not put `"a@x.com, b@y.com"` in a single `to` string ([`src/nylas/recipients.ts`](../src/nylas/recipients.ts)).
 
 **Thread replies:** when `replyToMessageId` is set, `subject` must match the parent message (only `Re:` / `Fwd:` prefix differences allowed). Decorating the subject (availability, names, task titles) returns **`400` `reply_subject_mismatch`** with `expectedSubject` + `hint` — the API does **not** mutate the subject ([`src/nylas/replySubject.ts`](../src/nylas/replySubject.ts)). Gmail/Google fork conversations when the subject changes even if reply headers are set. Retry with the exact parent subject from the thread mirror.
+
+### Owner visibility on external mail
+
+Agent sends (Hermes MCP, REST, `execute_code` → this route) enforce owner visibility on counterparty mail:
+
+1. **Auto-CC** — when any recipient is external (not owner primary work email, not agent mailbox), Joshu appends owner `primaryWorkEmail` to `cc` if missing. Log: `[nylas-send] owner_cc_enforced`. Implementation: [`src/ea/ownerMailVisibility.ts`](../src/ea/ownerMailVisibility.ts).
+2. **Thread scan** — when `sourcePath` is set, Joshu scans the mirror for prior owner presence and passes `ownerOnThread` / `threadContextSnippet` to action guard (approval SMS only — not sent to Nylas).
+3. **Ingress flag** — mail ingress Kanban tasks include `owner_on_thread: true|false` for agents ([`ea-playbook`](../integrations/hermes/skills/executive-assistant/ea-playbook/SKILL.md)).
+
+**Bypasses:** jMail owner compose (`X-Joshu-Mail-Client: jmail` + same-origin); owner-only recipient sends (action-guard `bypassOwnerOnlyRecipients`). Full policy: [`agent-safety.md` — Owner visibility](agent-safety.md#owner-visibility-on-external-mail).
 
 Outbound sends always use the provisioned agent address as `from`. The Joshu API converts the agent `body` to email HTML ([`plainTextToSimpleEmailHtml`](../packages/email-signature/src/joshuEmailSignature.ts): paragraphs, lists, `**bold**` / `*italic*` / `` `code` ``, `[label](url)` and bare `https://` links) and **appends a branded HTML signature** (companion name, `{owner}'s Joshu`, signup link) — built from instance identity at send time, inlined into the Nylas message `body`. Pass message content only (not signature markup). Configure identity via Welcome / `identity.json` — see [self-host.md](self-host.md#identity-without-control-plane).
 

@@ -11,12 +11,15 @@ import type { MailThreadFrontmatter } from "../connectors/mirror.js";
 import { resolveJoshuAgentEmails, isFromJoshuAgent } from "./ingestFilters.js";
 import { parseEmailAddress } from "./schedulingTypes.js";
 import { readAgentProfile } from "../nylas/profile.js";
+import { ownerVisibleOnThreadMirror, stripMailThreadMirror } from "./ownerMailVisibility.js";
 import type { TriageProvider } from "./triageTypes.js";
 
 export type MailAgentAuthorization = {
   agent_authorized: boolean;
   scheduling_eligible: boolean;
   reason: string;
+  /** True when primary owner email appears on prior thread messages (mirror scan). */
+  owner_on_thread?: boolean;
 };
 
 export type ResolveAgentAuthorizationInput = {
@@ -348,7 +351,7 @@ export async function resolveAgentAuthorizationForMirror(opts: {
   projectRoot?: string;
 }): Promise<MailAgentAuthorization> {
   const threadBodyPreview = await readMirrorBodyPreview(opts.filesRoot, opts.sourcePath, 8000);
-  return resolveAgentAuthorization({
+  const auth = resolveAgentAuthorization({
     provider: opts.provider,
     from: opts.from,
     to: opts.to,
@@ -361,4 +364,25 @@ export async function resolveAgentAuthorizationForMirror(opts: {
     category: opts.category,
     projectRoot: opts.projectRoot,
   });
+
+  let owner_on_thread: boolean | undefined;
+  try {
+    const rel = opts.sourcePath.trim().replace(/^\/+/, "");
+    if (rel) {
+      const full = path.join(opts.filesRoot, rel);
+      const raw = await readFile(full, "utf8");
+      const { fm, body } = stripMailThreadMirror(raw);
+      if (fm) {
+        owner_on_thread = ownerVisibleOnThreadMirror(
+          fm,
+          body,
+          opts.projectRoot ?? process.cwd(),
+        ).ownerOnThread;
+      }
+    }
+  } catch {
+    /* visibility scan is best-effort at ingress */
+  }
+
+  return owner_on_thread !== undefined ? { ...auth, owner_on_thread } : auth;
 }

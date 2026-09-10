@@ -178,6 +178,7 @@ export async function buildMailIngressTaskBody(
     ...(input.receivedAt ? [`received_at: ${input.receivedAt}`] : []),
     ...(input.accountKey ? [`account_key: ${input.accountKey}`] : []),
     `agent_authorized: ${auth.agent_authorized}`,
+    ...(auth.owner_on_thread !== undefined ? [`owner_on_thread: ${auth.owner_on_thread}`] : []),
     `scheduling_eligible: ${schedulingEligible}`,
     `owner_reply_eligible: ${ownerReplyEligible}`,
     `allowed_actions: ${allowedActions}`,
@@ -198,6 +199,11 @@ export async function buildMailIngressTaskBody(
       : [
           "NOT authorized to act: the companion was not copied on this message and owner did not delegate. File project docs only — no scheduling child, no outbound mail.",
         ]),
+    ...(auth.owner_on_thread === false
+      ? [
+          "Owner was not on prior thread messages — external replies must CC owner (API enforced); include brief context in outreach.",
+        ]
+      : []),
     ...(schedulingEligible
       ? [
           "After filing: scheduling_list_meeting_tasks by thread_id; handoff or scheduling_create_meeting_task (pass threadId) on ea-scheduling.",

@@ -302,6 +302,8 @@ Deterministic safeguard: before **agent write** actions that affect third partie
 
 **Scope:** Nylas agent sends are gated on **`POST …/api/nylas/messages/send`** (REST), so Hermes MCP, `execute_code`, and `curl` all hit the same approval flow. Composio writes are gated on the **`:8796` guard proxy**. **jMail** (owner desktop compose) bypasses when the browser sends `X-Joshu-Mail-Client: jmail` with `Sec-Fetch-Site: same-origin`. Mail to owner `primaryWorkEmail` only bypasses when `bypassOwnerOnlyRecipients` is true (default).
 
+**Owner visibility on external mail:** Joshu auto-CCs the owner's primary work email on external sends (API-enforced). Mail ingress includes `owner_on_thread`; action-guard SMS warns with a counterparty context snippet when the owner was not on prior thread messages. See [`agent-safety.md` — Owner visibility](agent-safety.md#owner-visibility-on-external-mail).
+
 **Known bypass (fixed 2026-06-23):** Hermes `terminal` with **`nylas email send`** hit the Nylas CLI directly — bypassing Joshu auth + action guard. Patched via `scripts/patch-hermes-terminal-mail-guard.mjs` (hard block; use `nylas_send_message` MCP). **`execute_code` / `curl`** to arbitrary external URLs may still bypass if not matching blocked patterns.
 
 ### Architecture

@@ -193,6 +193,7 @@ export function buildNylasSendSummary(args: Record<string, unknown>): Record<str
     readString(args.taskId) ||
     readString(args.task_id);
   const threadId = readString(args.threadId) || readString(args.thread_id);
+  const threadContextSnippet = readString(args.threadContextSnippet);
   return {
     to: args.to,
     cc: args.cc,
@@ -203,6 +204,9 @@ export function buildNylasSendSummary(args: Record<string, unknown>): Record<str
     body,
     ...(kanbanTaskId ? { kanbanTaskId } : {}),
     ...(threadId ? { threadId } : {}),
+    ...(typeof args.ownerOnThread === "boolean" ? { ownerOnThread: args.ownerOnThread } : {}),
+    ...(args.ownerCcAdded === true ? { ownerCcAdded: true } : {}),
+    ...(threadContextSnippet ? { threadContextSnippet } : {}),
   };
 }
 
