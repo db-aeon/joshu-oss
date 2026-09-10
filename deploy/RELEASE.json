@@ -1,11 +1,11 @@
 {
-  "version": "0.1.43",
+  "version": "0.1.44",
   "channel": "stable",
-  "imageRef": "ghcr.io/db-aeon/joshu-oss:0.1.43",
-  "voiceImageRef": "ghcr.io/db-aeon/joshu-oss-voice-realtime:0.1.43",
+  "imageRef": "ghcr.io/db-aeon/joshu-oss:0.1.44",
+  "voiceImageRef": "ghcr.io/db-aeon/joshu-oss-voice-realtime:0.1.44",
   "hermesRef": "3c27eb6234bf91b8ceee9e9071591b31e9b148cb",
   "gbrainRef": "fa2c7a6990a7a57b251979ef6e1988ff09529021",
   "camofoxBase": "ghcr.io/jo-inc/camofox-browser@sha256:3ab61b4742105922aab6f8c99460f55563b6f93e906975383ddce16ec8917f3f",
-  "builtAt": "2026-09-01T21:45:00.000Z",
-  "notes": "0.1.43 - last30days engine: drop empty gitignored bind-mount; image-baked .image fallback; health gate; hydrate on boot"
+  "builtAt": "2026-09-10T04:30:00.000Z",
+  "notes": "0.1.44 - image-owned boot scripts; box API localhost gate + Hermes dashboard auth; fleet SMS gateway + proactive Kanban nudges; ea-onboarding setup-debt; owner-reply routing; Kanban worker terminate-on-complete; Nylas attachments + owner auto-CC"
 }

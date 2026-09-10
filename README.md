@@ -76,10 +76,10 @@ Joshu ships as public Docker images for a standalone VPS (no control plane requi
 | Self-host overview | [docs/self-host.md](docs/self-host.md) |
 | Deploy / image env | [deploy/README.md](deploy/README.md) |
 
-Pin images from [`deploy/RELEASE.json`](deploy/RELEASE.json) (currently **0.1.43**):
+Pin images from [`deploy/RELEASE.json`](deploy/RELEASE.json) (currently **0.1.44**):
 
-- `ghcr.io/db-aeon/joshu-oss:0.1.43` (+ `:latest`)
-- `ghcr.io/db-aeon/joshu-oss-voice-realtime:0.1.43` (+ `:latest`)
+- `ghcr.io/db-aeon/joshu-oss:0.1.44` (+ `:latest`)
+- `ghcr.io/db-aeon/joshu-oss-voice-realtime:0.1.44` (+ `:latest`)
 
 Bring your own API keys (OpenRouter via Welcome after first login; optional ScrapeCreators, Exa, Langfuse, Nylas, Twilio — see `deploy/.env.vps.example`). No managed relays are required for self-host.
 
