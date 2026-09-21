@@ -83,6 +83,29 @@ Messages already inside a thread still get in-thread replies. Upstream: [Hermes 
 
 Hermes uses Hindsight for long-term memory. Viewer subservice: Memory app on the desktop. Index paths and MCP tools are documented in [`file-brain.md`](file-brain.md) and skill READMEs under `integrations/hermes/skills/`.
 
+## Optional web search (You.com MCP)
+
+Joshu can expose [You.com](https://you.com) web search to the Hermes agent as an optional remote MCP server (`mcp_servers.you` → toolset `mcp-you`, tools `you-search` / `you-contents`). **Off by default** — opt in via env:
+
+```bash
+# .env (local) or /etc/joshu/instance.env (VPS)
+JOSHU_YOU_MCP_ENABLED=true          # default: unset/off
+# Optional: authenticated endpoint instead of the keyless free profile
+YDC_API_KEY=                        # https://you.com/platform/api-keys
+# Optional: override the endpoint entirely
+# JOSHU_YOU_MCP_URL=https://api.you.com/mcp?profile=free
+```
+
+Without `YDC_API_KEY`, Joshu registers the **keyless** endpoint `https://api.you.com/mcp?profile=free` (basic `you-search`, no key, no signup). With a key, it registers `https://api.you.com/mcp` with a `Bearer` header for the full tool set. Setting a key alone does **not** enable the provider — `JOSHU_YOU_MCP_ENABLED` is always required.
+
+The entry is upserted by `ensureJoshuHermesConfig` ([`src/hermesApi.ts`](../src/hermesApi.ts)) alongside the other Joshu-managed HTTP MCPs, survives config syncs via the managed-name allowlist ([`src/hermesMcpAllowlist.ts`](../src/hermesMcpAllowlist.ts)), and is torn down (disabled) when you clear the env var. Resolution logic: [`src/youMcpPolicy.ts`](../src/youMcpPolicy.ts).
+
+**Restart** `npm run dev:arozos` (local) or `vps-start.sh` (VPS) after changing these — the gateway reads config at boot.
+
+Existing Exa-based search (`EXA_API_KEY` → `web-exa` plugin) is untouched; You.com is an additional opt-in backend, not a replacement.
+
+Tests: `npm run test:you-mcp-policy` · `npm run test:hermes-mcp-allowlist`.
+
 ## Coordination scope (multi-channel, 2026-09)
 
 Executive Assistant mail can spawn **scheduling** (`ea-scheduling`) and **owner-reply** (`ea-owner-reply`) workers from the same owner-facing ask. **Coordination scope** mutexes those spawns across Kanban boards and mail provider thread aliases (Gmail vs Nylas, linked by RFC Message-ID).
