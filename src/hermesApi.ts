@@ -53,6 +53,7 @@ import { buildOwnerTimeSystemMessage } from "./ownerLocalTime.js";
 import { readAgentProfile } from "./nylas/profile.js";
 import { isValidIanaTimezone, normalizeIanaTimezone } from "./ianaTimezone.js";
 import { sanitizeHermesMcpServers } from "./hermesMcpAllowlist.js";
+import { desiredYouMcpServer, toolsetsWithYou } from "./youMcpPolicy.js";
 
 const execFile = promisify(execFileCb);
 const HERMES_GATEWAY_PID_FILE = path.join(homedir(), ".hermes", "gateway.pid");
@@ -2116,6 +2117,26 @@ export class HermesApiRunner extends EventEmitter {
       }
     }
 
+    // Optional You.com web-search MCP (opt-in via JOSHU_YOU_MCP_ENABLED; keyless
+    // by default — see src/youMcpPolicy.ts). Mirrors the fal_ai upsert above.
+    const desiredYou = desiredYouMcpServer();
+    const youServer = asRecord(mcpServers.you);
+    if (desiredYou) {
+      const headersMatch =
+        JSON.stringify(asRecord(youServer.headers)) === JSON.stringify(desiredYou.headers);
+      if (
+        youServer.url !== desiredYou.url ||
+        youServer.enabled !== true ||
+        !headersMatch
+      ) {
+        mcpServers.you = { ...desiredYou };
+        changed = true;
+      }
+    } else if (Object.keys(youServer).length > 0 && youServer.enabled !== false) {
+      mcpServers.you = { ...youServer, enabled: false };
+      changed = true;
+    }
+
     config.mcp_servers = mcpServers;
     if (applyMcpServerAllowlist(config)) changed = true;
 
@@ -2128,9 +2149,12 @@ export class HermesApiRunner extends EventEmitter {
     // CDP Chromium is driven by the browser-use sidecar. Hermes's built-in
     // browser toolset would be a second driver on the same tab.
     const browserToolsets = cdpForBrowser ? toolsets.filter((name) => name !== "browser") : toolsets;
-    const orderedToolsets = toolsetsWithFal(
-      toolsetsWithComposio(browserToolsets, composioSessionActive),
-      falActive,
+    const orderedToolsets = toolsetsWithYou(
+      toolsetsWithFal(
+        toolsetsWithComposio(browserToolsets, composioSessionActive),
+        falActive,
+      ),
+      Boolean(desiredYou),
     );
     if (cdpForBrowser) {
       const platformToolsets = asRecord(config.platform_toolsets);
