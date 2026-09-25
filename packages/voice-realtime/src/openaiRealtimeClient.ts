@@ -13,7 +13,11 @@ import {
   PHONE_SYSTEM_PROMPT,
 } from "./config.js";
 import { selectRealtimeTools } from "./realtimeTools.js";
-import { injectHermesResultUserText, type InjectPresentation } from "./speechPresentation.js";
+import {
+  injectHermesResultUserText,
+  type InjectKind,
+  type InjectPresentation,
+} from "./speechPresentation.js";
 import { voiceLog } from "./voiceLog.js";
 import type {
   FunctionCallPayload,
@@ -208,9 +212,9 @@ export class OpenAiRealtimeClient implements VoiceS2sClient {
     this.requestResponse("function_output_ack", output);
   }
 
-  injectAssistantMessage(text: string): void {
+  injectAssistantMessage(text: string, kind?: InjectKind): void {
     if (!this.canSend()) return;
-    const instruct = injectHermesResultUserText(text, this.injectPresentation);
+    const instruct = injectHermesResultUserText(text, this.injectPresentation, kind);
     this.logSpeechInstruct("hermes_inject", instruct);
     this.ws!.send(
       JSON.stringify({

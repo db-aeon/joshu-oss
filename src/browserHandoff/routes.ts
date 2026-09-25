@@ -7,6 +7,7 @@ import { setHandoffAuthCookie, verifyArozosPassword, verifyOwnerHandoffSession }
 import { browserHandoffLockStub, publicHandoffView } from "./lock.js";
 import {
   cancelHandoff,
+  cancelPendingHandoffsForKanbanTask,
   completeHandoff,
   createHandoff,
   extendHandoffExpiry,
@@ -187,6 +188,21 @@ export function registerBrowserHandoffRoutes(
     }
     const lock = isBrowserHandoffLocked(projectRoot);
     res.json({ ok: true, ...lock });
+  });
+
+  router.post("/api/browser-handoff/cancel-by-kanban-task", (req: Request, res: Response) => {
+    if (!isDirectLocalhostRequest(req)) {
+      res.status(403).json({ error: "browser-handoff cancel-by-kanban-task is localhost-only" });
+      return;
+    }
+    const taskId = readString((req.body as Record<string, unknown>)?.task_id ?? (req.body as Record<string, unknown>)?.taskId);
+    if (!taskId) {
+      res.status(400).json({ error: "task_id is required" });
+      return;
+    }
+    const cancelled = cancelPendingHandoffsForKanbanTask(projectRoot, taskId);
+    if (cancelled.length > 0) void resumeBrowserAgent();
+    res.json({ ok: true, cancelled: cancelled.map((r) => r.id) });
   });
 
   router.post("/api/browser-handoff/request", async (req: Request, res: Response) => {
@@ -623,7 +639,7 @@ export function registerBrowserHandoffRoutes(
 <body>
   <div id="handoff-root"></div>
   <script id="handoff-config" type="application/json">${config}</script>
-  <script type="module" src="handoff.js?v=ui-browser-21"></script>
+  <script type="module" src="handoff.js?v=ui-browser-22"></script>
 </body>
 </html>`);
   });

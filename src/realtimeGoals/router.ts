@@ -31,7 +31,14 @@ export type RouteRealtimeGoalMessageOptions = {
   completionOverride?: (messages: Array<{ role: string; content: string }>) => Promise<string>;
 };
 
-const QUEUE_CONFIDENCE = 0.82;
+function queueConfidenceThreshold(): number {
+  const raw = Number.parseFloat(process.env.JOSHU_REALTIME_GOALS_QUEUE_CONFIDENCE ?? "");
+  if (Number.isFinite(raw) && raw >= 0.5 && raw <= 1) return raw;
+  // Voice PSTN flight/research turns often classify queue at ~0.70–0.78 while
+  // still naming background browsing in the reason (canary box 2026-09-24).
+  return 0.7;
+}
+
 const RELATION_CONFIDENCE = 0.68;
 const CANCEL_CONFIDENCE = 0.75;
 const CLASSIFIER_TIMEOUT_MS = 8_000;
@@ -57,11 +64,18 @@ Policy:
   Provide a brief reply in "reply". Do not cancel or queue.
 - "pass": casual conversation, a quick answer, or anything plausibly finishable in about 60 seconds.
 - "queue": clearly new long goal-oriented work that should run in the background Kanban worker.
-- Be LENIENT toward pass on queue-capable channels. False async is worse than a missed async.
+  Multi-site browsing, travel search/booking, and multi-step research belong here — return
+  confidence >= 0.85 when you choose queue for that kind of work.
+- Be LENIENT toward pass on queue-capable channels for quick chat only. False async is
+  worse than a missed async for clearly long browser/research jobs.
 - "cancel": the owner wants an active goal stopped ("actually, never mind", "cancel that").
   Bare negation answering "Anything else?" is ack, not cancel.
-- "status": the owner asks about an active goal.
+- "status": the owner asks about an active goal, or asks for updates/results in general.
+- Never queue a request with no concrete objective (empty, redacted, or only a fragment
+  such as a code word or filler) — return "pass".
 - Do not create a new goal for follow-ups on the same job — those continue the active branch.
+  A question about a listed goal's waiting_on_owner or found details is "pass" (answered from
+  context), never "queue".
 - Select goal_id only from the listed active goals (for cancel/status).
 - When queue_capable is false, always return decision "pass".
 - Some channels wrap owner text in structured fields (Intent / Conversation summary / User said).
@@ -81,7 +95,15 @@ Output JSON only:
 
 Policy:
 - "update": the latest message continues the SAME background job (answers a blocked question,
-  picks an option, adds detail, short follow-up on that job).
+  picks an option, adds detail, changes an instruction for that job).
+- A question about details of what this job found or is asking about — times, prices, stops,
+  which option, a narrower constraint ("nonstop only"), where its link is — is "update": the
+  job's worker has that context. NEVER queue a new goal to look up details of this job.
+- "status": the owner asks how the job is going or what it found ("did you find it?",
+  "any luck?", "were you able to…?", "is it done?"). A progress question is NOT an update,
+  even when the job is waiting on the owner.
+- A bare "no", "no thanks", "I'm waiting", "okay" is "ack" — never "update" — unless it
+  directly answers the branch's waiting_on_owner question (e.g. "Book it?" → "No").
 - "queue": the owner asked for clearly NEW unrelated long work — a different task than the
   active branch (even if they say "something new" or pivot mid-thread).
 - "pass": casual conversation or anything plausibly finishable in about 60 seconds.
@@ -127,23 +149,31 @@ function latestActive(activeGoals: RealtimeGoalRecord[]): RealtimeGoalRecord | u
   return [...activeGoals].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
 }
 
+/**
+ * One goal as the router sees it. Includes what the worker is asking and what
+ * it found, so a follow-up about those details ("when does the United flight
+ * leave?") is recognizably about this goal rather than new work.
+ */
+function goalPromptLine(goal: RealtimeGoalRecord): string {
+  const lastOwner = [...goal.messages].reverse().find((message) => message.role === "owner");
+  return [
+    `- id=${goal.id}`,
+    `status=${goal.status}`,
+    `title=${JSON.stringify(goal.title)}`,
+    `objective=${JSON.stringify(goal.objective.slice(0, 500))}`,
+    lastOwner ? `latest=${JSON.stringify(lastOwner.text.slice(0, 300))}` : "",
+    goal.status === "blocked" && goal.lastBlockReason
+      ? `waiting_on_owner=${JSON.stringify(goal.lastBlockReason.slice(0, 500))}`
+      : "",
+    goal.resultSummary ? `found=${JSON.stringify(goal.resultSummary.slice(0, 500))}` : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
 function activeGoalsPrompt(activeGoals: RealtimeGoalRecord[]): string {
   if (activeGoals.length === 0) return "(none)";
-  return activeGoals
-    .slice(0, 8)
-    .map((goal) => {
-      const lastOwner = [...goal.messages].reverse().find((message) => message.role === "owner");
-      return [
-        `- id=${goal.id}`,
-        `status=${goal.status}`,
-        `title=${JSON.stringify(goal.title)}`,
-        `objective=${JSON.stringify(goal.objective.slice(0, 500))}`,
-        lastOwner ? `latest=${JSON.stringify(lastOwner.text.slice(0, 300))}` : "",
-      ]
-        .filter(Boolean)
-        .join(" ");
-    })
-    .join("\n");
+  return activeGoals.slice(0, 8).map(goalPromptLine).join("\n");
 }
 
 function normalize(
@@ -164,18 +194,22 @@ function normalize(
     : new Set(["pass", "queue", "cancel", "status", "ack"]);
   let decision = (allowed.has(raw) ? raw : "pass") as RealtimeGoalRouteDecision["decision"];
   const confidence = clampConfidence(parsed.confidence);
-  const goalId = short(parsed.goal_id, 100);
+  // Bound routing: the active branch is listed first and is the implied target
+  // when the model omits goal_id.
+  const goalId = short(parsed.goal_id, 100) ?? (bound ? activeGoals[0]?.id : undefined);
   const knownGoal = goalId ? activeGoals.some((goal) => goal.id === goalId) : false;
+
+  const queueThreshold = queueConfidenceThreshold();
 
   // Legacy classifier outputs — fold into the slim router.
   if (!bound && (raw === "clarify" || raw === "update")) {
-    decision = raw === "clarify" && confidence >= QUEUE_CONFIDENCE ? "queue" : "pass";
+    decision = raw === "clarify" && confidence >= queueThreshold ? "queue" : "pass";
   }
   if (bound && raw === "clarify") {
     decision = confidence >= RELATION_CONFIDENCE ? "update" : "pass";
   }
 
-  if (decision === "queue" && confidence < QUEUE_CONFIDENCE) {
+  if (decision === "queue" && confidence < queueThreshold) {
     decision = "pass";
   }
   if (
@@ -266,19 +300,6 @@ function deterministicRoute(
   return undefined;
 }
 
-function activeBranchPrompt(branch: RealtimeGoalRecord): string {
-  const lastOwner = [...branch.messages].reverse().find((message) => message.role === "owner");
-  return [
-    `- id=${branch.id}`,
-    `status=${branch.status}`,
-    `title=${JSON.stringify(branch.title)}`,
-    `objective=${JSON.stringify(branch.objective.slice(0, 500))}`,
-    lastOwner ? `latest=${JSON.stringify(lastOwner.text.slice(0, 300))}` : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
-}
-
 async function runRouterCompletion(
   input: RouteRealtimeGoalMessageInput,
   options: RouteRealtimeGoalMessageOptions | undefined,
@@ -366,7 +387,7 @@ export async function routeRealtimeGoalMessage(
       `queue_capable: ${input.queueCapable}`,
       "",
       "Active branch (bound):",
-      activeBranchPrompt(branch),
+      goalPromptLine(branch),
       "",
       "Other active goals:",
       activeGoalsPrompt(

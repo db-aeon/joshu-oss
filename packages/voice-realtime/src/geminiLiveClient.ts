@@ -13,7 +13,11 @@ import {
   resolveGeminiApiKey,
 } from "./config.js";
 import { geminiToolDefinitions } from "./realtimeTools.js";
-import { injectHermesResultUserText, type InjectPresentation } from "./speechPresentation.js";
+import {
+  injectHermesResultUserText,
+  type InjectKind,
+  type InjectPresentation,
+} from "./speechPresentation.js";
 import { voiceLog } from "./voiceLog.js";
 import type {
   FunctionCallPayload,
@@ -32,6 +36,21 @@ const GEMINI_WS_URL =
 
 const REALTIME_DEBUG = process.env.VOICE_REALTIME_DEBUG?.trim().toLowerCase() === "true";
 const SPEECH_INSTRUCT_PREVIEW_CHARS = 500;
+/**
+ * Upper bound on how long we drop audio from a generation we asked Gemini to
+ * abandon. Normally Gemini ends it sooner with `interrupted` / `turnComplete`;
+ * the bound keeps a missing ack from muting the next reply indefinitely.
+ */
+const STALE_GENERATION_MAX_MS = 2500;
+
+/**
+ * Why the in-flight generation is stale:
+ * - `cancel` — we asked it to stop and nothing replaces it.
+ * - `instruct` — a new instructed turn (inject, progress, …) replaces it; the
+ *   old generation's trailing audio / interrupt / turnComplete must not be
+ *   attributed to the new turn.
+ */
+type StaleGenerationCause = "cancel" | "instruct";
 
 export class GeminiLiveClient implements VoiceS2sClient {
   private ws: WebSocket | null = null;
@@ -46,8 +65,16 @@ export class GeminiLiveClient implements VoiceS2sClient {
   private lastOutputTranscript = "";
   /** Avoid spamming onInputTranscript when Gemini refines the same turn. */
   private lastEmittedInputTranscript = "";
-  /** Set when cancelActiveResponse sends clientContent interrupt; cleared on server interrupted. */
-  private cancelInitiatedLocally = false;
+  /**
+   * Gemini Live has no response.cancel: an in-flight generation keeps
+   * streaming until the server acknowledges with `interrupted` or finishes
+   * with `turnComplete`. While this window is open its audio is dropped and
+   * its interrupt is ours, not the caller barging in.
+   */
+  private staleCause: StaleGenerationCause | null = null;
+  private staleUntilMs = 0;
+  /** Model audio seen since the last turnComplete / interrupted. */
+  private generationStreaming = false;
   private readonly audioFormat: RealtimeAudioFormat;
   private readonly systemPrompt: string;
   private readonly injectPresentation: InjectPresentation;
@@ -225,8 +252,11 @@ export class GeminiLiveClient implements VoiceS2sClient {
     this.markResponseStarted("function_output_ack", output);
   }
 
-  injectAssistantMessage(text: string): void {
-    this.sendInstructClientContent(injectHermesResultUserText(text, this.injectPresentation), "hermes_inject");
+  injectAssistantMessage(text: string, kind?: InjectKind): void {
+    this.sendInstructClientContent(
+      injectHermesResultUserText(text, this.injectPresentation, kind),
+      "hermes_inject",
+    );
   }
 
   injectProgressMessage(suggestedPhrase: string): void {
@@ -244,6 +274,7 @@ export class GeminiLiveClient implements VoiceS2sClient {
 
   requestOrganicResponse(): void {
     if (!this.canSend()) return;
+    this.supersedeStreamingGeneration();
     this.markResponseStarted("organic");
     this.ws!.send(
       JSON.stringify({
@@ -262,12 +293,15 @@ export class GeminiLiveClient implements VoiceS2sClient {
   }
 
   cancelActiveResponse(): void {
-    if (!this.canSend() || !this.responseInFlight) return;
+    if (!this.canSend()) return;
+    // Already cancelled and still draining: its remaining chunks are dropped.
+    if (this.staleWindowCause() === "cancel") return;
+    if (!this.responseInFlight && !this.generationStreaming) return;
     voiceLog(this.handlers.sessionId, "speech-instruct", "clientContent interrupt (barge-in)");
-    this.cancelInitiatedLocally = true;
+    this.openStaleWindow("cancel");
     this.pendingResponseReason = null;
     this.responseInFlight = false;
-    // Any clientContent interrupts in-flight generation on Gemini Live.
+    // Best-effort nudge; Gemini may keep generating — the stale window mutes it.
     this.ws!.send(
       JSON.stringify({
         clientContent: {
@@ -295,6 +329,7 @@ export class GeminiLiveClient implements VoiceS2sClient {
   private sendInstructClientContent(instruct: string, reason: ResponseSpeechReason): void {
     if (!this.canSend()) return;
     this.logSpeechInstruct(reason, instruct);
+    this.supersedeStreamingGeneration();
     this.markResponseStarted(reason, instruct);
     this.ws!.send(
       JSON.stringify({
@@ -304,6 +339,34 @@ export class GeminiLiveClient implements VoiceS2sClient {
         },
       }),
     );
+  }
+
+  /** Sending new clientContent mid-stream replaces the old generation (Gemini interrupts it). */
+  private supersedeStreamingGeneration(): void {
+    if (this.generationStreaming) {
+      this.openStaleWindow("instruct");
+      return;
+    }
+    // Cancelled before any audio: nothing to drain, and keeping the window
+    // open would mute the turn we are about to request.
+    if (this.staleCause === "cancel") this.closeStaleWindow();
+  }
+
+  private openStaleWindow(cause: StaleGenerationCause): void {
+    // A cancel followed by an instruct is still "replaced by a new turn".
+    this.staleCause = cause;
+    this.staleUntilMs = Date.now() + STALE_GENERATION_MAX_MS;
+  }
+
+  private closeStaleWindow(): void {
+    this.staleCause = null;
+    this.staleUntilMs = 0;
+  }
+
+  /** Current stale cause, or null once the window closed or timed out. */
+  private staleWindowCause(): StaleGenerationCause | null {
+    if (this.staleCause && Date.now() >= this.staleUntilMs) this.closeStaleWindow();
+    return this.staleCause;
   }
 
   private markResponseStarted(reason: ResponseSpeechReason, context?: string): void {
@@ -378,14 +441,26 @@ export class GeminiLiveClient implements VoiceS2sClient {
   }
 
   private handleServerContent(sc: Record<string, unknown>): void {
+    // Evaluate once: interrupted and turnComplete can arrive in the same message
+    // and both belong to the stale generation.
+    const staleCause = this.staleWindowCause();
+    const endsGeneration = sc.interrupted === true || sc.turnComplete === true;
+
     if (sc.interrupted === true) {
-      this.responseInFlight = false;
-      this.pendingResponseReason = null;
-      if (this.cancelInitiatedLocally) {
-        this.cancelInitiatedLocally = false;
+      this.generationStreaming = false;
+      if (staleCause === "instruct") {
+        // Old generation acknowledged; the instructed turn that replaced it
+        // keeps its reason (else its audio is mislabeled "organic").
         this.handlers.onInterrupted?.();
       } else {
-        this.handlers.onSpeechStarted?.();
+        this.responseInFlight = false;
+        this.pendingResponseReason = null;
+        if (staleCause === "cancel") {
+          this.handlers.onInterrupted?.();
+        } else {
+          // Gemini's server VAD heard the caller over the model: barge-in.
+          this.handlers.onSpeechStarted?.();
+        }
       }
     }
 
@@ -401,8 +476,11 @@ export class GeminiLiveClient implements VoiceS2sClient {
       }
     }
 
+    // Audio/text from a generation we abandoned never reaches the caller or transcript.
+    const dropModelOutput = staleCause != null && !endsGeneration;
+
     const outputTx = sc.outputTranscription as Record<string, unknown> | undefined;
-    if (outputTx && typeof outputTx.text === "string") {
+    if (outputTx && typeof outputTx.text === "string" && !dropModelOutput) {
       const full = outputTx.text;
       const prev = this.lastOutputTranscript;
       const delta = full.startsWith(prev) ? full.slice(prev.length) : full;
@@ -417,6 +495,8 @@ export class GeminiLiveClient implements VoiceS2sClient {
       const inlineData = row.inlineData as Record<string, unknown> | undefined;
       const data = typeof inlineData?.data === "string" ? inlineData.data : "";
       if (data) {
+        this.generationStreaming = true;
+        if (dropModelOutput) continue;
         if (!this.responseInFlight && this.pendingResponseReason == null) {
           this.markResponseStarted("organic");
         }
@@ -429,16 +509,24 @@ export class GeminiLiveClient implements VoiceS2sClient {
       }
     }
 
-    if (sc.generationComplete === true && !this.responseInFlight) {
+    if (sc.generationComplete === true && !this.responseInFlight && !dropModelOutput) {
       this.markResponseStarted("organic");
     }
 
     if (sc.turnComplete === true) {
-      this.finishTurn(sc.interrupted === true);
+      this.generationStreaming = false;
+      this.finishTurn(sc.interrupted === true, staleCause === "instruct");
     }
+
+    if (endsGeneration && staleCause) this.closeStaleWindow();
   }
 
-  private finishTurn(interrupted: boolean): void {
+  /**
+   * @param superseded the completed turn is the generation a newer instructed
+   *   turn replaced — report the caller's transcript, but do not end the newer
+   *   turn's response state or emit its response.done.
+   */
+  private finishTurn(interrupted: boolean, superseded = false): void {
     const transcript = this.pendingUserTranscript;
     this.pendingUserTranscript = "";
     this.lastOutputTranscript = "";
@@ -449,6 +537,11 @@ export class GeminiLiveClient implements VoiceS2sClient {
       this.handlers.onUserTranscript?.(transcript);
     } else {
       this.handlers.onTranscriptionComplete?.("");
+    }
+
+    if (superseded) {
+      this.turnFunctionCalls = [];
+      return;
     }
 
     const functionCalls = [...this.turnFunctionCalls];

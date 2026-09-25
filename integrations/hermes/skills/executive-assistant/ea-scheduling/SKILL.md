@@ -4,7 +4,7 @@ description: Meeting-mail scheduling. Kanban ea-sched-*; Calendly fallback.
 metadata:
   hermes:
     category: executive-assistant
-    version: "4.25.0"
+    version: "4.26.0"
 ---
 
 # EA Scheduling
@@ -325,21 +325,23 @@ Calendly has a **REST API** for programmatic booking — no browser needed.
 
 **MCP integration:** `github.com/mkimelblat/calendly-mcp-server` (Python, MIT). Box-only skill `calendly-agent-integration` may exist on learning repos for setup notes.
 
-### Path B: Browser via Camoufox + email fallback (counterparty's Calendly)
+### Path B: Browser + email fallback (counterparty's Calendly)
 
 When the counterparty sent their Calendly link and you don't have API access to their account:
 
-**Before the first `browser_navigate` (cold browser):** Firefox may have idle-shutdown. Warm it first so the first paint is not a heavy SPA:
+**Drive the page with Hermes browser tools** (`browser_navigate`, `browser_snapshot`, …) on fleet cloud boxes, or `browser_task` on local Chromium — see [`joshu-browser-handoff`](../../browser/joshu-browser-handoff/SKILL.md#browser-backend-read-this-first). Do **not** curl Camofox `:9377` or mix backends.
+
+**Local Chromium only — cold browser:** before the first heavy navigation, warm the shared browser:
 
 ```bash
 curl -fsS -X POST http://127.0.0.1:8788/joshu/api/camofox/warm
 ```
 
-(`fit-viewport` is equivalent.) Then `browser_navigate` to the Calendly URL. Camofox also auto-warms to `CAMOFOX_START_URL` on cold launch when the target differs — the curl step is belt-and-suspenders.
+Cloud fleet boxes skip warm — the first `browser_*` call wakes (or recreates) the Browser Use session. If it still fails with `browser_unavailable`, use the email fallback below instead of debugging the box.
 
 **Browser retry budget:** At most **2** `browser_navigate` attempts to the same counterparty booking URL per meeting task. If both fail (500, session expired, page crash), stop retrying and use the email fallback below — do not loop.
 
-**Failure mode observed:** Even with Camoufox (anti-detection browser), Calendly often blocks the final "Schedule Event" submit: *"This booking cannot be completed. For security reasons, we are not able to finalize this booking from your current session."* Do not retry repeatedly — the block is deterministic per-session.
+**Failure mode observed:** Calendly often blocks the final "Schedule Event" submit from automated sessions: *"This booking cannot be completed. For security reasons, we are not able to finalize this booking from your current session."* Do not retry repeatedly — the block is deterministic per-session.
 
 **Email fallback (do this instead):**
 

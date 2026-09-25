@@ -28,6 +28,7 @@ import {
   readManagedHermesConfig,
   writeMergedHermesConfig,
 } from "./hermesConfigSplit.js";
+import { cloudBrowserEnabled, usesBrowserAgentSidecar } from "./browserBackend.js";
 import { toolsetsWithComposio } from "./composioHermesMcpPolicy.js";
 import {
   falMcpEnabled,
@@ -758,6 +759,10 @@ export class HermesApiRunner extends EventEmitter {
     const next = cdpUrl.trim();
     if (!next || next === (this.opts.cdpUrl || "").trim()) return;
     this.opts.cdpUrl = next;
+    if (cloudBrowserEnabled()) {
+      const { noteHermesBrowserActivity } = await import("./cloudBrowser.js");
+      noteHermesBrowserActivity();
+    }
     await this.ensureJoshuHermesConfig();
     if (this.gatewayAutoStart) this.scheduleGatewayMcpReload("cloud browser CDP");
   }
@@ -1908,7 +1913,9 @@ export class HermesApiRunner extends EventEmitter {
       toolsets.push("joshu-browser-handoff");
       changed = true;
     }
-    {
+    const cdpUrlForSidecar = (this.opts.cdpUrl || envString("BROWSER_CDP_URL") || "").trim();
+    const sidecarBrowser = usesBrowserAgentSidecar(cdpUrlForSidecar);
+    if (sidecarBrowser) {
       const plugins = asRecord(config.plugins);
       const enabled = asStringArray(plugins.enabled);
       if (!enabled.includes("joshu-browser-agent")) {
@@ -1918,10 +1925,28 @@ export class HermesApiRunner extends EventEmitter {
       }
       plugins.enabled = enabled;
       config.plugins = plugins;
-    }
-    if (!toolsets.includes("joshu-browser-agent")) {
-      toolsets.push("joshu-browser-agent");
-      changed = true;
+      if (!toolsets.includes("joshu-browser-agent")) {
+        toolsets.push("joshu-browser-agent");
+        changed = true;
+      }
+    } else {
+      // Fleet Browser Use Cloud: Hermes native CDP tools only — no localhost sidecar.
+      if (toolsets.includes("joshu-browser-agent")) {
+        toolsets.splice(toolsets.indexOf("joshu-browser-agent"), 1);
+        changed = true;
+      }
+      const plugins = asRecord(config.plugins);
+      const enabled = asStringArray(plugins.enabled).filter((name) => name !== "joshu-browser-agent");
+      if (JSON.stringify(enabled) !== JSON.stringify(plugins.enabled)) {
+        plugins.enabled = enabled;
+        config.plugins = plugins;
+        changed = true;
+        pluginsChanged = true;
+      }
+      if (!toolsets.includes("browser")) {
+        toolsets.push("browser");
+        changed = true;
+      }
     }
     {
       const plugins = asRecord(config.plugins);
@@ -2124,19 +2149,32 @@ export class HermesApiRunner extends EventEmitter {
       composioServer.enabled !== false &&
       typeof composioServer.url === "string" &&
       composioServer.url.length > 0;
-    const cdpForBrowser = (this.opts.cdpUrl || envString("BROWSER_CDP_URL") || "").trim();
-    // CDP Chromium is driven by the browser-use sidecar. Hermes's built-in
-    // browser toolset would be a second driver on the same tab.
-    const browserToolsets = cdpForBrowser ? toolsets.filter((name) => name !== "browser") : toolsets;
+    const cdpForBrowser = cdpUrlForSidecar;
+    // Local CDP: sidecar owns the tab — drop Hermes browser to avoid two drivers.
+    // Browser Use Cloud (remote CDP): keep Hermes browser; sidecar is not running.
+    const browserToolsets =
+      cdpForBrowser && sidecarBrowser
+        ? toolsets.filter((name) => name !== "browser")
+        : toolsets;
     const orderedToolsets = toolsetsWithFal(
       toolsetsWithComposio(browserToolsets, composioSessionActive),
       falActive,
     );
-    if (cdpForBrowser) {
+    if (cdpForBrowser && sidecarBrowser) {
       const platformToolsets = asRecord(config.platform_toolsets);
       for (const platform of Object.keys(platformToolsets)) {
         const names = asStringArray(platformToolsets[platform]).filter((name) => name !== "browser");
         if (!names.includes("joshu-browser-agent")) names.push("joshu-browser-agent");
+        platformToolsets[platform] = names;
+      }
+      config.platform_toolsets = platformToolsets;
+    } else if (cloudBrowserEnabled()) {
+      const platformToolsets = asRecord(config.platform_toolsets);
+      for (const platform of Object.keys(platformToolsets)) {
+        let names = asStringArray(platformToolsets[platform]).filter(
+          (name) => name !== "joshu-browser-agent",
+        );
+        if (!names.includes("browser")) names.push("browser");
         platformToolsets[platform] = names;
       }
       config.platform_toolsets = platformToolsets;

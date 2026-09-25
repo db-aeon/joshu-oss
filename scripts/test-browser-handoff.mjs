@@ -197,8 +197,12 @@ const cdpPatch = fs.readFileSync(
   "utf8",
 );
 assert.match(cdpPatch, /hitl_browser_cdp_guards/);
+assert.match(cdpPatch, /joshu_cloud_browser_touch/);
+assert.match(cdpPatch, /joshu_cloud_browser_ensure/);
+assert.match(cdpPatch, /\/api\/browser\/ensure/);
 assert.match(cdpPatch, /browser_navigate/);
-assert.doesNotMatch(cdpPatch, /browser_snapshot/);
+assert.match(cdpPatch, /"browser_snapshot"/);
+assert.doesNotMatch(cdpPatch, /camofox_snapshot/);
 
 const camofoxPatch = fs.readFileSync(
   path.join(process.cwd(), "scripts/patch-camofox-single-tab.mjs"),

@@ -182,6 +182,22 @@ export function cancelHandoff(projectRoot: string, id: string): BrowserHandoffRe
   return next;
 }
 
+/** Cancel all pending handoffs linked to a Kanban task (e.g. realtime-goal archive). */
+export function cancelPendingHandoffsForKanbanTask(
+  projectRoot: string,
+  kanbanTaskId: string,
+): BrowserHandoffRecord[] {
+  const taskId = kanbanTaskId.trim();
+  if (!taskId) return [];
+  const cancelled: BrowserHandoffRecord[] = [];
+  for (const record of listHandoffRecords(projectRoot)) {
+    if (record.status !== "pending" || record.kanbanTaskId !== taskId) continue;
+    const next = cancelHandoff(projectRoot, record.id);
+    if (next?.status === "cancelled") cancelled.push(next);
+  }
+  return cancelled;
+}
+
 export function handoffUrlForRecord(record: BrowserHandoffRecord): string {
   return buildHandoffUrl(record.id, Date.parse(record.expiresAt));
 }

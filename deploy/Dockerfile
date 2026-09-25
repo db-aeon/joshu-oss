@@ -37,6 +37,11 @@ RUN rm -rf /usr/local/go \
     && ln -sf /usr/local/go/bin/go /usr/local/bin/go
 
 # Hermes venv (image build extras)
+# Extra installs are constrained to Hermes' own mcp/starlette pins: hindsight pulls
+# claude-agent-sdk, which otherwise upgrades mcp to 2.x. mcp 2.x drops
+# streamablehttp_client, and Hermes then silently disables every HTTP MCP server
+# (joshu_connectors email/SMS tools, composio, gbrain). The import check fails the
+# build instead of shipping that regression.
 RUN git init "${HERMES_DIR}" \
     && cd "${HERMES_DIR}" \
     && git remote add origin "${HERMES_AGENT_REPO}" \
@@ -45,8 +50,11 @@ RUN git init "${HERMES_DIR}" \
     && python3 -m venv venv \
     && venv/bin/pip install --upgrade pip setuptools wheel \
     && venv/bin/pip install --no-cache-dir -e '.[cli,pty,mcp,acp,google,bedrock,web,youtube,voice,messaging]' 'aiohttp>=3.13.3,<4' \
-    && venv/bin/pip install --no-cache-dir 'hindsight-api-slim[embedded-db]==0.7.2' 'hindsight-client==0.7.2' langfuse \
-    && venv/bin/pip install --no-cache-dir 'cryptography==48.0.1' \
+    && venv/bin/pip freeze | grep -iE '^(mcp|starlette)==' > /tmp/hermes-core-pins.txt \
+    && venv/bin/pip install --no-cache-dir -c /tmp/hermes-core-pins.txt 'hindsight-api-slim[embedded-db]==0.7.2' 'hindsight-client==0.7.2' langfuse \
+    && venv/bin/pip install --no-cache-dir -c /tmp/hermes-core-pins.txt 'cryptography==48.0.1' \
+    && venv/bin/python -c 'from mcp.client.streamable_http import streamablehttp_client' \
+    && rm -f /tmp/hermes-core-pins.txt \
     && cd web \
     && npm install --include=dev \
     && npm run build \

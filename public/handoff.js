@@ -1,7 +1,7 @@
 import { attachVncClipboard } from "./vnc-clipboard.js";
 import { wrapPasswordInput } from "./handoff-password-toggle.js";
 import { connectScreencast } from "./screencast-client.js?v=20260922d";
-import { mountCloudLiveFrame } from "./cloud-live-frame.js?v=ui-browser-21";
+import { mountCloudLiveFrame } from "./cloud-live-frame.js?v=ui-browser-22";
 import { configureNovncRfb, loadNovncRfb } from "./vnc-client.js";
 import { attachVncLocalGestures } from "./vnc-gestures.js";
 import { attachVncScrollBridge } from "./vnc-scroll.js";
@@ -178,9 +178,11 @@ async function main() {
   let quietUntil = 0;
 
   const tokenQuery = `t=${encodeURIComponent(cfg.token)}&exp=${encodeURIComponent(cfg.exp)}`;
+  /** Append the handoff token, whether or not the path already has a query (`?fast=1`). */
+  const withToken = (path) => `${path}${path.includes("?") ? "&" : "?"}${tokenQuery}`;
 
   async function postJson(path, body = {}) {
-    const res = await fetch(`${path}?${tokenQuery}`, {
+    const res = await fetch(withToken(path), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...body, t: cfg.token, exp: cfg.exp }),
@@ -192,7 +194,7 @@ async function main() {
   }
 
   async function getJson(path) {
-    const res = await fetch(`${path}?${tokenQuery}`, { cache: "no-store" });
+    const res = await fetch(withToken(path), { cache: "no-store" });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
     return data;
@@ -338,6 +340,9 @@ async function main() {
   }
 
   async function maybeWarm(data) {
+    // Cloud: the live-frame poll wakes Browser Use itself; Camofox health always
+    // reads "not running" there, and warming here remounted the iframe every ~15s.
+    if (data?.liveView?.mode === "cloud") return false;
     // OAuth can drop Playwright tab tracking while Firefox keeps running (activeTabs: 0).
     if (camofoxHandoffOperational(data?.camofox)) return false;
     const now = Date.now();
@@ -408,10 +413,14 @@ async function main() {
 
   await fetch("api/camofox/fit-viewport", { method: "POST", cache: "no-store" }).catch(() => undefined);
 
+  // Cloud live view mounts once: it polls and reloads only when Browser Use
+  // starts a new session. Remounting blanks the iframe and leaks a poller.
+  let cloudFrameUnmount = null;
   const connectLive = async () => {
     if (data?.liveView?.mode === "cloud") {
+      if (cloudFrameUnmount) return;
       const framePath = `api/browser/live-frame?handoffId=${encodeURIComponent(cfg.handoffId)}&t=${encodeURIComponent(cfg.token)}&exp=${encodeURIComponent(cfg.exp)}`;
-      mountCloudLiveFrame(screenEl, framePath, {
+      cloudFrameUnmount = mountCloudLiveFrame(screenEl, framePath, {
         width: data.browserViewport?.width,
         height: data.browserViewport?.height,
         interactive: true,

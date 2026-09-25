@@ -17,7 +17,13 @@ import {
   resolveTwilioThinkPassword,
   VOICE_S2S_PROVIDER,
 } from "./config.js";
-import { runJoshuThink, resolveThinkUserQuote } from "./brainThink.js";
+import {
+  resolveThinkUserQuote,
+  runJoshuThinkDetailed,
+  speakableWithLinksTexted,
+  textAnswerToOwner,
+} from "./brainThink.js";
+import { classifyWrapUp, wrapUpApplies, wrapUpLine } from "./phoneWrapUp.js";
 import { JOSHU_IDENTITY } from "./config.js";
 import { createVoiceS2sClient, voiceS2sProviderLabel } from "./createVoiceS2sClient.js";
 import { normalizeThinkToolName, PHONE_TOOL_NAMES } from "./realtimeTools.js";
@@ -32,7 +38,14 @@ import {
   type DictationSessionState,
 } from "./dictationSession.js";
 import type { FunctionCallPayload, ResponseSpeechReason, VoiceS2sClient } from "./voiceS2sTypes.js";
-import { isPassphraseOnlyTurn, looksLikePhoneTaskRequest, matchesThinkPassphrase } from "./phonePassphrase.js";
+import {
+  isPassphraseOnlyTurn,
+  isPassphraseResidue,
+  looksLikePhoneTaskRequest,
+  looksLikeVoicemailGreeting,
+  matchesThinkPassphrase,
+  redactPassphrase,
+} from "./phonePassphrase.js";
 import {
   getLockPromptClip,
   LOCK_PROMPTS,
@@ -45,8 +58,17 @@ import { voiceLog, voiceWarn } from "./voiceLog.js";
 const MAX_TRANSCRIPT_TURNS = 12;
 /** Clear utterances that fail passphrase match before the call is hung up. */
 const MAX_PASSPHRASE_ATTEMPTS = 3;
+/**
+ * After unlock, STT can deliver trailing fragments of the passphrase as separate
+ * turns. Partial passphrase matches are ignored for this long.
+ */
+const UNLOCK_GRACE_MS = 10_000;
+/** How a locked goal callback ended (mirrors RealtimeGoalVoiceCallbackOutcome). */
+type GoalCallbackOutcome = "voicemail" | "auth_failed" | "no_unlock";
 /** 20 ms of μ-law 8 kHz — the frame size Twilio Media Streams expects. */
 const MULAW_FRAME_BYTES = 160;
+/** μ-law 8 kHz: one byte per sample. */
+const MULAW_BYTES_PER_MS = 8;
 const JOSHU_API_BASE = (
   process.env.JOSHU_API_BASE_URL ?? "http://127.0.0.1:8788/joshu"
 ).replace(/\/+$/, "");
@@ -61,6 +83,18 @@ const PROGRESS_PHRASES = [
   "Still working on that.",
   "Almost there.",
 ];
+/**
+ * Progress tick (~35 s in) at which a slow answer offers to text instead of
+ * holding the caller on filler. The answer is texted whenever the caller hangs
+ * up before it arrives, so the offer is always true.
+ */
+const TEXT_OFFER_TICK = 3;
+const TEXT_OFFER_LINE =
+  "This is taking a bit. I'll text you the answer as soon as it's ready, so feel free to hang up.";
+/** A think still running after hang-up is abandoned after this long. */
+const DETACHED_JOB_MAX_MS = 10 * 60_000;
+/** Wrap-up heard via transcript and via the model's think call count once. */
+const WRAP_UP_DEDUPE_MS = 5_000;
 
 /**
  * PSTN: server_vad (default) for low latency; semantic_vad opt-in via VOICE_PHONE_VAD_MODE.
@@ -91,6 +125,8 @@ type ActiveJoshuJob = {
   abort: AbortController;
   jobId: string;
   progress: JobProgressState;
+  /** Caller hung up while this ran; its answer is texted instead of spoken. */
+  detached: boolean;
 };
 
 type StartMetadata = {
@@ -112,6 +148,13 @@ export class TwilioRealtimeSession {
   private lastAssistantItem: string | null = null;
   private responseStartTimestampTwilio: number | null = null;
   private markQueue: string[] = [];
+  /**
+   * When Twilio should finish playing the model audio we already sent
+   * (performance.now() ms). Gemini deltas carry no item id, so no marks — and
+   * it generates faster than real time, so seconds of reply can still be
+   * queued after response.done. Without this the caller could not barge in.
+   */
+  private modelAudioPlaysUntil = 0;
   private transcript: TranscriptTurn[] = [];
   private assistantPartial = "";
   private activeJob: ActiveJoshuJob | null = null;
@@ -135,6 +178,10 @@ export class TwilioRealtimeSession {
   private realtimeGoalAwaitingReply = false;
   private realtimeGoalAckPending = false;
   private realtimeGoalResponseDone = false;
+  /** When the passphrase was accepted (starts the residue grace window). */
+  private unlockedAtMs: number | null = null;
+  /** A locked goal callback reports its outcome to Joshu at most once. */
+  private goalCallbackOutcomeReported = false;
   private greetingSent = false;
   private turn = 0;
   private responseNum = 0;
@@ -160,6 +207,10 @@ export class TwilioRealtimeSession {
   private t0 = performance.now();
   /** Set on input_audio_buffer.speech_stopped; used for turn latency logs. */
   private lastSpeechStoppedAt: number | null = null;
+  /** Goodbye line queued: hang up once its audio drains. */
+  private hangUpAfterSpeech = false;
+  private hangUpOnMarkDrain = false;
+  private lastWrapUpAtMs = 0;
 
   constructor(private readonly ws: WebSocket) {}
 
@@ -171,6 +222,7 @@ export class TwilioRealtimeSession {
     this.lastAssistantItem = null;
     this.responseStartTimestampTwilio = null;
     this.markQueue = [];
+    this.modelAudioPlaysUntil = 0;
     // PSTN requires a passphrase (media stream is rejected if unset). Call starts locked.
     this.thinkAuthorized = false;
     this.requiresRestatedIntentAfterUnlock = false;
@@ -178,8 +230,13 @@ export class TwilioRealtimeSession {
     this.hangingUpForAuth = false;
     this.startMetadata = metadata;
     this.realtimeGoalAwaitingReply = false;
+    this.unlockedAtMs = null;
+    this.goalCallbackOutcomeReported = false;
     this.greetingSent = false;
     this.sessionTimerDisabled = false;
+    this.hangUpAfterSpeech = false;
+    this.hangUpOnMarkDrain = false;
+    this.lastWrapUpAtMs = 0;
     this.suppressAssistantAudio = this.geminiPhone;
     this.deterministicLockPrompts = lockPromptsReady();
     if (!this.deterministicLockPrompts) {
@@ -321,6 +378,12 @@ export class TwilioRealtimeSession {
           this.geminiUserTurnNeedsReply = false;
         }
         this.handleResponseDone(info);
+        if (this.hangUpAfterSpeech && this.responseHadSpeech) {
+          // Goodbye spoken: end the call once Twilio has played it out.
+          this.hangUpAfterSpeech = false;
+          this.hangUpOnMarkDrain = true;
+          this.sendMark();
+        }
         if (
           this.realtimeGoalAckPending &&
           this.currentResponseReason === "hermes_inject" &&
@@ -351,6 +414,12 @@ export class TwilioRealtimeSession {
 
   handleMark(): void {
     if (this.markQueue.length) this.markQueue.shift();
+    if (this.hangUpOnMarkDrain && this.markQueue.length === 0) {
+      this.hangUpOnMarkDrain = false;
+      voiceLog(this.callSid, "wrap-up", "goodbye played — hanging up");
+      this.hangUpSilently();
+      return;
+    }
     if (
       this.realtimeGoalAckPending &&
       this.realtimeGoalResponseDone &&
@@ -363,7 +432,12 @@ export class TwilioRealtimeSession {
   }
 
   close(): void {
-    this.cancelActiveJob();
+    // Caller hung up (or we did) before unlock on a goal callback. No-op when
+    // an outcome was already reported or the call unlocked.
+    this.reportGoalCallbackOutcome("no_unlock");
+    // An answer still being worked on is texted when it lands — hanging up
+    // must not throw away work the caller asked for (e.g. "email me that").
+    this.detachActiveJob();
     this.dictation = null;
     this.clearSessionDeadline();
     voiceLog(this.callSid, "twilio", "stream close", this.metrics);
@@ -477,6 +551,7 @@ export class TwilioRealtimeSession {
 
     this.sessionHangupTimer = setTimeout(() => {
       if (this.sessionTimerDisabled || this.ws.readyState !== 1) return;
+      this.reportGoalCallbackOutcome("no_unlock");
       this.hangUpAfterLockLine("time_up");
     }, effectiveHangup);
   }
@@ -522,6 +597,10 @@ export class TwilioRealtimeSession {
       this.metrics.firstAudioMs = Math.round(performance.now() - this.t0);
     }
 
+    const now = performance.now();
+    const chunkMs = Buffer.byteLength(deltaB64, "base64") / MULAW_BYTES_PER_MS;
+    this.modelAudioPlaysUntil = Math.max(now, this.modelAudioPlaysUntil) + chunkMs;
+
     this.ws.send(
       JSON.stringify({
         event: "media",
@@ -559,6 +638,16 @@ export class TwilioRealtimeSession {
 
     // Call-level lock: until passphrase matches, do not chat or think — only auth.
     if (!this.thinkAuthorized) {
+      // An outbound goal callback answered by voicemail: the greeting is not a
+      // wrong passphrase. Hang up without spending attempts; Joshu parks the result.
+      if (this.isGoalCallback() && looksLikeVoicemailGreeting(text)) {
+        voiceWarn(this.callSid, "goal-callback", "voicemail greeting while locked — hanging up", {
+          heardPreview: text.slice(0, 80),
+        });
+        this.reportGoalCallbackOutcome("voicemail");
+        this.hangUpSilently();
+        return;
+      }
       if (kind === "unclear") {
         voiceLog(this.callSid, "auth", `#${this.turn} unclear while locked → ${JSON.stringify(text)}`);
         this.speakLockLine("unclear");
@@ -567,13 +656,11 @@ export class TwilioRealtimeSession {
 
       const justUnlocked = this.updateThinkAuthorization(text, "transcript");
       if (justUnlocked) {
-        const isGoalCallback = Boolean(
-          this.startMetadata?.realtimeGoalId && this.startMetadata?.realtimeGoalToken,
-        );
+        const isGoalCallback = this.isGoalCallback();
         // Normal calls wait for a fresh request. Authenticated goal callbacks
         // disclose the queued result immediately after the unlock line.
         this.requiresRestatedIntentAfterUnlock = !isGoalCallback;
-        const unlockMs = this.speakLockLine("unlocked");
+        const unlockMs = this.speakLockLine(isGoalCallback ? "unlocked_callback" : "unlocked");
         if (isGoalCallback) {
           setTimeout(
             () => void this.deliverRealtimeGoalCallback(),
@@ -591,6 +678,7 @@ export class TwilioRealtimeSession {
       });
       if (this.passphraseFailures >= MAX_PASSPHRASE_ATTEMPTS) {
         voiceWarn(this.callSid, "auth", "hanging up after passphrase failures");
+        this.reportGoalCallbackOutcome("auth_failed");
         this.hangUpAfterLockLine("locked_out");
         return;
       }
@@ -611,8 +699,16 @@ export class TwilioRealtimeSession {
     }
 
     const password = resolveTwilioThinkPassword();
-    if (password && isPassphraseOnlyTurn(text, password)) {
-      voiceLog(this.callSid, "auth", `#${this.turn} ignoring passphrase-only turn after unlock`);
+    if (
+      password &&
+      (isPassphraseOnlyTurn(text, password) ||
+        isPassphraseResidue(text, password, { graceWindow: this.withinUnlockGrace() }))
+    ) {
+      voiceLog(this.callSid, "auth", `#${this.turn} ignoring passphrase residue after unlock`);
+      // Gemini hears audio directly and may already be answering the fragment.
+      if (this.geminiPhone && this.currentResponseReason === "organic") {
+        this.s2s?.cancelActiveResponse();
+      }
       return;
     }
     const transcriptMs =
@@ -633,6 +729,47 @@ export class TwilioRealtimeSession {
       void this.submitRealtimeGoalReply(safeText);
       return;
     }
+    if (safeText && this.handleWrapUp(safeText)) return;
+    this.continueUnlockedTurn(safeText);
+  }
+
+  private lastAssistantText(): string | undefined {
+    return this.transcript.filter((t) => t.role === "assistant").at(-1)?.text;
+  }
+
+  /**
+   * "No, that's it" / "No thanks" after "Anything else?" / "I'm waiting":
+   * answer locally instead of sending the words to the brain as a request.
+   * Returns true when the turn was consumed.
+   */
+  private handleWrapUp(text: string): boolean {
+    const kind = classifyWrapUp(text);
+    if (!kind) return false;
+    const jobPending = Boolean(this.activeJob && !this.activeJob.detached);
+    if (!wrapUpApplies(kind, this.lastAssistantText(), jobPending)) return false;
+    const now = performance.now();
+    // Same utterance arrives as a transcript and inside the model's think call.
+    if (now - this.lastWrapUpAtMs < WRAP_UP_DEDUPE_MS) return true;
+    this.lastWrapUpAtMs = now;
+    voiceLog(this.callSid, "wrap-up", `#${this.turn} ${kind}`, { jobPending });
+    if (this.geminiPhone && this.currentResponseReason === "organic") {
+      this.s2s?.cancelActiveResponse();
+    }
+    if (!jobPending) this.hangUpAfterSpeech = true;
+    this.joshuInitiatedResponse = true;
+    this.s2s?.injectControlMessage(wrapUpLine(kind, jobPending));
+    return true;
+  }
+
+  /**
+   * Normal handling of an unlocked caller turn (dictation buffer, or let the
+   * model answer). Also the fallback when a goal-callback reply turns out not
+   * to be about the goal. `forceResponse` re-requests a reply the caller's
+   * turn already had cancelled.
+   */
+  private continueUnlockedTurn(safeText: string, options: { forceResponse?: boolean } = {}): void {
+    const s2s = this.s2s;
+    if (!s2s) return;
     if (safeText && this.dictation?.active) {
       this.onDictationUserTranscript(safeText);
       // Stay silent while buffering — OpenAI path must not request organic chat.
@@ -649,7 +786,13 @@ export class TwilioRealtimeSession {
     }
     if (this.geminiPhone) {
       this.allowGeminiCallerReply("validated transcript");
-      if (this.geminiUserTurnNeedsReply && !this.responseHadSpeech) {
+      // A think job is answering this turn; a nudged organic reply would only
+      // be cancelled, and its trailing audio collides with the filler/result.
+      if (this.activeJob && !options.forceResponse) {
+        this.geminiUserTurnNeedsReply = false;
+        return;
+      }
+      if (options.forceResponse || (this.geminiUserTurnNeedsReply && !this.responseHadSpeech)) {
         voiceLog(this.callSid, "turn", `#${this.turn} gemini auto-reply was silent — nudging response`);
         this.geminiUserTurnNeedsReply = false;
         s2s.requestOrganicResponse();
@@ -668,6 +811,7 @@ export class TwilioRealtimeSession {
     if (!password || this.thinkAuthorized) return false;
     if (matchesThinkPassphrase(text, password)) {
       this.thinkAuthorized = true;
+      this.unlockedAtMs = performance.now();
       this.passphraseFailures = 0;
       this.disableSessionTimeLimit("passphrase");
       voiceLog(this.callSid, "auth", `think password accepted (${source})`);
@@ -676,22 +820,81 @@ export class TwilioRealtimeSession {
     return false;
   }
 
-  private async deliverRealtimeGoalCallback(): Promise<void> {
+  /** Outbound callback placed by Joshu for one realtime goal (signed start params). */
+  private isGoalCallback(): boolean {
+    return Boolean(
+      this.startMetadata?.realtimeGoalId?.trim() && this.startMetadata?.realtimeGoalToken?.trim(),
+    );
+  }
+
+  private withinUnlockGrace(): boolean {
+    return this.unlockedAtMs != null && performance.now() - this.unlockedAtMs < UNLOCK_GRACE_MS;
+  }
+
+  /**
+   * Authenticated request to Joshu's goal-callback API for this call's goal.
+   * `suffix` is "" (result), "/ack", "/reply", or "/outcome".
+   */
+  private realtimeGoalRequest(
+    suffix: "" | "/ack" | "/reply" | "/outcome",
+    init: { method?: "GET" | "POST"; body?: unknown; timeoutMs?: number } = {},
+  ): Promise<Response> | undefined {
     const goalId = this.startMetadata?.realtimeGoalId?.trim();
     const token = this.startMetadata?.realtimeGoalToken?.trim();
-    if (!goalId || !token || !this.thinkAuthorized || !this.s2s) return;
-    try {
-      const response = await fetch(
-        `${JOSHU_API_BASE}/api/realtime-goals/voice/result/${encodeURIComponent(goalId)}?token=${encodeURIComponent(token)}`,
-        {
-          headers: {
-            Authorization: `Bearer ${HERMES_API_KEY}`,
-            "X-Joshu-Voice-Call-Sid": this.callSid,
-          },
-          signal: AbortSignal.timeout(10_000),
+    if (!goalId || !token) return undefined;
+    const method = init.method ?? "GET";
+    return fetch(
+      `${JOSHU_API_BASE}/api/realtime-goals/voice/result/${encodeURIComponent(goalId)}${suffix}?token=${encodeURIComponent(token)}`,
+      {
+        method,
+        headers: {
+          Authorization: `Bearer ${HERMES_API_KEY}`,
+          "X-Joshu-Voice-Call-Sid": this.callSid,
+          ...(method === "POST" ? { "Content-Type": "application/json" } : {}),
         },
-      );
-      if (!response.ok) throw new Error(`result HTTP ${response.status}`);
+        ...(method === "POST" ? { body: JSON.stringify(init.body ?? {}) } : {}),
+        signal: AbortSignal.timeout(init.timeoutMs ?? 10_000),
+      },
+    );
+  }
+
+  /**
+   * Tell Joshu how a still-locked goal callback ended so it can park (voicemail,
+   * lockout) or back off (no unlock) instead of redialing every 15 minutes.
+   */
+  private reportGoalCallbackOutcome(outcome: GoalCallbackOutcome): void {
+    if (!this.isGoalCallback() || this.thinkAuthorized || this.goalCallbackOutcomeReported) return;
+    this.goalCallbackOutcomeReported = true;
+    voiceLog(this.callSid, "goal-callback", `reporting outcome=${outcome}`);
+    void this.realtimeGoalRequest("/outcome", {
+      method: "POST",
+      body: { outcome },
+      timeoutMs: 5_000,
+    })?.catch((error) => {
+      voiceWarn(this.callSid, "goal-callback", "outcome report failed", {
+        error: (error as Error).message,
+      });
+    });
+  }
+
+  /** End the call without speaking (voicemail must not record lock prompts). */
+  private hangUpSilently(): void {
+    this.hangingUpForAuth = true;
+    this.clearOutbound();
+    setTimeout(() => {
+      try {
+        this.ws.close();
+      } catch {
+        // no-op
+      }
+    }, 250);
+  }
+
+  private async deliverRealtimeGoalCallback(): Promise<void> {
+    if (!this.isGoalCallback() || !this.thinkAuthorized || !this.s2s) return;
+    try {
+      const response = await this.realtimeGoalRequest("");
+      if (!response?.ok) throw new Error(`result HTTP ${response?.status ?? "unavailable"}`);
       const payload = (await response.json()) as {
         text?: string;
         kind?: "blocked" | "completed";
@@ -705,6 +908,7 @@ export class TwilioRealtimeSession {
         payload.kind === "blocked"
           ? result
           : `${result}\n\nIs there anything else you'd like me to handle?`,
+        payload.kind === "blocked" ? "question" : "answer",
       );
     } catch (error) {
       voiceWarn(this.callSid, "goal-callback", "result delivery failed", {
@@ -717,51 +921,37 @@ export class TwilioRealtimeSession {
   }
 
   private async ackRealtimeGoalPlayback(): Promise<void> {
-    const goalId = this.startMetadata?.realtimeGoalId?.trim();
-    const token = this.startMetadata?.realtimeGoalToken?.trim();
-    if (!goalId || !token) return;
-    await fetch(
-      `${JOSHU_API_BASE}/api/realtime-goals/voice/result/${encodeURIComponent(goalId)}/ack?token=${encodeURIComponent(token)}`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${HERMES_API_KEY}`,
-          "Content-Type": "application/json",
-          "X-Joshu-Voice-Call-Sid": this.callSid,
-        },
-        body: "{}",
-        signal: AbortSignal.timeout(5_000),
-      },
-    ).catch((error) => {
+    await this.realtimeGoalRequest("/ack", { method: "POST", timeoutMs: 5_000 })?.catch((error) => {
       voiceWarn(this.callSid, "goal-callback", "playback ack failed", {
         error: (error as Error).message,
       });
     });
   }
 
+  /**
+   * Hand the caller's reply to Joshu, which routes it: an answer goes onto the
+   * card; a status question, cancel, or unrelated request does not.
+   */
   private async submitRealtimeGoalReply(text: string): Promise<void> {
-    const goalId = this.startMetadata?.realtimeGoalId?.trim();
-    const token = this.startMetadata?.realtimeGoalToken?.trim();
-    if (!goalId || !token || !this.s2s) return;
+    if (!this.isGoalCallback() || !this.s2s) return;
     try {
-      const response = await fetch(
-        `${JOSHU_API_BASE}/api/realtime-goals/voice/result/${encodeURIComponent(goalId)}/reply?token=${encodeURIComponent(token)}`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${HERMES_API_KEY}`,
-            "Content-Type": "application/json",
-            "X-Joshu-Voice-Call-Sid": this.callSid,
-          },
-          body: JSON.stringify({
-            text,
-            sourceId: `${this.callSid}:${this.turn}`,
-          }),
-          signal: AbortSignal.timeout(10_000),
-        },
-      );
-      if (!response.ok) throw new Error(`reply HTTP ${response.status}`);
-      const payload = (await response.json()) as { reply?: string };
+      const response = await this.realtimeGoalRequest("/reply", {
+        method: "POST",
+        body: { text, sourceId: `${this.callSid}:${this.turn}` },
+      });
+      if (!response?.ok) throw new Error(`reply HTTP ${response?.status ?? "unavailable"}`);
+      const payload = (await response.json()) as {
+        handled?: boolean;
+        reply?: string;
+        awaitingReply?: boolean;
+      };
+      // Older Joshu builds omit `handled` and always treated the reply as the answer.
+      if (payload.handled === false) {
+        voiceLog(this.callSid, "goal-callback", "reply not about the goal — normal turn");
+        this.continueUnlockedTurn(text, { forceResponse: true });
+        return;
+      }
+      this.realtimeGoalAwaitingReply = payload.awaitingReply === true;
       this.s2s.injectAssistantMessage(
         payload.reply?.trim() ||
           "Got it. I added that detail and restarted the work. Is there anything else?",
@@ -777,13 +967,19 @@ export class TwilioRealtimeSession {
     }
   }
 
+  /** True when a think `user_quote` is the passphrase (or its leftovers) and nothing else. */
+  private quoteIsOnlyPassphrase(quote: string | undefined): boolean {
+    const password = resolveTwilioThinkPassword().trim();
+    if (!password || !quote?.trim()) return false;
+    if (!this.sanitizeTextForThinkContext(quote)) return true;
+    return isPassphraseResidue(quote, password, { graceWindow: this.withinUnlockGrace() });
+  }
+
   /** Control secret is used only for unlock checks; never forward it to Hermes context. */
   private sanitizeTextForThinkContext(text: string): string {
     const password = resolveTwilioThinkPassword().trim();
     if (!password) return text;
-    const escaped = password.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const redacted = text.replace(new RegExp(escaped, "gi"), " ");
-    return redacted.replace(/\s+/g, " ").trim();
+    return redactPassphrase(text, password);
   }
 
   private onGeminiInputTranscript(text: string): void {
@@ -809,7 +1005,8 @@ export class TwilioRealtimeSession {
     return (
       Boolean(this.lastAssistantItem) ||
       this.markQueue.length > 0 ||
-      Boolean(this.assistantPartial.trim())
+      Boolean(this.assistantPartial.trim()) ||
+      performance.now() < this.modelAudioPlaysUntil
     );
   }
 
@@ -934,6 +1131,19 @@ export class TwilioRealtimeSession {
     this.activeJob = null;
   }
 
+  /** Call ended mid-think: let the job finish and text its answer (bounded). */
+  private detachActiveJob(): void {
+    const job = this.activeJob;
+    if (!job) return;
+    this.clearProgressTimer(job);
+    job.detached = true;
+    job.progress.phase = "done";
+    this.activeJob = null;
+    const timer = setTimeout(() => job.abort.abort(), DETACHED_JOB_MAX_MS);
+    timer.unref?.();
+    voiceLog(this.callSid, "joshu", `detached job=${job.jobId} — answer will be texted`);
+  }
+
   private clearProgressTimer(job: ActiveJoshuJob): void {
     if (job.progress.timer) {
       clearTimeout(job.progress.timer);
@@ -989,8 +1199,13 @@ export class TwilioRealtimeSession {
       return;
     }
 
-    const phrase = PROGRESS_PHRASES[(job.progress.tick - 1) % PROGRESS_PHRASES.length]!;
     job.progress.phase = "awaiting_speech";
+    if (job.progress.tick === TEXT_OFFER_TICK) {
+      this.s2s?.injectControlMessage(TEXT_OFFER_LINE);
+      voiceLog(this.callSid, "joshu", `progress text-offer job=${jobId} tick=${job.progress.tick}`);
+      return;
+    }
+    const phrase = PROGRESS_PHRASES[(job.progress.tick - 1) % PROGRESS_PHRASES.length]!;
     this.s2s?.injectProgressMessage(phrase);
     voiceLog(this.callSid, "joshu", `progress job=${jobId} tick=${job.progress.tick} phrase=${JSON.stringify(phrase)}`);
   }
@@ -1011,7 +1226,13 @@ export class TwilioRealtimeSession {
 
     voiceLog(this.callSid, "tool", `invoke ${toolName}`, {
       callId: call.callId,
-      args,
+      // The model sometimes wraps the passphrase in tool args; keep it out of logs.
+      args: Object.fromEntries(
+        Object.entries(args).map(([key, value]) => [
+          key,
+          typeof value === "string" ? this.sanitizeTextForThinkContext(value) : value,
+        ]),
+      ),
     });
 
     // Auth gate is transcript-only. While locked, ignore every tool call — do not
@@ -1080,9 +1301,43 @@ export class TwilioRealtimeSession {
       }
     }
 
+    const rawUserQuote = typeof args.user_quote === "string" ? args.user_quote : undefined;
+    if (this.quoteIsOnlyPassphrase(rawUserQuote)) {
+      // The model heard the unlock phrase and turned it into a task ("Save note").
+      voiceWarn(this.callSid, "auth", "ignored think — quoted request is only the passphrase", {
+        quoteChars: rawUserQuote?.length ?? 0,
+      });
+      s2s.sendFunctionOutput(
+        call.callId,
+        JSON.stringify({
+          status: "ignored",
+          reason: "passphrase_is_not_a_request",
+          message: "The caller only said their passphrase. It is not a request. Do not call think for it; stay silent.",
+        }),
+        { triggerResponse: false },
+      );
+      return;
+    }
+
+    // The model hears audio directly and often calls think before our transcript
+    // lands — "No, thank you" must not become a request (or a goal update).
+    const quotedWrapUp = rawUserQuote ? this.sanitizeTextForThinkContext(rawUserQuote) : "";
+    if (quotedWrapUp && this.handleWrapUp(quotedWrapUp)) {
+      voiceLog(this.callSid, "wrap-up", "ignored think — caller is wrapping up");
+      s2s.sendFunctionOutput(
+        call.callId,
+        JSON.stringify({
+          status: "ignored",
+          reason: "caller_wrapping_up",
+          message: "The caller is wrapping up, not asking for anything. Joshu is saying goodbye; stay silent.",
+        }),
+        { triggerResponse: false },
+      );
+      return;
+    }
+
     const intent = String(args.intent ?? "task");
     const summary = this.sanitizeTextForThinkContext(String(args.summary ?? this.conversationSummary()));
-    const rawUserQuote = typeof args.user_quote === "string" ? args.user_quote : undefined;
     const userQuote = resolveThinkUserQuote(
       rawUserQuote ? this.sanitizeTextForThinkContext(rawUserQuote) || undefined : undefined,
       this.lastUserTranscript(),
@@ -1268,9 +1523,8 @@ export class TwilioRealtimeSession {
   }): void {
     this.cancelActiveJob();
 
-    const abort = new AbortController();
-    this.activeJob = {
-      abort,
+    const job: ActiveJoshuJob = {
+      abort: new AbortController(),
       jobId: params.jobId,
       progress: {
         tick: 0,
@@ -1278,17 +1532,20 @@ export class TwilioRealtimeSession {
         timer: null,
         longWaitSent: false,
       },
+      detached: false,
     };
-    void this.runJoshuJob(params, abort);
+    this.activeJob = job;
+    void this.runJoshuJob(params, job);
   }
 
   private async runJoshuJob(
     params: { jobId: string; intent: string; summary: string; userQuote?: string },
-    abort: AbortController,
+    job: ActiveJoshuJob,
   ): Promise<void> {
+    const { abort } = job;
     const t0 = performance.now();
     try {
-      const result = await runJoshuThink({
+      const result = await runJoshuThinkDetailed({
         callSid: this.callSid,
         jobId: params.jobId,
         intent: params.intent,
@@ -1298,14 +1555,32 @@ export class TwilioRealtimeSession {
         presentation: "phone",
       });
       if (abort.signal.aborted) return;
+      const elapsedMs = Math.round(performance.now() - t0);
 
-      voiceLog(this.callSid, "turn", `#${this.turn} THINK DONE job=${params.jobId} ms=${Math.round(performance.now() - t0)} → injecting`, {
-        preview: result.slice(0, 200),
+      if (job.detached) {
+        // Broker intake lines ("I'll call you back…") are not worth a text.
+        if (result.source !== "hermes") return;
+        const texted = await textAnswerToOwner(result.text);
+        voiceLog(this.callSid, "joshu", `detached job=${params.jobId} finished ms=${elapsedMs}`, { texted });
+        return;
+      }
+
+      // Links cannot be spoken: Joshu texts them and returns speakable text.
+      const spoken =
+        result.source === "hermes" ? await speakableWithLinksTexted(result.text) : result.text;
+      if (abort.signal.aborted) return;
+      if (job.detached) {
+        await textAnswerToOwner(result.text);
+        return;
+      }
+      voiceLog(this.callSid, "turn", `#${this.turn} THINK DONE job=${params.jobId} ms=${elapsedMs} → injecting`, {
+        preview: spoken.slice(0, 200),
       });
-      this.s2s?.injectAssistantMessage(result);
-      this.pushTranscript("assistant", result);
+      this.s2s?.injectAssistantMessage(spoken);
+      this.pushTranscript("assistant", spoken);
     } catch (e) {
       if (abort.signal.aborted) return;
+      if (job.detached) return;
       const msg = e instanceof Error ? e.message : String(e);
       voiceWarn(this.callSid, "turn", `#${this.turn} THINK FAILED job=${params.jobId}`, { error: msg });
       this.s2s?.injectAssistantMessage(
@@ -1325,5 +1600,6 @@ export class TwilioRealtimeSession {
     const sid = this.streamSid;
     if (!sid || this.ws.readyState !== 1) return;
     this.ws.send(JSON.stringify({ event: "clear", streamSid: sid }));
+    this.modelAudioPlaysUntil = 0;
   }
 }

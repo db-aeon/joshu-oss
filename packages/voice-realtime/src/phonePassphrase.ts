@@ -122,3 +122,88 @@ export function isPassphraseOnlyTurn(transcript: string, password: string): bool
   if (!matchesThinkPassphrase(transcript, password)) return false;
   return !looksLikePhoneTaskRequest(transcript);
 }
+
+/** Words that carry no request on their own around a spoken passphrase. */
+const PASSPHRASE_FILLER = new Set([
+  "a", "again", "ah", "an", "and", "code", "er", "hello", "hey", "hi", "is", "it", "its",
+  "my", "oh", "ok", "okay", "passphrase", "password", "phrase", "so", "sorry", "that",
+  "the", "this", "uh", "um", "word", "yeah", "yep", "yes",
+]);
+
+/** True when one spoken word is (a piece of) the passphrase. */
+function isPassphraseWord(word: string, passTokens: string[], passCompact: string): boolean {
+  if (passTokens.some((token) => tokenSimilar(word, token))) return true;
+  // "redswoosh" heard as one word for a two-word passphrase.
+  return word.length >= 5 && (passCompact.includes(word) || word.includes(passCompact));
+}
+
+function splitPassphraseWords(transcript: string, password: string): {
+  matched: number;
+  residue: string[];
+} {
+  const passTokens = normalizePassphraseText(password).split(" ").filter((tok) => tok.length >= 2);
+  const passCompact = compact(password);
+  let matched = 0;
+  const residue: string[] = [];
+  for (const word of normalizePassphraseText(transcript).split(" ").filter(Boolean)) {
+    if (passCompact && isPassphraseWord(word, passTokens, passCompact)) matched += 1;
+    else if (!PASSPHRASE_FILLER.has(word)) residue.push(word);
+  }
+  return { matched, residue };
+}
+
+/**
+ * True when a transcript is leftover unlock audio: (part of) the passphrase plus
+ * at most one other meaningful word. Such turns must never become a request —
+ * "red swoosh … note" was queued as a "Save note" task (patrick 2026-09-24).
+ *
+ * Partial matches (one word of a multi-word passphrase) only count inside the
+ * post-unlock grace window, since passphrase words can be ordinary words.
+ */
+export function isPassphraseResidue(
+  transcript: string,
+  password: string,
+  options: { graceWindow: boolean },
+): boolean {
+  if (!password.trim() || !transcript.trim()) return false;
+  const { matched, residue } = splitPassphraseWords(transcript, password);
+  if (matched === 0) return false;
+  if (!options.graceWindow && !matchesThinkPassphrase(transcript, password)) return false;
+  return residue.length < 2;
+}
+
+/**
+ * Remove the passphrase (including STT near-misses) from text bound for Hermes,
+ * the goal broker, or the call transcript.
+ */
+export function redactPassphrase(text: string, password: string): string {
+  const trimmed = password.trim();
+  if (!trimmed) return text;
+  const escaped = trimmed.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  let out = text.replace(new RegExp(escaped, "gi"), " ");
+  if (matchesThinkPassphrase(text, trimmed)) {
+    const passTokens = normalizePassphraseText(trimmed).split(" ").filter((tok) => tok.length >= 2);
+    const passCompact = compact(trimmed);
+    out = out
+      .split(/\s+/)
+      .filter((raw) => {
+        const word = normalizePassphraseText(raw);
+        return !word || !isPassphraseWord(word, passTokens, passCompact);
+      })
+      .join(" ");
+  }
+  // Punctuation that followed the removed phrase ("Red swoosh. Save…").
+  return out.replace(/\s+/g, " ").trim().replace(/^[.,;:!?-]+\s*/, "");
+}
+
+/**
+ * Carrier / handset voicemail greeting heard on an outbound callback. Used only
+ * while a goal callback is still locked, so a live owner saying these words
+ * after unlocking is unaffected.
+ */
+const VOICEMAIL_GREETING_RE =
+  /\b(leave (me )?(a|your) (message|voicemail|name)|after the (tone|beep)|at the (tone|beep)|record your message|voice ?mail|mailbox|(is|am|are) (not available|unavailable)|can'?t (come to|get to|take) the phone|the (person|party|number) you (are|have) (calling|called|dialed|reached))\b/i;
+
+export function looksLikeVoicemailGreeting(transcript: string): boolean {
+  return VOICEMAIL_GREETING_RE.test(transcript);
+}

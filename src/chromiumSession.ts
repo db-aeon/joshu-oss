@@ -223,6 +223,10 @@ function formSignature(): { url: string; title: string; key: string } {
 
 function scanFrame(frameIndex: number): { fields: CatalogField[]; buttons: CatalogButton[] } {
   const MAX_FIELDS = 32;
+  // The handoff overlay renders these as the owner's dropdown: birth years and
+  // country lists run 100–250 entries (24 stopped DOB years at 2004). The LLM
+  // labeler trims options on its own (formCatalog.ts).
+  const MAX_SELECT_OPTIONS = 300;
   const SKIP_TYPES = ["hidden", "button", "submit", "file", "image", "reset", "color", "range"];
   const SECRET_TYPES = ["password"];
   const SECRET_AUTO = [
@@ -339,7 +343,7 @@ function scanFrame(frameIndex: number): { fields: CatalogField[]; buttons: Catal
       if (tag === "SELECT") {
         rec.options = [];
         const opts = (el as HTMLSelectElement).options || [];
-        for (let o = 0; o < opts.length && (rec.options?.length ?? 0) < 24; o++) {
+        for (let o = 0; o < opts.length && (rec.options?.length ?? 0) < MAX_SELECT_OPTIONS; o++) {
           rec.options!.push({
             value: String(opts[o]?.value || ""),
             label: String(opts[o]?.text || opts[o]?.value || "").slice(0, 80),
@@ -403,7 +407,10 @@ function fillFrame(payload: {
       return "check";
     }
     if (tag === "SELECT") {
-      (el as HTMLSelectElement).value = String(value);
+      // Native setter so framework value trackers (React) see the change.
+      const selectDesc = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value");
+      if (selectDesc?.set) selectDesc.set.call(el, String(value));
+      else (el as HTMLSelectElement).value = String(value);
       el.dispatchEvent(new Event("input", { bubbles: true, composed: true }));
       el.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
       syncCustomHost(el, String(value));

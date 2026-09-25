@@ -6,6 +6,7 @@
 export function mountCloudLiveFrame(screenEl, framePath, opts = {}) {
   const ratio = (opts.width || 1024) / (opts.height || 768);
   const pollMs = opts.pollMs || 8000;
+  const visibilityAware = opts.visibilityAware !== false && !opts.interactive;
   screenEl.style.display = "flex";
   screenEl.style.alignItems = "center";
   screenEl.style.justifyContent = "center";
@@ -32,8 +33,22 @@ export function mountCloudLiveFrame(screenEl, framePath, opts = {}) {
   screenEl.replaceChildren(frame);
   let mountedBrowserId = "";
   let hasFrame = false;
+
+  const pollUrl = () => {
+    // Resolve like fetch() would (document base, e.g. /joshu/) — resolving
+    // against the origin dropped the /joshu/ prefix and 404'd every handoff poll.
+    const url = new URL(framePath, document.baseURI);
+    if (visibilityAware && document.visibilityState === "visible") {
+      url.searchParams.set("viewer", "active");
+    } else if (opts.interactive) {
+      url.searchParams.set("viewer", "active");
+    }
+    return `${url.pathname}${url.search}`;
+  };
+
   const tick = async () => {
-    const res = await fetch(framePath, { cache: "no-store", credentials: "same-origin" });
+    if (visibilityAware && document.visibilityState !== "visible") return;
+    const res = await fetch(pollUrl(), { cache: "no-store", credentials: "same-origin" });
     if (!res.ok) {
       if (opts.onStatus) {
         opts.onStatus(hasFrame ? "reconnecting…" : "browser unavailable");
@@ -67,6 +82,11 @@ export function mountCloudLiveFrame(screenEl, framePath, opts = {}) {
   const timer = window.setInterval(() => {
     void tick();
   }, pollMs);
+  if (visibilityAware) {
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") void tick();
+    });
+  }
   return () => {
     window.clearInterval(timer);
     fitObserver.disconnect();

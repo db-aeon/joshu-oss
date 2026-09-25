@@ -128,7 +128,14 @@ function parseSseEvent(raw: string): { name: string; data: string } {
   return { name, data };
 }
 
+/** Where a think answer came from: the goal broker's quick routed reply, or Hermes. */
+export type ThinkResult = { text: string; source: "broker" | "hermes" };
+
 export async function runJoshuThink(params: ThinkParams): Promise<string> {
+  return (await runJoshuThinkDetailed(params)).text;
+}
+
+export async function runJoshuThinkDetailed(params: ThinkParams): Promise<ThinkResult> {
   const base = HERMES_API_BASE_URL.replace(/\/+$/, "");
   const appCtx = params.appContext;
   const hermesSessionId = appCtx?.threadId ?? params.callSid;
@@ -148,7 +155,7 @@ export async function runJoshuThink(params: ThinkParams): Promise<string> {
     resolveThinkUserQuote(params.userQuote) ||
     [params.intent, params.summary].filter(Boolean).join("\n");
   // Same structured payload Hermes sees — Realtime paraphrases alone look vague to
-  // the goal classifier (Patrick PSTN flight booking passed at 0.62 vs SMS queue 0.90).
+  // the goal classifier (canary PSTN flight booking passed at 0.62 vs SMS queue 0.90).
   const brokerText = buildThinkUserMessage({
     intent: params.intent,
     summary: params.summary,
@@ -176,7 +183,7 @@ export async function runJoshuThink(params: ThinkParams): Promise<string> {
         };
         if (result.action === "reply" && result.text) {
           if (forScreen) params.onDelta?.(result.text);
-          return result.text;
+          return { text: result.text, source: "broker" };
         }
       }
     } catch (error) {
@@ -318,5 +325,48 @@ export async function runJoshuThink(params: ThinkParams): Promise<string> {
   const name = identity.name;
   const spoken = finalText.trim() || `(No response from ${name}.)`;
   await recordVoiceThreadBox(voiceOrigin, spoken);
-  return spoken;
+  return { text: spoken, source: "hermes" };
+}
+
+async function postOwnerText(
+  body: { text: string; mode: "links" | "full" },
+): Promise<{ texted?: boolean; spoken?: string } | undefined> {
+  try {
+    const res = await fetch(`${JOSHU_API_BASE}/api/realtime-goals/voice/owner-text`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${HERMES_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!res.ok) return undefined;
+    return (await res.json()) as { texted?: boolean; spoken?: string };
+  } catch {
+    return undefined;
+  }
+}
+
+const URL_IN_TEXT = /https?:\/\/\S+/i;
+
+/**
+ * Phone answers cannot carry links. Joshu texts them to the owner and returns
+ * the answer rewritten for speech (links removed, honest "I texted it" note).
+ */
+export async function speakableWithLinksTexted(text: string): Promise<string> {
+  if (!URL_IN_TEXT.test(text)) return text;
+  const result = await postOwnerText({ text, mode: "links" });
+  if (result?.spoken?.trim()) return result.spoken;
+  // Joshu unreachable: still never read a URL aloud or claim it was sent.
+  return `${text.replace(/https?:\/\/\S+/gi, "").trim()}\n\nI couldn't text you the link just now.`;
+}
+
+/** Text a finished answer to the owner after they hung up mid-think. */
+export async function textAnswerToOwner(text: string): Promise<boolean> {
+  const result = await postOwnerText({
+    text: `Here's the answer from our call:\n${text}`,
+    mode: "full",
+  });
+  return result?.texted === true;
 }

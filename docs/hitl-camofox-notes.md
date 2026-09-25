@@ -17,7 +17,97 @@ Joshu supports two shared-browser backends. **Default is local Chromium** (OSS s
 
 **OSS self-host:** leave **Local Chromium**. Optional `PROXY_*` (Decodo) for residential egress — see below. Do not set `JOSHU_CLOUD_BROWSER=1` unless the box is enrolled on the Joshu control plane.
 
-**Fleet / Patrick:** may ship with `JOSHU_CLOUD_BROWSER=1` in `instance.env`. Owners can switch back to local Chromium in Safety Settings; the saved choice wins on the next stack restart.
+**Fleet boxes:** may ship with `JOSHU_CLOUD_BROWSER=1` in `instance.env`. Owners can switch back to local Chromium in Safety Settings; the saved choice wins on the next stack restart.
+
+### Browser Use Cloud idle policy (fleet)
+
+Browser Use Cloud sessions bill until stopped or Browser Use’s ~4h cap. Joshu stops them when idle so forgotten jWeb tabs and stack restarts do not leave paid orphans running.
+
+**Design tradeoff:** optimize for **not paying for forgotten viewers and restart orphans**, not for keeping a warm session indefinitely. A stopped session is recoverable (`ensureCloudBrowser()` on the next need) but **in-tab state is lost** (cart, partial checkout, login cookies in that Browser Use profile).
+
+#### Lifecycle signals
+
+| Signal | Effect |
+|--------|--------|
+| **`CLOUD_BROWSER_IDLE_TIMEOUT_MS`** | Idle shutdown for cloud mode (default **300000** = 5 min). Falls back to `BROWSER_IDLE_TIMEOUT_MS` when unset. Timer resets on each qualifying **touch** (below). |
+| **`busy()`** | Blocks stop while: local browser sidecar phase is `running` (local Chromium path), a **pending handoff** exists, or Hermes **`browser_*`** tools ran within the last **120s** (`hermesBrowserActivityRecent`). On fleet cloud boxes the sidecar is usually idle — **`browser_*` + handoff dominate**. |
+| **Orphan reconcile** | On startup and every lifecycle tick (~30s), when in-memory session is null, Joshu **GET**s the control plane. If CP has an active browser and nothing is busy → **POST stop**. If busy → hydrate in-memory session so the normal idle timer applies. |
+| **Live-frame touch** | `GET /api/browser/live-frame` resets idle only when the client passes **`?viewer=active`** (visible jWeb tab) or the request is a handoff viewer. Background/hidden tabs still get the cached iframe URL but **do not** keep the session alive. Implemented in [`cloud-live-frame.js`](../public/cloud-live-frame.js). |
+| **Hermes ensure** | Patched `tools/browser_tool.py` POSTs **`/api/browser/ensure`** at the start of every `browser_*` call ([`patch-hermes-browser-cdp-guards.mjs`](../scripts/patch-hermes-browser-cdp-guards.mjs), marker `joshu_cloud_browser_ensure`) — see [Hermes self-heal](#hermes-browser-self-heal-cloud) below. Counts as Hermes activity (touch + 120s `busy()` grace). `retargetBrowserCdp()` in [`hermesApi.ts`](../src/hermesApi.ts) also notes activity. Requires gateway reload after patch. Older patches POST `/api/browser/touch` (idle timer only; still served). |
+| **Handoff heartbeat** | While handoff status is **pending**, heartbeat (~20s) touches via [`browserHandoff/routes.ts`](../src/browserHandoff/routes.ts). Terminal handoffs stop touching. |
+| **Kanban cancel** | Cancelling a realtime-goal kanban task cancels pending handoffs for that `kanbanTaskId` ([`broker.ts`](../src/realtimeGoals/broker.ts), kanban bridge), unblocking idle stop. |
+| **SIGTERM / SIGINT** | `joshu-stack` shutdown POSTs cloud browser **stop** when cloud mode is enabled. |
+
+**Stop rule (simplified):** stop when `now - lastTouch >= CLOUD_BROWSER_IDLE_TIMEOUT_MS` **and** `busy()` is false. Reconcile can stop sooner when the box restarted with no in-memory session but CP still holds a browser.
+
+#### What keeps the session up (normal paths)
+
+- Owner **watching jWeb** with the browser pane visible (poll + `viewer=active` every ~8s).
+- Owner on a **pending handoff** page (heartbeat touches).
+- **Kanban / Hermes worker** calling `browser_*` often enough that last touch stays within the idle window, or within the 120s `busy()` grace after each browser call.
+- **Pending handoff** blocking stop even if touches pause briefly.
+
+#### Premature-close risks (known)
+
+| Scenario | Why it can stop early | Impact |
+|----------|----------------------|--------|
+| **Long gap between browser tools** | Fleet workers use Hermes `browser_*`, not the local `browser_task` sidecar. If a kanban run goes **>5 min** without a browser tool call (long LLM turn, email/calendar tools, etc.), idle wins even though the task is still “running”. The 120s `busy()` grace only extends **after** the last `browser_*` call, not across the whole run. | Next `browser_*` call re-provisions through `/api/browser/ensure` (same Browser Use profile, new `browserId`). **Open tabs, carts, and half-filled forms are gone**; logins saved to the profile usually survive. Main product risk for flight/booking flows. |
+| **Background jWeb tab** | Pane open but tab/window **hidden** → no `viewer=active` touches. | Session stops after idle timeout. **Intentional** (cost control); can surprise someone who minimized the desktop. |
+| **Kanban cancel while owner on handoff** | Cancel clears pending handoff → heartbeat returns 409, `busy()` clears. | Session can idle out within ~5 min even if the owner still has the handoff URL open. |
+| **Stack restart** | In-memory session lost; orphan reconcile stops CP browser if nothing is busy. | Correct for orphans. Active work on the box dies with the restart anyway; CP stop prevents billing drift. |
+| **Hermes ensure patch missing** | Image-baked patch older than the repo (the canary box on 2026-09-24 had the handoff lock only), or gateway not reloaded after patch. | No wake: after an idle stop every `browser_*` gets **CDP 502** from the dead Browser Use URL, and the worker starts debugging the box. `hotpatch-realtime-goals.sh` re-applies the current patch. |
+
+**Not a risk:** SIGTERM on deploy (intentional); data corruption (stop is remote browser teardown only); local Chromium idle path (separate env / sidecar semantics).
+
+#### After stop
+
+- jWeb live-frame returns **`warming: true`** until a real viewer or agent calls ensure again (two consecutive visible polls for jWeb — see `noteLiveFramePoll()` in [`cloudBrowser.ts`](../src/cloudBrowser.ts)).
+- Hermes / kanban **continues**; the next `browser_*` (via `/api/browser/ensure`) or explicit ensure starts a **new** Browser Use session (new `browserId`, same instance profile).
+- Treat unexpected mid-task stops as **session loss**, not a retry of the same tab.
+
+#### Hermes browser self-heal (cloud)
+
+Trace `8a92b096` (canary box, 2026-09-24): after an idle stop, a kanban worker's `browser_navigate` hit **CDP 502** and the worker spent ~20 terminal calls reverse-engineering the box (ps/ss, grepping `dist/`, `hermes config set browser.cdp_url`) before driving Camofox REST by curl. Two causes: nothing on the Hermes path woke the browser, and Hermes resolves `BROWSER_CDP_URL` (process env, fixed at gateway/worker start) **before** `browser.cdp_url` in config.yaml — so even after Joshu rotated the session and rewrote config, running workers kept dialing the dead URL.
+
+| Piece | Behavior |
+|-------|----------|
+| **`POST /api/browser/ensure`** ([`server.ts`](../src/server.ts), localhost only) | Cloud: `ensureLiveCloudBrowser()` in [`cloudBrowser.ts`](../src/cloudBrowser.ts) — trust a session that answered a CDP probe in the last **30s**; else probe `${cdpUrl}/json/version` (3s); if missing/dead → control-plane **ensure** (CP checks Browser Use, recreates on the same profile). Returns `{ ok, backend: "cloud", cdpUrl }`, or **502 `browser_unavailable`**. Local backends: `{ backend: "local", cdpUrl: "" }`. Concurrent calls share one round trip. |
+| **Patched `browser_tool.py`** | Before every `browser_*` (navigate, snapshot, click, type, scroll, back, press, console, get_images, vision): call ensure; when `cdpUrl` changed, set `os.environ["BROWSER_CDP_URL"]` in-process and drop cached `_active_sessions` bound to the old host (marked expired so cleanup skips `agent-browser close`). On `browser_unavailable`, return a tool error telling the worker to retry once then `kanban_block("system: …")`. Falls back to `/api/browser/touch` on stacks without `/ensure`. |
+| **Broker** | `kanban_block` reasons starting with **`system:`** classify as system blocks ([`blockCause.ts`](../src/realtimeGoals/blockCause.ts)) → bounded auto-recovery, never paged to the owner as a question. |
+| **Skill** | [`joshu-browser-handoff`](../integrations/hermes/skills/browser/joshu-browser-handoff/SKILL.md) — *Browser down = system problem*: never inspect the box, change Hermes config, or curl local browser APIs. |
+| **Terminal guard** | `hermes config set|edit|…` and writes to `~/.hermes/config.yaml` are blocked for the agent terminal ([`patch-hermes-terminal-secrets-guard.mjs`](../scripts/patch-hermes-terminal-secrets-guard.mjs)). |
+
+The old touch patch inserted its call right after each `def` line — inside `browser_snapshot`'s multi-line signature, a Python syntax error. The ensure patch inserts after the signature and docstring and removes those legacy lines on upgrade. It also adds a module-level `import requests`: upstream imports it only lazily, so the handoff-lock helper's `requests.get` raised `NameError` (swallowed) and the lock was silently off.
+
+#### Cloud handoff page (phone) — live view and form overlay
+
+Fixes from the same canary-box session (AA passenger-details checkout, 2026-09-24):
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| Live view says **"browser unavailable"** | [`cloud-live-frame.js`](../public/cloud-live-frame.js) built the poll URL with `new URL(path, location.origin)`, dropping the `/joshu/` base whenever the path had a query (the handoff token) → `/api/browser/live-frame` 404. jWeb's query-less path also never sent `viewer=active`. | Resolve against `document.baseURI`; always add `viewer=active` for visible/interactive viewers. |
+| Live view **blanks and reloads every ~15s** | [`handoff.js`](../public/handoff.js) `maybeWarm()` judged readiness by Camofox health, which always reads "not running" on cloud boxes, so the 8s status loop re-called `connectLive()` → a new iframe (and a leaked poller) each time. | Skip Camofox warm in cloud mode; mount the cloud frame once (it reloads itself only when Browser Use starts a new `browserId`). |
+| Overlay status shows **`handoff_token_required`** | `getJson()` appended `?t=…` to `form-fields?fast=1` → `?fast=1?t=…`, so the fast scan had no token. | `withToken()` appends with `&` when the path already has a query. |
+| Overlay **dropdowns truncated** (DOB year stopped at 2004, countries at "Belgium") | Field catalog kept ≤24 `<option>`s per select ([`chromiumSession.ts`](../src/chromiumSession.ts) `scanFrame`, and the Camofox copy in `patch-camofox-single-tab.mjs`). | `MAX_SELECT_OPTIONS = 300` (the LLM labeler still trims to 12). Select fill uses the native `HTMLSelectElement` value setter so framework trackers see the change. |
+
+**Native `<select>` in the live picture:** tapping a page dropdown inside the Browser Use iframe may show nothing — Chrome draws native select popups outside the streamed page surface. Owners pick values in the **form overlay** and tap **Fill**.
+
+#### Tuning and ops
+
+| Goal | Action |
+|------|--------|
+| More headroom for long runs | Raise **`CLOUD_BROWSER_IDLE_TIMEOUT_MS`** on the box (e.g. 600000–900000). Fleet default matches `BROWSER_IDLE_TIMEOUT_MS=300000` from control-plane provision. |
+| Force stop now | Inside `joshu-stack`: `stopCloudBrowser()` (CP POST stop). Clear pending handoffs; close visible jWeb browser panes. |
+| Verify CP state | CP GET `/api/instances/browser-use/browsers` → `404 browser_not_running` when stopped. |
+| Patch drift | `bash scripts/hotpatch-realtime-goals.sh <slug>` copies the current browser + terminal patch scripts into the container, applies them, `py_compile`s both tools, and reloads the gateway. Manually: `docker cp` the script in, `node patch-hermes-browser-cdp-guards.mjs /opt/hermes-agent/tools/browser_tool.py`, reload gateway. Check: `grep joshu_cloud_browser_ensure /opt/hermes-agent/tools/browser_tool.py`. |
+| Tests | `npm run test:cloud-browser-lifecycle`, `npm run test:browser-handoff`, `npm run test:hermes-tool-patches` |
+
+#### Possible follow-ups (not implemented)
+
+- Tie `busy()` to **active Hermes / kanban run** (not only last `browser_*` + 120s).
+- Align Hermes activity grace with idle timeout (e.g. both 5–10 min).
+- Touch on **any** tool during a browser-tagged kanban task, not only `browser_*`.
+- Control-plane stop on deprovision / stale-browser cron (fleet-wide orphan sweep).
 
 Legacy **Camofox (Firefox)** still boots on very old images without `/opt/browser/entrypoint.sh`; current images use **Chromium** for the local path.
 

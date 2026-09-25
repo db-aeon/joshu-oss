@@ -90,7 +90,9 @@ prefer DRY channel adapters over parallel policies.
    `realtime-goals` Kanban board. Automatic decomposition is disabled for this
    board to avoid duplicate external actions and make cancellation atomic.
 7. The worker completes with `kanban_complete(summary, metadata, artifacts)` or
-   blocks with one concise question. The broker treats persisted Kanban
+   blocks with one concise question (see
+   [owner questions vs. system stalls](#blocked-goals-owner-questions-vs-system-stalls-2026-09-24)).
+   The broker treats persisted Kanban
    task/run state as authoritative and delivers the event on the source channel.
    The completion summary **is** the owner message. The worker does not send it.
 
@@ -160,7 +162,8 @@ acknowledgment instead of a newer goal response.
 - PSTN completion starts an owner callback only during the configured proactive
   working window. The call still requires the Telephone think passphrase. Only
   after successful unlock does voice-realtime fetch and speak the signed goal
-  result, then ask whether the owner needs anything else.
+  result, then ask whether the owner needs anything else. Redial, voicemail, and
+  burst rules are in [PSTN callback delivery](#pstn-callback-delivery-2026-09-24).
 
 Delivery attempts use persisted leases so a process restart cannot leave an
 event permanently stuck in `attempting`. Slack also receives a deterministic
@@ -171,22 +174,101 @@ Completion SMS is idempotent: owner updates appended to a **done** Kanban task n
 longer reset the done cursor, and `claimDeliveryAttempt()` atomically suppresses
 duplicate sends of the same completion body (regression fixed 2026-09-18).
 
-### Blocked-answer booking phase (2026-09-18)
+### Blocked goals: owner questions vs. system stalls (2026-09-24)
 
-When the owner replies while a goal is **blocked** (e.g. picks “Holiday Inn” from
-a hotel comparison list):
+A Kanban task can be `blocked` for two unrelated reasons. The bridge reports
+which one via `block_cause` (from the latest `blocked` / `gave_up` /
+`unblocked` event), and [`blockCause.ts`](../src/realtimeGoals/blockCause.ts)
+classifies it:
 
-1. The broker records `blockedAnsweredAt`, `lastBlockedPrompt`, and `ownerSelection`.
-2. The Kanban card gets an **`Owner selection — BOOK THIS (do not re-search)`**
-   append — not a generic owner update.
-3. If the worker later `kanban_block`s with the **same** hotel menu again, the
-   broker suppresses repeat blocked SMS (owner already answered).
-4. The `realtime-goal` worker skill treats owner selection as **booking phase**:
-   skip broad OTA search, go to checkout, and `kanban_complete` with the handoff
-   link when checkout is staged.
+| Cause | Source | Broker action |
+| --- | --- | --- |
+| **Owner question** | Worker `kanban_block(reason)` | Deliver the question on the origin channel |
+| **System stall** | Hermes circuit breaker (`gave_up`: crashes, timeouts, spawn failures, or clean exits without `kanban_complete`/`kanban_block`), or a reasonless block | Never page the owner. Append a `Joshu recovery` note and unblock, up to 2 times. Then send one honest message: couldn't finish, say “try again” or “cancel”. |
 
-Optional box-specific travel-booking skills may mirror the same booking-phase
-rules; the factory `realtime-goal` skill is the canonical worker path.
+There is no generic “I need more information” fallback any more: with nothing
+concrete to ask, the voice model invented a question (patrick 2026-09-24, flight
+card that already had its dates).
+
+### Blocked answers
+
+When the owner replies while a goal is **blocked**:
+
+1. The broker records `blockedAnsweredAt`, `lastBlockedPrompt`, and
+   `lastOwnerAnswer`, resets the auto-recovery budget, and counts the question
+   as delivered (no redial of a question the owner just answered).
+2. The card gets a task-neutral **`Owner answer`** append: `You asked:` (the
+   block question) and `Owner replied:`. The worker decides what the reply means
+   for its own objective; nothing assumes booking or checkout.
+3. If the worker later blocks with the **same** question, the broker does not
+   re-ask the owner. It appends a `Joshu recovery` note quoting the answer and
+   unblocks (same budget as system stalls).
+
+Replies heard on a **callback** go through the bound router first
+(`answerFromCallback`): a progress question (“were you able to find those
+flights?”) gets a status reply, cancel cancels, and an unrelated request falls
+through to a normal voice turn. Only a real answer is written to the card. If
+the router is unavailable, the reply is treated as the answer.
+
+### PSTN callback delivery (2026-09-24)
+
+A callback is delivered only after passphrase unlock and playback ack (or an
+owner answer). Undelivered calls follow
+[`voiceDeliveryPolicy.ts`](../src/realtimeGoals/voiceDeliveryPolicy.ts):
+
+| How the call ended | Detected by | Result |
+| --- | --- | --- |
+| Voicemail | Twilio async AMD (`AnsweredBy=machine_*`/`fax`, call hung up), or a voicemail greeting transcript while locked | **Park** |
+| Passphrase lockout | voice-realtime `auth_failed` | **Park** |
+| No answer / busy / hung up before unlock | Twilio status, voice-realtime `no_unlock` | Retry at 15m, then 30m; park after 3 calls |
+
+**Park** is session-wide: every pending PSTN result for that owner stops
+dialing, the owner gets one SMS naming the task(s) (no results; the passphrase
+still gates content), and callbacks for the session hold for 60 minutes. A
+parked result is picked up when the owner calls in and asks for an update (the
+router sees parked results for `status`), and a new question or result on that
+goal starts delivery again.
+
+Callbacks are **serialized per owner session**: one call in flight at a time
+and a 2-minute gap after a call ends, so several blocked goals no longer ring in
+a burst. Deliveries deferred by working hours no longer spend an attempt.
+
+**When a callback may ring** ([`callbackWindow.ts`](../src/realtimeGoals/callbackWindow.ts)):
+the owner's proactive window (weekdays, working hours, plus evenings/weekends
+if they opted in) — or, for up to **6 hours after the owner's last message on
+the goal**, any day **07:00–22:00** owner-local. "I'll call you back when it's
+done" is a promise, not a nudge: an 8 PM request is called back at 8:15 PM,
+not at 9 AM tomorrow. When a finished callback must wait anyway, the owner gets
+**one** SMS with the task title and when Joshu will call (no result — the
+passphrase still gates content); `delivery.deferNoticeAt` records it.
+
+Set `JOSHU_REALTIME_GOALS_CALLBACK_AMD=0` to disable answering-machine
+detection (the transcript check and outcome reports still apply).
+
+Voice-realtime also drops **passphrase residue** after unlock (the passphrase
+plus at most one other word, and partial matches for 10 s), refuses a `think`
+whose quoted request is only the passphrase, and says “Unlocked. I have an update
+for you.” on callbacks instead of asking the owner to repeat their request.
+
+**Links on voice.** A callback result or blocked question that contains URLs is
+spoken without them; Joshu texts the links to the owner (once per result,
+recorded as `linksTextedKey`/`linksTextedAt`) and the spoken text says so — or
+says honestly that the text failed. Live Hermes answers on a call go through the
+same path (`POST /api/realtime-goals/voice/owner-text`, loopback +
+`HERMES_API_KEY`, recipient always the owner). Blocked questions are relayed as
+questions (options with exact details, then the ask), not as summaries.
+
+**Follow-ups stay on the goal.** The router sees each goal's
+`waiting_on_owner` question and `found` result. A question about those details
+(“when does the United flight take off?”, “nonstop only”) is an `update` of the
+bound goal — its worker has the context — never a new queued goal. Hermes'
+voice context lists the same details plus goals finished in the last 6 hours,
+including whether a phone-call link was actually texted.
+
+**Voice intake wording.** Queued work on a call says “I'll call you back when
+it's done” (not “I'll reply here”) and does not stack another “Anything else?”;
+updates to background work say “I'll get back to you when it's ready” instead of
+asking the owner to hold.
 
 Twilio callback status webhooks validate `X-Twilio-Signature`. Goal result fetches
 use a purpose-separated HMAC token derived from
@@ -261,6 +343,9 @@ JOSHU_REALTIME_GOALS_STATE_DIR=
 
 # Optional dedicated HMAC secret for PSTN result callbacks.
 JOSHU_REALTIME_GOALS_CALLBACK_SECRET=
+
+# Twilio async answering-machine detection on callbacks (default on).
+JOSHU_REALTIME_GOALS_CALLBACK_AMD=1
 ```
 
 The router uses the existing Day 0/OpenRouter credential path. If it is not

@@ -143,7 +143,11 @@ export function buildThinkSystemPrompt(identity: JoshuIdentity, mode: "screen" |
     "For files, journals, notes, or desktop content: use gbrain MCP search/query FIRST (joshu-brain skill).",
     "For past chat or preferences: use Hindsight memory.",
     "For writes, browser, shell, or multi-step work: use your tools.",
-    "Be concise — one or two short paragraphs max for phone.",
+    "Be concise — at most three short sentences; answer exactly what was asked first.",
+    "Never mention internal system details to the caller (error codes, browser/CDP status, carriers, APIs, curl, tests, campaigns).",
+    "Never say you texted, emailed, or sent something unless a tool in THIS turn did it and succeeded. If a tool you need is unavailable, say plainly that you could not do it.",
+    "If the caller needs a link, include the full URL once — Joshu texts it to their phone automatically and tells them so. Do not read URLs aloud or describe them.",
+    "Prefer the background work context (results, links, what was texted) over older memory of the same task.",
   ].join(" ");
 }
 
@@ -205,6 +209,10 @@ export function buildVoiceSystemPrompt(identity: JoshuIdentity, surface: "web" |
     "If the caller's words were unclear or you did not understand them, ask them to repeat in one short sentence — do not guess or continue the prior topic.",
     "You cannot open desktop apps or windows on a phone call — think and dictation tools only. Never say you opened, launched, or showed anything.",
     "Never claim an action succeeded unless a tool result told you it did.",
+    "Ask \"anything else?\" at most once per call, only after something is finished — never after every reply.",
+    "When the caller declines or wraps up (\"no\", \"no thanks\", \"that's it\", \"I'm waiting\"), do NOT call think — Joshu handles the goodbye or the wait.",
+    "Questions about a result you just relayed (times, prices, options) go to think — never guess details that were not in the result.",
+    "When relaying a result, keep every time, price, and name exactly as given.",
   ];
   if (envTrim("TWILIO_THINK_PASSWORD")) {
     parts.push(

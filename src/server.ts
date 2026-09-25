@@ -84,7 +84,10 @@ import { isDirectLocalhostRequest, verifyArozosDesktopSession } from "./httpLoca
 import { RealtimeGoalBroker } from "./realtimeGoals/broker.js";
 import { createRealtimeGoalDeliveryHandler } from "./realtimeGoals/delivery.js";
 import { registerRealtimeGoalRoutes } from "./realtimeGoals/routes.js";
-import { registerRealtimeGoalVoiceRoutes } from "./realtimeGoals/voiceCallback.js";
+import {
+  registerRealtimeGoalVoiceRoutes,
+  sendParkedCallbackNotice,
+} from "./realtimeGoals/voiceCallback.js";
 import { registerAppInvokeRoutes } from "./appInvokeApi.js";
 import { browserHandoffViewerAllowed, getPendingHandoffPinUrl, registerBrowserHandoffRoutes } from "./browserHandoff/index.js";
 import { getPendingHandoff } from "./browserHandoff/store.js";
@@ -92,12 +95,17 @@ import { browserAgentPhase, readBrowserAgentStatus, registerBrowserAgentRoutes, 
 import {
   CLOUD_BROWSER_SCREEN,
   cloudBrowserEnabled,
+  cloudBrowserIdleTimeoutMs,
   cloudCdpUrl,
   cloudLiveFrameUrl,
   cloudBrowserId,
   cloudBrowserSessionActive,
   ensureCloudBrowser,
+  ensureLiveCloudBrowser,
+  hermesBrowserActivityRecent,
+  noteHermesBrowserActivity,
   noteLiveFramePoll,
+  stopCloudBrowser,
   touchCloudBrowser,
   fillCloudBrowserWindow,
   startCloudBrowserLifecycle,
@@ -273,6 +281,10 @@ const runner = new HermesApiRunner({
 const realtimeGoalBroker = new RealtimeGoalBroker(
   PROJECT_ROOT,
   createRealtimeGoalDeliveryHandler(PROJECT_ROOT),
+  undefined,
+  {
+    onCallbacksParked: (goals, reason) => sendParkedCallbackNotice(PROJECT_ROOT, goals, reason),
+  },
 );
 realtimeGoalBroker.start();
 
@@ -287,10 +299,13 @@ const camofoxSession = new CamofoxSessionCoordinator({
   lockViewport: cloudBrowserActive(),
 });
 if (cloudBrowserActive()) {
-  const idleMs = Number(envOr("BROWSER_IDLE_TIMEOUT_MS", "300000"));
+  const idleMs = cloudBrowserIdleTimeoutMs();
   startCloudBrowserLifecycle({
-    idleMs: Number.isFinite(idleMs) ? idleMs : 300000,
-    busy: () => browserAgentPhase() === "running" || Boolean(getPendingHandoff(PROJECT_ROOT)),
+    idleMs,
+    busy: () =>
+      browserAgentPhase() === "running" ||
+      Boolean(getPendingHandoff(PROJECT_ROOT)) ||
+      hermesBrowserActivityRecent(120_000),
     onCdp: async (cdpUrl) => {
       camofoxSession.useCdpUrl(cdpUrl);
       await fillCloudBrowserWindow(cdpUrl).catch((err: Error) => {
@@ -733,6 +748,41 @@ function buildAppRouter(): {
     }
   });
 
+  /** Hermes browser_* tools call this to reset the cloud idle timer. Localhost only. */
+  router.post("/api/browser/touch", (req: Request, res: Response) => {
+    if (!isDirectLocalhostRequest(req)) {
+      res.status(403).json({ error: "browser touch is localhost-only" });
+      return;
+    }
+    if (cloudBrowserActive()) noteHermesBrowserActivity();
+    res.json({ ok: true });
+  });
+
+  /**
+   * Hermes browser_* tools call this before each action (patched browser_tool.py).
+   * Cloud: wakes or recreates the Browser Use session and returns the live CDP
+   * URL so a worker started with a stale BROWSER_CDP_URL reconnects instead of
+   * hitting 502. Local backends: no-op. Localhost only; do not log the URL.
+   */
+  router.post("/api/browser/ensure", async (req: Request, res: Response) => {
+    if (!isDirectLocalhostRequest(req)) {
+      res.status(403).json({ error: "browser ensure is localhost-only" });
+      return;
+    }
+    res.setHeader("Cache-Control", "no-store");
+    if (!cloudBrowserActive()) {
+      res.json({ ok: true, backend: "local", cdpUrl: "" });
+      return;
+    }
+    try {
+      const live = await ensureLiveCloudBrowser();
+      res.json({ ok: true, backend: "cloud", cdpUrl: live.cdpUrl });
+    } catch (err) {
+      console.warn(`[cloud-browser] ensure for Hermes failed: ${(err as Error).message}`);
+      res.status(502).json({ ok: false, backend: "cloud", error: "browser_unavailable" });
+    }
+  });
+
   /** Sidecar reads the cloud CDP socket. Localhost only. Do not log the URL. */
   router.get("/api/browser/cdp", (req: Request, res: Response) => {
     if (!isDirectLocalhostRequest(req)) {
@@ -764,9 +814,11 @@ function buildAppRouter(): {
       return;
     }
     try {
-      // Active session: touch only — no control-plane round trip on every 8s poll.
+      // Active session: touch only when a real viewer is active (handoff or visible jWeb tab).
+      const viewerActive =
+        handoffViewer || String(req.query.viewer || "").trim().toLowerCase() === "active";
       if (cloudBrowserSessionActive()) {
-        touchCloudBrowser();
+        if (viewerActive) touchCloudBrowser();
         const url = cloudLiveFrameUrl();
         if (!url) {
           res.status(503).json({ error: "live_frame_unavailable" });
@@ -1448,6 +1500,24 @@ function formatBrowserObservation(observation: Awaited<ReturnType<CamofoxSession
     "",
     observation.snapshot,
   ].filter((line): line is string => typeof line === "string").join("\n");
+}
+
+let shuttingDown = false;
+async function shutdownCloudBrowser(reason: string): Promise<void> {
+  if (!cloudBrowserActive() || shuttingDown) return;
+  shuttingDown = true;
+  try {
+    await stopCloudBrowser();
+    console.log(`[cloud-browser] stopped on ${reason}`);
+  } catch (err) {
+    console.warn(`[cloud-browser] stop on ${reason} failed:`, (err as Error).message);
+  }
+}
+
+for (const signal of ["SIGTERM", "SIGINT"] as const) {
+  process.on(signal, () => {
+    void shutdownCloudBrowser(signal).finally(() => process.exit(0));
+  });
 }
 
 const server = app.listen(PORT, HOST, () => {

@@ -64,6 +64,10 @@ should_skip() {
     docs/vps-sandbox/first-provisioning-notes.md|docs/vps-sandbox/troubleshooting-and-lessons.md|docs/vps-sandbox/session-*|docs/vps-sandbox/hotpatch-running-box.md|docs/vps-sandbox/existing-box-image-vs-host.md|docs/vps-sandbox/twilio-a2p-sms.md|docs/vps-sandbox/provider-choices.md|docs/vps-sandbox/voice-*|docs/vps-sandbox/web-voice.md|docs/vps-sandbox/phone-voice-local-test.md|docs/vps-sandbox/credential-isolation-langfuse-relay.md|docs/vps-sandbox/update-hardening-todo.md|docs/vps-sandbox/README.md|docs/vps-sandbox/control-plane.md)
       return 0
       ;;
+    # Fleet release notes and fleet upgrade runbooks (excluded from OSS snapshot).
+    docs/releases/*|docs/vps-sandbox/box-skill-reconcile-on-upgrade.md)
+      return 0
+      ;;
     docs/design/brand-guidelines.md|docs/README.oss.md|docs/box-state.oss.md|docs/vps-sandbox/README.oss.md|docs/design/README.oss.md)
       return 0
       ;;

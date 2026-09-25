@@ -1,5 +1,5 @@
 import { connectScreencast } from "./screencast-client.js";
-import { mountCloudLiveFrame } from "./cloud-live-frame.js?v=ui-browser-21";
+import { mountCloudLiveFrame } from "./cloud-live-frame.js?v=ui-browser-22";
 import { attachVncClipboard } from "./vnc-clipboard.js";
 import { configureNovncRfb, loadNovncRfb, preferVncLocalGestures } from "./vnc-client.js";
 import { attachVncLocalGestures } from "./vnc-gestures.js";

@@ -1249,7 +1249,8 @@ app.post('/tabs/:tabId/form-fields', async (req, res) => {
               if (tag === 'SELECT') {
                 rec.options = [];
                 const opts = el.options || [];
-                for (let o = 0; o < opts.length && rec.options.length < 24; o++) {
+                // Birth years / country lists run 100–250 entries (overlay dropdown).
+                for (let o = 0; o < opts.length && rec.options.length < 300; o++) {
                   rec.options.push({
                     value: String(opts[o].value || ''),
                     label: String(opts[o].text || opts[o].value || '').slice(0, 80),

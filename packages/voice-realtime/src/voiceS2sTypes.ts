@@ -81,7 +81,7 @@ export interface VoiceS2sClient {
   appendMulaw8kB64(b64: string): void;
   appendPcm24kB64(b64: string): void;
   sendFunctionOutput(callId: string, output: string, opts?: FunctionOutputOptions): void;
-  injectAssistantMessage(text: string): void;
+  injectAssistantMessage(text: string, kind?: import("./speechPresentation.js").InjectKind): void;
   injectProgressMessage(suggestedPhrase: string): void;
   injectControlMessage(text: string): void;
   requestOrganicResponse(): void;
