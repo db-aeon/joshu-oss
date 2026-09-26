@@ -6,6 +6,6 @@
   "hermesRef": "3c27eb6234bf91b8ceee9e9071591b31e9b148cb",
   "gbrainRef": "fa2c7a6990a7a57b251979ef6e1988ff09529021",
   "camofoxBase": "ghcr.io/jo-inc/camofox-browser@sha256:3cc29763d3c784ae71a7d56853a12c43e100ff2f13da1e2eb88322b08e12d6a0",
-  "builtAt": "2026-09-24T04:00:00.000Z",
-  "notes": "0.1.45 - Local Chromium default; Browser Use Cloud optional; handoff live-view stability; fast form rescans"
+  "builtAt": "2026-09-24T14:58:00.000Z",
+  "notes": "0.1.45 - Browser Use Cloud + local Chromium toggle; handoff live-view stability; 4:3 cloud viewport; fleet cloud CDP uses Hermes browser (not localhost sidecar); voice realtime-goal queue threshold 0.70"
 }

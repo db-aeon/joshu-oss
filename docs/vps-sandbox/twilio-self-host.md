@@ -116,6 +116,24 @@ Prefer **two clear, multi-syllable words** (`harbor lantern`, `copper canyon`). 
 
 Also ensure `JOSHU_VOICE_IMAGE_REF` points at a published `joshu-oss-voice-realtime` image (set by bootstrap / release pins).
 
+### Gemini 3.8 Live (native async tools)
+
+`GEMINI_LIVE_MODEL=gemini-3.8-live-extended-thinking` (or `gemini-3.8-live`) switches phone and browser voice to the native path: the model owns turn-taking, fillers, barge-in, and goodbyes, answers general questions itself, calls `think` for anything about the owner and `start_task` for long background work, and speaks tool results itself. The default (`gemini-3.1-flash-live-preview`) keeps the legacy path. The passphrase lock is Joshu-owned on both paths.
+
+```bash
+GEMINI_LIVE_MODEL=gemini-3.8-live-extended-thinking
+GEMINI_LIVE_PHONE_THINKING_LEVEL=low   # Extended Thinking only: low | medium | high
+```
+
+Check a model before switching (real `setupComplete` with the phone setup), then recreate `voice-realtime`:
+
+```bash
+docker compose --env-file /etc/joshu/instance.env --profile voice-rt exec voice-realtime \
+  node /app/dist/geminiLivePreflightCli.js gemini-3.8-live-extended-thinking --thinking=low
+```
+
+Call start logs `tool mode=native_async`.
+
 ---
 
 ## 5. Recreate the stack

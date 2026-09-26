@@ -10,7 +10,7 @@ import {
   redactPassphrase,
 } from "../dist/phonePassphrase.js";
 
-test("leftover unlock audio is residue, real requests are not (patrick 2026-09-24)", () => {
+test("leftover unlock audio is residue, real requests are not (canary box 2026-09-24)", () => {
   const secret = "red swoosh";
   // "red swoosh … note" became a queued "Save note" task.
   assert.equal(isPassphraseResidue("Red swoosh, note.", secret, { graceWindow: false }), true);

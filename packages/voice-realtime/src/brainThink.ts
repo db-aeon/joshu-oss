@@ -63,7 +63,7 @@ export function buildThinkUserMessage(params: {
   return lines.join("\n");
 }
 
-type VoiceThreadOrigin = {
+export type VoiceThreadOrigin = {
   channel: "browser_voice" | "pstn_voice";
   sessionKey: string;
   sessionId: string;
@@ -71,17 +71,51 @@ type VoiceThreadOrigin = {
   appId?: string;
 };
 
+/** Identifies a voice surface to the goal broker (same keys for think, start_task, context). */
+export type VoiceSurfaceRef = {
+  callSid: string;
+  /** Per-request id (think job / start_task call) — broker idempotency key. */
+  jobId: string;
+  presentation?: "screen" | "phone";
+  appContext?: EmbeddedAppSurfaceContext;
+};
+
+/**
+ * Broker origin for a voice request. PSTN uses one owner trunk (`pstn:owner`) so
+ * queued work and callbacks follow the owner across calls; browser voice uses the
+ * same session key as the chat surface it is attached to.
+ */
+export function buildVoiceOrigin(ref: VoiceSurfaceRef): VoiceThreadOrigin {
+  const appCtx = ref.appContext;
+  const forScreen = ref.presentation === "screen";
+  const sessionKey = appCtx
+    ? buildAppAgentSessionKey(appCtx.appId, appCtx.threadId)
+    : `joshu-hermes-chat:${ref.callSid}`;
+  return {
+    channel: forScreen ? "browser_voice" : "pstn_voice",
+    sessionKey: forScreen ? sessionKey : "pstn:owner",
+    sessionId: appCtx?.threadId ?? ref.callSid,
+    messageId: ref.jobId,
+    ...(appCtx?.appId ? { appId: appCtx.appId } : {}),
+  };
+}
+
+/** POST to an internal realtime-goals endpoint (voice-realtime → Joshu, localhost + service key). */
+async function postRealtimeGoals(path: string, body: unknown, timeoutMs: number): Promise<Response> {
+  return fetch(`${JOSHU_API_BASE}/api/realtime-goals/${path}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${HERMES_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+}
+
 async function fetchBrokerContext(origin: VoiceThreadOrigin): Promise<string | undefined> {
   try {
-    const res = await fetch(`${JOSHU_API_BASE}/api/realtime-goals/context`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${HERMES_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ origin }),
-      signal: AbortSignal.timeout(5_000),
-    });
+    const res = await postRealtimeGoals("context", { origin }, 5_000);
     if (!res.ok) return undefined;
     const json = (await res.json()) as { context?: string | null };
     return typeof json.context === "string" && json.context.trim() ? json.context : undefined;
@@ -90,19 +124,65 @@ async function fetchBrokerContext(origin: VoiceThreadOrigin): Promise<string | u
   }
 }
 
+/**
+ * Broker snapshot (active, blocked, recently finished background work) framed for the
+ * voice model. Native path: the model answers "how's that going?" from it and knows
+ * not to re-queue work that is already running.
+ */
+export async function fetchVoiceSessionContext(ref: VoiceSurfaceRef): Promise<string | undefined> {
+  const context = await fetchBrokerContext(buildVoiceOrigin(ref));
+  if (!context) return undefined;
+  return `[Background work context — for your awareness; do not read aloud unless the owner asks]\n${context}`;
+}
+
 async function recordVoiceThreadBox(origin: VoiceThreadOrigin, text: string): Promise<void> {
   try {
-    await fetch(`${JOSHU_API_BASE}/api/realtime-goals/thread/box`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${HERMES_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ origin, text, source: "hermes" }),
-      signal: AbortSignal.timeout(5_000),
-    });
+    await postRealtimeGoals("thread/box", { origin, text, source: "hermes" }, 5_000);
   } catch {
     /* fail open */
+  }
+}
+
+export type VoiceTaskParams = VoiceSurfaceRef & {
+  title?: string;
+  objective: string;
+  userQuote?: string;
+};
+
+export type VoiceTaskResult =
+  | { ok: true; goalId: string; reply: string }
+  | { ok: false; error: string };
+
+/**
+ * `start_task`: queue long work as a durable background goal. The voice model already
+ * decided this is long, so it goes straight to broker `defer` instead of back through
+ * the classifier. Text carries the same Intent / User said shape as think, so the
+ * worker and Langfuse see the owner's words.
+ */
+export async function startVoiceTask(params: VoiceTaskParams): Promise<VoiceTaskResult> {
+  const text = buildThinkUserMessage({
+    intent: params.title?.trim() || "background task",
+    summary: params.objective,
+    userQuote: params.userQuote,
+  });
+  try {
+    const res = await postRealtimeGoals(
+      "defer",
+      { origin: buildVoiceOrigin(params), text, title: params.title?.trim() || undefined },
+      10_000,
+    );
+    const json = (await res.json().catch(() => ({}))) as {
+      ok?: boolean;
+      goalId?: string;
+      reply?: string;
+      error?: string;
+    };
+    if (!res.ok || !json.ok || !json.goalId) {
+      return { ok: false, error: json.error ?? `defer HTTP ${res.status}` };
+    }
+    return { ok: true, goalId: json.goalId, reply: json.reply ?? "Queued." };
+  } catch (error) {
+    return { ok: false, error: (error as Error).message };
   }
 }
 
@@ -144,13 +224,7 @@ export async function runJoshuThinkDetailed(params: ThinkParams): Promise<ThinkR
     : `joshu-hermes-chat:${params.callSid}`;
   const voiceThinkKey = `voice-think:${params.callSid}:${params.jobId}`;
   const forScreen = params.presentation === "screen";
-  const voiceOrigin: VoiceThreadOrigin = {
-    channel: forScreen ? "browser_voice" : "pstn_voice",
-    sessionKey: forScreen ? sessionKey : "pstn:owner",
-    sessionId: hermesSessionId,
-    messageId: params.jobId,
-    ...(appCtx?.appId ? { appId: appCtx.appId } : {}),
-  };
+  const voiceOrigin = buildVoiceOrigin(params);
   const ownerText =
     resolveThinkUserQuote(params.userQuote) ||
     [params.intent, params.summary].filter(Boolean).join("\n");
@@ -164,18 +238,11 @@ export async function runJoshuThinkDetailed(params: ThinkParams): Promise<ThinkR
 
   if (brokerText.trim()) {
     try {
-      const admission = await fetch(`${JOSHU_API_BASE}/api/realtime-goals/route`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${HERMES_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          origin: voiceOrigin,
-          text: brokerText,
-        }),
-        signal: AbortSignal.timeout(10_000),
-      });
+      const admission = await postRealtimeGoals(
+        "route",
+        { origin: voiceOrigin, text: brokerText },
+        10_000,
+      );
       if (admission.ok) {
         const result = (await admission.json()) as {
           action?: string;
@@ -332,15 +399,7 @@ async function postOwnerText(
   body: { text: string; mode: "links" | "full" },
 ): Promise<{ texted?: boolean; spoken?: string } | undefined> {
   try {
-    const res = await fetch(`${JOSHU_API_BASE}/api/realtime-goals/voice/owner-text`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${HERMES_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(15_000),
-    });
+    const res = await postRealtimeGoals("voice/owner-text", body, 15_000);
     if (!res.ok) return undefined;
     return (await res.json()) as { texted?: boolean; spoken?: string };
   } catch {

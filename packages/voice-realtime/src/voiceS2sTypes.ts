@@ -29,6 +29,10 @@ export type VoiceS2sConfig = {
   extraTools?: Array<Record<string, unknown>>;
   /** Restrict declared base tools to those this surface implements (default: all). */
   toolNames?: readonly string[];
+  /** Gemini only: override `GEMINI_LIVE_MODEL` (tests, per-surface experiments). */
+  model?: string;
+  /** Gemini 3.8 Live Extended Thinking only: background reasoning level. */
+  thinkingLevel?: import("./config.js").GeminiThinkingLevel;
 };
 
 export type FunctionCallPayload = {
@@ -50,6 +54,8 @@ export type FunctionOutputOptions = {
 export type ResponseSpeechReason =
   | "organic"
   | "function_output_ack"
+  /** Native async tools: the model speaking a tool result it just received. */
+  | "function_result"
   | "hermes_inject"
   | "progress"
   | "reprompt";
@@ -72,15 +78,34 @@ export type VoiceS2sHandlers = {
   onResponseStarted?: (info: { reason: ResponseSpeechReason; seq: number }) => void;
   onResponseDone?: (info: Record<string, unknown>) => void;
   onFunctionCall?: (call: FunctionCallPayload) => void;
+  /**
+   * Gemini 3.8: the whole interaction finished (`interactionStatus: IDLE`) — no background
+   * reasoning or async tool calls outstanding. `functionCalls` lists every tool call the
+   * interaction made, including ones that arrived after the spoken turn completed.
+   */
+  onInteractionIdle?: (info: { functionCalls: string[] }) => void;
+  /** Upstream session was transparently resumed on a new socket (Gemini goAway / drop). */
+  onSessionResumed?: (info: { reason: string }) => void;
   onError?: (message: string) => void;
 };
 
 /** Browser + phone speech-to-speech upstream (OpenAI Realtime or Gemini Live). */
 export interface VoiceS2sClient {
+  /**
+   * True when the model runs tools asynchronously and speaks their results itself
+   * (Gemini 3.8 Live). Sessions then skip the legacy handler-owned speech: wait
+   * lines, progress ticks, silent tool acks, and injected results.
+   */
+  readonly nativeAsyncTools: boolean;
   connect(): void;
   appendMulaw8kB64(b64: string): void;
   appendPcm24kB64(b64: string): void;
+  /** Legacy: tool output, optionally with a silence hint and no spoken response. */
   sendFunctionOutput(callId: string, output: string, opts?: FunctionOutputOptions): void;
+  /** Native path: deliver a finished tool result; the model decides how to speak it. */
+  sendFunctionResult(callId: string, result: Record<string, unknown>): void;
+  /** Add background context to the conversation without asking the model to speak. */
+  appendContext(text: string): void;
   injectAssistantMessage(text: string, kind?: import("./speechPresentation.js").InjectKind): void;
   injectProgressMessage(suggestedPhrase: string): void;
   injectControlMessage(text: string): void;

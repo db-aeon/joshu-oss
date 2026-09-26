@@ -155,7 +155,7 @@ function splitPassphraseWords(transcript: string, password: string): {
 /**
  * True when a transcript is leftover unlock audio: (part of) the passphrase plus
  * at most one other meaningful word. Such turns must never become a request —
- * "red swoosh … note" was queued as a "Save note" task (patrick 2026-09-24).
+ * "red swoosh … note" was queued as a "Save note" task (canary box 2026-09-24).
  *
  * Partial matches (one word of a multi-word passphrase) only count inside the
  * post-unlock grace window, since passphrase words can be ordinary words.

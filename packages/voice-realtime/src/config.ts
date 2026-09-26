@@ -43,6 +43,51 @@ export const GEMINI_LIVE_MODEL = envTrim("GEMINI_LIVE_MODEL", "gemini-3.1-flash-
 export const GEMINI_LIVE_VOICE =
   resolvedIdentity.voiceId || envTrim("GEMINI_LIVE_VOICE", "Kore");
 
+/**
+ * Gemini 3.8 Live models run tools asynchronously: the conversation keeps going
+ * while a tool runs, and the result goes back as a function response the model
+ * speaks. 3.1 Flash Live only supports blocking tools, which is why the legacy
+ * path fakes async with handler-owned wait lines and injected results.
+ * @see https://ai.google.dev/gemini-api/docs/models/gemini-3.8-live-extended-thinking
+ */
+export function geminiLiveModelUsesAsyncTools(model: string): boolean {
+  return /^gemini-3\.8-live/.test(model.trim());
+}
+
+/** Only the Extended Thinking variant accepts `thinkingConfig` in setup. */
+export function geminiLiveModelSupportsThinkingConfig(model: string): boolean {
+  return /^gemini-3\.8-live-extended-thinking/.test(model.trim());
+}
+
+export type GeminiThinkingLevel = "low" | "medium" | "high";
+
+/** `MINIMAL` is not supported on 3.8 Live Extended Thinking; empty = model default. */
+export function parseGeminiThinkingLevel(raw: string): GeminiThinkingLevel | undefined {
+  const value = raw.trim().toLowerCase();
+  return value === "low" || value === "medium" || value === "high" ? value : undefined;
+}
+
+/** Browser thinking level (empty = model default). */
+export const GEMINI_LIVE_THINKING_LEVEL = parseGeminiThinkingLevel(envTrim("GEMINI_LIVE_THINKING_LEVEL"));
+/** Phone defaults to `low` — background reasoning adds latency a caller hears. */
+export const GEMINI_LIVE_PHONE_THINKING_LEVEL: GeminiThinkingLevel =
+  parseGeminiThinkingLevel(envTrim("GEMINI_LIVE_PHONE_THINKING_LEVEL")) ??
+  GEMINI_LIVE_THINKING_LEVEL ??
+  "low";
+
+/**
+ * Optional `scheduling` on async function responses (`WHEN_IDLE` | `INTERRUPT` | `SILENT`).
+ * Extended Thinking rejects scheduling, so this is opt-in for models that accept it.
+ */
+export const GEMINI_LIVE_RESULT_SCHEDULING = (() => {
+  const value = envTrim("GEMINI_LIVE_RESULT_SCHEDULING").toUpperCase();
+  return value === "WHEN_IDLE" || value === "INTERRUPT" || value === "SILENT" ? value : undefined;
+})();
+
+/** True when this process runs the native async-tool voice path (Gemini 3.8 Live). */
+export const VOICE_NATIVE_ASYNC_TOOLS =
+  VOICE_S2S_PROVIDER === "gemini_live" && geminiLiveModelUsesAsyncTools(GEMINI_LIVE_MODEL);
+
 /** gpt-realtime-2 internal reasoning; OpenAI recommends `low` for production voice agents. */
 export const OPENAI_REALTIME_REASONING_EFFORT = envTrim(
   "OPENAI_REALTIME_REASONING_EFFORT",
@@ -90,7 +135,7 @@ export const WEB_VOICE_ENABLED =
 
 export const WEB_SYSTEM_PROMPT = envTrim(
   "JOSHU_WEB_VOICE_SYSTEM_PROMPT",
-  buildVoiceSystemPrompt(resolvedIdentity, "web"),
+  buildVoiceSystemPrompt(resolvedIdentity, "web", { nativeAsyncTools: VOICE_NATIVE_ASYNC_TOOLS }),
 );
 
 export function geminiLiveConfigured(): boolean {
@@ -121,6 +166,10 @@ export function speechToSpeechEnabled(): boolean {
   return voiceEnabled();
 }
 
+/*
+ * Handler-owned progress ticks — legacy tool path only (OpenAI Realtime, Gemini 3.1).
+ * The native async path (Gemini 3.8) lets the model narrate waits itself.
+ */
 /** Delay after the initial "checking" ack finishes before first progress line (default 10s). */
 export const HERMES_PROGRESS_FIRST_DELAY_MS = Number(
   envTrim("VOICE_HERMES_PROGRESS_FIRST_DELAY_MS", "10000"),
@@ -138,7 +187,7 @@ export const HERMES_PROGRESS_MAX_TICKS = Number(envTrim("VOICE_HERMES_PROGRESS_M
 
 export const PHONE_SYSTEM_PROMPT = envTrim(
   "TWILIO_PHONE_SYSTEM_PROMPT",
-  buildVoiceSystemPrompt(resolvedIdentity, "phone"),
+  buildVoiceSystemPrompt(resolvedIdentity, "phone", { nativeAsyncTools: VOICE_NATIVE_ASYNC_TOOLS }),
 );
 
 /**

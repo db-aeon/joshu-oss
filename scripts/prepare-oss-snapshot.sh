@@ -92,6 +92,7 @@ rsync -a "${RSYNC_DELETE[@]}" \
   --exclude 'scripts/repair-fleet-ea-cron-timezone.sh' \
   --exclude 'scripts/check-fleet-box-vitals.sh' \
   --exclude 'scripts/hotpatch-browser-handoff.sh' \
+  --exclude 'scripts/canary-voice-gemini38.sh' \
   --exclude 'scripts/patrick-travel-booking-owner-selection.md' \
   --exclude 'scripts/sync-fleet-skills-from-image.sh' \
   --exclude 'scripts/hotfix-box-to-0.1.26.sh' \
@@ -180,6 +181,7 @@ rm -rf \
   "${OUT_DIR}/scripts/repair-fleet-ea-cron-timezone.sh" \
   "${OUT_DIR}/scripts/check-fleet-box-vitals.sh" \
   "${OUT_DIR}/scripts/hotpatch-browser-handoff.sh" \
+  "${OUT_DIR}/scripts/canary-voice-gemini38.sh" \
   "${OUT_DIR}/scripts/patrick-travel-booking-owner-selection.md" \
   "${OUT_DIR}/scripts/sync-fleet-skills-from-image.sh" \
   "${OUT_DIR}/scripts/hotfix-box-to-0.1.26.sh" \

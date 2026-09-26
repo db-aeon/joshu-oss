@@ -6,11 +6,18 @@ import {
   HERMES_PROGRESS_INTERVAL_MS,
   HERMES_PROGRESS_MAX_TICKS,
   HERMES_PROGRESS_POST_SPEECH_MS,
+  GEMINI_LIVE_THINKING_LEVEL,
   VOICE_S2S_PROVIDER,
   WEB_SYSTEM_PROMPT,
   JOSHU_IDENTITY,
 } from "./config.js";
-import { runJoshuThink, resolveThinkUserQuote } from "./brainThink.js";
+import {
+  fetchVoiceSessionContext,
+  runJoshuThink,
+  resolveThinkUserQuote,
+  type ThinkParams,
+} from "./brainThink.js";
+import { NATIVE_JOB_TOOL_NAMES, runNativeVoiceTool } from "./nativeToolRunner.js";
 import { resolveDesktopModule } from "./desktopModules.js";
 import { buildEmbeddedAppVoicePromptAddendum } from "./joshuIdentity.js";
 import { createVoiceS2sClient } from "./createVoiceS2sClient.js";
@@ -70,9 +77,11 @@ type BrainJob = {
   abort: AbortController;
   jobId: string;
   userQuote?: string;
-  /** When true, inject brain result for S2S to speak (think path). */
+  /** Legacy: inject brain result for S2S to speak (think path). */
   voiceInject: boolean;
   progress: JobProgressState | null;
+  /** Native async tools: think calls waiting on this job's result (function responses). */
+  nativeCallIds: string[];
 };
 
 /**
@@ -115,6 +124,11 @@ export class BrowserRealtimeSession {
   private appSurface: EmbeddedAppSurfaceContext | null = null;
   /** Multi-turn voice capture — buffer until finish_dictation / done phrase. */
   private dictation: DictationSessionState | null = null;
+  /**
+   * Native async tools (Gemini 3.8 Live): the model speaks tool results itself — no
+   * wait lines, progress ticks, organic muting during jobs, or injected results.
+   */
+  private nativeTools = false;
 
   constructor(private readonly ws: WebSocket) {}
 
@@ -229,6 +243,7 @@ export class BrowserRealtimeSession {
         injectPresentation: "screen",
         turnDetection: BROWSER_VAD,
         extraTools,
+        thinkingLevel: GEMINI_LIVE_THINKING_LEVEL,
       },
       {
         sessionId: this.sessionId,
@@ -240,6 +255,7 @@ export class BrowserRealtimeSession {
           );
           this.send({ event: "browser_ready", sessionId: this.sessionId, provider });
           this.setState("listening");
+          if (this.nativeTools) void this.appendBrokerContext();
         },
         onOutputAudioDelta: ({ deltaB64, itemId }) => this.forwardPcmDelta(deltaB64, itemId),
         onSpeechStarted: () => void this.handleSpeechStarted(),
@@ -260,7 +276,8 @@ export class BrowserRealtimeSession {
         },
         onResponseDone: (info) => {
           voiceLog(this.sessionId, provider, "response.done", info);
-          this.logSpokeBeforeThink(info);
+          if (this.nativeTools) this.logSpeechWhileToolPending();
+          else this.logSpokeBeforeThink(info);
           if (this.assistantPartial.trim()) {
             voiceLog(this.sessionId, "speech-out", "realtime spoke", {
               preview: this.assistantPartial.trim().slice(0, 400),
@@ -274,7 +291,8 @@ export class BrowserRealtimeSession {
             this.setState(this.brainJob ? "thinking" : "listening");
           }
           this.realtimeTurnSettled = true;
-          this.reconcileThinkAfterResponseDone(info);
+          // Native think always arrives as a tool call with an id — nothing to reconcile.
+          if (!this.nativeTools) this.reconcileThinkAfterResponseDone(info);
           this.finalizeOrganicSurfaceTurn(info);
           this.handleResponseDone(info);
           this.discardAssistantPartial();
@@ -282,12 +300,17 @@ export class BrowserRealtimeSession {
           this.activeSpeechReason = null;
         },
         onFunctionCall: (call) => void this.handleFunctionCall(call),
+        onSessionResumed: ({ reason }) => {
+          voiceLog(this.sessionId, provider, "upstream session resumed", { reason });
+        },
         onError: (msg) => {
           voiceWarn(this.sessionId, provider, msg);
           this.send({ event: "error", message: msg });
         },
       },
     );
+    this.nativeTools = this.s2s.nativeAsyncTools;
+    voiceLog(this.sessionId, provider, `tool mode=${this.nativeTools ? "native_async" : "legacy"}`);
 
     this.s2s.connect();
     voiceLog(this.sessionId, "browser", "stream start");
@@ -312,8 +335,8 @@ export class BrowserRealtimeSession {
 
   private forwardPcmDelta(deltaB64: string, itemId?: string): void {
     if (!deltaB64 || this.ws.readyState !== 1) return;
-    // Drop stray organic audio while Hermes is running — think path uses progress + inject only.
-    if (this.brainJob && this.activeSpeechReason === "organic") return;
+    // Legacy: drop stray organic audio while Hermes is running — think path uses progress + inject only.
+    if (!this.nativeTools && this.brainJob && this.activeSpeechReason === "organic") return;
     // Dictation buffers silently — only progress / inject speech should play.
     if (this.dictation?.active && this.activeSpeechReason === "organic") return;
     if (itemId) this.lastAssistantItem = itemId;
@@ -348,13 +371,13 @@ export class BrowserRealtimeSession {
   private handleSpeechStarted(): void {
     // OpenAI speech_started also fires when the user begins a normal turn — only barge-in during TTS.
     if (this.sessionState !== "speaking") return;
-    // During think, only interrupt casual S2S — not progress ticks or Hermes summary playback.
-    if (this.brainJob && this.activeSpeechReason !== "organic") return;
+    // Legacy: during think, only interrupt casual S2S — not progress ticks or Hermes summary playback.
+    if (!this.nativeTools && this.brainJob && this.activeSpeechReason !== "organic") return;
     this.applyBargeIn("vad");
   }
 
   private handleResponseStarted(reason: ResponseSpeechReason, seq: number): void {
-    if (this.brainJob && reason === "organic") {
+    if (!this.nativeTools && this.brainJob && reason === "organic") {
       voiceWarn(this.sessionId, "think", "cancel unexpected organic speech during brain job", { seq });
       this.s2s?.cancelActiveResponse();
       this.activeSpeechReason = null;
@@ -381,6 +404,33 @@ export class BrowserRealtimeSession {
       spokePreview: this.assistantPartial.trim().slice(0, 200),
       hint: "S2S spoke in the same turn as think — user may hear a guess before Hermes answers",
     });
+  }
+
+  /**
+   * Native eval signal: what the model said while its think call was still running.
+   * A short ack is expected; owner facts here are the hallucination we measure
+   * (grep `owner-fact-before-result`).
+   */
+  private logSpeechWhileToolPending(): void {
+    if (!this.brainJob?.nativeCallIds.length) return;
+    if (this.activeSpeechReason === "function_result") return;
+    const spoke = this.assistantPartial.trim();
+    if (!spoke) return;
+    voiceLog(this.sessionId, "eval", "owner-fact-before-result candidate", {
+      spoke: spoke.slice(0, 300),
+      jobId: this.brainJob.jobId,
+    });
+  }
+
+  /** Native path: tell the model about queued / blocked / finished background work. */
+  private async appendBrokerContext(): Promise<void> {
+    const context = await fetchVoiceSessionContext({
+      callSid: this.surfaceSessionId,
+      jobId: `context-${randomUUID().slice(0, 8)}`,
+      presentation: "screen",
+      appContext: this.appSurface ?? undefined,
+    });
+    if (context) this.s2s?.appendContext(context);
   }
 
   private applyBargeIn(source: "client" | "vad"): void {
@@ -504,6 +554,19 @@ export class BrowserRealtimeSession {
         return;
       }
       // User is already inside this embedded app — route to think instead of re-opening desktop.
+      if (
+        this.nativeTools &&
+        this.surfaceAppId &&
+        surfaceTargetsCurrentApp(this.surfaceAppId, moduleName)
+      ) {
+        // Native: tell the model; it calls think itself for the in-app task.
+        // A plain completed result — 3.8 voices non-"done" replies as failures.
+        s2s.sendFunctionResult(call.callId, {
+          status: "done",
+          answer: `${moduleName} is already open. For tasks inside it, use think.`,
+        });
+        return;
+      }
       if (this.surfaceAppId && surfaceTargetsCurrentApp(this.surfaceAppId, moduleName)) {
         voiceLog(this.sessionId, "tool", "open_desktop blocked — embedded app active, starting think", {
           app: moduleName,
@@ -550,6 +613,11 @@ export class BrowserRealtimeSession {
         );
         return;
       }
+    }
+
+    if (this.nativeTools && NATIVE_JOB_TOOL_NAMES.has(toolName)) {
+      this.handleNativeJobTool(call.callId, toolName, args);
+      return;
     }
 
     if (toolName !== "think") {
@@ -608,6 +676,71 @@ export class BrowserRealtimeSession {
       withProgress: true,
       source: "think",
     });
+  }
+
+  /**
+   * Native path: think runs as a brain job whose result goes back as the function
+   * response (Hermes still streams the full answer to the surface); start_task queues
+   * a background goal and shows the confirmation on the surface.
+   */
+  private handleNativeJobTool(callId: string, toolName: string, args: Record<string, unknown>): void {
+    const userQuote = resolveThinkUserQuote(
+      typeof args.user_quote === "string" ? args.user_quote : undefined,
+      this.pendingUserQuote,
+    );
+
+    if (toolName === "start_task") {
+      void this.runNativeStartTask(callId, args, userQuote);
+      return;
+    }
+
+    this.turnThinkRequested = true;
+    this.organicSurfaceSync = false;
+    const job = this.brainJob;
+    if (job) {
+      // Several think calls can land for one utterance — all get the same answer.
+      job.nativeCallIds.push(callId);
+      if (userQuote && !job.userQuote) job.userQuote = userQuote;
+      voiceLog(this.sessionId, "think", `native think joins job=${job.jobId}`, { callId });
+      return;
+    }
+    this.startBrainJob({
+      intent: String(args.intent ?? "task"),
+      summary: String(args.summary ?? this.conversationSummary()),
+      userQuote,
+      voiceInject: false,
+      nativeCallId: callId,
+      source: "think",
+    });
+  }
+
+  private async runNativeStartTask(
+    callId: string,
+    args: Record<string, unknown>,
+    userQuote: string | undefined,
+  ): Promise<void> {
+    const jobId = randomUUID().slice(0, 8);
+    voiceLog(this.sessionId, "think", `native start_task job=${jobId}`, {
+      title: String(args.title ?? "").slice(0, 120),
+    });
+    const outcome = await runNativeVoiceTool({
+      kind: "start_task",
+      task: {
+        callSid: this.surfaceSessionId,
+        jobId,
+        presentation: "screen",
+        appContext: this.appSurface ?? undefined,
+        title: String(args.title ?? ""),
+        objective: String(args.objective ?? userQuote ?? this.conversationSummary()),
+        userQuote,
+      },
+    });
+    if (!this.s2s) return;
+    if (outcome.rawText) {
+      this.pushTranscript("assistant", outcome.rawText);
+      this.emitSurface(surfaceAssistantDone(outcome.rawText));
+    }
+    this.s2s.sendFunctionResult(callId, outcome.result);
   }
 
   /** Buffer STT while dictating; auto-finish on clear done phrases. */
@@ -770,7 +903,9 @@ export class BrowserRealtimeSession {
         this.pendingUserQuote = userQuote;
         return;
       }
-      this.cancelBrainJob(true);
+      // Native: the model is still waiting on this job's function result — the owner
+      // talking about something else must not abandon it.
+      if (!this.nativeTools) this.cancelBrainJob(true);
     }
 
     this.pendingUserQuote = userQuote;
@@ -850,6 +985,8 @@ export class BrowserRealtimeSession {
     summary?: string;
     voiceInject: boolean;
     withProgress?: boolean;
+    /** Native path: the think call waiting on this job's function result. */
+    nativeCallId?: string;
     source?: "think";
   }): void {
     this.cancelBrainJob(true);
@@ -870,6 +1007,7 @@ export class BrowserRealtimeSession {
       progress: params.withProgress
         ? { tick: 0, phase: "awaiting_ack", timer: null, longWaitSent: false }
         : null,
+      nativeCallIds: params.nativeCallId ? [params.nativeCallId] : [],
     };
 
     this.setState("thinking");
@@ -918,29 +1056,34 @@ export class BrowserRealtimeSession {
     if (userQuote && this.brainJob?.jobId === params.jobId) {
       this.brainJob.userQuote = userQuote;
     }
+    const thinkParams: ThinkParams = {
+      callSid: this.surfaceSessionId,
+      jobId: params.jobId,
+      intent: params.intent,
+      summary: params.summary,
+      userQuote,
+      signal: params.abort.signal,
+      presentation: "screen",
+      appContext: this.appSurface ?? undefined,
+      onDelta: (delta) => {
+        if (this.brainJob?.jobId !== params.jobId) return;
+        this.emitSurface(surfaceAssistantDelta(delta));
+      },
+      onDesktopAction: (action) => {
+        if (this.brainJob?.jobId !== params.jobId) return;
+        this.emitSurface(surfaceDesktopAction(action));
+      },
+      onAppAction: (action) => {
+        if (this.brainJob?.jobId !== params.jobId) return;
+        this.emitSurface(surfaceAppAction(action.appId, action.action, action.args));
+      },
+    };
     try {
-      const hermesText = await runJoshuThink({
-        callSid: this.surfaceSessionId,
-        jobId: params.jobId,
-        intent: params.intent,
-        summary: params.summary,
-        userQuote,
-        signal: params.abort.signal,
-        presentation: "screen",
-        appContext: this.appSurface ?? undefined,
-        onDelta: (delta) => {
-          if (this.brainJob?.jobId !== params.jobId) return;
-          this.emitSurface(surfaceAssistantDelta(delta));
-        },
-        onDesktopAction: (action) => {
-          if (this.brainJob?.jobId !== params.jobId) return;
-          this.emitSurface(surfaceDesktopAction(action));
-        },
-        onAppAction: (action) => {
-          if (this.brainJob?.jobId !== params.jobId) return;
-          this.emitSurface(surfaceAppAction(action.appId, action.action, action.args));
-        },
-      });
+      if (this.brainJob?.jobId === params.jobId && this.brainJob.nativeCallIds.length > 0) {
+        await this.completeNativeThink(params.jobId, params.abort, thinkParams, t0);
+        return;
+      }
+      const hermesText = await runJoshuThink(thinkParams);
       if (params.abort.signal.aborted) return;
 
       voiceLog(this.sessionId, "think", `ui done job=${params.jobId} ms=${Math.round(performance.now() - t0)}`, {
@@ -982,6 +1125,32 @@ export class BrowserRealtimeSession {
         }
       }
     }
+  }
+
+  /**
+   * Native think: Hermes streams the full answer to the surface as usual; the result
+   * goes back to every waiting think call as a function response the model summarizes.
+   */
+  private async completeNativeThink(
+    jobId: string,
+    abort: AbortController,
+    thinkParams: ThinkParams,
+    t0: number,
+  ): Promise<void> {
+    const outcome = await runNativeVoiceTool({ kind: "think", think: thinkParams });
+    if (abort.signal.aborted) return;
+    const surfaceText =
+      outcome.source === "error"
+        ? `I tried to complete your request but ran into a problem: ${String(outcome.result.error ?? "")}`
+        : outcome.rawText;
+    voiceLog(this.sessionId, "think", `native done job=${jobId} ms=${Math.round(performance.now() - t0)}`, {
+      source: outcome.source,
+      preview: surfaceText.slice(0, 200),
+    });
+    this.pushTranscript("assistant", surfaceText);
+    this.emitSurface(surfaceAssistantDone(surfaceText));
+    const callIds = this.brainJob?.jobId === jobId ? this.brainJob.nativeCallIds : [];
+    for (const callId of callIds) this.s2s?.sendFunctionResult(callId, outcome.result);
   }
 
   private finishHermesProgress(job: BrainJob): void {

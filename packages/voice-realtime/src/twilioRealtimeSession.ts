@@ -7,6 +7,7 @@ import {
   HERMES_PROGRESS_MAX_TICKS,
   HERMES_PROGRESS_POST_SPEECH_MS,
   HERMES_API_KEY,
+  GEMINI_LIVE_PHONE_THINKING_LEVEL,
   PHONE_SYSTEM_PROMPT,
   PHONE_VAD_EAGERNESS,
   PHONE_VAD_MODE,
@@ -18,11 +19,17 @@ import {
   VOICE_S2S_PROVIDER,
 } from "./config.js";
 import {
+  fetchVoiceSessionContext,
   resolveThinkUserQuote,
   runJoshuThinkDetailed,
   speakableWithLinksTexted,
   textAnswerToOwner,
 } from "./brainThink.js";
+import {
+  NATIVE_JOB_TOOL_NAMES,
+  runNativeVoiceTool,
+  type NativeToolRequest,
+} from "./nativeToolRunner.js";
 import { classifyWrapUp, wrapUpApplies, wrapUpLine } from "./phoneWrapUp.js";
 import { JOSHU_IDENTITY } from "./config.js";
 import { createVoiceS2sClient, voiceS2sProviderLabel } from "./createVoiceS2sClient.js";
@@ -95,6 +102,9 @@ const TEXT_OFFER_LINE =
 const DETACHED_JOB_MAX_MS = 10 * 60_000;
 /** Wrap-up heard via transcript and via the model's think call count once. */
 const WRAP_UP_DEDUPE_MS = 5_000;
+/** Native end_call: silence after the goodbye before hanging up, and the upper bound. */
+const END_CALL_QUIET_MS = 1_200;
+const END_CALL_MAX_WAIT_MS = 15_000;
 
 /**
  * PSTN: server_vad (default) for low latency; semantic_vad opt-in via VOICE_PHONE_VAD_MODE.
@@ -129,6 +139,16 @@ type ActiveJoshuJob = {
   detached: boolean;
 };
 
+/** Native path: one async tool call (think / start_task) the model is waiting on. */
+type NativeToolJob = {
+  abort: AbortController;
+  jobId: string;
+  callId: string;
+  tool: string;
+  /** Caller hung up while this ran; its answer is texted instead of spoken. */
+  detached: boolean;
+};
+
 type StartMetadata = {
   caller?: string;
   ownerCaller?: string;
@@ -157,7 +177,15 @@ export class TwilioRealtimeSession {
   private modelAudioPlaysUntil = 0;
   private transcript: TranscriptTurn[] = [];
   private assistantPartial = "";
+  /** Legacy path: the single brain job the handler owns speech for. */
   private activeJob: ActiveJoshuJob | null = null;
+  /**
+   * Native async tools (Gemini 3.8 Live): the model speaks tool results itself, so
+   * none of the legacy wait lines / organic muting / injected results apply.
+   */
+  private nativeTools = false;
+  /** Native path: in-flight tool calls by callId (several may run at once). */
+  private nativeJobs = new Map<string, NativeToolJob>();
   private thinkAuthorized = false;
   private requiresRestatedIntentAfterUnlock = false;
   /** Failed clear passphrase attempts this call (hang up at MAX_PASSPHRASE_ATTEMPTS). */
@@ -185,6 +213,10 @@ export class TwilioRealtimeSession {
   private greetingSent = false;
   private turn = 0;
   private responseNum = 0;
+  /** responseNum of the last response that reported done (native end_call waits on it). */
+  private responsesDone = 0;
+  /** Native: the model asked to hang up; one hang-up per call. */
+  private endCallRequested = false;
   /** Set before requestOrganicResponse / injectRepromptMessage; cleared on response.created. */
   private joshuInitiatedResponse = false;
   /** Gemini PSTN: drop unsolicited organic audio until the caller's first validated turn. */
@@ -255,8 +287,10 @@ export class TwilioRealtimeSession {
         systemPrompt: PHONE_SYSTEM_PROMPT,
         injectPresentation: "voice_only",
         turnDetection: PHONE_VAD,
-        // PSTN implements `think` only; declaring open_desktop made the model fake app opens.
+        // PSTN implements think (+ start_task natively) and dictation; declaring
+        // open_desktop made the model fake app opens.
         toolNames: PHONE_TOOL_NAMES,
+        thinkingLevel: GEMINI_LIVE_PHONE_THINKING_LEVEL,
       },
       {
         sessionId: callSid,
@@ -317,7 +351,10 @@ export class TwilioRealtimeSession {
         if (
           this.geminiPhone &&
           reason === "organic" &&
-          (!this.thinkAuthorized || this.requiresRestatedIntentAfterUnlock)
+          (!this.thinkAuthorized || this.requiresRestatedIntentAfterUnlock) &&
+          // Native with clips: muted, not cancelled — aborting 3.8's generation makes
+          // it tell the caller "a system error occurred".
+          !(this.nativeTools && this.deterministicLockPrompts)
         ) {
           voiceLog(this.callSid, "auth", "cancel gemini organic — Joshu owns lock/unlock clips", {
             seq,
@@ -355,12 +392,13 @@ export class TwilioRealtimeSession {
         voiceLog(this.callSid, "turn", `${tag} SPEECH START source=${reason} seq=${seq}`);
       },
       onResponseDone: (info) => {
+        this.responsesDone = this.responseNum;
         if (info.status === "cancelled") {
           voiceLog(this.callSid, provider, `resp #${this.responseNum} response.cancelled`);
           return;
         }
         this.flushAssistantSpeech(this.currentResponseReason);
-        this.logSpokeBeforeThink(info);
+        if (!this.nativeTools) this.logSpokeBeforeThink(info);
         voiceLog(this.callSid, provider, `resp #${this.responseNum} response.done`, info);
         if (
           this.geminiPhone &&
@@ -396,9 +434,21 @@ export class TwilioRealtimeSession {
         }
       },
       onFunctionCall: (call) => void this.handleFunctionCall(call),
+      onInteractionIdle: ({ functionCalls }) => {
+        if (functionCalls.length) {
+          voiceLog(this.callSid, provider, "interaction idle", { functionCalls });
+        }
+      },
+      onSessionResumed: ({ reason }) => {
+        voiceLog(this.callSid, provider, "upstream session resumed", { reason });
+      },
       onError: (msg) => voiceWarn(this.callSid, provider, msg),
       },
     );
+    this.nativeTools = this.s2s.nativeAsyncTools;
+    // Native: locked-call muting (clips + lock cancels) already covers pre-user noise.
+    if (this.nativeTools) this.suppressAssistantAudio = false;
+    voiceLog(callSid, provider, `tool mode=${this.nativeTools ? "native_async" : "legacy"}`);
 
     this.s2s.connect();
     this.scheduleSessionDeadline();
@@ -438,6 +488,7 @@ export class TwilioRealtimeSession {
     // An answer still being worked on is texted when it lands — hanging up
     // must not throw away work the caller asked for (e.g. "email me that").
     this.detachActiveJob();
+    this.detachNativeJobs();
     this.dictation = null;
     this.clearSessionDeadline();
     voiceLog(this.callSid, "twilio", "stream close", this.metrics);
@@ -456,7 +507,11 @@ export class TwilioRealtimeSession {
    * "Thank you." or "Unlocked.", which reads to the caller as being let in.
    */
   private modelMutedByLock(): boolean {
-    return this.deterministicLockPrompts && !this.thinkAuthorized;
+    if (!this.deterministicLockPrompts) return false;
+    if (!this.thinkAuthorized) return true;
+    // Native: also mute (rather than cancel) until the caller restates after unlock —
+    // leftover passphrase audio must not get a spoken reply.
+    return this.nativeTools && this.requiresRestatedIntentAfterUnlock;
   }
 
   private injectGreeting(metadata?: StartMetadata): void {
@@ -657,13 +712,20 @@ export class TwilioRealtimeSession {
       const justUnlocked = this.updateThinkAuthorization(text, "transcript");
       if (justUnlocked) {
         const isGoalCallback = this.isGoalCallback();
-        // Normal calls wait for a fresh request. Authenticated goal callbacks
-        // disclose the queued result immediately after the unlock line.
-        this.requiresRestatedIntentAfterUnlock = !isGoalCallback;
+        // Legacy: normal calls wait for a fresh request. Authenticated goal callbacks
+        // disclose the queued result immediately after the unlock line. Native: no
+        // gate — the unlock context tells the model the passphrase was not a request,
+        // and the tool guard still rejects passphrase-only calls.
+        this.requiresRestatedIntentAfterUnlock = !isGoalCallback && !this.nativeTools;
         const unlockMs = this.speakLockLine(isGoalCallback ? "unlocked_callback" : "unlocked");
+        // Owner context only after authentication — never while the call is locked.
+        const contextSent = this.nativeTools
+          ? this.appendBrokerContext(isGoalCallback)
+          : Promise.resolve();
         if (isGoalCallback) {
+          // The callback framing must reach the model before the result does.
           setTimeout(
-            () => void this.deliverRealtimeGoalCallback(),
+            () => void contextSent.then(() => this.deliverRealtimeGoalCallback()),
             Math.max(750, unlockMs + 250),
           );
         }
@@ -688,6 +750,13 @@ export class TwilioRealtimeSession {
     }
 
     if (kind === "unclear") {
+      if (this.nativeTools) {
+        // Native: the model hears the audio itself and decides whether "mmm" or a
+        // half sentence needs a reply. A Joshu reprompt on top of that talked over the
+        // caller while they were still thinking (canary box 2026-09-25 "mmm" test).
+        voiceLog(this.callSid, "turn", `#${this.turn} USER (unclear) → ${JSON.stringify(text)} — model decides`);
+        return;
+      }
       voiceLog(this.callSid, "turn", `#${this.turn} USER (unclear) → ${JSON.stringify(text)} — reprompting`);
       if (this.requiresRestatedIntentAfterUnlock) {
         this.speakLockLine("restate_intent");
@@ -705,8 +774,9 @@ export class TwilioRealtimeSession {
         isPassphraseResidue(text, password, { graceWindow: this.withinUnlockGrace() }))
     ) {
       voiceLog(this.callSid, "auth", `#${this.turn} ignoring passphrase residue after unlock`);
-      // Gemini hears audio directly and may already be answering the fragment.
-      if (this.geminiPhone && this.currentResponseReason === "organic") {
+      // Legacy Gemini hears audio directly and may already be answering the fragment.
+      // Native: the model knows it was the passphrase; let it reply (or not) itself.
+      if (this.geminiPhone && !this.nativeTools && this.currentResponseReason === "organic") {
         this.s2s?.cancelActiveResponse();
       }
       return;
@@ -729,7 +799,8 @@ export class TwilioRealtimeSession {
       void this.submitRealtimeGoalReply(safeText);
       return;
     }
-    if (safeText && this.handleWrapUp(safeText)) return;
+    // Native: the model says goodbye itself and ends the call with end_call.
+    if (safeText && !this.nativeTools && this.handleWrapUp(safeText)) return;
     this.continueUnlockedTurn(safeText);
   }
 
@@ -745,7 +816,7 @@ export class TwilioRealtimeSession {
   private handleWrapUp(text: string): boolean {
     const kind = classifyWrapUp(text);
     if (!kind) return false;
-    const jobPending = Boolean(this.activeJob && !this.activeJob.detached);
+    const jobPending = this.hasPendingJob();
     if (!wrapUpApplies(kind, this.lastAssistantText(), jobPending)) return false;
     const now = performance.now();
     // Same utterance arrives as a transcript and inside the model's think call.
@@ -783,6 +854,13 @@ export class TwilioRealtimeSession {
     if (this.requiresRestatedIntentAfterUnlock && safeText) {
       this.requiresRestatedIntentAfterUnlock = false;
       voiceLog(this.callSid, "auth", "accepted first post-unlock restated intent");
+    }
+    if (this.nativeTools) {
+      // Native: the model decides whether and how to reply (proactive audio is always
+      // on). Only re-request a reply Joshu itself cancelled (goal-callback fallthrough).
+      this.allowGeminiCallerReply("validated transcript");
+      if (options.forceResponse) s2s.requestOrganicResponse();
+      return;
     }
     if (this.geminiPhone) {
       this.allowGeminiCallerReply("validated transcript");
@@ -905,10 +983,8 @@ export class TwilioRealtimeSession {
       this.realtimeGoalAckPending = true;
       this.realtimeGoalResponseDone = false;
       this.s2s.injectAssistantMessage(
-        payload.kind === "blocked"
-          ? result
-          : `${result}\n\nIs there anything else you'd like me to handle?`,
-        payload.kind === "blocked" ? "question" : "answer",
+        result,
+        payload.kind === "blocked" ? "callback_question" : "callback_answer",
       );
     } catch (error) {
       voiceWarn(this.callSid, "goal-callback", "result delivery failed", {
@@ -984,9 +1060,33 @@ export class TwilioRealtimeSession {
 
   private onGeminiInputTranscript(text: string): void {
     if (!this.geminiPhone || !text.trim()) return;
+    if (this.nativeTools && this.thinkAuthorized && this.requiresRestatedIntentAfterUnlock) {
+      this.maybeClearRestateGateEarly(text);
+    }
     if (!this.thinkAuthorized || this.requiresRestatedIntentAfterUnlock) return;
     this.allowGeminiCallerReply("input transcript");
-    this.geminiUserTurnNeedsReply = true;
+    // Legacy only: nudge a reply if Gemini's auto-reply stays silent.
+    if (!this.nativeTools) this.geminiUserTurnNeedsReply = true;
+  }
+
+  /**
+   * Native: open the post-unlock gate on Gemini's live input transcription instead of
+   * waiting for the end-of-turn transcript — 3.8 starts answering before that lands, and
+   * the muted start of its reply would otherwise be clipped. Passphrase residue and
+   * unclear fragments keep the gate closed.
+   */
+  private maybeClearRestateGateEarly(text: string): void {
+    if (classifyUserTranscript(text) !== "clear") return;
+    const password = resolveTwilioThinkPassword();
+    if (
+      password &&
+      (isPassphraseOnlyTurn(text, password) ||
+        isPassphraseResidue(text, password, { graceWindow: this.withinUnlockGrace() }))
+    ) {
+      return;
+    }
+    this.requiresRestatedIntentAfterUnlock = false;
+    voiceLog(this.callSid, "auth", "restate satisfied", { via: "live_transcript" });
   }
 
   private allowGeminiCallerReply(reason: string): void {
@@ -1073,8 +1173,24 @@ export class TwilioRealtimeSession {
       text: t.slice(0, 400),
       chars: t.length,
     });
+    this.logSpeechWhileToolPending(t, source);
     this.transcript.push({ role: "assistant", text: t });
     this.assistantPartial = "";
+  }
+
+  /**
+   * Native eval signal: what the model said while a tool it called was still running.
+   * A short ack is expected; owner facts here are the hallucination we measure
+   * (grep `owner-fact-before-result`).
+   */
+  private logSpeechWhileToolPending(text: string, source: ResponseSpeechReason): void {
+    if (!this.nativeTools || source === "function_result") return;
+    const pending = [...this.nativeJobs.values()].filter((job) => !job.detached);
+    if (pending.length === 0) return;
+    voiceLog(this.callSid, "eval", "owner-fact-before-result candidate", {
+      spoke: text.slice(0, 300),
+      pendingTools: pending.map((job) => job.tool),
+    });
   }
 
   /** Warn when Realtime spoke (often a denial) then called think in the same response. */
@@ -1095,7 +1211,13 @@ export class TwilioRealtimeSession {
   }
 
   private flushAssistantPartial(): void {
-    // Discard in-flight partial — flushing here splits one reply into multiple SPEECH OUT lines.
+    // Native: keep what the model said when the caller talks over it — 3.8 replies while
+    // the caller is still going, and discarding hid those replies from the logs and the
+    // think context. Legacy: discard — flushing split one reply into several SPEECH OUT lines.
+    if (this.nativeTools) {
+      this.flushAssistantSpeech(this.currentResponseReason);
+      return;
+    }
     this.assistantPartial = "";
   }
 
@@ -1237,17 +1359,17 @@ export class TwilioRealtimeSession {
 
     // Auth gate is transcript-only. While locked, ignore every tool call — do not
     // unlock from Gemini wrapping the passphrase in think (that raced clips and
-    // leftover STT on patrick 2026-08-22).
+    // leftover STT on the canary box 2026-08-22).
     if (!this.thinkAuthorized) {
       voiceWarn(this.callSid, "auth", `ignored ${toolName} while locked (transcript auth only)`);
-      s2s.sendFunctionOutput(
+      this.declineToolCall(
         call.callId,
-        JSON.stringify({
+        {
           status: "denied",
           reason: "missing_passphrase",
           message: "Call is locked. Stay silent. Joshu will speak the lock prompts.",
-        }),
-        { triggerResponse: false },
+        },
+        "Nothing to look up — the caller was saying their passphrase, not making a request.",
       );
       return;
     }
@@ -1265,7 +1387,13 @@ export class TwilioRealtimeSession {
       return;
     }
 
-    if (toolName !== "think") {
+    if (this.nativeTools && toolName === "end_call") {
+      this.handleEndCall(call.callId);
+      return;
+    }
+
+    const nativeJobTool = this.nativeTools && NATIVE_JOB_TOOL_NAMES.has(toolName);
+    if (toolName !== "think" && !nativeJobTool) {
       // Not declared to the model on PSTN (see PHONE_TOOL_NAMES) — hallucinated call.
       voiceWarn(this.callSid, "tool", `unsupported tool on phone: ${call.name}`);
       s2s.sendFunctionOutput(
@@ -1278,60 +1406,71 @@ export class TwilioRealtimeSession {
       return;
     }
 
+    const rawUserQuote = typeof args.user_quote === "string" ? args.user_quote : undefined;
+    // Checked before the restate gate so a passphrase-only call gets the right explanation.
+    if (this.quoteIsOnlyPassphrase(rawUserQuote)) {
+      // The model heard the unlock phrase and turned it into a task ("Save note",
+      // "search red swoosh" on the canary box 2026-09-25).
+      voiceWarn(this.callSid, "auth", "ignored think — quoted request is only the passphrase", {
+        quoteChars: rawUserQuote?.length ?? 0,
+      });
+      this.declineToolCall(
+        call.callId,
+        {
+          status: "ignored",
+          reason: "passphrase_is_not_a_request",
+          message: "The caller only said their passphrase. It is not a request. Do not call think for it; stay silent.",
+        },
+        "Passphrase accepted. It was not a request, so there is nothing to look up.",
+      );
+      return;
+    }
+
     if (this.requiresRestatedIntentAfterUnlock) {
+      // The model hears audio directly and usually calls the tool before our transcript
+      // of the restated request lands. Its own quote counts as the restatement (passphrase
+      // residue was rejected above). Caller transcript is the fallback; the model's own
+      // `summary` is not — it wrote "checking notes, files…" about the passphrase and
+      // opened the gate on its keywords.
+      const quotedRequest = Boolean(
+        rawUserQuote && this.sanitizeTextForThinkContext(rawUserQuote).trim(),
+      );
       const hasTaskInContext =
-        this.transcript.some(
-          (t) => t.role === "user" && looksLikePhoneTaskRequest(t.text),
-        ) || looksLikePhoneTaskRequest(String(args.summary ?? ""));
+        quotedRequest ||
+        this.transcript.some((t) => t.role === "user" && looksLikePhoneTaskRequest(t.text));
       if (hasTaskInContext) {
         this.requiresRestatedIntentAfterUnlock = false;
-        voiceLog(this.callSid, "auth", "restate satisfied — prior task still in call context");
+        voiceLog(this.callSid, "auth", "restate satisfied", {
+          via: quotedRequest ? "tool_quote" : "call_context",
+        });
       } else {
         voiceLog(this.callSid, "auth", "deferred think until caller restates intent after unlock");
-        s2s.sendFunctionOutput(
+        this.declineToolCall(
           call.callId,
-          JSON.stringify({
+          {
             status: "deferred",
             reason: "restate_after_unlock_required",
             message: "Stay silent. Joshu already asked the caller to repeat their request.",
-          }),
-          { triggerResponse: false },
+          },
+          "Nothing to look up yet — the caller has not made a request since the call was unlocked.",
         );
         return;
       }
     }
 
-    const rawUserQuote = typeof args.user_quote === "string" ? args.user_quote : undefined;
-    if (this.quoteIsOnlyPassphrase(rawUserQuote)) {
-      // The model heard the unlock phrase and turned it into a task ("Save note").
-      voiceWarn(this.callSid, "auth", "ignored think — quoted request is only the passphrase", {
-        quoteChars: rawUserQuote?.length ?? 0,
-      });
-      s2s.sendFunctionOutput(
-        call.callId,
-        JSON.stringify({
-          status: "ignored",
-          reason: "passphrase_is_not_a_request",
-          message: "The caller only said their passphrase. It is not a request. Do not call think for it; stay silent.",
-        }),
-        { triggerResponse: false },
-      );
-      return;
-    }
-
     // The model hears audio directly and often calls think before our transcript
     // lands — "No, thank you" must not become a request (or a goal update).
     const quotedWrapUp = rawUserQuote ? this.sanitizeTextForThinkContext(rawUserQuote) : "";
-    if (quotedWrapUp && this.handleWrapUp(quotedWrapUp)) {
+    if (quotedWrapUp && !this.nativeTools && this.handleWrapUp(quotedWrapUp)) {
       voiceLog(this.callSid, "wrap-up", "ignored think — caller is wrapping up");
-      s2s.sendFunctionOutput(
+      this.declineToolCall(
         call.callId,
-        JSON.stringify({
+        {
           status: "ignored",
           reason: "caller_wrapping_up",
           message: "The caller is wrapping up, not asking for anything. Joshu is saying goodbye; stay silent.",
-        }),
-        { triggerResponse: false },
+        },
+        "Nothing to look up — the caller is wrapping up, not asking for anything.",
       );
       return;
     }
@@ -1344,6 +1483,11 @@ export class TwilioRealtimeSession {
     );
     const jobId = randomUUID().slice(0, 8);
     this.requiresRestatedIntentAfterUnlock = false;
+
+    if (nativeJobTool) {
+      this.startNativeJob(call.callId, toolName, jobId, { args, intent, summary, userQuote });
+      return;
+    }
 
     voiceLog(this.callSid, "turn", `#${this.turn} THINK START job=${jobId} intent=${JSON.stringify(intent)}`, {
       userQuote,
@@ -1513,6 +1657,166 @@ export class TwilioRealtimeSession {
       summary: this.sanitizeTextForThinkContext(msg.summary),
       userQuote: msg.userQuote,
     });
+  }
+
+  /**
+   * Answer a tool call Joshu will not act on. Legacy: silent tool output. Native: an
+   * ordinary completed result with a plain factual answer. 3.8 treats anything else as
+   * a failed tool and later tells the caller "a system error occurred" — measured on
+   * the callback replay: `nothing_to_do` + instructions 3–4/6 runs, `done` + answer 1/18.
+   */
+  private declineToolCall(callId: string, legacy: Record<string, unknown>, nativeAnswer: string): void {
+    if (this.nativeTools) {
+      this.s2s?.sendFunctionResult(callId, { status: "done", answer: nativeAnswer });
+      return;
+    }
+    this.s2s?.sendFunctionOutput(callId, JSON.stringify(legacy), { triggerResponse: false });
+  }
+
+  /**
+   * Native: the model said goodbye and asked to end the call. Hang up once its goodbye
+   * has finished playing; unfinished tool answers are texted (detach on close).
+   */
+  private handleEndCall(callId: string): void {
+    this.s2s?.sendFunctionResult(callId, {
+      status: "ok",
+      note: "The call will end after your goodbye finishes playing. Say nothing more.",
+    });
+    if (this.endCallRequested) return;
+    this.endCallRequested = true;
+    voiceLog(this.callSid, "wrap-up", "end_call — hanging up after goodbye plays");
+    const startedAt = performance.now();
+    let quietSince = 0;
+    const poll = setInterval(() => {
+      const now = performance.now();
+      const speaking = this.assistantIsSpeaking() || this.responseInProgress();
+      quietSince = speaking ? 0 : quietSince || now;
+      // Wait for a short stretch of silence (goodbye may still be generating), bounded.
+      if ((quietSince && now - quietSince >= END_CALL_QUIET_MS) || now - startedAt >= END_CALL_MAX_WAIT_MS) {
+        clearInterval(poll);
+        this.hangUpSilently();
+      }
+    }, 250);
+    poll.unref?.();
+  }
+
+  /** A model response started and has not reported done yet. */
+  private responseInProgress(): boolean {
+    return this.responseNum > this.responsesDone;
+  }
+
+  /** A brain job or native tool call is still working for the caller. */
+  private hasPendingJob(): boolean {
+    if (this.activeJob && !this.activeJob.detached) return true;
+    return [...this.nativeJobs.values()].some((job) => !job.detached);
+  }
+
+  /**
+   * Native path, on unlock: the model never hears Joshu's lock clips (they go straight
+   * to Twilio), so tell it the call is open — plus queued / blocked / finished work.
+   */
+  private async appendBrokerContext(goalCallback = false): Promise<void> {
+    const context = await fetchVoiceSessionContext({
+      callSid: this.callSid,
+      jobId: `context-${randomUUID().slice(0, 8)}`,
+      presentation: "phone",
+    }).catch(() => undefined);
+    if (!this.thinkAuthorized) return;
+    const passphraseNote =
+      "What they just said was the passphrase, not a request: do not act on it or search for it. Nothing has failed.";
+    const unlocked = goalCallback
+      ? `[Joshu: passphrase accepted — the owner is authenticated. This is an OUTBOUND call: Joshu called the owner to report on background work they asked for earlier; they did not call you. ${passphraseNote} Joshu hands you the result next — open by saying why you called, then relay it.]`
+      : `[Joshu: passphrase accepted — the call is unlocked and the caller is the authenticated owner. ${passphraseNote} Joshu already told them the call is unlocked and asked for their request, so do not greet them again — wait for their request and respond normally.]`;
+    this.s2s?.appendContext(context ? `${unlocked}\n\n${context}` : unlocked);
+  }
+
+  /**
+   * Native path: run think / start_task in the background. The model keeps the
+   * conversation going and speaks the function result itself — no wait line,
+   * progress ticks, or injected answer.
+   */
+  private startNativeJob(
+    callId: string,
+    tool: string,
+    jobId: string,
+    params: { args: Record<string, unknown>; intent: string; summary: string; userQuote?: string },
+  ): void {
+    const job: NativeToolJob = {
+      abort: new AbortController(),
+      jobId,
+      callId,
+      tool,
+      detached: false,
+    };
+    this.nativeJobs.set(callId, job);
+    this.metrics.joshuJobCount += 1;
+
+    const ref = { callSid: this.callSid, jobId, presentation: "phone" as const };
+    const request: NativeToolRequest =
+      tool === "start_task"
+        ? {
+            kind: "start_task",
+            task: {
+              ...ref,
+              title: this.sanitizeTextForThinkContext(String(params.args.title ?? "")),
+              objective: this.sanitizeTextForThinkContext(
+                String(params.args.objective ?? params.userQuote ?? params.summary),
+              ),
+              userQuote: params.userQuote,
+            },
+          }
+        : {
+            kind: "think",
+            think: {
+              ...ref,
+              intent: params.intent,
+              summary: params.summary,
+              userQuote: params.userQuote,
+              signal: job.abort.signal,
+            },
+          };
+
+    voiceLog(this.callSid, "turn", `#${this.turn} THINK START job=${jobId} tool=${tool} native`, {
+      userQuote: params.userQuote,
+      hasUserQuote: Boolean(params.userQuote),
+      summaryPreview: params.summary.slice(0, 120),
+    });
+    void this.runNativeJob(job, request);
+  }
+
+  private async runNativeJob(job: NativeToolJob, request: NativeToolRequest): Promise<void> {
+    const t0 = performance.now();
+    const outcome = await runNativeVoiceTool(request, () => job.detached);
+    this.nativeJobs.delete(job.callId);
+    if (job.abort.signal.aborted && !job.detached) return;
+    const elapsedMs = Math.round(performance.now() - t0);
+
+    if (job.detached) {
+      // Queue confirmations and errors are not worth a text; real answers are.
+      if (outcome.source !== "hermes") return;
+      const texted = await textAnswerToOwner(outcome.rawText);
+      voiceLog(this.callSid, "joshu", `detached job=${job.jobId} finished ms=${elapsedMs}`, { texted });
+      return;
+    }
+
+    voiceLog(
+      this.callSid,
+      "turn",
+      `#${this.turn} THINK DONE job=${job.jobId} tool=${job.tool} ms=${elapsedMs} source=${outcome.source} → function result`,
+      { preview: JSON.stringify(outcome.result).slice(0, 200) },
+    );
+    this.s2s?.sendFunctionResult(job.callId, outcome.result);
+  }
+
+  /** Call ended mid-tool: let native jobs finish and text their answers (bounded). */
+  private detachNativeJobs(): void {
+    for (const job of this.nativeJobs.values()) {
+      if (job.detached) continue;
+      job.detached = true;
+      const timer = setTimeout(() => job.abort.abort(), DETACHED_JOB_MAX_MS);
+      timer.unref?.();
+      voiceLog(this.callSid, "joshu", `detached job=${job.jobId} tool=${job.tool} — answer will be texted`);
+    }
   }
 
   private startJoshuJob(params: {

@@ -55,6 +55,8 @@ const REALTIME_DEBUG = process.env.VOICE_REALTIME_DEBUG?.trim().toLowerCase() ==
 const SPEECH_INSTRUCT_PREVIEW_CHARS = 500;
 
 export class OpenAiRealtimeClient implements VoiceS2sClient {
+  /** OpenAI Realtime stays on the legacy handler-owned speech path. */
+  readonly nativeAsyncTools = false;
   private ws: WebSocket | null = null;
   private closed = false;
   private sessionReady = false;
@@ -210,6 +212,24 @@ export class OpenAiRealtimeClient implements VoiceS2sClient {
       return;
     }
     this.requestResponse("function_output_ack", output);
+  }
+
+  sendFunctionResult(callId: string, result: Record<string, unknown>): void {
+    this.sendFunctionOutput(callId, JSON.stringify(result), { triggerResponse: true });
+  }
+
+  appendContext(text: string): void {
+    if (!this.canSend() || !text.trim()) return;
+    this.ws!.send(
+      JSON.stringify({
+        type: "conversation.item.create",
+        item: {
+          type: "message",
+          role: "system",
+          content: [{ type: "input_text", text }],
+        },
+      }),
+    );
   }
 
   injectAssistantMessage(text: string, kind?: InjectKind): void {
