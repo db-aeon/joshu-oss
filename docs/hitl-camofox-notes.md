@@ -30,11 +30,11 @@ Browser Use Cloud sessions bill until stopped or Browser Use’s ~4h cap. Joshu 
 | Signal | Effect |
 |--------|--------|
 | **`CLOUD_BROWSER_IDLE_TIMEOUT_MS`** | Idle shutdown for cloud mode (default **300000** = 5 min). Falls back to `BROWSER_IDLE_TIMEOUT_MS` when unset. Timer resets on each qualifying **touch** (below). |
-| **`busy()`** | Blocks stop while: local browser sidecar phase is `running` (local Chromium path), a **pending handoff** exists, or Hermes **`browser_*`** tools ran within the last **120s** (`hermesBrowserActivityRecent`). On fleet cloud boxes the sidecar is usually idle — **`browser_*` + handoff dominate**. |
+| **`busy()`** | Blocks stop while: local browser sidecar phase is `running` (local Chromium path), a **pending handoff with recent owner activity** exists (`pendingHandoffBlocksCloudBrowser`, default **10 min** since last heartbeat/overlay poll), or Hermes **`browser_*`** tools ran within the last **120s** (`hermesBrowserActivityRecent`). Agent **handoff lock** still applies for any `pending` record until complete/expiry — only cloud idle uses the owner-activity gate. |
 | **Orphan reconcile** | On startup and every lifecycle tick (~30s), when in-memory session is null, Joshu **GET**s the control plane. If CP has an active browser and nothing is busy → **POST stop**. If busy → hydrate in-memory session so the normal idle timer applies. |
 | **Live-frame touch** | `GET /api/browser/live-frame` resets idle only when the client passes **`?viewer=active`** (visible jWeb tab) or the request is a handoff viewer. Background/hidden tabs still get the cached iframe URL but **do not** keep the session alive. Implemented in [`cloud-live-frame.js`](../public/cloud-live-frame.js). |
 | **Hermes ensure** | Patched `tools/browser_tool.py` POSTs **`/api/browser/ensure`** at the start of every `browser_*` call ([`patch-hermes-browser-cdp-guards.mjs`](../scripts/patch-hermes-browser-cdp-guards.mjs), marker `joshu_cloud_browser_ensure`) — see [Hermes self-heal](#hermes-browser-self-heal-cloud) below. Counts as Hermes activity (touch + 120s `busy()` grace). `retargetBrowserCdp()` in [`hermesApi.ts`](../src/hermesApi.ts) also notes activity. Requires gateway reload after patch. Older patches POST `/api/browser/touch` (idle timer only; still served). |
-| **Handoff heartbeat** | While handoff status is **pending**, heartbeat (~20s) touches via [`browserHandoff/routes.ts`](../src/browserHandoff/routes.ts). Terminal handoffs stop touching. |
+| **Handoff heartbeat** | While handoff status is **pending**, heartbeat (~20s) touches via [`browserHandoff/routes.ts`](../src/browserHandoff/routes.ts). Terminal handoffs stop touching. Heartbeat extends link `expiresAt` by **15 min** per pulse, capped at **`HANDOFF_MAX_TTL_MS`** (default **3 h** from `createdAt`). Overlay `page-key` / `form-fields` / `fill-form` refresh **`lastOwnerActivityAt`** without extending the link. |
 | **Kanban cancel** | Cancelling a realtime-goal kanban task cancels pending handoffs for that `kanbanTaskId` ([`broker.ts`](../src/realtimeGoals/broker.ts), kanban bridge), unblocking idle stop. |
 | **SIGTERM / SIGINT** | `joshu-stack` shutdown POSTs cloud browser **stop** when cloud mode is enabled. |
 
@@ -43,7 +43,7 @@ Browser Use Cloud sessions bill until stopped or Browser Use’s ~4h cap. Joshu 
 #### What keeps the session up (normal paths)
 
 - Owner **watching jWeb** with the browser pane visible (poll + `viewer=active` every ~8s).
-- Owner on a **pending handoff** page (heartbeat touches).
+- Owner on a **pending handoff** page (heartbeat / overlay polls within **`HANDOFF_OWNER_ACTIVITY_MS`**, default 10 min).
 - **Kanban / Hermes worker** calling `browser_*` often enough that last touch stays within the idle window, or within the 120s `busy()` grace after each browser call.
 - **Pending handoff** blocking stop even if touches pause briefly.
 
@@ -54,6 +54,7 @@ Browser Use Cloud sessions bill until stopped or Browser Use’s ~4h cap. Joshu 
 | **Long gap between browser tools** | Fleet workers use Hermes `browser_*`, not the local `browser_task` sidecar. If a kanban run goes **>5 min** without a browser tool call (long LLM turn, email/calendar tools, etc.), idle wins even though the task is still “running”. The 120s `busy()` grace only extends **after** the last `browser_*` call, not across the whole run. | Next `browser_*` call re-provisions through `/api/browser/ensure` (same Browser Use profile, new `browserId`). **Open tabs, carts, and half-filled forms are gone**; logins saved to the profile usually survive. Main product risk for flight/booking flows. |
 | **Background jWeb tab** | Pane open but tab/window **hidden** → no `viewer=active` touches. | Session stops after idle timeout. **Intentional** (cost control); can surprise someone who minimized the desktop. |
 | **Kanban cancel while owner on handoff** | Cancel clears pending handoff → heartbeat returns 409, `busy()` clears. | Session can idle out within ~5 min even if the owner still has the handoff URL open. |
+| **Owner closed handoff tab** | Heartbeats stop; record stays `pending` (agent lock) but **`lastOwnerActivityAt` ages out** after ~10 min. | Cloud browser can idle-stop ~5 min later. Handoff link still works until `expiresAt` (capped at 3 h from create). |
 | **Stack restart** | In-memory session lost; orphan reconcile stops CP browser if nothing is busy. | Correct for orphans. Active work on the box dies with the restart anyway; CP stop prevents billing drift. |
 | **Hermes ensure patch missing** | Image-baked patch older than the repo (the canary box on 2026-09-24 had the handoff lock only), or gateway not reloaded after patch. | No wake: after an idle stop every `browser_*` gets **CDP 502** from the dead Browser Use URL, and the worker starts debugging the box. `hotpatch-realtime-goals.sh` re-applies the current patch. |
 
@@ -302,7 +303,13 @@ confirm, etc.) in the shared Camofox tab, use **`browser_handoff_request`** (Her
 
 **Session continuity:** handoff pins the staged `pageUrl`, blocks `CAMOFOX_START_URL` bootstrap
 while pending, and the handoff page sends **heartbeat** every 20s (Camofox tab keepalive +
-extends expiry on owner activity). Do not navigate away or restart Camofox during pending handoff.
+extends link expiry on owner activity, capped at **3 h** from create). Do not navigate away or
+restart Camofox during pending handoff.
+
+**Timeouts:** initial link TTL **45 min**; each heartbeat adds **15 min** to `expiresAt` up to
+**`HANDOFF_MAX_TTL_MS`** (default 3 h). **`HANDOFF_OWNER_ACTIVITY_MS`** (default 10 min) controls
+how long a pending handoff keeps Browser Use Cloud alive after the owner leaves — agent lock is
+unchanged until complete/cancel/expiry.
 
 **Owner SMS:** any inbound owner text auto-completes a pending handoff for that SMS session before
 the agent's turn (`ownerHandoffConfirm.ts`). **jChat/voice:** Hermes calls **`browser_handoff_complete`**.

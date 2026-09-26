@@ -15,9 +15,13 @@ import {
   extendHandoffExpiry,
   getHandoffRecord,
   getPendingHandoff,
+  handoffMaxTtlMs,
+  handoffOwnerActivityMs,
   handoffUrlForRecord,
   isBrowserHandoffLocked,
+  pendingHandoffBlocksCloudBrowser,
   setHandoffLastScan,
+  touchHandoffOwnerActivity,
 } from "../src/browserHandoff/store.ts";
 import { boxLoginRedirectLocation, sanitizeHandoffReturnPath } from "../src/browserHandoff/boxAuth.ts";
 import { mintHandoffToken, mintHandoffAuthToken, verifyHandoffAuthToken, verifyHandoffToken } from "../src/browserHandoff/token.ts";
@@ -91,9 +95,13 @@ try {
   assert.match(url, /[?&]t=/);
   assert.match(url, /[?&]exp=/);
 
+  assert.ok(record.lastOwnerActivityAt);
+  assert.equal(pendingHandoffBlocksCloudBrowser(root), true);
+
   const extended = extendHandoffExpiry(root, record.id);
   assert.ok(extended);
   assert.ok(Date.parse(extended.expiresAt) >= Date.parse(record.expiresAt));
+  assert.ok(extended.lastOwnerActivityAt);
 
   const completed = completeHandoff(root, record.id);
   assert.equal(completed?.status, "completed");
@@ -133,6 +141,39 @@ try {
   }
 } finally {
   rmRoot(root);
+}
+
+// --- owner activity + cloud-browser idle gate ---
+const rootIdle = tempProjectRoot();
+try {
+  const pending = createHandoff(rootIdle, {
+    pageUrl: "https://example.com/checkout",
+    pageTitle: "Checkout",
+    instructions: "pay",
+    ttlMs: 60_000,
+  });
+  const maxExp = Date.parse(pending.createdAt) + handoffMaxTtlMs();
+  for (let i = 0; i < 20; i += 1) {
+    extendHandoffExpiry(rootIdle, pending.id);
+  }
+  const capped = getHandoffRecord(rootIdle, pending.id);
+  assert.ok(capped);
+  assert.ok(Date.parse(capped.expiresAt) <= maxExp + 1000);
+
+  const staleMs = handoffOwnerActivityMs() + 5_000;
+  const staleAt = new Date(Date.now() - staleMs).toISOString();
+  fs.writeFileSync(
+    path.join(rootIdle, ".joshu", "browser-handoff", `${pending.id}.json`),
+    `${JSON.stringify({ ...capped, lastOwnerActivityAt: staleAt }, null, 2)}\n`,
+    { mode: 0o600 },
+  );
+  assert.equal(getPendingHandoff(rootIdle)?.id, pending.id, "agent lock still sees pending");
+  assert.equal(pendingHandoffBlocksCloudBrowser(rootIdle), false, "stale owner activity releases cloud idle");
+
+  touchHandoffOwnerActivity(rootIdle, pending.id);
+  assert.equal(pendingHandoffBlocksCloudBrowser(rootIdle), true);
+} finally {
+  rmRoot(rootIdle);
 }
 
 // --- owner confirm (SMS / chat "done") ---

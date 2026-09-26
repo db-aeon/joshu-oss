@@ -11,6 +11,7 @@ import {
   completeHandoff,
   createHandoff,
   extendHandoffExpiry,
+  touchHandoffOwnerActivity,
   getHandoffRecord,
   getPendingHandoff,
   getPendingHandoffPinUrl,
@@ -414,6 +415,7 @@ export function registerBrowserHandoffRoutes(
       return;
     }
     try {
+      touchHandoffOwnerActivity(projectRoot, id);
       await touchBrowserKeepalive(camofoxSession);
       const signature = await camofoxSession.readFormSignature();
       res.json({ ok: true, pageUrl: signature.url, pageTitle: signature.title, pageKey: signature.key });
@@ -444,6 +446,7 @@ export function registerBrowserHandoffRoutes(
       if (cached && pageKey && cached.pageKey === pageKey) {
         const hit = fast ? cached.fast : cached.full;
         if (hit) {
+          touchHandoffOwnerActivity(projectRoot, id);
           await touchBrowserKeepalive(camofoxSession);
           res.json(hit);
           return;
@@ -457,6 +460,7 @@ export function registerBrowserHandoffRoutes(
         primaryButtonId: overlay.primaryButtonId,
         scannedAt: new Date().toISOString(),
       });
+      touchHandoffOwnerActivity(projectRoot, id);
       await touchBrowserKeepalive(camofoxSession);
       const body = {
         ok: true,
@@ -531,6 +535,7 @@ export function registerBrowserHandoffRoutes(
     }
     try {
       const result = await camofoxSession.fillForm({ fields, buttonId });
+      touchHandoffOwnerActivity(projectRoot, id);
       await touchBrowserKeepalive(camofoxSession);
       res.json({
         ok: result.ok,

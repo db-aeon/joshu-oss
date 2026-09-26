@@ -25,6 +25,8 @@ export type BrowserHandoffRecord = {
   hermesSessionKey?: string;
   createdAt: string;
   expiresAt: string;
+  /** Last owner interaction on the handoff page (heartbeat, overlay poll, fill). */
+  lastOwnerActivityAt?: string;
   completedAt?: string;
   cancelledAt?: string;
   lastScan?: BrowserHandoffLastScan;
@@ -34,6 +36,62 @@ export type BrowserHandoffRecord = {
 
 const DEFAULT_TTL_MS = 45 * 60 * 1000;
 const HEARTBEAT_EXTEND_MS = 15 * 60 * 1000;
+/** Absolute cap from createdAt — heartbeats cannot push expiresAt past this. */
+const MAX_TTL_MS = 3 * 60 * 60 * 1000;
+/**
+ * Pending handoff keeps Browser Use Cloud alive only while owner activity is this
+ * recent. Agent handoff lock is unchanged (still pending until complete/expiry).
+ */
+const OWNER_ACTIVITY_MS = 10 * 60 * 1000;
+
+function readEnvMs(primary: string, fallback: number, legacy?: string): number {
+  const raw =
+    process.env[primary]?.trim() ||
+    (legacy ? process.env[legacy]?.trim() : "") ||
+    "";
+  if (!raw) return fallback;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+export function handoffMaxTtlMs(): number {
+  return readEnvMs("HANDOFF_MAX_TTL_MS", MAX_TTL_MS, "JOSHU_HANDOFF_MAX_TTL_MS");
+}
+
+export function handoffOwnerActivityMs(): number {
+  return readEnvMs(
+    "HANDOFF_OWNER_ACTIVITY_MS",
+    OWNER_ACTIVITY_MS,
+    "JOSHU_HANDOFF_OWNER_ACTIVITY_MS",
+  );
+}
+
+function handoffHeartbeatExtendMs(): number {
+  return readEnvMs(
+    "HANDOFF_HEARTBEAT_EXTEND_MS",
+    HEARTBEAT_EXTEND_MS,
+    "JOSHU_HANDOFF_HEARTBEAT_EXTEND_MS",
+  );
+}
+
+function maxHandoffExpiresAtMs(record: BrowserHandoffRecord): number {
+  const createdMs = Date.parse(record.createdAt);
+  if (!Number.isFinite(createdMs)) return Date.now() + handoffMaxTtlMs();
+  return createdMs + handoffMaxTtlMs();
+}
+
+function handoffOwnerActivityAt(record: BrowserHandoffRecord): number {
+  const raw = record.lastOwnerActivityAt ?? record.createdAt;
+  const at = Date.parse(raw);
+  return Number.isFinite(at) ? at : Date.parse(record.createdAt);
+}
+
+/** True when a pending handoff should block cloud-browser idle shutdown. */
+export function pendingHandoffBlocksCloudBrowser(projectRoot: string): boolean {
+  const pending = getPendingHandoff(projectRoot);
+  if (!pending) return false;
+  return Date.now() - handoffOwnerActivityAt(pending) < handoffOwnerActivityMs();
+}
 
 function readRecordFile(projectRoot: string, id: string): BrowserHandoffRecord | null {
   const file = handoffRecordPath(projectRoot, id);
@@ -121,19 +179,35 @@ export function createHandoff(projectRoot: string, input: CreateHandoffInput): B
     kanbanTaskId: input.kanbanTaskId?.trim() || undefined,
     hermesSessionKey: input.hermesSessionKey?.trim() || undefined,
     createdAt: new Date(now).toISOString(),
-    expiresAt: new Date(now + ttlMs).toISOString(),
+    expiresAt: new Date(Math.min(now + ttlMs, now + handoffMaxTtlMs())).toISOString(),
+    lastOwnerActivityAt: new Date(now).toISOString(),
   };
   writeRecord(projectRoot, record);
   return record;
 }
 
+/** Owner is on the handoff page — refresh activity without extending link expiry. */
+export function touchHandoffOwnerActivity(
+  projectRoot: string,
+  id: string,
+): BrowserHandoffRecord | null {
+  const record = getHandoffRecord(projectRoot, id);
+  if (!record || record.status !== "pending") return record;
+  const next = { ...record, lastOwnerActivityAt: new Date().toISOString() };
+  writeRecord(projectRoot, next);
+  return next;
+}
+
 export function extendHandoffExpiry(projectRoot: string, id: string): BrowserHandoffRecord | null {
   const record = getHandoffRecord(projectRoot, id);
   if (!record || record.status !== "pending") return record;
-  const floorMs = Math.max(Date.parse(record.expiresAt), Date.now());
+  const now = Date.now();
+  const floorMs = Math.max(Date.parse(record.expiresAt), now);
+  const cappedExp = Math.min(floorMs + handoffHeartbeatExtendMs(), maxHandoffExpiresAtMs(record));
   const next = {
     ...record,
-    expiresAt: new Date(floorMs + HEARTBEAT_EXTEND_MS).toISOString(),
+    expiresAt: new Date(cappedExp).toISOString(),
+    lastOwnerActivityAt: new Date(now).toISOString(),
   };
   writeRecord(projectRoot, next);
   return next;

@@ -90,7 +90,7 @@ import {
 } from "./realtimeGoals/voiceCallback.js";
 import { registerAppInvokeRoutes } from "./appInvokeApi.js";
 import { browserHandoffViewerAllowed, getPendingHandoffPinUrl, registerBrowserHandoffRoutes } from "./browserHandoff/index.js";
-import { getPendingHandoff } from "./browserHandoff/store.js";
+import { pendingHandoffBlocksCloudBrowser } from "./browserHandoff/store.js";
 import { browserAgentPhase, readBrowserAgentStatus, registerBrowserAgentRoutes, screencastInputAllowed } from "./browserAgent.js";
 import {
   CLOUD_BROWSER_SCREEN,
@@ -304,7 +304,7 @@ if (cloudBrowserActive()) {
     idleMs,
     busy: () =>
       browserAgentPhase() === "running" ||
-      Boolean(getPendingHandoff(PROJECT_ROOT)) ||
+      pendingHandoffBlocksCloudBrowser(PROJECT_ROOT) ||
       hermesBrowserActivityRecent(120_000),
     onCdp: async (cdpUrl) => {
       camofoxSession.useCdpUrl(cdpUrl);
