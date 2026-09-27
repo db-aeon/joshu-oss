@@ -13,7 +13,11 @@ import {
   PHONE_SYSTEM_PROMPT,
 } from "./config.js";
 import { selectRealtimeTools } from "./realtimeTools.js";
-import { injectHermesResultUserText, type InjectPresentation } from "./speechPresentation.js";
+import {
+  injectHermesResultUserText,
+  type InjectKind,
+  type InjectPresentation,
+} from "./speechPresentation.js";
 import { voiceLog } from "./voiceLog.js";
 import type {
   FunctionCallPayload,
@@ -51,6 +55,8 @@ const REALTIME_DEBUG = process.env.VOICE_REALTIME_DEBUG?.trim().toLowerCase() ==
 const SPEECH_INSTRUCT_PREVIEW_CHARS = 500;
 
 export class OpenAiRealtimeClient implements VoiceS2sClient {
+  /** OpenAI Realtime stays on the legacy handler-owned speech path. */
+  readonly nativeAsyncTools = false;
   private ws: WebSocket | null = null;
   private closed = false;
   private sessionReady = false;
@@ -208,9 +214,27 @@ export class OpenAiRealtimeClient implements VoiceS2sClient {
     this.requestResponse("function_output_ack", output);
   }
 
-  injectAssistantMessage(text: string): void {
+  sendFunctionResult(callId: string, result: Record<string, unknown>): void {
+    this.sendFunctionOutput(callId, JSON.stringify(result), { triggerResponse: true });
+  }
+
+  appendContext(text: string): void {
+    if (!this.canSend() || !text.trim()) return;
+    this.ws!.send(
+      JSON.stringify({
+        type: "conversation.item.create",
+        item: {
+          type: "message",
+          role: "system",
+          content: [{ type: "input_text", text }],
+        },
+      }),
+    );
+  }
+
+  injectAssistantMessage(text: string, kind?: InjectKind): void {
     if (!this.canSend()) return;
-    const instruct = injectHermesResultUserText(text, this.injectPresentation);
+    const instruct = injectHermesResultUserText(text, this.injectPresentation, kind);
     this.logSpeechInstruct("hermes_inject", instruct);
     this.ws!.send(
       JSON.stringify({

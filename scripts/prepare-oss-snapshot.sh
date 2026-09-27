@@ -64,7 +64,12 @@ rsync -a "${RSYNC_DELETE[@]}" \
   --exclude 'docs/vps-sandbox/session-2026-06-30-fleet-image-0.1.30-patrick.md' \
   --exclude 'docs/vps-sandbox/hotpatch-running-box.md' \
   --exclude 'docs/vps-sandbox/existing-box-image-vs-host.md' \
+  --exclude 'docs/vps-sandbox/box-skill-reconcile-on-upgrade.md' \
   --exclude 'scripts/upgrade-fleet-box-image.sh' \
+  --exclude 'deploy/Dockerfile.fleet-overlay' \
+  --exclude 'scripts/vps-build-fleet-overlay.sh' \
+  --exclude 'deploy/Dockerfile.oss-overlay' \
+  --exclude 'scripts/vps-build-oss-overlay.sh' \
   --exclude 'docs/vps-sandbox/credential-isolation-langfuse-relay.md' \
   --exclude 'docs/vps-sandbox/update-hardening-todo.md' \
   --exclude 'docs/vps-sandbox/control-plane.md' \
@@ -87,6 +92,7 @@ rsync -a "${RSYNC_DELETE[@]}" \
   --exclude 'scripts/repair-fleet-ea-cron-timezone.sh' \
   --exclude 'scripts/check-fleet-box-vitals.sh' \
   --exclude 'scripts/hotpatch-browser-handoff.sh' \
+  --exclude 'scripts/canary-voice-gemini38.sh' \
   --exclude 'scripts/patrick-travel-booking-owner-selection.md' \
   --exclude 'scripts/sync-fleet-skills-from-image.sh' \
   --exclude 'scripts/hotfix-box-to-0.1.26.sh' \
@@ -141,7 +147,12 @@ bash "${ROOT_DIR}/scripts/oss-doc-sanitize.sh" "${OUT_DIR}"
 bash "${ROOT_DIR}/scripts/secret-scan.sh" "${OUT_DIR}"
 
 # Remove files excluded from rsync that may linger from older snapshots (--delete does not drop excluded paths).
+# OSS-owned files (deploy/Dockerfile.oss-overlay, scripts/vps-build-oss-overlay.sh) are
+# excluded above so --delete keeps them; do not list them here.
 rm -rf \
+  "${OUT_DIR}/docs/vps-sandbox/box-skill-reconcile-on-upgrade.md" \
+  "${OUT_DIR}/deploy/Dockerfile.fleet-overlay" \
+  "${OUT_DIR}/scripts/vps-build-fleet-overlay.sh" \
   "${OUT_DIR}/docs/Joshu-SOP" \
   "${OUT_DIR}/docs/hermes-customizations.md" \
   "${OUT_DIR}/docs/joshu-identity.md" \
@@ -170,6 +181,7 @@ rm -rf \
   "${OUT_DIR}/scripts/repair-fleet-ea-cron-timezone.sh" \
   "${OUT_DIR}/scripts/check-fleet-box-vitals.sh" \
   "${OUT_DIR}/scripts/hotpatch-browser-handoff.sh" \
+  "${OUT_DIR}/scripts/canary-voice-gemini38.sh" \
   "${OUT_DIR}/scripts/patrick-travel-booking-owner-selection.md" \
   "${OUT_DIR}/scripts/sync-fleet-skills-from-image.sh" \
   "${OUT_DIR}/scripts/hotfix-box-to-0.1.26.sh" \

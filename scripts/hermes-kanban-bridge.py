@@ -65,6 +65,48 @@ def _task_summary(task: Any, *, include_body: bool = False) -> Dict[str, Any]:
     return out
 
 
+# Events that start or end a blocked period. The most recent one explains the
+# task's *current* blocked status; older ``blocked`` reasons may be stale.
+_BLOCK_CAUSE_EVENTS = frozenset({"blocked", "block_loop_detected", "gave_up", "unblocked"})
+
+# Reasons the bridge itself writes when a caller omits one — not a real question.
+_PLACEHOLDER_BLOCK_REASONS = frozenset({"blocked"})
+
+
+def _block_cause(events: List[Any]) -> Optional[Dict[str, Any]]:
+    """Why the task is blocked right now.
+
+    ``source`` is ``worker`` when a worker/operator called kanban_block with a
+    reason, and ``system`` when Hermes's circuit breaker parked the task
+    (``gave_up``: repeated crashes, spawn failures, timeouts, or clean exits
+    without kanban_complete/kanban_block). System blocks carry no owner question.
+    """
+    for ev in reversed(events):
+        if ev.kind not in _BLOCK_CAUSE_EVENTS:
+            continue
+        if ev.kind == "unblocked":
+            return None
+        payload = ev.payload if isinstance(ev.payload, dict) else {}
+        if ev.kind == "gave_up":
+            return {
+                "source": "system",
+                "event": ev.kind,
+                "error": str(payload.get("error") or "").strip()[:500] or None,
+                "trigger": str(payload.get("trigger_outcome") or "").strip() or None,
+                "protocol_violations": payload.get("protocol_violations"),
+            }
+        reason = payload.get("reason")
+        reason = reason.strip() if isinstance(reason, str) else ""
+        if reason.lower() in _PLACEHOLDER_BLOCK_REASONS:
+            reason = ""
+        return {
+            "source": "worker" if reason else "system",
+            "event": ev.kind,
+            "reason": reason or None,
+        }
+    return None
+
+
 def _task_activity(conn: Any, task_id: str, *, max_comments: int = 5) -> Dict[str, Any]:
     """Recent Kanban comments and latest block reason for scheduling status queries."""
     from hermes_cli import kanban_db
@@ -85,7 +127,10 @@ def _task_activity(conn: Any, task_id: str, *, max_comments: int = 5) -> Dict[st
             if isinstance(summary, str) and summary.strip():
                 completion_summary = summary.strip()
     return {
+        # Legacy: latest worker block reason, even if a later event superseded it.
         "block_reason": block_reason,
+        # Current cause of the blocked status (see _block_cause).
+        "block_cause": _block_cause(events),
         "completion_summary": completion_summary,
         "recent_comments": [
             {
@@ -691,6 +736,21 @@ def _dispatch(payload: Dict[str, Any]) -> Dict[str, Any]:
         )
         archived = kanban_db.archive_task(conn, task_id)
         refreshed = kanban_db.get_task(conn, task_id)
+        # Drop pending browser handoffs tied to this task so cloud idle stop can run.
+        try:
+            import json
+            import urllib.request
+
+            base = os.environ.get("JOSHU_CONNECTORS_API_BASE", "http://127.0.0.1:8788/joshu").strip().rstrip("/")
+            req = urllib.request.Request(
+                f"{base}/api/browser-handoff/cancel-by-kanban-task",
+                data=json.dumps({"task_id": task_id}).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            urllib.request.urlopen(req, timeout=5)
+        except Exception:
+            pass
         return {
             "success": bool(archived),
             "task_id": task_id,

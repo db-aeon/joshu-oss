@@ -46,8 +46,12 @@ if [[ -n "${JOSHU_DOCKER_NETWORK:-}" ]]; then
   NETWORK_ARGS=(--network "${JOSHU_DOCKER_NETWORK}")
 fi
 
-SANDBOX_BUILD_ARGS=(
-  "${NETWORK_ARGS[@]}"
+# macOS /bin/bash 3.2 + set -u: "${NETWORK_ARGS[@]}" in a literal array is "unbound" when empty.
+SANDBOX_BUILD_ARGS=()
+if ((${#NETWORK_ARGS[@]} > 0)); then
+  SANDBOX_BUILD_ARGS+=("${NETWORK_ARGS[@]}")
+fi
+SANDBOX_BUILD_ARGS+=(
   --platform linux/amd64
   -f deploy/Dockerfile
   --build-arg "HERMES_AGENT_REF=${HERMES_AGENT_REF}"
@@ -63,8 +67,11 @@ if [[ "${IMAGE_REPO}" == *joshu-sandbox* || "${IMAGE_REF}" == *joshu-sandbox* ||
   fi
 fi
 
-VOICE_BUILD_ARGS=(
-  "${NETWORK_ARGS[@]}"
+VOICE_BUILD_ARGS=()
+if ((${#NETWORK_ARGS[@]} > 0)); then
+  VOICE_BUILD_ARGS+=("${NETWORK_ARGS[@]}")
+fi
+VOICE_BUILD_ARGS+=(
   --platform linux/amd64
   -f deploy/Dockerfile.voice-realtime
   -t "${VOICE_IMAGE_REF}"

@@ -26,6 +26,8 @@ Rules:
 - Preserve box-specific procedures, owner preferences, and validated pitfalls from the BOX version.
 - Integrate new factory procedures, tool names, and safety gates from the FACTORY version.
 - Keep YAML frontmatter valid; bump metadata.hermes.version to the higher semantic version when factory is newer.
+- When FACTORY defines Browser Use Cloud vs local Chromium rules, DROP box sections that contradict them (Camofox :9377 curl workarounds, "staging the tab in Camofox", browser_task on cloud fleet, hitl-camofox fallbacks after no_active_browser_tab).
+- Do not preserve skill_manage patches that were written during a failed browser/handoff run — treat those as noise unless they document owner-specific preferences unrelated to browser infrastructure.
 - Output ONLY the complete merged SKILL.md markdown. No preamble or commentary.`;
 
 async function main() {

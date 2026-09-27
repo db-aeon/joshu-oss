@@ -23,7 +23,7 @@ import { pcm24kB64ToMulaw8kB64 } from "./audioResample.js";
 
 /**
  * Every line the caller can hear before the passphrase is accepted, plus the
- * two transition lines right after it. Keep the text here identical to the clip
+ * transition lines right after it. Keep the text here identical to the clip
  * the generator renders — this object is the generator's input too.
  */
 export const LOCK_PROMPTS = {
@@ -36,6 +36,9 @@ export const LOCK_PROMPTS = {
   last_try: "That's not the passphrase. One try left.",
   locked_out: "Too many incorrect attempts. Goodbye.",
   unlocked: "Unlocked. Please repeat your request.",
+  // Outbound goal callbacks: the result follows immediately — do not invite the
+  // owner to restate the original task (that got written onto the card).
+  unlocked_callback: "Unlocked. I have an update for you.",
   restate_intent: "Please repeat what you want me to do now that you're unlocked.",
   time_warning: "Heads up — this call is almost out of time. You have about thirty seconds left.",
   time_up: "This call has reached its time limit. I need to hang up now. Goodbye.",

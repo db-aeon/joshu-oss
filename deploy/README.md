@@ -28,7 +28,7 @@ JOSHU_IMAGE_TAG=0.1.14 JOSHU_IMAGE_REPO=ghcr.io/YOUR_ORG/joshu-sandbox JOSHU_IMA
 
 Pushes **`ghcr.io/YOUR_ORG/joshu-sandbox:<tag>`** and **`ghcr.io/YOUR_ORG/joshu-voice-realtime:<tag>`** (override with `JOSHU_VOICE_IMAGE_REPO` / `JOSHU_VOICE_IMAGE_REF`).
 
-Current stable pin: [`deploy/RELEASE.json`](RELEASE.json) (**`0.1.45`**).
+Current stable pin: [`deploy/RELEASE.json`](RELEASE.json) (**`0.1.46`**).
 
 After `rotate_secrets` or stack recreate, do not leave mixed `dist/` trees on boxes — sync from the pulled image before recreate ([hotpatch-running-box.md](../docs/vps-sandbox/hotpatch-running-box.md#dist-atomicity-after-secret-rotation-or-recreate)).
 

@@ -8,6 +8,8 @@
  *   /etc/joshu/secrets/ (and children)
  *   /opt/joshu/ any .env files
  *   HERMES_HOME .env (typically /root/.hermes/.env)
+ *   Hermes config writes: `hermes config set|edit|…` and write ops on
+ *   ~/.hermes/config.yaml (reads allowed) — the file is Joshu-managed.
  *
  * IMPORTANT: helper regexes must not embed unescaped " inside Python "..." strings —
  * that yields `unterminated string literal` and breaks ALL Hermes tools (jChat dies).
@@ -38,6 +40,25 @@ def _joshu_terminal_secrets_blocked(command: str) -> Optional[str]:
     if not _joshu_terminal_secrets_guard_enabled():
         return None
     normalized = command.lower()
+    # Hermes config is Joshu-managed (hermesApi syncs it): agents must not rewrite it.
+    # A kanban worker once repointed browser.cdp_url itself instead of reporting a
+    # broken browser. Reads (grep/cat) stay allowed.
+    hermes_config_path = r"(?:\\.hermes/|\\$hermes_home/)config\\.ya?ml"
+    config_write = re.search(
+        r"\\bhermes\\b[^|;&\\n]*\\bconfig\\s+(?:set|unset|edit|reset|migrate|import)\\b",
+        normalized,
+    ) or (
+        re.search(hermes_config_path, normalized)
+        and re.search(
+            r"\\bsed\\b[^|;&\\n]*\\s-i|\\btee\\b|>>?\\s*\\S*config\\.ya?ml|\\b(?:cp|mv|install|dd|truncate|rm|ln)\\b|open\\([^)]*[\\x22\\x27][wa+]",
+            normalized,
+        )
+    )
+    if config_write:
+        return (
+            "Blocked: Hermes config is managed by Joshu — agents must not change it. "
+            "If a tool is broken, report it and kanban_block the task with a 'system:' reason."
+        )
     # Match common read/print tools against secret paths (not an exhaustive shell parser).
     # Patterns avoid embedding " inside r"..." so this file stays valid Python.
     blocked_patterns = [

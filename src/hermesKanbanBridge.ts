@@ -25,6 +25,19 @@ export type KanbanTaskSummary = {
   idempotency_key?: string;
   body?: string;
   block_reason?: string | null;
+  /**
+   * Current cause of a blocked status. `worker` = kanban_block with a reason
+   * (an owner question); `system` = Hermes circuit breaker (`gave_up`) or a
+   * reasonless block — nothing to ask the owner.
+   */
+  block_cause?: {
+    source?: "worker" | "system";
+    event?: string;
+    reason?: string | null;
+    error?: string | null;
+    trigger?: string | null;
+    protocol_violations?: number | null;
+  } | null;
   created_at?: number | string;
   recent_comments?: Array<{
     author?: string;

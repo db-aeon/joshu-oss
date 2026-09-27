@@ -28,7 +28,8 @@ export function classifyUserTranscript(raw: string): UserTranscriptKind {
   const letters = t.replace(/[^\p{L}\p{N}]/gu, "");
   if (letters.length < 2) return "unclear";
 
-  if (t.length <= 3 && !SHORT_OK.has(t.toLowerCase())) return "unclear";
+  // STT punctuates short words ("No.") — compare the bare word.
+  if (letters.length <= 3 && !SHORT_OK.has(letters.toLowerCase())) return "unclear";
 
   return "clear";
 }

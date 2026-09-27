@@ -4,7 +4,7 @@
 #
 # Usage:
 #   bash scripts/hotpatch-realtime-goals.sh patrick
-#   bash scripts/hotpatch-realtime-goals.sh root@patrick.box.joshu.me
+#   bash scripts/hotpatch-realtime-goals.sh root@<slug>.box.example.com
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -32,6 +32,7 @@ for f in \
   dist/agUiApi.js \
   dist/httpLocalhost.js \
   dist/voiceWebApi.js \
+  dist/cloudBrowser.js \
   dist/realtimeGoals/broker.js; do
   if [[ ! -f "${ROOT}/${f}" ]]; then
     echo "[realtime-goals-hotpatch] missing ${f} after build" >&2
@@ -53,12 +54,17 @@ rsync -az \
   "${ROOT}/dist/agUiApi.js" \
   "${ROOT}/dist/httpLocalhost.js" \
   "${ROOT}/dist/voiceWebApi.js" \
+  "${ROOT}/dist/cloudBrowser.js" \
   "${TARGET}:/opt/joshu/dist/"
 rsync -az \
   "${ROOT}/scripts/hermes-kanban-bridge.py" \
   "${ROOT}/scripts/patch-hermes-ea-kanban-no-autodecompose.py" \
   "${ROOT}/scripts/apply-hermes-ea-kanban-no-autodecompose.sh" \
+  "${ROOT}/scripts/patch-hermes-browser-cdp-guards.mjs" \
+  "${ROOT}/scripts/patch-hermes-terminal-secrets-guard.mjs" \
   "${TARGET}:/opt/joshu/scripts/"
+rsync -az "${ROOT}/integrations/hermes/skills/browser/" \
+  "${TARGET}:/opt/joshu/integrations/hermes/skills/browser/"
 rsync -az "${ROOT}/.hermes/plugins/joshu-realtime-goals/" \
   "${TARGET}:/opt/joshu/.hermes/plugins/joshu-realtime-goals/"
 rsync -az "${ROOT}/integrations/hermes/skills-enabled.yaml" \
@@ -101,6 +107,10 @@ docker cp /opt/joshu/.hermes/plugins/joshu-realtime-goals/. \
 docker exec "${CID}" mkdir -p /root/.hermes/skills/joshu/realtime/realtime-goal
 docker cp /opt/joshu/integrations/hermes/skills/realtime/realtime-goal/SKILL.md \
   "${CID}:/root/.hermes/skills/joshu/realtime/realtime-goal/SKILL.md"
+# Browser skill (browser-down = system block, never debug the box)
+docker exec "${CID}" mkdir -p /root/.hermes/skills/joshu/browser/joshu-browser-handoff
+docker cp /opt/joshu/integrations/hermes/skills/browser/joshu-browser-handoff/SKILL.md \
+  "${CID}:/root/.hermes/skills/joshu/browser/joshu-browser-handoff/SKILL.md"
 
 # jChat UI (surface-event polling)
 docker exec "${CID}" mkdir -p /var/lib/arozos/subservice/hermes-chat/app /opt/arozos-template/subservice/hermes-chat/app
@@ -118,6 +128,31 @@ docker cp /opt/joshu/scripts/apply-hermes-ea-kanban-no-autodecompose.sh \
 
 # Keep realtime-goals board out of Hermes auto_decompose
 docker exec "${CID}" bash -lc 'HERMES_DIR=/opt/hermes-agent bash /opt/joshu/scripts/apply-hermes-ea-kanban-no-autodecompose.sh' || true
+
+# Hermes tool patches (vps-start applies the image-baked copies at boot; those can
+# lag the repo — a canary box shipped without the cloud-browser hook). Recreate resets
+# /opt/hermes-agent, so re-apply the current scripts every hotpatch.
+for patch in patch-hermes-browser-cdp-guards.mjs patch-hermes-terminal-secrets-guard.mjs; do
+  docker cp "/opt/joshu/scripts/${patch}" "${CID}:/opt/joshu/scripts/${patch}"
+done
+docker exec "${CID}" node /opt/joshu/scripts/patch-hermes-browser-cdp-guards.mjs \
+  /opt/hermes-agent/tools/browser_tool.py
+docker exec "${CID}" node /opt/joshu/scripts/patch-hermes-terminal-secrets-guard.mjs \
+  /opt/hermes-agent/tools/terminal_tool.py
+docker exec "${CID}" /opt/hermes-agent/venv/bin/python -m py_compile \
+  /opt/hermes-agent/tools/browser_tool.py /opt/hermes-agent/tools/terminal_tool.py
+
+# Images built before the Dockerfile MCP pin guard ship mcp 2.x, which silently
+# disables every Hermes HTTP MCP (email/connectors). Recreate resets the venv, so
+# re-apply Hermes' own pin from its pyproject whenever the HTTP client is missing.
+if ! docker exec "${CID}" /opt/hermes-agent/venv/bin/python -c 'from mcp.client.streamable_http import streamablehttp_client' 2>/dev/null; then
+  pins="$(docker exec "${CID}" sh -c "grep -m1 -E '^mcp = ' /opt/hermes-agent/pyproject.toml | grep -oE '\"(mcp|starlette)==[0-9.]+\"' | tr -d '\"' | tr '\n' ' '" || true)"
+  if [[ -n "${pins}" ]]; then
+    echo "[realtime-goals-hotpatch] repinning Hermes venv: ${pins}"
+    # shellcheck disable=SC2086
+    docker exec "${CID}" /opt/hermes-agent/venv/bin/pip install --no-cache-dir -q ${pins} || true
+  fi
+fi
 
 # Enable plugin + sync Hermes config (hermesApi adds toolset on nudge)
 if docker exec "${CID}" test -x /opt/hermes-agent/venv/bin/hermes; then
@@ -166,6 +201,8 @@ docker exec "${CID}" test -f /opt/joshu/dist/realtimeGoals/broker.js && echo "br
 docker exec "${CID}" test -f /opt/joshu/.hermes/plugins/joshu-realtime-goals/tools.py && echo "plugin-ok"
 docker exec "${CID}" test -f /root/.hermes/skills/joshu/realtime/realtime-goal/SKILL.md && echo "skill-ok"
 docker exec "${CID}" grep -q 'realtime-goals' /opt/joshu/scripts/hermes-kanban-bridge.py && echo "kanban-bridge-ok"
+docker exec "${CID}" grep -q 'joshu_cloud_browser_ensure' /opt/hermes-agent/tools/browser_tool.py && echo "browser-ensure-ok"
+docker exec "${CID}" grep -q 'hermes_config_path' /opt/hermes-agent/tools/terminal_tool.py && echo "terminal-config-guard-ok"
 
 if curl -fsS http://127.0.0.1:8792/health >/tmp/vr-health.json 2>/dev/null; then
   python3 - <<'PY'

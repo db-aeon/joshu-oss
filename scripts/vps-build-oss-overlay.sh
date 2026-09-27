@@ -5,7 +5,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${ROOT_DIR}"
 
-OVERLAY_BASE="${JOSHU_OVERLAY_BASE:-ghcr.io/db-aeon/joshu-sandbox:0.1.45}"
+OVERLAY_BASE="${JOSHU_OVERLAY_BASE:-ghcr.io/db-aeon/joshu-sandbox:0.1.46}"
 IMAGE_TAG="${JOSHU_IMAGE_TAG:-local}"
 IMAGE_REPO="${JOSHU_IMAGE_REPO:-ghcr.io/db-aeon/joshu-oss}"
 IMAGE_REF="${JOSHU_IMAGE_REF:-${IMAGE_REPO}:${IMAGE_TAG}}"

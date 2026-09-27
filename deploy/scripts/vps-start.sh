@@ -413,6 +413,14 @@ apply_hermes_browser_cdp_guards() {
     || echo "[vps-start] WARN: Hermes CDP browser guard patch failed" >&2
 }
 
+# Background review may patch seeded factory skills without curator adopt.
+apply_hermes_factory_skill_background_writes() {
+  local script="${JOSHU_SCRIPTS_ROOT}/apply-hermes-factory-skill-background-writes.sh"
+  [[ -f "${script}" ]] || return 0
+  HERMES_DIR="${HERMES_DIR}" bash "${script}" \
+    || echo "[vps-start] WARN: factory skill background-write patch failed" >&2
+}
+
 bootstrap_hermes_learning_skills() {
   local script="${JOSHU_SCRIPTS_ROOT}/bootstrap-hermes-learning-skills.sh"
   [[ -f "${script}" ]] || return 0
@@ -431,6 +439,7 @@ apply_hermes_kanban_guidance_gate
 apply_hermes_joshu_disable_native_sms_platform
 apply_hermes_terminal_secrets_guard
 apply_hermes_browser_cdp_guards
+apply_hermes_factory_skill_background_writes
 bootstrap_hermes_learning_skills
 ensure_hermes_runtime_config
 restart_hermes_gateway_if_running

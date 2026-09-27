@@ -91,7 +91,8 @@ When an active branch is bound, the LLM router is **not** called.
 | Active goal status | Owner message | Action |
 | --- | --- | --- |
 | `clarifying` | substantive answer | merge → **`queued`** + `releaseAt` |
-| `blocked` | answer / choice | append owner selection → worker continues |
+| `blocked` | answer / choice | append `Owner answer` (question + reply) → worker continues |
+| `blocked` | "did you find it?" | status reply; nothing written to the card |
 | `queued` / `running` / `ready` | amendment | merge update → Kanban append |
 | `done` (within continuable window) | follow-up on same job | reopen branch → worker continues |
 
@@ -127,6 +128,10 @@ SMS carrier keywords (`STOP`, etc.) stay in the SMS gateway, not the router.
    choice menus; **`kanban_complete`** only for checkout handoff or final outcome.
 4. **Delivery** — broker reads Kanban state and pushes blocked/completed/failed
    text back on the **originating channel** and appends to the session thread.
+   Only a worker's real `kanban_block` question reaches the owner; a Hermes
+   system stall (crash, timeout, exit without complete/block) is restarted
+   automatically, then reported plainly. PSTN callbacks are serialized per owner
+   and park (one SMS nudge) on voicemail instead of redialing.
    Blocked delivery keeps the active pointer; true completion clears it.
    Completed text is the worker's `kanban_complete` summary after
    [`formatOwnerCompletion`](../src/realtimeGoals/ownerDelivery.ts) (owner voice,

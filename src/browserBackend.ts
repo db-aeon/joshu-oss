@@ -42,3 +42,23 @@ export function browserBackendSource(projectRoot = process.cwd()): BrowserBacken
 export function cloudBrowserEnabled(projectRoot = process.cwd()): boolean {
   return resolveBrowserBackend(projectRoot) === "cloud";
 }
+
+/** True when CDP points at box-local Chromium (sidecar on :9378), not Browser Use Cloud. */
+export function isLocalCdpEndpoint(cdpUrl: string): boolean {
+  try {
+    const host = new URL(cdpUrl.trim()).hostname.toLowerCase();
+    return host === "127.0.0.1" || host === "localhost";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Local headed Chromium uses the browser-use sidecar (`browser_task`).
+ * Fleet Browser Use Cloud uses Hermes built-in CDP tools on the remote socket.
+ */
+export function usesBrowserAgentSidecar(cdpUrl: string, projectRoot = process.cwd()): boolean {
+  const trimmed = cdpUrl.trim();
+  if (trimmed) return isLocalCdpEndpoint(trimmed);
+  return !cloudBrowserEnabled(projectRoot);
+}

@@ -2,11 +2,11 @@
 # are unchanged and a from-scratch build would OOM on a maintainer laptop.
 # Strips fleet branding (/opt/joshu-design) so self-host gets vanilla shell theme.
 #
-#   JOSHU_OVERLAY_BASE=ghcr.io/db-aeon/joshu-sandbox:0.1.45 \
-#   JOSHU_IMAGE_TAG=0.1.45 JOSHU_IMAGE_PUSH=1 \
+#   JOSHU_OVERLAY_BASE=ghcr.io/db-aeon/joshu-sandbox:0.1.46 \
+#   JOSHU_IMAGE_TAG=0.1.46 JOSHU_IMAGE_PUSH=1 \
 #   bash scripts/vps-build-oss-overlay.sh
 
-ARG OVERLAY_BASE=ghcr.io/db-aeon/joshu-sandbox:0.1.45
+ARG OVERLAY_BASE=ghcr.io/db-aeon/joshu-sandbox:0.1.46
 FROM ${OVERLAY_BASE}
 
 ARG APP_DIR=/opt/joshu

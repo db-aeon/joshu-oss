@@ -319,10 +319,19 @@ install_hermes_dependencies() {
     cd "${HERMES_DIR}"
     ./venv/bin/pip install --upgrade pip setuptools wheel
     ./venv/bin/pip install -e ".[${extras}]" "${HERMES_AIOHTTP_CONSTRAINT}"
+    # Keep Hermes' mcp/starlette pins through the extra installs (same guard as
+    # deploy/Dockerfile): claude-agent-sdk via hindsight would otherwise pull mcp 2.x
+    # and Hermes silently disables all HTTP MCP servers.
+    local pins
+    pins="$(mktemp)"
+    ./venv/bin/pip freeze | grep -iE '^(mcp|starlette)==' >"${pins}" || true
     log "restoring Joshu Hindsight packages in Hermes venv"
-    ./venv/bin/pip install "${HINDSIGHT_PIP_SPECS[@]}"
+    ./venv/bin/pip install -c "${pins}" "${HINDSIGHT_PIP_SPECS[@]}"
     log "restoring Langfuse SDK for observability/langfuse plugin"
-    ./venv/bin/pip install "${HERMES_OBSERVABILITY_PIP_SPECS[@]}"
+    ./venv/bin/pip install -c "${pins}" "${HERMES_OBSERVABILITY_PIP_SPECS[@]}"
+    rm -f "${pins}"
+    ./venv/bin/python -c 'from mcp.client.streamable_http import streamablehttp_client' \
+      || die "mcp HTTP client unavailable in Hermes venv; HTTP MCP servers would be disabled"
   )
 }
 
@@ -351,6 +360,13 @@ apply_langfuse_system_patch_if_needed() {
 apply_skill_evolution_patch_if_needed() {
   local script="${ROOT_DIR}/scripts/apply-hermes-skill-evolution-patch.sh"
   if [[ -x "${script}" ]]; then
+    HERMES_DIR="${HERMES_DIR}" bash "${script}" || true
+  fi
+}
+
+apply_factory_skill_background_writes_if_needed() {
+  local script="${ROOT_DIR}/scripts/apply-hermes-factory-skill-background-writes.sh"
+  if [[ -f "${script}" ]]; then
     HERMES_DIR="${HERMES_DIR}" bash "${script}" || true
   fi
 }
@@ -511,6 +527,7 @@ cmd_update() {
   apply_hitl_patch_if_needed
   apply_langfuse_system_patch_if_needed
   apply_skill_evolution_patch_if_needed
+  apply_factory_skill_background_writes_if_needed
   apply_content_filter_patch_if_needed
   verify_hermes_checkout
 

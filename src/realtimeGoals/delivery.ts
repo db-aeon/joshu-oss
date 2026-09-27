@@ -92,10 +92,7 @@ export function createRealtimeGoalDeliveryHandler(
     }
     if (goal.origin.channel === "telegram") return deliverTelegram(projectRoot, goal, text);
     if (goal.origin.channel === "pstn_voice") {
-      if (kind === "blocked") {
-        // A clarification callback uses the same authenticated voice path.
-        return startRealtimeGoalCallback(projectRoot, goal, text);
-      }
+      // Blocked questions and results share the passphrase-gated callback path.
       return startRealtimeGoalCallback(projectRoot, goal, text);
     }
     if (

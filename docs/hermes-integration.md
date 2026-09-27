@@ -136,6 +136,10 @@ See [`realtime-goals-theory-of-operation.md`](realtime-goals-theory-of-operation
 for the routing model, and [`realtime-goals.md`](realtime-goals.md) for state,
 idempotency, cancellation, callbacks, and verification.
 
+## Factory skill learning
+
+Factory skills are seeded into `$HERMES_HOME/skills/joshu/`. Hermes background review may patch those copies in place (not delete them). Joshu does not run `hermes curator adopt` for them, so they stay off the curator archive walk. A factory release bump still merges the new factory `SKILL.md` with the box copy. The boot patch is `scripts/apply-hermes-factory-skill-background-writes.sh` (applied from `vps-start.sh` before the gateway restart).
+
 ## Related docs
 
 - [`hermes-integration.md`](hermes-integration.md) — skills, plugins, Slack/Telegram depth, Langfuse, patches
