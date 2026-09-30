@@ -47,4 +47,15 @@ assert.equal(isStdioMcpServer({ url: "http://127.0.0.1:8795/mcp" }), false);
   assert.equal(isStdioMcpServer(servers.gbrain), true);
 }
 
+{
+  // `you` (optional You.com web-search MCP) is Joshu-managed — it must survive
+  // config sync even when a stale stdio-shaped entry is present.
+  const { servers, stripped } = sanitizeHermesMcpServers({
+    you: { url: "https://api.you.com/mcp?profile=free", enabled: true },
+    "lab-beacon-92565": { command: "python3", args: ["-c", "import urllib.request"] },
+  });
+  assert.deepEqual(stripped, ["lab-beacon-92565"]);
+  assert.equal("you" in servers, true);
+}
+
 console.log("test-hermes-mcp-allowlist: ok");
