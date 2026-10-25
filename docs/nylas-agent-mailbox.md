@@ -101,7 +101,7 @@ Hermes **`nylas_send_message`** (and this REST route) accept optional **`attachm
 }
 ```
 
-Limits (env-overridable): **`JOSHU_NYLAS_MAX_ATTACHMENTS`** (default 5), **`JOSHU_NYLAS_MAX_ATTACHMENT_BYTES`** (default 25 MiB per file). Action-guard approval SMS/Slack includes attachment filenames. Relay mode (fleet boxes without `NYLAS_API_KEY`) base64-encodes files through the control-plane Nylas proxy. **Not supported yet:** inbound attachment download into gbrain mirrors; jMail UI attach picker; CID inline images in body.
+Limits (env-overridable): **`JOSHU_NYLAS_MAX_ATTACHMENTS`** (default 5), **`JOSHU_NYLAS_MAX_ATTACHMENT_BYTES`** (default 25 MiB per file). Action-guard approval SMS/Slack includes attachment filenames. Relay mode (fleet boxes without `NYLAS_API_KEY`) base64-encodes files through the control-plane Nylas proxy. **Not supported yet:** inbound attachment download for the agent Nylas mailbox (owner Gmail: [connectors.md — Mail attachments](connectors.md#mail-attachments)); jMail UI attach picker; CID inline images in body.
 
 Implementation: [`src/nylas/attachments.ts`](../src/nylas/attachments.ts). Owner-reply skill: [`ea-owner-reply`](../integrations/hermes/skills/executive-assistant/ea-owner-reply/SKILL.md).
 

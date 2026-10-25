@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Apply keepalive-aware stale-stream patch to Hermes (box boot + hotpatch).
 # See scripts/patch-hermes-stale-stream-keepalive.py and
-# docs/vps-sandbox/troubleshooting-and-lessons.md (Patrick Slack hang 2026-08-24).
+# docs/vps-sandbox/troubleshooting-and-lessons.md (Slack hang on a fleet box, 2026-08-24).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

@@ -2,6 +2,7 @@ import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import {
   callKanbanBridge,
+  type KanbanBridgeCall,
   eaKanbanCreateDefaults,
   ensureEaMailIngressBoard,
   eaSchedulingKanbanAssignee,
@@ -21,21 +22,21 @@ import {
   mailIngressCanonicalId,
   mailIngressTaskIdempotencyKey,
   mailTrackTaskIdempotencyKey,
-  lookupMailIngestAuthorization,
 } from "./mailDedup.js";
 import type { MailAgentAuthorization } from "./agentAuthorization.js";
-import { resolveAuthorizationFromSourcePath, resolveOwnerEmails } from "./agentAuthorization.js";
+import { resolveOwnerEmails } from "./agentAuthorization.js";
 import { resolveJoshuAgentEmails } from "./ingestFilters.js";
 import { isOwnerReplyEligible, isOwnerDirectAgentAsk, ownerReplyIngressPlaybookLines } from "./ownerReplyEligibility.js";
 import {
   listActiveCoordinationForScope,
   resolveMailCoordinationScope,
 } from "./conversationScope.js";
-import { listSchedulingMeetingTasks } from "./schedulingCron.js";
+import {
+  listSchedulingMeetingTasks,
+  parseThreadIdFromTaskBody,
+  threadIdInTaskSourcePaths,
+} from "./schedulingCron.js";
 import { listOwnerReplyTasks } from "./ownerReplyCron.js";
-import { evaluateTrackSignalAfterHandoff, latestMailHandoff } from "./trackSignalEvaluate.js";
-import { enqueueClarifyCandidate } from "../proactive/clarifyQueue.js";
-import { completeKanbanTask } from "../proactive/kanbanComplete.js";
 
 export type QueueMailIngressTaskResult = {
   queued: boolean;
@@ -58,11 +59,12 @@ async function ensureProjectBoard(
   filesRoot: string,
   folderSlug: string,
   name?: string,
+  bridge: KanbanBridgeCall = callKanbanBridge,
 ): Promise<string> {
   const boardSlug = projectBoardSlug(folderSlug);
   const projectDir = path.join(filesRoot, "Projects", folderSlug);
   await mkdir(projectDir, { recursive: true });
-  await callKanbanBridge({
+  await bridge({
     action: "ensure_board",
     slug: boardSlug,
     name: name || folderSlug,
@@ -194,7 +196,7 @@ export async function buildMailIngressTaskBody(
     ...(hasOwnerDeliverable
       ? ["coordination_note: open owner_deliverable on scope — handoff only."]
       : []),
-    "Order: (1) skill_view ea-playbook (2) read_file source_path (3) file Projects/<slug>/ (4) mail_list_track_tasks(projectSlug=…) then handoff|create (5) schedule only if allowed_actions includes schedule (5b) owner_reply spawn if owner_reply_eligible (6) Triage stub state:done → _done/ (7) kanban_complete.",
+    `Order: (1) skill_view ea-playbook (2) read_file source_path (3) file Projects/<slug>/ (4) mail_list_track_tasks(projectSlug=…, threadId=${input.threadId}) — one track returned → handoff to it; none but done_match → handoff to done_match if this email continues that matter (Joshu reopens it); else mail_list_track_tasks(projectSlug=…) (compact track list) and match by judgment, else create (4b) Project reconcile only if no handoff returned evaluation_queued: true (5) schedule only if allowed_actions includes schedule (5b) owner_reply spawn if owner_reply_eligible (6) Triage stub state:done → _done/ (7) kanban_complete.`,
     "MCP args: projectSlug = folder slug (not board id, not nested tool_call). Stub = Triage/gmail-<account_key>-<thread_id>.stub.md (or <provider>-<thread_id>.stub.md).",
     "Job: FILE this email — match or create Projects/<slug>/ and project track.",
     "Standalone scheduling with no project → Projects/other/.",
@@ -328,42 +330,225 @@ export async function queueMailIngressTask(
   };
 }
 
-/** List open mail track tasks on a project board. */
-export async function listMailTrackTasks(opts: {
-  filesRoot: string;
-  projectSlug: string;
-  limit?: number;
-}): Promise<MailTrackTaskSummary[]> {
+/** Match an open mail track task to a mail thread (body field or source_paths). */
+export function findOpenMailTrackByThread(
+  tasks: MailTrackTaskSummary[],
+  threadId: string,
+): MailTrackTaskSummary | undefined {
+  const normalized = threadId.trim();
+  if (!normalized) return undefined;
+  return tasks.find((t) => {
+    const body = t.body ?? "";
+    if (parseThreadIdFromTaskBody(body) === normalized) return true;
+    return threadIdInTaskSourcePaths(body, normalized);
+  });
+}
+
+const PROJECT_BOARD_PREFIX = "project-";
+
+/**
+ * Each open track on the given project boards that is a thread match.
+ * One Kanban bridge call for all boards (spec gmail-sync).
+ */
+export async function findOpenMailTracksByThreadOnBoards(
+  threadId: string,
+  boards: string[],
+  bridge: KanbanBridgeCall = callKanbanBridge,
+): Promise<MailTrackTaskSummary[]> {
+  const normalized = threadId.trim();
+  const projectBoards = boards.filter((b) => b.startsWith(PROJECT_BOARD_PREFIX));
+  if (!normalized || projectBoards.length === 0) return [];
+  const result = await bridge({
+    action: "find_open_by_text",
+    boards: projectBoards,
+    text: normalized,
+    statuses: [...OPEN_TRACK_STATUSES],
+  });
+  if (!result.success || !result.tasks) return [];
+  const out: MailTrackTaskSummary[] = [];
+  for (const t of result.tasks) {
+    const id = t.task_id?.trim();
+    const board = t.board?.trim();
+    const body = t.body ?? "";
+    if (!id || !board || body.includes("kind: mail_ingress")) continue;
+    const track: MailTrackTaskSummary = {
+      task_id: id,
+      title: t.title,
+      status: t.status,
+      body,
+      board,
+      project_slug: board.slice(PROJECT_BOARD_PREFIX.length),
+    };
+    if (findOpenMailTrackByThread([track], normalized)) out.push(track);
+  }
+  return out;
+}
+
+/** Entry of the compact track list (openspec/glossary.md): no full body. */
+export type CompactMailTrack = {
+  task_id: string;
+  title?: string;
+  status?: string;
+  thread_ids: string[];
+  latest_handoff?: { at?: string; summary: string };
+  completed_at?: number | string;
+};
+
+export type MailTrackList = {
+  tasks: Array<MailTrackTaskSummary | CompactMailTrack>;
+  /** Done match (openspec/glossary.md): only when threadId finds no open track. */
+  done_match?: CompactMailTrack;
+};
+
+const LATEST_HANDOFF_SUMMARY_MAX = 200;
+const OPEN_TRACK_LIST_LIMIT = 200;
+const DONE_TRACK_LIST_LIMIT = 1000;
+
+/** Thread ids that the full body of a track references, in order of first reference. */
+export function threadIdsInTaskBody(body: string): string[] {
+  const ids: string[] = [];
+  const add = (id: string | null | undefined) => {
+    const v = id?.trim();
+    if (v && !ids.includes(v)) ids.push(v);
+  };
+  add(parseThreadIdFromTaskBody(body));
+  for (const m of body.matchAll(/\/threads\/([^/\s"']+?)\.md/g)) add(m[1]);
+  return ids;
+}
+
+/** `at` and `summary` of the last `mail_handoff:` block of a full body. */
+function latestHandoffInTaskBody(body: string): CompactMailTrack["latest_handoff"] {
+  const idx = body.lastIndexOf("mail_handoff:");
+  if (idx < 0) return undefined;
+  const block = body.slice(idx).split("\n").slice(1);
+  let at: string | undefined;
+  let summary = "";
+  for (const line of block) {
+    if (!/^\s/.test(line)) break;
+    const m = /^\s+(at|summary):\s*(.*)$/.exec(line);
+    if (!m) continue;
+    const value = (m[2] ?? "").trim();
+    if (m[1] === "at") at = value;
+    else {
+      const raw = value;
+      try {
+        summary = raw.startsWith('"') ? String(JSON.parse(raw)) : raw;
+      } catch {
+        summary = raw;
+      }
+    }
+  }
+  if (summary.length > LATEST_HANDOFF_SUMMARY_MAX) {
+    summary = `${summary.slice(0, LATEST_HANDOFF_SUMMARY_MAX - 1)}…`;
+  }
+  return { ...(at ? { at } : {}), summary };
+}
+
+/** Compact track list entry (spec mail-tracks, "Compact track list"). */
+export function compactMailTrack(
+  task: MailTrackTaskSummary & { completed_at?: number | string },
+): CompactMailTrack {
+  const body = task.body ?? "";
+  const latest = latestHandoffInTaskBody(body);
+  return {
+    task_id: task.task_id,
+    title: task.title,
+    status: task.status,
+    thread_ids: threadIdsInTaskBody(body),
+    ...(latest ? { latest_handoff: latest } : {}),
+    // A reopened track keeps its old completion time; report it only for a done track.
+    ...(task.status === "done" && task.completed_at !== undefined
+      ? { completed_at: task.completed_at }
+      : {}),
+  };
+}
+
+async function listTracksByStatus(
+  bridge: KanbanBridgeCall,
+  board: string,
+  folderSlug: string,
+  status: string,
+  limit: number,
+): Promise<Array<MailTrackTaskSummary & { completed_at?: number | string }>> {
+  const result = await bridge({ action: "list", board, status, limit, include_body: true });
+  if (!result.success || !result.tasks) return [];
+  const out: Array<MailTrackTaskSummary & { completed_at?: number | string }> = [];
+  for (const t of result.tasks) {
+    const id = t.task_id?.trim();
+    if (!id) continue;
+    const body = t.body ?? "";
+    if (body.includes("kind: mail_ingress")) continue;
+    out.push({
+      task_id: id,
+      title: t.title,
+      status: t.status,
+      body,
+      board,
+      project_slug: folderSlug,
+      ...(t.completed_at !== undefined ? { completed_at: t.completed_at } : {}),
+    });
+  }
+  return out;
+}
+
+/**
+ * Track list of a project board (openspec/specs/mail-tracks).
+ * - taskId: that one track with its full body, for each status.
+ * - threadId: the thread match with its full body, or no track and the done match.
+ * - neither: the compact track list of every open track.
+ */
+export async function listMailTrackTasks(
+  opts: {
+    filesRoot: string;
+    projectSlug: string;
+    limit?: number;
+    threadId?: string;
+    taskId?: string;
+  },
+  bridge: KanbanBridgeCall = callKanbanBridge,
+): Promise<MailTrackList> {
   const folderSlug = normalizeProjectSlug(opts.projectSlug);
   const board = projectBoardSlug(folderSlug);
-  await ensureProjectBoard(opts.filesRoot, folderSlug);
+  await ensureProjectBoard(opts.filesRoot, folderSlug, undefined, bridge);
+
+  const taskId = opts.taskId?.trim();
+  if (taskId) {
+    const shown = await bridge({ action: "show", board, task_id: taskId });
+    const t = shown.success ? shown.task : undefined;
+    if (!t?.task_id || (t.body ?? "").includes("kind: mail_ingress")) return { tasks: [] };
+    return {
+      tasks: [
+        {
+          task_id: t.task_id,
+          title: t.title,
+          status: t.status,
+          body: t.body ?? "",
+          board,
+          project_slug: folderSlug,
+        },
+      ],
+    };
+  }
 
   const byId = new Map<string, MailTrackTaskSummary>();
   for (const status of OPEN_TRACK_STATUSES) {
-    const result = await callKanbanBridge({
-      action: "list",
-      board,
-      status,
-      limit: opts.limit ?? 50,
-      include_body: true,
-    });
-    if (!result.success || !result.tasks) continue;
-    for (const t of result.tasks) {
-      const id = t.task_id?.trim();
-      if (!id) continue;
-      const body = t.body ?? "";
-      if (body.includes("kind: mail_ingress")) continue;
-      byId.set(id, {
-        task_id: id,
-        title: t.title,
-        status: t.status,
-        body,
-        board,
-        project_slug: folderSlug,
-      });
+    const limit = opts.limit ?? OPEN_TRACK_LIST_LIMIT;
+    for (const t of await listTracksByStatus(bridge, board, folderSlug, status, limit)) {
+      byId.set(t.task_id, t);
     }
   }
-  return [...byId.values()];
+  const tasks = [...byId.values()];
+  const filterThread = opts.threadId?.trim();
+  if (!filterThread) return { tasks: tasks.map(compactMailTrack) };
+
+  const matched = findOpenMailTrackByThread(tasks, filterThread);
+  if (matched) return { tasks: [matched] };
+
+  const done = await listTracksByStatus(bridge, board, folderSlug, "done", DONE_TRACK_LIST_LIMIT);
+  const doneMatch = done
+    .filter((t) => findOpenMailTrackByThread([t], filterThread))
+    .sort((a, b) => Number(b.completed_at ?? 0) - Number(a.completed_at ?? 0))[0];
+  return { tasks: [], ...(doneMatch ? { done_match: compactMailTrack(doneMatch) } : {}) };
 }
 
 export type QueueMailTrackTaskResult = {
@@ -450,9 +635,8 @@ export async function queueMailTrackTask(opts: {
 export type HandoffMailTrackResult = {
   ok: boolean;
   error?: string;
+  /** True when the handoff unblocked a blocked track so that its worker reads the email. */
   evaluation_queued?: boolean;
-  /** Post-handoff reconcile outcome: complete | clarify_queued | noop */
-  reconciled?: string;
 };
 
 function buildMailHandoffAppend(opts: {
@@ -482,18 +666,25 @@ function buildMailHandoffAppend(opts: {
   return lines.join("\n");
 }
 
-/** Ingress delivers new mail to an existing track task. */
-export async function handoffMailToTrackTask(opts: {
-  filesRoot: string;
-  projectSlug: string;
-  taskId: string;
-  sourcePath: string;
-  messageId: string;
-  from?: string;
-  summary: string;
-  /** Joshu project root for proactive clarify queue (default cwd). */
-  projectRoot?: string;
-}): Promise<HandoffMailTrackResult> {
+/**
+ * Handoff: add a new email to an existing track (openspec/specs/mail-tracks).
+ * For a blocked track, the handoff unblocks the track. For a done track, the
+ * handoff reopens the track. In both cases the worker of the track reads the
+ * email and decides the next status. The handoff does not judge
+ * the email and does not complete the track.
+ */
+export async function handoffMailToTrackTask(
+  opts: {
+    filesRoot: string;
+    projectSlug: string;
+    taskId: string;
+    sourcePath: string;
+    messageId: string;
+    from?: string;
+    summary: string;
+  },
+  bridge: KanbanBridgeCall = callKanbanBridge,
+): Promise<HandoffMailTrackResult> {
   const taskId = opts.taskId.trim();
   const folderSlug = normalizeProjectSlug(opts.projectSlug);
   const board = projectBoardSlug(folderSlug);
@@ -504,11 +695,12 @@ export async function handoffMailToTrackTask(opts: {
     return { ok: false, error: "taskId, sourcePath, messageId, summary required" };
   }
 
-  const before = await callKanbanBridge({ action: "show", board, task_id: taskId });
+  const before = await bridge({ action: "show", board, task_id: taskId });
   if (!before.success || !before.task) {
     return { ok: false, error: before.error ?? "task_not_found" };
   }
   const wasBlocked = before.task.status === "blocked";
+  const wasDone = before.task.status === "done";
 
   const append = buildMailHandoffAppend({
     existingBody: before.task.body ?? "",
@@ -517,7 +709,7 @@ export async function handoffMailToTrackTask(opts: {
     from: opts.from,
     summary,
   });
-  const appended = await callKanbanBridge({
+  const appended = await bridge({
     action: "append_body",
     board,
     task_id: taskId,
@@ -527,7 +719,7 @@ export async function handoffMailToTrackTask(opts: {
     return { ok: false, error: appended.error ?? "append_body_failed" };
   }
 
-  await callKanbanBridge({
+  await bridge({
     action: "comment",
     board,
     task_id: taskId,
@@ -535,86 +727,51 @@ export async function handoffMailToTrackTask(opts: {
     author: "mail-ingress",
   });
 
+  if (wasDone) {
+    // A done track reopens, so that the worker of the track reads the email (spec mail-tracks).
+    const reopened = await bridge({ action: "reopen", board, task_id: taskId });
+    console.info(
+      `[ea-mail] handoff reopened done track task=${taskId} message=${messageId} ok=${reopened.success === true}`,
+    );
+    return reopened.success
+      ? { ok: true, evaluation_queued: true }
+      : {
+          ok: true,
+          evaluation_queued: false,
+          error: `handoff_ok_reopen_failed:${reopened.error ?? "unknown"}`,
+        };
+  }
+
   if (!wasBlocked) {
     return { ok: true, evaluation_queued: false };
   }
 
-  const projectRoot = opts.projectRoot ?? process.cwd();
-  const updatedBody = `${before.task.body ?? ""}\n${append}`;
-  const verdict = evaluateTrackSignalAfterHandoff({
-    filesRoot: opts.filesRoot,
-    projectSlug: folderSlug,
-    taskId,
-    board,
-    title: before.task.title,
-    body: updatedBody,
-    blockReason: before.task.block_reason ?? null,
-    status: "blocked",
-  });
-
-  console.info(
-    `[ea-mail] handoff reconcile tier=${verdict.tier} task=${taskId} message=${messageId} reason=${verdict.reason}`,
+  // Wake the worker also when the companion is not agent authorized for the email.
+  // Agent authorized limits only the outgoing emails of the worker.
+  const wake = await queueMailTrackTaskHandler(
+    { filesRoot: opts.filesRoot, projectSlug: folderSlug, taskId },
+    bridge,
   );
-
-  if (verdict.tier === "resolve") {
-    const done = await completeKanbanTask({
-      board,
-      taskId,
-      comment: `## Track signal reconcile\n\n${verdict.evidence}`,
-      author: "track-signal-reconcile",
-    });
-    if (!done.ok) {
-      return { ok: false, error: done.error ?? "reconcile_complete_failed" };
-    }
-    return { ok: true, evaluation_queued: false, reconciled: "complete" };
-  }
-
-  if (verdict.tier === "clarify") {
-    const handoff = latestMailHandoff(updatedBody);
-    enqueueClarifyCandidate(projectRoot, {
-      taskId,
-      board,
-      title: before.task.title?.trim() || "(untitled)",
-      blockReason: before.task.block_reason ?? null,
-      conflict: verdict.conflict,
-      handoffAt: handoff?.at ?? null,
-    });
-    return { ok: true, evaluation_queued: false, reconciled: "clarify_queued" };
-  }
-
-  const auth =
-    (await lookupMailIngestAuthorization(opts.filesRoot, messageId)) ??
-    (await resolveAuthorizationFromSourcePath({
-      filesRoot: opts.filesRoot,
-      sourcePath,
-    }));
-  if (auth && !auth.agent_authorized) {
-    console.info(
-      `[ea-mail] handoff file-only task=${taskId} message=${messageId} (${auth.reason})`,
-    );
-    return { ok: true, evaluation_queued: false, reconciled: "noop" };
-  }
-
-  const wake = await queueMailTrackTaskHandler({
-    filesRoot: opts.filesRoot,
-    projectSlug: folderSlug,
-    taskId,
-  });
+  console.info(
+    `[ea-mail] handoff woke worker task=${taskId} message=${messageId} queued=${wake.queued}`,
+  );
   return {
     ok: true,
     evaluation_queued: wake.queued,
-    reconciled: "noop",
     ...(wake.queued ? {} : { error: `handoff_ok_evaluation_failed:${wake.reason}` }),
   };
 }
 
-export async function queueMailTrackTaskHandler(opts: {
-  filesRoot: string;
-  projectSlug: string;
-  taskId: string;
-}): Promise<QueueMailTrackTaskResult> {
+export async function queueMailTrackTaskHandler(
+  opts: {
+    filesRoot: string;
+    projectSlug: string;
+    taskId: string;
+  },
+  bridge: KanbanBridgeCall = callKanbanBridge,
+): Promise<QueueMailTrackTaskResult> {
   const board = projectBoardSlug(normalizeProjectSlug(opts.projectSlug));
-  const result = await callKanbanBridge({
+  const result = await bridge({
     action: "unblock",
     board,
     task_id: opts.taskId.trim(),

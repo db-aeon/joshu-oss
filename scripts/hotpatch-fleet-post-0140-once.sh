@@ -141,7 +141,9 @@ docker exec "$CID" grep -m1 'version:' /root/.hermes/skills/joshu/executive-assi
 docker exec "$CID" test -f /root/.hermes/skills/joshu/executive-assistant/ea-owner-reply/SKILL.md && echo ea-owner-reply-skill-ok
 # Stop gateway so next Joshu nudge reloads skills/MCP (best-effort)
 pid=$(docker exec "$CID" python3 -c "import json,pathlib; p=pathlib.Path('/root/.hermes/gateway.pid');
-print(json.loads(p.read_text()).get('pid','') if p.is_file() else '')" 2>/dev/null || true)
+pid=str(json.loads(p.read_text()).get('pid','')) if p.is_file() else ''
+c=pathlib.Path('/proc/'+pid+'/cmdline')
+print(pid if pid and c.is_file() and b'gateway run' in c.read_bytes() else '')" 2>/dev/null || true)
 if [[ -n "${pid}" ]]; then
   docker exec "$CID" kill "$pid" 2>/dev/null || true
 fi

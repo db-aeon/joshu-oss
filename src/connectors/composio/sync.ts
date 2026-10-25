@@ -11,7 +11,12 @@ import {
 } from "../paths.js";
 import { truncateBody, writeCalendarEventMirror, writeMailThreadMirror, type MailThreadFrontmatter } from "../mirror.js";
 import { readSyncState, writeSyncState } from "../state.js";
-import { fetchGmailAllMailMessages, fetchGmailInboxMessages, fetchGmailThreadMessages } from "./gmail.js";
+import {
+  fetchGmailAllMailMessages,
+  fetchGmailInboxMessages,
+  fetchGmailThreadMessages,
+  isGmailNotFoundError,
+} from "./gmail.js";
 import { fetchGmailHistoryCursor, fetchGmailThreadsFromHistory } from "./gmailHistory.js";
 import { messageIdsUnchanged, readMirrorExternalId, readMirrorMessageIds } from "../mirrorRead.js";
 import { buildGmailThreadMirrorBody } from "./gmailMirrorFormat.js";
@@ -29,9 +34,10 @@ import {
 } from "./calendarAccounts.js";
 import { refreshConnectorsRegistry } from "../registry.js";
 import { relativeFromFilesRoot, safeThreadFilename } from "../paths.js";
-import { readdir, rename, mkdir } from "node:fs/promises";
+import { readdir, rename, mkdir, rm } from "node:fs/promises";
 import { createTriageStubAfterMirror } from "../../ea/triageStub.js";
-import { gmailIngestSkipLabel, isGmailJunkThread } from "../../ea/gmailJunk.js";
+import { gmailThreadIngestKind } from "../../ea/gmailJunk.js";
+import { handoffOwnerGmailReply, shouldHandoffOwnerGmailReply } from "../../ea/ownerGmailReply.js";
 import {
   canonicalThreadIdFromMessages,
   resolveGmailThreadIdsFromSummaries,
@@ -75,6 +81,26 @@ type GmailAccountSyncOpts = {
   syncMode?: "incremental" | "full";
 };
 
+/**
+ * Gmail answered 404 for the thread, so the thread is deleted. Removes its mail mirror.
+ * Returns 1 when a mail mirror was removed, so that gbrain reindexes the mirror folder.
+ */
+async function removeDeletedGmailThreadMirror(
+  threadsDir: string,
+  account: GmailRegistryAccount,
+  threadId: string,
+): Promise<number> {
+  const mirrorPath = path.join(threadsDir, safeThreadFilename(threadId));
+  try {
+    await rm(mirrorPath);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return 0;
+    throw err;
+  }
+  console.info(`[gmail-sync] thread deleted in Gmail, removed mirror ${account.accountKey}/${threadId}`);
+  return 1;
+}
+
 async function hydrateAndMirrorGmailThread(opts: {
   projectRoot: string;
   ctx: { connectedAccountId: string };
@@ -103,16 +129,17 @@ async function hydrateAndMirrorGmailThread(opts: {
   let messages;
   try {
     messages = await fetchGmailThreadMessages(projectRoot, listThreadId, ctx);
-  } catch {
+  } catch (err) {
+    if (isGmailNotFoundError(err)) return removeDeletedGmailThreadMirror(threadsDir, account, listThreadId);
     messages = summaries.filter((m) => m.threadId === listThreadId);
   }
   if (messages.length === 0) return 0;
 
   const threadId = canonicalThreadIdFromMessages(messages, listThreadId);
-  if (isGmailJunkThread(messages)) {
-    const skipLabel = gmailIngestSkipLabel(messages[messages.length - 1]?.labelIds);
+  const ingest = gmailThreadIngestKind(messages);
+  if (ingest.kind === "skip") {
     console.info(
-      `[gmail-sync] skip mirror/triage ${account.accountKey}/${threadId}${skipLabel ? ` (label: ${skipLabel})` : ""}`,
+      `[gmail-sync] skip mirror/triage ${account.accountKey}/${threadId}${ingest.label ? ` (label: ${ingest.label})` : ""}`,
     );
     return 0;
   }
@@ -161,6 +188,34 @@ async function hydrateAndMirrorGmailThread(opts: {
     paths.filesRoot,
     writtenPath ?? mirrorPath,
   );
+
+  if (ingest.kind === "owner_reply") {
+    // Owner Gmail reply: no triage, only a handoff to the open tracks of the thread.
+    if (shouldHandoffOwnerGmailReply({ priorMirrorMessageIds: existingIds, classifyTriage, skipTriageStubs })) {
+      const result = await handoffOwnerGmailReply({
+        filesRoot: paths.filesRoot,
+        projectRoot,
+        threadId,
+        sourcePath,
+        messageId: latest.id,
+        from: latest.from,
+        to: latest.to,
+        cc: latest.cc,
+        bcc: latest.bcc,
+        accountEmail: account.email,
+      }).catch((err) => {
+        console.warn(`[gmail-sync] owner reply handoff: ${(err as Error).message}`);
+        return null;
+      });
+      if (result) {
+        console.info(
+          `[gmail-sync] owner reply ${account.accountKey}/${threadId} handoff=${result.handedOff.join(",") || "none"}${result.skipped ? ` (${result.skipped})` : ""}`,
+        );
+      }
+    }
+    return 1;
+  }
+
   await createTriageStubAfterMirror({
     filesRoot: paths.filesRoot,
     provider: "gmail",
@@ -217,6 +272,9 @@ export async function syncGmailAccount(
     let threadIds: string[] = [];
     let summaries: Awaited<ReturnType<typeof fetchGmailInboxMessages>> = [];
     let usedHistory = false;
+    // The historyId of the history listing. The sync saves it only after the threads of the listing
+    // are processed, so a failed run lists the same history again and a good run moves the cursor.
+    let listedHistoryId: string | undefined;
 
     if (incremental && !historyId) {
       // Fresh connect / post-reset: seed Gmail history cursor only — no mailbox backfill.
@@ -243,7 +301,7 @@ export async function syncGmailAccount(
         );
         historyId = undefined;
       } else if (hist.threadIds.length === 0) {
-        const cursor = await fetchGmailHistoryCursor(projectRoot, ctx);
+        const cursor = hist.latestHistoryId ?? (await fetchGmailHistoryCursor(projectRoot, ctx));
         await writeSyncState(statePath, {
           lastSyncAt: syncedAt,
           threadsWritten: 0,
@@ -255,7 +313,7 @@ export async function syncGmailAccount(
       } else {
         threadIds = hist.threadIds;
         usedHistory = true;
-        if (hist.latestHistoryId) historyId = hist.latestHistoryId;
+        listedHistoryId = hist.latestHistoryId;
       }
     }
 
@@ -285,7 +343,7 @@ export async function syncGmailAccount(
     );
     const threadsWritten = written.reduce<number>((sum, n) => sum + n, 0);
 
-    const cursor = await fetchGmailHistoryCursor(projectRoot, ctx);
+    const cursor = listedHistoryId ?? (await fetchGmailHistoryCursor(projectRoot, ctx));
     await writeSyncState(statePath, {
       lastSyncAt: syncedAt,
       threadsWritten,
@@ -362,8 +420,6 @@ async function syncGoogleCalendarAccount(
       projectRoot,
       { connectedAccountId: account.connectedAccountId },
       {
-        maxResults:
-          opts.calendarDaysBack && opts.calendarDaysBack > 14 ? 120 : 60,
         daysBack: opts.calendarDaysBack ?? 7,
         daysForward: opts.calendarDaysForward ?? 14,
       },

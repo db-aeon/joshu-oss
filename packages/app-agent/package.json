@@ -22,9 +22,9 @@
     "react-dom": "^18.0.0 || ^19.0.0"
   },
   "dependencies": {
-    "@ag-ui/client": "^0.0.57",
-    "@ag-ui/core": "^0.0.57",
-    "@copilotkit/react-core": "^1.50.0",
+    "@ag-ui/client": "^1.0.2",
+    "@ag-ui/core": "^1.0.2",
+    "@copilotkit/react-core": "^1.79.1",
     "@joshu/jchat-ui": "*",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

@@ -19,28 +19,20 @@ LOG_FILE="${JOSHU_COMPOSIO_MCP_GUARD_LOG_FILE:-${HOME}/.joshu/composio-mcp-guard
 HEALTH_URL="http://${JOSHU_COMPOSIO_MCP_GUARD_HOST}:${JOSHU_COMPOSIO_MCP_GUARD_PORT}/health"
 
 mkdir -p "$(dirname "${PID_FILE}")" "$(dirname "${LOG_FILE}")"
+# shellcheck source=lib/pid-file.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/pid-file.sh"
 
 guard_health_ok() {
   curl -fsS "${HEALTH_URL}" >/dev/null 2>&1
 }
 
 stop_stale_guard() {
-  if [[ ! -f "${PID_FILE}" ]]; then
-    return 0
-  fi
-  local old_pid
-  old_pid="$(cat "${PID_FILE}" 2>/dev/null || true)"
-  if [[ -n "${old_pid}" ]] && kill -0 "${old_pid}" 2>/dev/null; then
-    kill "${old_pid}" 2>/dev/null || true
-    sleep 1
-    kill -9 "${old_pid}" 2>/dev/null || true
-  fi
-  rm -f "${PID_FILE}"
+  stop_pid_file_process "${PID_FILE}" "composio-mcp-guard-proxy.mjs" "[composio-mcp-guard]" 1
 }
 
 if [[ -f "${PID_FILE}" ]]; then
   old_pid="$(cat "${PID_FILE}" 2>/dev/null || true)"
-  if [[ -n "${old_pid}" ]] && kill -0 "${old_pid}" 2>/dev/null && guard_health_ok; then
+  if pid_runs_command "${old_pid}" "composio-mcp-guard-proxy.mjs" && guard_health_ok; then
     echo "[composio-mcp-guard] already running pid=${old_pid}"
     exit 0
   fi

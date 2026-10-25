@@ -14,8 +14,8 @@ import {
 import { buildNylasSendSummary } from "../src/actionGuard/gate.js";
 import { formatApprovalMessage } from "../src/actionGuard/approvalMessage.js";
 
-const ownerEmail = "db@project-aeon.com";
-const agentEmail = "patrick@joshu.me";
+const ownerEmail = "sam@acme.example";
+const agentEmail = "ava@joshu.me";
 const externalEmail = "counterparty@example.com";
 
 process.env.JOSHU_AGENT_EMAILS = agentEmail;
@@ -76,28 +76,28 @@ process.env.JOSHU_AROZ_USER = ownerEmail;
   assert.equal(vis.reason, "owner_on_thread_headers");
 }
 
-// Agent-only thread (four8 pattern) → false + context snippet
+// Agent-only thread (external sender) → false + context snippet
 {
   const body = [
     "--- message ---",
-    `From: Dan Partelow <dan@four8.com>`,
+    `From: Pat Vendor <pat@vendor.example>`,
     "Subject: Re: Planning",
     "",
-    "Can we reschedule to next week? Plus Patrick, see below.",
+    "Can we reschedule to next week? Plus Ava, see below.",
     "",
     "--- message ---",
-    `From: Patrick <${agentEmail}>`,
+    `From: Ava <${agentEmail}>`,
     "Subject: Re: Planning",
     "",
     "Here are some times.",
   ].join("\n");
   const fm = {
-    from: `Patrick <${agentEmail}>`,
+    from: `Ava <${agentEmail}>`,
     to: [externalEmail, agentEmail],
     cc: [],
     thread_messages: [
-      { from: `Dan Partelow <dan@four8.com>`, message_id: "m1" },
-      { from: `Patrick <${agentEmail}>`, message_id: "m2" },
+      { from: `Pat Vendor <pat@vendor.example>`, message_id: "m1" },
+      { from: `Ava <${agentEmail}>`, message_id: "m2" },
     ],
   };
   const vis = ownerVisibleOnThreadMirror(fm, body, process.cwd());

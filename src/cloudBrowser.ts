@@ -7,8 +7,9 @@
 import { cloudBrowserEnabled as isCloudBrowserBackend } from "./browserBackend.js";
 import { provisionEnvTrim } from "./provisionInstanceEnv.js";
 import { instanceAgentBearerToken } from "./meteredProviders/config.js";
+import { stopCloudBrowserActivePage } from "./cloudBrowserActivePage.js";
 
-/** Standard 4:3 landscape — matches local Camofox/Chromium screencast. */
+/** Standard 4:3 landscape — matches the local Chromium screencast. */
 export const CLOUD_BROWSER_SCREEN = { width: 1024, height: 768 };
 const RENEW_BEFORE_MS = 10 * 60 * 1000;
 const DEFAULT_CLOUD_IDLE_MS = 300_000;
@@ -23,11 +24,26 @@ type CloudSession = {
   timeoutAt: number;
 };
 
+/** Why Joshu stopped the Browser Use Cloud session. */
+export type CloudBrowserStopReason = "idle" | "shutdown" | "orphan";
+
 type Lifecycle = {
   idleMs: number;
   busy: () => boolean;
   onCdp: (cdpUrl: string) => Promise<void>;
+  /** Called after Joshu stopped a session that was up. */
+  onStop?: (reason: CloudBrowserStopReason) => void;
 };
+
+/** What the companion learns on its next browser_* call after an idle stop. */
+export type CloudBrowserRestartNotice = {
+  stoppedAt: string;
+  idleMinutes: number;
+  message: string;
+};
+
+/** A restart notice older than this is dropped: no plan of the companion still needs the old page. */
+const RESTART_NOTICE_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 
 let session: CloudSession | null = null;
 let lastTouch = 0;
@@ -39,6 +55,34 @@ let liveEnsureInFlight: Promise<CloudSession> | null = null;
 let chain: Promise<unknown> = Promise.resolve();
 let lifecycle: Lifecycle | null = null;
 let timer: ReturnType<typeof setInterval> | null = null;
+let restartNotice: CloudBrowserRestartNotice | null = null;
+
+function buildRestartNotice(stoppedAtMs: number, idleMs: number): CloudBrowserRestartNotice {
+  const stoppedAt = new Date(stoppedAtMs).toISOString();
+  const idleMinutes = Math.max(1, Math.round(idleMs / 60_000));
+  return {
+    stoppedAt,
+    idleMinutes,
+    message:
+      `Joshu stopped the shared browser at ${stoppedAt} after ${idleMinutes} minutes with no activity, ` +
+      "to save cost, and started a new browser for this call. The open tabs, carts, and half-filled forms " +
+      "from before are gone; saved logins usually survive. The website did not cause this. If you were in " +
+      "the middle of a checkout or a form, tell the owner plainly that Joshu's browser timed out, and stage " +
+      "the page again. Call this tool again to continue.",
+  };
+}
+
+/**
+ * Returns the restart notice of the last idle stop once, then clears it.
+ * The browser ensure route hands it to the next Hermes browser_* call.
+ */
+export function takeCloudBrowserRestartNotice(nowMs = Date.now()): CloudBrowserRestartNotice | null {
+  const notice = restartNotice;
+  restartNotice = null;
+  if (!notice) return null;
+  if (nowMs - Date.parse(notice.stoppedAt) > RESTART_NOTICE_MAX_AGE_MS) return null;
+  return notice;
+}
 
 export function cloudBrowserEnabled(projectRoot = process.cwd()): boolean {
   return isCloudBrowserBackend(projectRoot);
@@ -118,11 +162,17 @@ export function cloudCdpUrl(): string {
 }
 
 /** Viewer URL with the Browser Use toolbar hidden. Empty when no session is up. */
-export function cloudLiveFrameUrl(): string {
+/**
+ * Browser Use live view URL. With `browserChrome`, Browser Use shows its own
+ * tab strip, back/forward/reload, and address bar (`ui=true`), so the owner
+ * sees and switches every tab of the shared browser (jWeb on the desktop).
+ * Without it, only the page shows (`ui=false`; the phone handoff page).
+ */
+export function cloudLiveFrameUrl(opts: { browserChrome?: boolean } = {}): string {
   if (!session?.liveUrl) return "";
   try {
     const url = new URL(session.liveUrl);
-    url.searchParams.set("ui", "false");
+    url.searchParams.set("ui", opts.browserChrome ? "true" : "false");
     return url.toString();
   } catch {
     return "";
@@ -231,19 +281,31 @@ export function ensureCloudBrowser(): Promise<CloudSession> {
   return run;
 }
 
-async function stopOnce(): Promise<void> {
+async function stopOnce(reason: CloudBrowserStopReason): Promise<void> {
+  stopCloudBrowserActivePage();
   if (!cloudBrowserConfigured()) {
     session = null;
     lastTouch = 0;
     return;
   }
+  const idleForMs = lastTouch > 0 ? Date.now() - lastTouch : 0;
   const remote = session ? session : await readCloudBrowserFromCp().catch(() => null);
-  if (remote || session) {
+  const wasUp = Boolean(remote || session);
+  if (wasUp) {
     await postAction("stop");
-    console.log("[cloud-browser] stopped");
+    console.log(`[cloud-browser] stopped (${reason})`);
   }
   session = null;
   lastTouch = 0;
+  if (!wasUp) return;
+  // Only an idle stop loses pages that a companion may still count on; a
+  // shutdown ends the companion turns too, and an orphan had no owner on this process.
+  if (reason === "idle") restartNotice = buildRestartNotice(Date.now(), idleForMs);
+  try {
+    lifecycle?.onStop?.(reason);
+  } catch (err) {
+    console.warn("[cloud-browser] onStop:", (err as Error).message);
+  }
 }
 
 /** Does the CDP discovery endpoint still answer? Browser Use returns 502 once a browser is gone. */
@@ -293,8 +355,9 @@ export function ensureLiveCloudBrowser(): Promise<CloudSession> {
   return liveEnsureInFlight;
 }
 
-export async function stopCloudBrowser(): Promise<void> {
-  const run = chain.then(stopOnce, stopOnce);
+export async function stopCloudBrowser(reason: CloudBrowserStopReason): Promise<void> {
+  const stop = () => stopOnce(reason);
+  const run = chain.then(stop, stop);
   chain = run.then(
     () => undefined,
     () => undefined,
@@ -322,23 +385,30 @@ export async function reconcileCloudBrowserState(): Promise<void> {
     return;
   }
   console.log(`[cloud-browser] reconcile stopping orphan session ${remote.browserId}`);
-  await stopOnce();
+  await stopOnce("orphan");
+}
+
+/** Browser WebSocket URL from `<cdp URL>/json/version`. Empty when the browser gives none. */
+export async function cloudBrowserWebSocketUrl(cdpUrl: string): Promise<string> {
+  const base = cdpUrl.replace(/\/$/, "");
+  const version = (await fetch(`${base}/json/version`).then((res) => res.json())) as {
+    webSocketDebuggerUrl?: string;
+  };
+  return version.webSocketDebuggerUrl ?? "";
 }
 
 /** Stretch the window to the screen so the live view has no empty band. */
 export async function fillCloudBrowserWindow(cdpUrl: string): Promise<void> {
   const base = cdpUrl.replace(/\/$/, "");
-  const version = (await fetch(`${base}/json/version`).then((res) => res.json())) as {
-    webSocketDebuggerUrl?: string;
-  };
+  const browserWsUrl = await cloudBrowserWebSocketUrl(cdpUrl);
   const list = (await fetch(`${base}/json/list`).then((res) => res.json())) as Array<{
     id?: string;
     type?: string;
     webSocketDebuggerUrl?: string;
   }>;
   const page = list.find((target) => target.type === "page" && target.id);
-  if (!version.webSocketDebuggerUrl || !page?.id) return;
-  const socket = new WebSocket(version.webSocketDebuggerUrl);
+  if (!browserWsUrl || !page?.id) return;
+  const socket = new WebSocket(browserWsUrl);
   let nextId = 0;
   const send = (method: string, params: Record<string, unknown> = {}) =>
     new Promise<Record<string, unknown>>((resolve, reject) => {
@@ -403,12 +473,17 @@ async function tick(): Promise<void> {
   const idleMs = lifecycle.idleMs;
   const idle = idleMs > 0 && lastTouch > 0 && Date.now() - lastTouch >= idleMs;
   if (idle && !lifecycle.busy()) {
-    await stopCloudBrowser();
+    await stopCloudBrowser("idle");
     return;
   }
   if (session.timeoutAt - Date.now() < RENEW_BEFORE_MS) {
     await ensureCloudBrowser();
   }
+}
+
+/** Test hook — run one lifecycle tick now. */
+export function runCloudBrowserTickForTests(): Promise<void> {
+  return tick();
 }
 
 /** Test hook — make the next ensureLiveCloudBrowser() re-probe the CDP endpoint. */
@@ -423,6 +498,7 @@ export function resetCloudBrowserStateForTests(): void {
   lastHermesBrowserActivity = 0;
   lastLiveProbeAt = 0;
   liveEnsureInFlight = null;
+  restartNotice = null;
   chain = Promise.resolve();
   lifecycle = null;
   if (timer) {

@@ -44,18 +44,41 @@ export function isOwnerSubstantiveBody(bodyPreview?: string): boolean {
 }
 
 /**
+ * Owner mail addressed to someone other than the owner or companion — a reply-all to a
+ * counterparty with the companion CC'd ("Clara can help schedule"), not an owner→agent note.
+ */
+export function ownerMailHasExternalRecipients(input: {
+  to?: string[];
+  cc?: string[];
+  bcc?: string[];
+  ownerEmails: Iterable<string>;
+  agentEmails: Iterable<string>;
+}): boolean {
+  const internal = normalizeOwnerEmailSet([...input.ownerEmails, ...input.agentEmails]);
+  return [...(input.to ?? []), ...(input.cc ?? []), ...(input.bcc ?? [])].some((raw) => {
+    const addr = parseEmailAddress(raw);
+    return Boolean(addr && !internal.has(addr));
+  });
+}
+
+/**
  * Deterministic gate: skip LLM misroutes (info / owner_sent_update) for owner agent inbox.
- * Pure acks (Thanks, OK) may still flow through the classifier as info.
+ * Pure acks (Thanks, OK) may still flow through the classifier as info. Owner mail that
+ * includes external recipients goes to the classifier (scheduling delegations, intros);
+ * the classifier-side owner bias still keeps it out of info/noise.
  */
 export function shouldForceTrackOwnerAgentInbox(input: {
   provider?: TriageProvider;
   from?: string;
   bodyPreview?: string;
   ownerEmails: Iterable<string>;
+  to?: string[];
+  cc?: string[];
+  bcc?: string[];
+  agentEmails?: Iterable<string>;
 }): boolean {
-  return (
-    isOwnerAgentInboxSender(input) && isOwnerSubstantiveBody(input.bodyPreview)
-  );
+  if (!isOwnerAgentInboxSender(input) || !isOwnerSubstantiveBody(input.bodyPreview)) return false;
+  return !ownerMailHasExternalRecipients({ ...input, agentEmails: input.agentEmails ?? [] });
 }
 
 /** Fixed track classification for substantive owner→agent Nylas mail. */

@@ -1,9 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
 
-/** `.joshu/proactive/` under Joshu project root (repo / container cwd). */
+import { joshuStateDir } from "../joshuStateDir.js";
+
+/** `proactive/` in the Joshu state folder (src/joshuStateDir.ts). */
 export function proactiveConfigDir(projectRoot = process.cwd()): string {
-  return path.join(projectRoot, ".joshu", "proactive");
+  return path.join(joshuStateDir(projectRoot), "proactive");
 }
 
 export function proactiveStatePath(projectRoot = process.cwd()): string {

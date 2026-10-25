@@ -1,5 +1,6 @@
 import type { StatusReport } from "./types.js";
 
+/** Health of the Chromium supervisor (CAMOFOX_URL, port 9377). The name is older than Chromium. */
 interface CamofoxHealth {
   ok?: boolean;
   engine?: string;
@@ -8,22 +9,6 @@ interface CamofoxHealth {
   warming?: boolean;
   activeTabs?: number;
   activeSessions?: number;
-}
-
-/** Standalone viewer page (fixed 4:3 host); stock vnc.html scales to the full window. */
-export function buildNoVncStandaloneUrl(appBasePath: string): string {
-  const base = (appBasePath || "").replace(/\/+$/, "");
-  return `${base}/camofox-viewer.html?v=vnc-fill-8`;
-}
-
-/** Joshu-served noVNC 1.7 library (not Camofox /usr/share/novnc). */
-export function buildNovncLibraryUrl(appBasePath: string): string {
-  const base = (appBasePath || "").replace(/\/+$/, "");
-  return `${base}/vendor/novnc`;
-}
-
-export function buildNovncWebsocketPath(proxyClientUrl: string): string {
-  return `${proxyClientUrl.replace(/\/+$/, "")}/websockify`;
 }
 
 async function fetchHealth(camofoxUrl: string, signal: AbortSignal): Promise<CamofoxHealth | null> {
@@ -38,12 +23,8 @@ async function fetchHealth(camofoxUrl: string, signal: AbortSignal): Promise<Cam
 
 export async function getCamofoxStatus(opts: {
   camofoxUrl: string;
-  novncUrl: string;
-  novncClientUrl?: string;
-  novncLibraryUrl?: string;
-  appBasePath?: string;
   timeoutMs?: number;
-}): Promise<Pick<StatusReport, "camofox" | "novnc">> {
+}): Promise<Pick<StatusReport, "camofox">> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? 2_500);
   let health: CamofoxHealth | null = null;
@@ -54,21 +35,12 @@ export async function getCamofoxStatus(opts: {
     clearTimeout(timer);
   }
 
-  const proxyClientUrl = (opts.novncClientUrl ?? opts.novncUrl).replace(/\/+$/, "");
-  const clientBaseUrl = (opts.novncLibraryUrl || buildNovncLibraryUrl(opts.appBasePath ?? "")).replace(/\/+$/, "");
-
   return {
     camofox: {
       reachable: !!health,
       url: opts.camofoxUrl,
       health: health ?? undefined,
-      error: health ? undefined : `Could not reach Camofox at ${opts.camofoxUrl}`,
-    },
-    novnc: {
-      baseUrl: opts.novncUrl,
-      embedUrl: buildNoVncStandaloneUrl(opts.appBasePath ?? ""),
-      clientBaseUrl,
-      websocketPath: buildNovncWebsocketPath(proxyClientUrl),
+      error: health ? undefined : `Could not reach the shared browser at ${opts.camofoxUrl}`,
     },
   };
 }

@@ -24,7 +24,7 @@ export {
 /** @deprecated Use fetchGoogleCalendarEventsForAccount with a connectedAccountId. */
 export async function fetchGoogleCalendarEvents(
   projectRoot: string,
-  opts: { maxResults?: number; daysBack?: number; daysForward?: number; connectedAccountId?: string } = {},
+  opts: { daysBack?: number; daysForward?: number; connectedAccountId?: string } = {},
 ): Promise<import("./calendar.js").GoogleCalendarEventSummary[]> {
   const { listCalendarRegistryAccounts } = await import("./calendarAccounts.js");
   const accounts = await listCalendarRegistryAccounts(projectRoot);

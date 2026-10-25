@@ -93,7 +93,7 @@ function resolveFilesApiBase(): string {
     return `${protocol}//${hostname}:8788${filesPath}`;
   }
 
-  // HTTPS / reverse proxy (e.g. patrick.box.joshu.me) — Joshu at /joshu/*, not :8788.
+  // HTTPS / reverse proxy (e.g. <slug>.box.joshu.me) — Joshu at /joshu/*, not :8788.
   return filesPath;
 }
 

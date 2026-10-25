@@ -5,6 +5,8 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LOCAL_DIR="${ROOT_DIR}/.local"
 PID_FILE="${LOCAL_DIR}/dev-arozos.pid"
+# shellcheck source=lib/pid-file.sh
+source "${ROOT_DIR}/scripts/lib/pid-file.sh"
 
 free_port() {
   local port="$1"
@@ -41,7 +43,7 @@ stop_pid_tree() {
 stopped=0
 if [[ -f "${PID_FILE}" ]]; then
   read -r main_pid < "${PID_FILE}" || true
-  if [[ -n "${main_pid:-}" ]] && stop_pid_tree "${main_pid}"; then
+  if pid_runs_command "${main_pid:-}" "dev-arozos.sh" && stop_pid_tree "${main_pid}"; then
     stopped=1
   fi
   rm -f "${PID_FILE}"

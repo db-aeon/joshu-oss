@@ -1,7 +1,9 @@
+# Agent image of a release (change image-owned-box-runtime). Published as
+# joshu-instance-agent:<version> next to the sandbox image. Runs no code from the host.
 FROM node:22-bookworm-slim
 
 # docker compose via host socket (see deploy/docker-compose.yml instance-agent volumes).
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl git \
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl \
   && install -m 0755 -d /etc/apt/keyrings \
   && curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc \
   && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian bookworm stable" \
@@ -13,4 +15,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
 WORKDIR /app
 COPY packages/instance-agent/ ./
 RUN npm install && npm run build
+# The agent writes release pins to /etc/joshu/instance.env with this script.
+COPY scripts/patch-instance-env.mjs /app/scripts/patch-instance-env.mjs
 CMD ["node", "dist/index.js"]

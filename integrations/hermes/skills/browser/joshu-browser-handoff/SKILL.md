@@ -4,14 +4,14 @@ description: Live browser HITL — hand the shared browser tab to the owner on m
 metadata:
   hermes:
     category: browser
-    version: "1.8.0"
+    version: "1.10.0"
 ---
 
 # Joshu browser handoff (live HITL)
 
 Use when the **owner must take over the shared browser tab** on their phone — payment, login, 2FA, irreversible confirms, or any step that is **sensitive, policy-bound, or explicitly owner-only**.
 
-This is **sustained live HITL**: the owner gets a signed link, the live tab (Browser Use Cloud iframe on fleet boxes, CDP screencast or noVNC on local Chromium), your brief, the form overlay, and time to finish. It is **not** a single-click SMS approval (see action guard below).
+This is **sustained live HITL**: the owner gets a signed link, the live tab (Browser Use Cloud iframe on fleet boxes, CDP screencast on local Chromium), your brief, the form overlay, and time to finish. It is **not** a single-click SMS approval (see action guard below).
 
 **Handoff tools:** `browser_handoff_request`, `browser_handoff_status`, `browser_handoff_complete` (plugin `joshu-browser-handoff`).
 
@@ -25,14 +25,14 @@ Joshu boxes use **one** shared browser session. The backend is chosen at stack s
 
 | Backend | How you drive the page | Live view on handoff link | Do **not** |
 |---------|------------------------|---------------------------|------------|
-| **Browser Use Cloud** (fleet default) | Hermes **`browser_navigate`**, `browser_snapshot`, `browser_click`, `browser_type`, … | Browser Use iframe (`/api/browser/live-frame`) | Call **`browser_task`**, curl **Camofox :9377**, or open a second browser |
-| **Local Chromium** (OSS default) | **`browser_task`** (plugin `joshu-browser-agent`) on the shared CDP tab | CDP screencast or noVNC | Assume Camofox Firefox APIs — current local path is Chromium on `:9222` |
+| **Browser Use Cloud** (fleet default) | Hermes **`browser_navigate`**, `browser_snapshot`, `browser_click`, `browser_type`, … | Browser Use iframe (`/api/browser/live-frame`) | Call **`browser_task`**, curl the local browser supervisor, or open a second browser |
+| **Local Chromium** (OSS default) | **`browser_task`** (plugin `joshu-browser-agent`) on the shared CDP tab | CDP screencast | Curl the browser supervisor or CDP directly to drive the page |
 
-**Cloud fleet rule:** stage pages with **`browser_navigate`** only, then **`browser_handoff_request`**. Handoff reads the **same** cloud CDP session Hermes used. If you get `no_active_browser_tab`, **`browser_navigate`** again to the handoff URL on the **same** Hermes browser tools — do **not** fall back to localhost Camofox, `browser_task`, or `:9377` REST.
+**Cloud fleet rule:** stage pages with **`browser_navigate`** only, then **`browser_handoff_request`**. Handoff reads the **same** cloud CDP session Hermes used. If you get `no_active_browser_tab`, **`browser_navigate`** again to the handoff URL on the **same** Hermes browser tools — do **not** fall back to `browser_task` or to localhost browser REST.
 
 **Local rule:** call **`browser_task`** for autonomous browsing. Stop before payment, CAPTCHA, or secrets, then **`browser_handoff_request`**. While handoff is `pending`, `browser_task` is refused.
 
-**Browser down = system problem.** Joshu wakes the shared browser automatically on every `browser_*` call. If a browser tool still fails with **`browser_unavailable`** or a CDP / WebSocket error (e.g. `502 Bad Gateway`): retry that tool **once**, then **`kanban_block("system: browser unavailable")`** and stop. **Never** investigate the box — no `ps` / `ss` / port scans, no reading `/opt/joshu/dist` or Hermes source, no changing Hermes config (`hermes config`, `config.yaml`), no curling local Joshu or Camofox APIs to drive the page. Joshu owns that recovery.
+**Browser down = system problem.** Joshu wakes the shared browser automatically on every `browser_*` call. If a browser tool still fails with **`browser_unavailable`** or a CDP / WebSocket error (e.g. `502 Bad Gateway`): retry that tool **once**, then **`kanban_block("system: browser unavailable")`** and stop. **Never** investigate the box — no `ps` / `ss` / port scans, no reading `/opt/joshu/dist` or Hermes source, no changing Hermes config (`hermes config`, `config.yaml`), no curling local Joshu or browser supervisor APIs to drive the page. Joshu owns that recovery.
 
 ---
 
@@ -48,6 +48,18 @@ Joshu boxes use **one** shared browser session. The backend is chosen at stack s
 | Task policy says **ask before paying** or **owner must approve in browser** | Desktop-only flow with no need to preserve this tab session |
 
 **Rule of thumb:** if the **next meaningful browser actions belong to the owner** (credentials, money, or binding consent), stage the page and hand off.
+
+### Never ask the owner to send a secret
+
+**Never** ask the owner to send a password, passcode, PIN, recovery code, or one-time code by SMS, chat, email, or voice, and **never** offer it as an option ("reply with the code and I'll type it in"). A secret in a text stays in the SMS log, the Hermes session, and the traces.
+
+When a page asks for a secret (a sign-in, a 2-factor code, the passcode of encrypted direct messages, a PIN), do this at once, with no question first:
+
+1. Stage the page that asks for the secret.
+2. Call **`browser_handoff_request`** with a brief that says what to type and where, for example "X asks for your 4-digit passcode for direct messages. Type it in the boxes, then tap I'm done."
+3. Send the handoff link.
+
+If the owner sends a secret anyway, do not repeat it in any message, and use it only for the step that the owner asked for.
 
 ### Account-specific web data (Amazon orders, bank, portals, RapidAPI)
 
@@ -79,8 +91,8 @@ When the channel is **SMS**, still **`browser_handoff_request`** and **include t
 3. **`browser_snapshot`** — confirm the staged state matches what you will describe in the brief.
 4. **`browser_handoff_request(instructions=…)`** — short owner brief: what site, what to check, what to do, any caps or policies.
 5. Include the returned **`url`** in your outbound message (email, jChat, or SMS). On SMS, always send the link — splitting is automatic.
-6. **`kanban_block("awaiting owner browser handoff")`** (or equivalent wait state).
-7. Poll **`browser_handoff_status(handoff_id=…)`** until `status` is `completed`, or call **`browser_handoff_complete`** as soon as the owner says they are done (SMS/jChat/voice).
+6. **`kanban_block(reason="awaiting owner browser handoff", kind="needs_input")`** (or equivalent wait state). `kind="needs_input"` makes the task an owner question, so the owner can get a proactive nudge.
+7. Poll **`browser_handoff_status(handoff_id=…)`** until `status` is `completed`, or call **`browser_handoff_complete`** as soon as the owner says they are done (SMS/jChat/voice). Read the **`message`** field of the result: it says in plain words whether the staged page is still there. Joshu keeps the shared browser with the staged page until the link expires while the owner has not opened the link; after the owner opens it and leaves it idle for 10 minutes, or after the link expires, Joshu stops the shared browser and the staged page is gone.
 8. **`browser_snapshot`** — verify the outcome (confirmation page, logged-in state, success message).
 9. **Deliver results on the same channel** — SMS → assistant reply text only; email/jChat → normal outbound for that channel.
 10. **`kanban_complete`** or continue the task.
@@ -102,7 +114,7 @@ During **pending handoff**, do **not** navigate away — the server pins `pageUr
 
 ## Cold browser (local Chromium only)
 
-On **local Chromium** boxes, the browser may idle-shutdown. Before the first heavy `browser_navigate` or `browser_task`:
+On **local Chromium** boxes, the browser may have no tab after a restart. Before the first heavy `browser_navigate` or `browser_task`:
 
 ```bash
 curl -fsS -X POST http://127.0.0.1:8788/joshu/api/camofox/warm
@@ -116,7 +128,7 @@ Cloud fleet boxes skip this — the first `browser_*` call wakes (or recreates) 
 
 Owner opens the handoff link on their phone → **signs in with the box username and password** (a desktop session is not enough) → compact Joshu header + embedded live browser → types in native fields (**Fill** enables after an edit) or **More Options** for scan/paste → **I'm done** (bottom right).
 
-If desktop jWeb is also connected on a **local** box, only one viewer may hold the VNC session — ask the owner to close desktop jWeb if the phone viewer disconnects. Cloud handoff uses iframe streaming and does not share this limitation.
+On a **local** box, desktop jWeb and the phone can show the CDP screencast at the same time. The shared page takes the shape of the viewer that connected or resized last.
 
 ---
 
@@ -126,11 +138,12 @@ If desktop jWeb is also connected on a **local** box, only one viewer may hold t
 |--------|--------|
 | `browser_handoff_already_pending` | Poll existing handoff or `browser_handoff_status`; do not create a second request |
 | `browser_handoff_locked` on navigate/click | Wait for owner completion |
-| `expired` | Re-stage the page and mint a new link, or ask the owner to retry |
-| `no_active_browser_tab` | **`browser_navigate`** to the handoff page on Hermes browser tools (cloud), then request handoff. **Never** curl Camofox `:9377` or spawn `browser_task` on cloud boxes |
+| `expired` | Tell the owner plainly what `message` of `browser_handoff_status` says (the link expired; Joshu stopped the shared browser, so the cart or form is gone). Do not blame the website. Re-stage the page and mint a new link if the owner still wants it |
+| `browser_restarted` on any `browser_*` | Joshu stopped the shared browser after it sat idle, and the open tabs, carts, and half-filled forms are gone. The website did not cause this. Call the tool again (it now runs on a new browser), tell the owner plainly if a staged page was lost, and stage it again |
+| `no_active_browser_tab` | **`browser_navigate`** to the handoff page on Hermes browser tools (cloud), then request handoff. **Never** curl the local browser supervisor or spawn `browser_task` on cloud boxes |
 | `browser_unavailable`, CDP `502` / WebSocket connect failed | Retry the tool once. Still failing → **`kanban_block("system: browser unavailable")`**. Do not debug the box or edit config — see *Browser down = system problem* above |
 
-**Never patch this skill** with Camofox REST workarounds after a handoff failure — that indicates an infrastructure mismatch, not missing procedure.
+**Never patch this skill** with browser REST workarounds after a handoff failure — that indicates an infrastructure mismatch, not missing procedure.
 
 ---
 

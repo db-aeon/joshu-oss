@@ -22,7 +22,13 @@ function collectThreadId(out: Set<string>, row: Record<string, unknown>): void {
   else if (id) out.add(id);
 }
 
-function parseHistoryRecords(data: unknown): { threadIds: Set<string>; latestHistoryId?: string } {
+/**
+ * History record lists that name a thread to fetch. `messagesDeleted` is left out: a thread whose
+ * messages are deleted can be gone, and its fetch then returns 404 for each run.
+ */
+const THREAD_HISTORY_KEYS = ["messagesAdded", "labelsAdded", "labelsRemoved"] as const;
+
+export function parseHistoryRecords(data: unknown): { threadIds: Set<string>; latestHistoryId?: string } {
   const threadIds = new Set<string>();
   let latestHistoryId: string | undefined;
 
@@ -47,7 +53,7 @@ function parseHistoryRecords(data: unknown): { threadIds: Set<string>; latestHis
       const h = entry as Record<string, unknown>;
       if (typeof h.id === "string") latestHistoryId = h.id;
 
-      for (const key of ["messagesAdded", "labelsAdded", "labelsRemoved", "messagesDeleted"] as const) {
+      for (const key of THREAD_HISTORY_KEYS) {
         const list = h[key];
         if (!Array.isArray(list)) continue;
         for (const item of list) {
@@ -103,7 +109,7 @@ export async function fetchGmailThreadsFromHistory(
   }
 }
 
-/** Profile historyId seeds or refreshes the incremental cursor after each sync. */
+/** Profile historyId seeds the incremental cursor, or refreshes it when the history listing gives none. */
 export async function fetchGmailHistoryCursor(
   projectRoot: string,
   ctx: GmailExecuteContext,

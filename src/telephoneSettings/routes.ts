@@ -1,5 +1,14 @@
 import type { Request, Response, Router } from "express";
-import { normalizeE164, normalizeOwnerMobile, readTelephoneStatus } from "./resolve.js";
+import { verifyArozosDesktopSession } from "../httpLocalhost.js";
+import { voiceLocalServiceAuthorized } from "../realtimeGoals/voiceCallback.js";
+import { reconcileOnboardingInBackground, saveOwnerMobileFromCall } from "./ownerMobileFromCall.js";
+import {
+  normalizeE164,
+  normalizeOwnerMobile,
+  readTelephoneStatus,
+  resolveThinkPassword,
+  type TelephoneStatus,
+} from "./resolve.js";
 import { writeTelephoneSettingsFile, type TelephoneSettingsUpdate } from "./store.js";
 
 /** Two spoken English words (or a short phrase) — keep STT-friendly. */
@@ -29,21 +38,56 @@ function validatePin(raw: string): string {
   return value;
 }
 
+/**
+ * Caddy sends every /joshu/* request here without a login check. Only the
+ * ArozOS desktop of the owner (or a direct localhost client) may read or change
+ * the Telephone settings.
+ */
+async function requireDesktopSession(req: Request, res: Response): Promise<boolean> {
+  if (await verifyArozosDesktopSession(req)) return true;
+  res.status(401).json({ error: "desktop_session_required" });
+  return false;
+}
+
+/** Telephone status for the apps. The passphrase only comes back from the passphrase route. */
+function telephoneStatusForApps(projectRoot: string): Omit<TelephoneStatus, "thinkPassword"> {
+  const { thinkPassword: _passphrase, ...status } = readTelephoneStatus(projectRoot);
+  return status;
+}
+
 export function registerTelephoneRoutes(
   router: Router,
-  opts: { projectRoot: string },
+  opts: {
+    projectRoot: string;
+    /** Tests replace the background onboarding reconcile. */
+    reconcileOnboarding?: (projectRoot: string, reason: string) => void;
+  },
 ): void {
   const { projectRoot } = opts;
+  const reconcileOnboarding = opts.reconcileOnboarding ?? reconcileOnboardingInBackground;
 
-  router.get("/api/telephone", (_req: Request, res: Response) => {
+  router.get("/api/telephone", async (req: Request, res: Response) => {
+    if (!(await requireDesktopSession(req, res))) return;
     try {
-      res.json({ ok: true, telephone: readTelephoneStatus(projectRoot) });
+      res.json({ ok: true, telephone: telephoneStatusForApps(projectRoot) });
     } catch (err) {
       res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
     }
   });
 
-  router.put("/api/telephone", (req: Request, res: Response) => {
+  /** Button Show of the Telephone app. POST, so that no prefetch or cache keeps the passphrase. */
+  router.post("/api/telephone/passphrase", async (req: Request, res: Response) => {
+    if (!(await requireDesktopSession(req, res))) return;
+    try {
+      res.setHeader("Cache-Control", "no-store");
+      res.json({ ok: true, thinkPassword: resolveThinkPassword(projectRoot) });
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  router.put("/api/telephone", async (req: Request, res: Response) => {
+    if (!(await requireDesktopSession(req, res))) return;
     const body = (req.body ?? {}) as {
       thinkPassword?: string;
       phoneNumber?: string;
@@ -81,13 +125,7 @@ export function registerTelephoneRoutes(
         return;
       }
       writeTelephoneSettingsFile(updates, projectRoot);
-      if (updates.ownerCaller !== undefined) {
-        void import("../onboarding/reconcileOnboardingBoard.js")
-          .then(({ reconcileOnboardingBoard }) => reconcileOnboardingBoard(projectRoot))
-          .catch((err) => {
-            console.warn(`[onboarding] reconcile after telephone save: ${(err as Error).message}`);
-          });
-      }
+      if (updates.ownerCaller !== undefined) reconcileOnboarding(projectRoot, "telephone save");
       const notes: string[] = [];
       if (updates.thinkPassword !== undefined) {
         notes.push("Passphrase saved. New inbound calls will use it immediately.");
@@ -111,11 +149,38 @@ export function registerTelephoneRoutes(
       }
       res.json({
         ok: true,
-        telephone: readTelephoneStatus(projectRoot),
+        telephone: telephoneStatusForApps(projectRoot),
         note: notes.join(" ") || "Saved.",
       });
     } catch (err) {
       res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  /**
+   * Owner mobile offer: the voice service saves the caller ID of an unlocked
+   * call after the owner said yes. Never replaces an owner mobile.
+   */
+  router.post("/api/telephone/owner-mobile/from-call", (req: Request, res: Response) => {
+    if (!voiceLocalServiceAuthorized(req)) {
+      res.status(403).json({ error: "voice service auth required" });
+      return;
+    }
+    const body = (req.body ?? {}) as { callSid?: unknown; caller?: unknown };
+    const callSid = typeof body.callSid === "string" ? body.callSid.trim() : "";
+    const caller = typeof body.caller === "string" ? body.caller.trim() : "";
+    if (!callSid || !caller) {
+      res.status(400).json({ status: "invalid", error: "callSid and caller are required" });
+      return;
+    }
+    try {
+      const result = saveOwnerMobileFromCall(projectRoot, caller, reconcileOnboarding);
+      const lastDigits = caller.replace(/\D/g, "").slice(-4);
+      console.info(`[telephone] owner mobile from call call=${callSid} number=…${lastDigits} status=${result.status}`);
+      const httpStatus = result.status === "saved" ? 200 : result.status === "already_set" ? 409 : 400;
+      res.status(httpStatus).json(result);
+    } catch (err) {
+      res.status(500).json({ status: "error", error: err instanceof Error ? err.message : String(err) });
     }
   });
 }

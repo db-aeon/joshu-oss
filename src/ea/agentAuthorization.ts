@@ -46,14 +46,39 @@ export type ResolveAgentAuthorizationInput = {
   skipAgentSentGuard?: boolean;
 };
 
-const DELEGATION_PATTERNS = [
-  /\bcopying\s+patrick\b/i,
+const ASSISTANT_DELEGATION_PATTERNS = [
   /\bcopy(?:ing)?\s+(?:my\s+)?assistant\b/i,
-  /\bloops?\s+in\s+patrick\b/i,
   /\bloops?\s+in\s+(?:my\s+)?assistant\b/i,
-  /\bpatrick\s+(?:will|can)\s+(?:help|coordinate|schedule|find|suggest)\b/i,
-  /\b(?:please\s+)?(?:have\s+)?patrick\s+(?:suggest|find|coordinate|schedule)\b/i,
+  /\b(?:my\s+)?assistant\s+(?:will|can|could)\s+(?:help|coordinate|schedule|find|suggest|book|arrange|set\s+up)\b/i,
 ];
+
+const SCHEDULING_INTENT = /\b(?:schedul\w*|find\s+(?:a\s+)?times?|(?:suggest|share|send)\s+(?:some\s+)?(?:times|availability|windows)|availability|calendar|book\w*|set\s+(?:it\s+|this\s+)?up|coordinate|meet(?:ing)?)\b/i;
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** Names the owner may use for the companion: profile name + agent mailbox local parts (ava@joshu.me → ava). */
+export function resolveAssistantNames(projectRoot: string): string[] {
+  const names = new Set<string>();
+  const profileName = readAgentProfile(projectRoot)?.assistantName?.trim();
+  if (profileName) names.add(profileName.toLowerCase());
+  for (const email of resolveJoshuAgentEmails(projectRoot)) {
+    const local = email.split("@")[0]?.trim();
+    if (local && /^[a-z][a-z'-]+$/i.test(local)) names.add(local.toLowerCase());
+  }
+  return [...names].filter((n) => n.length > 2);
+}
+
+function namedDelegationPatterns(name: string): RegExp[] {
+  const n = escapeRegExp(name);
+  return [
+    new RegExp(`\\b(?:copying|cc'?ing|cc)\\s+${n}\\b`, "i"),
+    new RegExp(`\\bloop(?:s|ing)?\\s+in\\s+${n}\\b`, "i"),
+    new RegExp(`\\b${n}\\s+(?:will|can|could|is\\s+going\\s+to)\\s+(?:help|coordinate|schedule|find|suggest|book|arrange|set\\s+up|reach\\s+out)\\b`, "i"),
+    new RegExp(`\\b(?:please\\s+)?(?:have\\s+)?${n}\\s+(?:suggest|find|coordinate|schedule|book|arrange|set\\s+up)\\b`, "i"),
+  ];
+}
 
 function normalizeEmailList(values?: string[]): string[] {
   if (!values?.length) return [];
@@ -86,26 +111,27 @@ function recipientIncludesAgent(recipients: string[], agentEmails: Set<string>):
   return recipients.some((r) => agentEmails.has(r));
 }
 
-function bodyIndicatesDelegation(body: string, assistantName?: string): boolean {
+/** Owner hands the thread to the companion ("Copying Clara", "Clara can help schedule"). */
+export function bodyIndicatesDelegation(body: string, assistantNames: string[]): boolean {
   const text = body.trim();
   if (!text) return false;
-  if (DELEGATION_PATTERNS.some((re) => re.test(text))) return true;
-  const name = assistantName?.trim();
-  if (name && name.length > 2) {
-    const re = new RegExp(`\\bcopying\\s+${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
-    if (re.test(text)) return true;
-  }
-  return false;
+  if (ASSISTANT_DELEGATION_PATTERNS.some((re) => re.test(text))) return true;
+  return assistantNames.some((name) => namedDelegationPatterns(name).some((re) => re.test(text)));
 }
 
-function ownerDelegatedInThread(threadBody: string, ownerEmails: Set<string>, assistantName?: string): boolean {
+/** Delegation whose ask is about finding/booking a time — routes owner reply-alls to scheduling. */
+export function bodyIndicatesSchedulingDelegation(body: string, assistantNames: string[]): boolean {
+  return bodyIndicatesDelegation(body, assistantNames) && SCHEDULING_INTENT.test(body);
+}
+
+function ownerDelegatedInThread(threadBody: string, ownerEmails: Set<string>, assistantNames: string[]): boolean {
   if (!threadBody.trim()) return false;
   const sections = parseGmailThreadMirrorSections(threadBody);
   for (let i = sections.length - 1; i >= 0; i--) {
     const section = sections[i]!;
     const fromAddr = parseEmailAddress(section.from);
     if (!fromAddr || !ownerEmails.has(fromAddr)) continue;
-    if (bodyIndicatesDelegation(section.body, assistantName)) return true;
+    if (bodyIndicatesDelegation(section.body, assistantNames)) return true;
   }
   return false;
 }
@@ -115,7 +141,7 @@ export function resolveAgentAuthorization(input: ResolveAgentAuthorizationInput)
   const projectRoot = input.projectRoot ?? process.cwd();
   const agentEmails = resolveJoshuAgentEmails(projectRoot);
   const ownerEmails = resolveOwnerEmails(projectRoot, input.accountEmail);
-  const profile = readAgentProfile(projectRoot);
+  const assistantNames = resolveAssistantNames(projectRoot);
   const to = normalizeEmailList(input.to);
   const cc = normalizeEmailList(input.cc);
   const bcc = normalizeEmailList(input.bcc);
@@ -142,11 +168,11 @@ export function resolveAgentAuthorization(input: ResolveAgentAuthorizationInput)
   }
 
   const fromAddr = parseEmailAddress(input.from);
-  if (fromAddr && ownerEmails.has(fromAddr) && bodyIndicatesDelegation(input.triggerBodyPreview ?? "", profile?.assistantName)) {
+  if (fromAddr && ownerEmails.has(fromAddr) && bodyIndicatesDelegation(input.triggerBodyPreview ?? "", assistantNames)) {
     return authorized("owner_delegated_trigger", input.category);
   }
 
-  if (ownerDelegatedInThread(input.threadBodyPreview ?? "", ownerEmails, profile?.assistantName)) {
+  if (ownerDelegatedInThread(input.threadBodyPreview ?? "", ownerEmails, assistantNames)) {
     return authorized("owner_delegated_thread", input.category);
   }
 

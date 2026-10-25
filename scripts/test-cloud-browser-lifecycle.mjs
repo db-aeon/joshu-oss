@@ -109,13 +109,70 @@ startCloudBrowserLifecycle({
 });
 await mod.ensureCloudBrowser();
 assert.equal(cloudBrowserSessionActive(), true);
+// Live view: page only for the handoff page, Browser Use tabs and address bar for jWeb.
+assert.equal(new URL(mod.cloudLiveFrameUrl()).searchParams.get("ui"), "false");
+assert.equal(new URL(mod.cloudLiveFrameUrl({ browserChrome: true })).searchParams.get("ui"), "true");
 fetchCalls = [];
-await stopCloudBrowser();
+await stopCloudBrowser("shutdown");
 assert.equal(
   fetchCalls.some((c) => c.init.method === "POST" && JSON.parse(c.init.body).action === "stop"),
   true,
 );
 assert.equal(cloudBrowserSessionActive(), false);
+
+// --- Live view: the tab bar stays hidden, and a stop of the session stops the active page module ---
+const { cloudBrowserActivePageRunning, startCloudBrowserActivePage } = await import(
+  "../dist/cloudBrowserActivePage.js"
+);
+remoteActive = true;
+resetCloudBrowserStateForTests();
+startCloudBrowserLifecycle({ idleMs: 999_999, busy: () => false, onCdp: async () => {} });
+await mod.ensureCloudBrowser();
+assert.match(mod.cloudLiveFrameUrl(), /[?&]ui=false(&|$)/);
+startCloudBrowserActivePage(remoteSession.cdpUrl);
+assert.equal(cloudBrowserActivePageRunning(), true);
+await stopCloudBrowser("shutdown");
+assert.equal(cloudBrowserActivePageRunning(), false);
+
+// --- Idle stop: restart notice for the companion, onStop with the reason ---
+{
+  const { runCloudBrowserTickForTests, takeCloudBrowserRestartNotice } = mod;
+  const stops = [];
+  let busy = true;
+  remoteActive = true;
+  resetCloudBrowserStateForTests();
+  startCloudBrowserLifecycle({
+    idleMs: 1,
+    busy: () => busy,
+    onCdp: async () => {},
+    onStop: (reason) => stops.push(reason),
+  });
+  await mod.ensureCloudBrowser();
+  await settle(10);
+  await runCloudBrowserTickForTests();
+  assert.equal(cloudBrowserSessionActive(), true, "busy (for example an unopened handoff) blocks the idle stop");
+  busy = false;
+  await runCloudBrowserTickForTests();
+  assert.equal(cloudBrowserSessionActive(), false);
+  assert.deepEqual(stops, ["idle"]);
+  const notice = takeCloudBrowserRestartNotice();
+  assert.ok(notice, "an idle stop leaves a restart notice");
+  assert.match(notice.message, /Joshu stopped the shared browser at /);
+  assert.match(notice.message, /The website did not cause this/);
+  assert.equal(takeCloudBrowserRestartNotice(), null, "the restart notice is read once");
+
+  // A restart notice older than 6 hours is dropped.
+  await mod.ensureCloudBrowser();
+  await settle(10);
+  await runCloudBrowserTickForTests();
+  assert.equal(takeCloudBrowserRestartNotice(Date.now() + 7 * 3600_000), null);
+
+  // A shutdown stop calls onStop but leaves no restart notice.
+  await mod.ensureCloudBrowser();
+  await stopCloudBrowser("shutdown");
+  assert.deepEqual(stops, ["idle", "idle", "shutdown"]);
+  assert.equal(takeCloudBrowserRestartNotice(), null);
+}
 
 // --- ensureLiveCloudBrowser (Hermes browser_* wake / self-heal) ---
 const { ensureLiveCloudBrowser, expireCloudBrowserProbeForTests, cloudCdpUrl, hermesBrowserActivityRecent } = mod;

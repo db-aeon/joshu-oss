@@ -16,16 +16,12 @@ Joshu indexes the user's **ArozOS Desktop** tree with [gbrain](https://github.co
          │ MCP gbrain (HTTP → Joshu gbrain-mcp-http-server → gbrain serve)
          ▼
 ┌─────────────────┐  sync.repo_path        ┌──────────────────────────────┐
-│     gbrain      │  (JOSHU_FILES_ROOT)    │ joshu's files/ (filesystem)  │
-│ PGLite @ GBRAIN │ ◄── auto sync ──────── │  journals/, research/, …      │
-└────────┬────────┘                        └──────────────────────────────┘
-         │ federated source (search)
-         ▼
-┌──────────────────────────────┐
-│ ArozOS Desktop (full tree)   │
-└──────────────────────────────┘
-         ▲
-         │ Hermes write/edit (hermes-cli) under JOSHU_FILES_ROOT
+│     gbrain      │  (JOSHU_DESKTOP_ROOT)  │ ArozOS Desktop (full tree)   │
+│ PGLite @ GBRAIN │ ◄── auto sync ──────── │  joshu's files/journals/, …   │
+│ source: default │                        │  Investors/, other folders…   │
+└─────────────────┘                        └──────────────────────────────┘
+                                                          ▲
+                     Hermes write/edit (hermes-cli) under JOSHU_FILES_ROOT
 ```
 
 | Layer | Role |
@@ -83,7 +79,7 @@ Common subfolders agents may create: `inbox/`, `journals/`, `research/`, `upload
 | `JOSHU_FILES_ROOT` | *(resolved)* | `JOSHU_DESKTOP_ROOT/joshu's files` |
 | `JOSHU_AROZ_USER` | *(required on VPS)* owner email from control plane | ArozOS username + which Desktop tree |
 | `JOSHU_OWNER_EMAIL` | same as `JOSHU_AROZ_USER` on provisioned sandboxes | Ops reference (duplicate of login email) |
-| `GBRAIN_SOURCE` | `default` | gbrain source id for pages under `sync.repo_path` |
+| `GBRAIN_SOURCE` | `default` | gbrain source id for every Desktop page (the only source) |
 | `GBRAIN_HOME` | `.local/gbrain` / `/root/.gbrain` | PGLite + config |
 | `GBRAIN_BIN` | `gbrain` | CLI on PATH |
 | `GBRAIN_SEARCH_MODE` | `balanced` | Search mode |
@@ -93,9 +89,17 @@ Common subfolders agents may create: `inbox/`, `journals/`, `research/`, `upload
 | `GBRAIN_MCP_HTTP_URL` | `http://127.0.0.1:8794` | Joshu-supervised gbrain MCP HTTP + REST inspect (Hermes + File Brain) |
 | `GBRAIN_MCP_HTTP_PORT` | `8794` | Listen port for gbrain MCP HTTP server |
 | `JOSHU_HERMES_TERMINAL_CWD` | *(resolved)* | Override Hermes `terminal.cwd` (default: `JOSHU_DESKTOP_ROOT`) |
-| `JOSHU_HERMES_WRITE_SAFE_ROOT` | *(resolved)* | Override `HERMES_WRITE_SAFE_ROOT` (default: `JOSHU_DESKTOP_ROOT`) |
+| `JOSHU_HERMES_WRITE_SAFE_ROOT` | *(resolved)* | Override `HERMES_WRITE_SAFE_ROOT` (default: `JOSHU_DESKTOP_ROOT` and `/tmp/joshu-scratch`, joined with `:`) |
 
-Hermes gateway startup (`src/hermesApi.ts`) sets **`terminal.cwd`** and **`HERMES_WRITE_SAFE_ROOT`** to the resolved ArozOS Desktop tree so `write_file` / `patch` cannot land on macOS `~/Desktop` or elsewhere on the host. Reads and shell commands outside Desktop are still possible on the local backend; use Hermes Docker terminal backend for stronger isolation.
+Hermes gateway startup (`src/hermesApi.ts`) sets **`terminal.cwd`** to the resolved ArozOS Desktop tree, and **`HERMES_WRITE_SAFE_ROOT`** to that tree and the scratch folder `/tmp/joshu-scratch`, so `write_file` / `patch` cannot land on macOS `~/Desktop` or elsewhere on the host. Reads and shell commands outside Desktop are still possible on the local backend; use Hermes Docker terminal backend for stronger isolation.
+
+**Scratch files and the Desktop.** Because `terminal.cwd` is the owner's Desktop, a file that the companion or a worker writes in its working folder shows on the owner's desktop. Before this was fixed, boxes collected helper scripts (for example a short Python script that reads a Kanban database) and `__pycache__` folders at the Desktop root. Joshu fixes this in three ways:
+
+- `HERMES.md` has a section "Scratch files". It tells the companion and each worker to pass short code inline or use `execute_code`, and to write a script that must be a file under `/tmp/joshu-scratch/` and delete it after use.
+- The default `HERMES_WRITE_SAFE_ROOT` holds the Desktop and `/tmp/joshu-scratch` (`HERMES_SCRATCH_DIR` in `src/joshuFilesPaths.ts`), and the gateway warm-up creates the folder. Hermes refuses `write_file` and `patch` outside `HERMES_WRITE_SAFE_ROOT`. When the variable held only the Desktop, a worker that tried to write a script under `/tmp` got an error and wrote the script on the Desktop instead. The Desktop stays the first folder, because `scripts/hermes-chat-tts.py` writes audio files into the first folder.
+- `startGateway` (`src/hermesApi.ts`) sets `PYTHONDONTWRITEBYTECODE=1` for the Hermes gateway. The terminal tool, workers, and Hermes cron jobs inherit the environment of the gateway, so Python writes no `__pycache__` folders. Hermes already sets this variable for `execute_code`.
+
+`terminal.cwd` stays the Desktop on purpose. Hermes resolves relative paths of `write_file` and `patch` against `terminal.cwd`, and finds `HERMES.md` there. If `terminal.cwd` moved to a hidden folder, a worker that writes `joshu's files/Projects/<slug>/todo.md` with a relative path would write into the hidden folder, where the owner does not see the file and gbrain does not index it. A job that deletes scripts from the Desktop was also rejected, because the job cannot tell a scratch file from a script that the owner keeps.
 
 **Hermes `search_files`** (built into `hermes-cli`, not Joshu MCP) shells out to **ripgrep** (`rg`), with `find` as a slower fallback. Local dev: `brew install ripgrep` (checked by [`scripts/dev-arozos.sh`](../scripts/dev-arozos.sh)). VPS sandbox image: `ripgrep` in [`deploy/Dockerfile`](../deploy/Dockerfile) runtime packages. Prefer **gbrain MCP `query`** with `source_id: "__all__"` for file-brain questions; use `search_files` for raw disk greps when MCP returns nothing useful.
 
@@ -146,25 +150,40 @@ gbrain-mcp-http-server.mjs  →  one gbrain serve (stdio NDJSON)  →  PGLite @ 
 
 **Docker / VPS:** [`deploy/scripts/vps-start.sh`](../deploy/scripts/vps-start.sh) runs `start-gbrain.sh` then `start-gbrain-mcp-http.sh` before Hermes. Health check: `curl -fsS http://127.0.0.1:8794/health`.
 
-### Multi-source indexing (full Desktop)
+### Single-source indexing (full Desktop)
+
+Everything on the owner's Desktop — `joshu's files` and every other folder — is one gbrain source, **`default`**. The MCP bridge's `sync_brain` (which has no source parameter) always writes there, so boot does too.
 
 Boot [`scripts/start-gbrain.sh`](../scripts/start-gbrain.sh):
 
-1. **`sync.repo_path`** → `JOSHU_FILES_ROOT` (default source: journals, research, … under `joshu's files`).
-2. **Federated source** per user Desktop: `gbrain sources add j-<slugified-user> --path <Desktop> --federated`.
-3. **`sync --apply --all`** + **`embed --stale`** across registered sources.
+1. **`sync.repo_path`** → `JOSHU_DESKTOP_ROOT`. Slugs are Desktop-relative (`joshus-files/journals/…`, `investors/foo`), and gbrain maps slug → file through this path.
+2. **Legacy cleanup:** empty `j-<user>` sources from older boots are removed; non-empty ones log `WARN: legacy source … still holds N pages` (see [Legacy `j-<user>` sources](#legacy-j-user-sources)).
+3. **`sync --repo <Desktop> --skip-failed`** + **`embed --stale`** into `default` (full boots only).
 4. **Git at `files/users/`** — [`scripts/lib/ensure-gbrain-git.sh`](../scripts/lib/ensure-gbrain-git.sh) initializes a repo + baseline commit at **`${AROZ_DATA}/files/users/`** (gbrain sync requires committed user data). Before each debounced `sync_brain`, [`scripts/lib/gbrain-desktop-git.mjs`](../scripts/lib/gbrain-desktop-git.mjs) runs **`git add -A`** there (covers all user Desktops, `joshu's files`, connectors, `.joshu/` metadata). **Never** the joshu app repo root — local dev data stays under `.local/` (gitignored). Optional override: `JOSHU_GBRAIN_GIT_ROOT`.
 
-   **Excluded from File Brain:** Desktop `HERMES.md` / `SOUL.md` (Joshu-managed Hermes context, not notes), and **`.metadata/`** (ArozOS trash + desktop metadata). Staging writes these into `Desktop/.gitignore` and untracks them so gbrain never indexes them. ArozOS “delete” moves folders into `.metadata/.trash/` — the MCP bridge watches directory renames (not only `.md` edits) and schedules a **full** `sync_brain` so orphan pages drop promptly. Without the rename watch, deleted folders stayed indexed until the next periodic reindex.
+   **Excluded from File Brain:** Desktop `HERMES.md` / `SOUL.md` (Joshu-managed Hermes context, not notes), and **`.metadata/`** (ArozOS trash + desktop metadata). Staging writes these into `Desktop/.gitignore` and untracks them so gbrain never indexes them. ArozOS “delete” moves folders into `.metadata/.trash/` — the MCP bridge watches directory renames (not only `.md` edits) and schedules an **incremental** `sync_brain`; the git diff carries the rename/delete and gbrain moves or drops the page. (Until 2026-10 it forced a *full* sync here, which re-imports what is on disk but never deletes and skips the bookmark past the move — leaving orphan pages.) `start-gbrain.sh` also runs [`gbrain-prune-orphans.ts`](../scripts/gbrain-prune-orphans.ts) before `gbrain serve` starts: pages whose file is gone are soft-deleted (restorable 72h with `gbrain restore <slug>`; refuses if over half the index would go).
 
-Pages outside `joshu's files` (e.g. `Desktop/Investors/foo.md`) appear with slugs like `investors/foo` and `source_id` `j-<user-slug>` (not `default`).
+Pages outside `joshu's files` (e.g. `Desktop/Investors/foo.md`) appear with slugs like `investors/foo`, also in `source_id` `default`.
+
+### Legacy `j-<user>` sources
+
+Until 2026-10 boot also registered a federated `j-<slugified-user>` source on the same Desktop and ran `sync --all` into it, while the MCP bridge wrote the same files into `default`. Boxes that indexed through the old path kept pages in `j-*`. When one of those files changes, gbrain finds the page under `j-*` but versions it under `default` and fails with `createVersion failed: page "…" (source=default) not found`. gbrain embeds before that write, so each retry re-bills the embedding (~1B Gemini tokens on Clara in Sept 2026).
+
+Boot now removes empty `j-*` sources. **Repairing a non-empty one** (done fleet-wide 2026-10-02 on 6 boxes):
+
+1. Empty the **live** `sync-failures.jsonl` first — otherwise the running bridge re-adds its paths to `Desktop/.gitignore`, untracks them, and the next sync deletes those pages.
+2. Work on a copy of `brain.pglite` (config `database_path` pointed at the copy). Remove the copied `brain.pglite/.gbrain-lock` (it names the live server's PID, so CLI calls on the copy hang) and any `gbrain_cycle_locks` rows.
+3. `gbrain sources remove j-<user> --confirm-destructive --yes`.
+4. `gbrain sync --repo <Desktop> --no-pull --yes --full` — **full**, because files that only existed in `j-*` are not in the incremental diff — then `gbrain embed --stale`.
+5. Stop gbrain, swap the copy in (rename on the same filesystem), start `start-gbrain-mcp-http.sh` from `/run/joshu-boot-scripts`.
+6. Drop the `gbrain-sync-failure-excludes` block from `Desktop/.gitignore`, re-stage, trigger a reindex.
 
 ### Search vs query (important)
 
 | Tool / route | Scope | Use for |
 |--------------|--------|---------|
-| MCP **`search`** | Default source only; FTS keyword | Narrow keyword scan inside `joshu's files` sync root |
-| MCP **`query`** with **`source_id: "__all__"`** | All registered sources | Desktop-wide file brain questions (Hermes, recommended) |
+| MCP **`search`** | `default` source (whole Desktop); FTS keyword | Exact keyword lookups |
+| MCP **`query`** with **`source_id: "__all__"`** | All sources (only `default` today) | File brain questions — hybrid semantic + keyword (Hermes, recommended) |
 | REST **`/search`**, **`/query`** on `:8794` | `__all__` unless `source_id` query param set | File Brain viewer + Joshu `brainApi` |
 | `GET /joshu/api/brain/search` | Same as REST (via [`brainApi.ts`](../src/brainApi.ts)) | Voice-adjacent clients, automation |
 
@@ -268,6 +287,7 @@ gbrain sync still imports **`.md`/`.mdx` only** — Joshu wraps `.txt` → sibli
 | Trigger | What runs | Default interval |
 |---------|-----------|------------------|
 | `.md` change under Desktop | fs watch → debounced git commit + `sync_brain` | ~3s debounce |
+| Folder or file rename under Desktop | fs watch → debounced git commit + `sync_brain` | ~3s debounce |
 | PDF under `JOSHU_DESKTOP_ROOT` | extract → sibling `.md` → reindex | ~2.5s debounce + ingest |
 | `.txt` under `JOSHU_DESKTOP_ROOT` | wrap → sibling `.md` → reindex | ~2.5s debounce + ingest |
 | MCP HTTP timer | `git add -A` on `files/users/` + `sync_brain` | **`GBRAIN_REINDEX_INTERVAL_SEC`** = 900s (15m); `0` = off |
@@ -278,6 +298,10 @@ gbrain sync still imports **`.md`/`.mdx` only** — Joshu wraps `.txt` → sibli
 | Connector cron | Mirror fetch → write `.md` → reindex touch | Nylas + Gmail **10m** |
 | Boot (`start-gbrain.sh`) | One-shot `sync --apply --all` + schema | Once per stack start (**skipped when `GBRAIN_BOOT_QUICK=true`** — VPS default) |
 | Manual | `POST /joshu/api/brain/reindex` | On demand |
+
+The fs watch ignores `.git/`, `.metadata/`, any `.joshu/` folder (Joshu's own JSON state, such as realtime goals), and `*.tmp` files (the first half of an atomic write). Before 2026-10-24 it did not ignore `.joshu/`. The realtime goals broker rewrote `state.json` every 5 seconds, so File Brain reindexed all the time and its toast stayed on.
+
+On Linux, Node reports the creation and the deletion of a file as a rename event, so each atomic write under the Desktop is a rename event, and the fs watch must react to renames so that a deleted folder leaves File Brain. The ignore rule is narrow on purpose. A `.tmp` file is safe to ignore because the rename onto the final name sends its own event. The fs watch matches only a path segment named exactly `.joshu`, at any depth, so the rule does not depend on the name of the files folder. The fs watch does not ignore every hidden folder, because an owner or the companion can keep notes in a hidden folder, and those notes would then wait for the 15 minute timer.
 
 Implementation: [`scripts/lib/gbrain-desktop-git.mjs`](../scripts/lib/gbrain-desktop-git.mjs), [`scripts/lib/gbrain-mcp-bridge.mjs`](../scripts/lib/gbrain-mcp-bridge.mjs), [`scripts/lib/kb-pdf-ingest.mjs`](../scripts/lib/kb-pdf-ingest.mjs), [`scripts/ingest-pdf-kb.py`](../scripts/ingest-pdf-kb.py), [`scripts/lib/kb-txt-ingest.mjs`](../scripts/lib/kb-txt-ingest.mjs), [`scripts/ingest-txt-kb.py`](../scripts/ingest-txt-kb.py), [`scripts/ensure-gbrain-indexed.sh`](../scripts/ensure-gbrain-indexed.sh), [`scripts/lib/gbrain-index-health.mjs`](../scripts/lib/gbrain-index-health.mjs), [`src/connectors/scheduler.ts`](../src/connectors/scheduler.ts).
 
@@ -304,19 +328,19 @@ Skill: [`integrations/hermes/skills/brain/joshu-brain/`](../integrations/hermes/
 
 `start-gbrain.sh` (order matters):
 
-1. `stop-gbrain.sh` — kill stale workers / MCP HTTP / free PGLite lock
+1. `stop-gbrain.sh` — kill stale workers / MCP HTTP / free PGLite lock. A PID from a PID file is stopped only when its command line is the expected gbrain command; otherwise only the PID file is removed ([PID files](vps-sandbox/runtime-topology.md#pid-files))
 2. `bootstrap-joshu-files.sh` — mkdir empty `joshu's files`
 3. Repair PGLite config if `DATABASE_URL` leaked Postgres into `config.json`
-4. `gbrain config set sync.repo_path` to `JOSHU_FILES_ROOT`
-5. Register per-user Desktop sources (`j-<slugified-user>`, max 32 chars)
-6. `sync --apply` + `embed --stale` (one-shot) — **skipped when `GBRAIN_BOOT_QUICK=true`** (VPS default; see `vps-start.sh`)
+4. `gbrain config set sync.repo_path` to `JOSHU_DESKTOP_ROOT`
+5. Remove empty legacy `j-<user>` sources (warn on non-empty)
+6. `sync --repo <Desktop>` + `embed --stale` into `default` (one-shot) — **skipped when `GBRAIN_BOOT_QUICK=true`** (VPS default; see `vps-start.sh`)
 7. Optional `sync --watch` only if `GBRAIN_SYNC_WATCH=true`
-8. `setup-gbrain-schema.sh` — journal, research, inbox, upload, **connector-mail**, **connector-calendar** types
+8. `setup-gbrain-schema.sh` — normalizes the `joshu` pack ([`lib/gbrain-joshu-pack.mjs`](../scripts/lib/gbrain-joshu-pack.mjs)): **journal** (`Projects/*/journal_*.md`, `Planning/daily-review-*`), **research**, **inbox** (`Triage/`), **upload**, **connector-mail**, **connector-calendar**, ordered ahead of gbrain-base's generic types (first prefix match wins; matching is a substring on `/<path>`). [`patch-gbrain.mjs`](../scripts/patch-gbrain.mjs) stops gbrain's frontmatter inference from stamping `type: note` on bare markdown, which used to override the pack. Type changes alter the content hash, so pages retype on their next import (full sync for unchanged files; markdown re-import re-embeds).
 9. `start-gbrain-mcp-http.sh` — one `gbrain serve` + HTTP MCP on `:8794` (periodic + fs-watch reindex + **KB PDF ingest**); on PGLite open failure runs [`scripts/repair-gbrain-pglite.sh`](../scripts/repair-gbrain-pglite.sh) when `GBRAIN_REPAIR_PGLITE=1` (also manual: backup + rebuild `brain.pglite` — [gbrain #223](https://github.com/garrytan/gbrain/issues/223))
 
 Hermes connects via MCP URL: `http://127.0.0.1:8794/mcp`, toolset `mcp-gbrain`.
 
-**MCP bridge logging:** default logs are quiet (`sync_brain completed` only with `GBRAIN_MCP_VERBOSE=1`). `gbrain serve` respawns on exit instead of killing the HTTP server (host bind-mount `scripts/lib/gbrain-mcp-bridge.mjs`).
+**MCP bridge logging:** default logs are quiet (`sync_brain completed` only with `GBRAIN_MCP_VERBOSE=1`). `gbrain serve` respawns on exit instead of killing the HTTP server (`scripts/lib/gbrain-mcp-bridge.mjs` in the sandbox image).
 
 ### PGLite single-holder
 
@@ -399,7 +423,7 @@ List mail pages: `GET /joshu/api/brain/pages?type=connector-mail&limit=20`.
 
 ### What gets searched
 
-Each thread mirror is one markdown file. Searchable body text includes **from**, **subject**, and **message bodies** (one `###` section per message in the thread). Example shape:
+Each thread mirror is one markdown file. Searchable body text includes **from**, **subject**, and **message bodies** (one `###` section per message in the thread). For Gmail, the body also has the file names of the mail attachments of each message (`**Attachments:**` list — [connectors.md — Mail attachments](connectors.md#mail-attachments)). Example shape:
 
 ```markdown
 ---

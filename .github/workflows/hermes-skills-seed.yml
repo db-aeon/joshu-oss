@@ -1,0 +1,23 @@
+name: hermes-skills-seed
+
+# A change to a factory skill must change the skills seed key, or boxes keep the old skills.
+on:
+  pull_request:
+    paths:
+      - integrations/hermes/skills/**
+      - scripts/bootstrap-hermes-learning-skills.sh
+      - scripts/hermes-skills-seed-key.py
+      - scripts/test-hermes-skills-seed.mjs
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm run test:hermes-skills-seed

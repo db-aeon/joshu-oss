@@ -7,8 +7,80 @@ index 0f6a7244..8f210393 100644
  src/system/smtp_conf.json
  /src/web/FFmpeg Factory
 +.DS_Store
+diff --git a/src/auth_joshu.go b/src/auth_joshu.go
+new file mode 100644
+index 00000000..ca59eb71
+--- /dev/null
++++ b/src/auth_joshu.go
+@@ -0,0 +1,66 @@
++package main
++
++/*
++	Joshu admin desktop login (openspec change admin-desktop-login).
++
++	GET /system/auth/joshu-login?code=<one-time code>
++
++	The Joshu API on this box makes the code only for a signed control plane
++	command. This handler sends the code to the Joshu API on loopback, which
++	answers with the owner user one time. Then ArozOS signs the browser in as
++	that user for one hour (no remember-me). The password of the owner and the
++	sessions of the owner do not change.
++*/
++
++import (
++	"bytes"
++	"encoding/json"
++	"log"
++	"net/http"
++	"time"
++)
++
++const joshuDesktopLoginRedeemURL = "http://127.0.0.1:8788/joshu/api/desktop-login/redeem"
++
++func init() {
++	http.HandleFunc("/system/auth/joshu-login", handleJoshuDesktopLogin)
++}
++
++func handleJoshuDesktopLogin(w http.ResponseWriter, r *http.Request) {
++	w.Header().Set("Cache-Control", "no-store")
++	if r.Method != http.MethodGet {
++		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
++		return
++	}
++	code := r.URL.Query().Get("code")
++	if code == "" || len(code) > 256 || authAgent == nil {
++		http.Error(w, "This login link is not valid.", http.StatusBadRequest)
++		return
++	}
++
++	body, _ := json.Marshal(map[string]string{"code": code})
++	client := &http.Client{Timeout: 10 * time.Second}
++	resp, err := client.Post(joshuDesktopLoginRedeemURL, "application/json", bytes.NewReader(body))
++	if err != nil {
++		http.Error(w, "The box could not check this login link. Try again.", http.StatusBadGateway)
++		return
++	}
++	defer resp.Body.Close()
++
++	var result struct {
++		Ok       bool   `json:"ok"`
++		Username string `json:"username"`
++	}
++	if resp.StatusCode != http.StatusOK || json.NewDecoder(resp.Body).Decode(&result) != nil || !result.Ok || result.Username == "" {
++		http.Error(w, "This login link is not valid or has expired. Make a new one in the control plane.", http.StatusUnauthorized)
++		return
++	}
++	if !authAgent.UserExists(result.Username) {
++		http.Error(w, "The owner account of this box does not exist yet.", http.StatusConflict)
++		return
++	}
++
++	authAgent.LoginUserByRequest(w, r, result.Username, false)
++	log.Println("[joshu] admin desktop login as " + result.Username + " (one hour)")
++	http.Redirect(w, r, "/", http.StatusFound)
++}
 diff --git a/src/mod/modules/module.go b/src/mod/modules/module.go
-index 6b64e1f4..f6fed8ac 100644
+index 6b64e1f4..8c6f6213 100644
 --- a/src/mod/modules/module.go
 +++ b/src/mod/modules/module.go
 @@ -35,6 +35,31 @@ type ModuleHandler struct {

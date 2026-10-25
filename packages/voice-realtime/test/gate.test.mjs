@@ -42,7 +42,7 @@ Object.assign(process.env, {
   VOICE_LOCK_PROMPT_DIR: clipDir,
   JOSHU_API_BASE_URL: `http://127.0.0.1:${joshu.address().port}/joshu`,
   HERMES_API_KEY: "svc",
-  JOSHU_NAME: "Patrick",
+  JOSHU_NAME: "Ava",
 });
 delete process.env.JOSHU_VOICE_GATE_SPEECH_MODEL;
 
@@ -243,7 +243,7 @@ test("callbacks: greeting names the assistant, voicemail leaves a notice, lockou
   const q = "/voice-rt/gate/start?mode=callback&batch=b-1&bt=b-1.sig&req=1";
   let { xml } = await twilioPost(q, { From: "+15550009999", To: OWNER });
   assert.ok(xml.includes(`<Say>${LOCK_PROMPTS.callback_greeting}</Say>`));
-  assert.match(LOCK_PROMPTS.callback_greeting, /Patrick/);
+  assert.match(LOCK_PROMPTS.callback_greeting, /Ava/);
   const check = actionPath(xml);
   assert.match(check, /batch=b-1&bt=b-1.sig&req=1/);
 
@@ -300,5 +300,5 @@ test("gate passphrase match drops the one-word shortcut but keeps STT tolerance"
   assert.equal(matchesGatePassphrase("It's Falken's Maze", PASSPHRASE), true);
   assert.equal(matchesGatePassphrase("maze", PASSPHRASE), false);
   assert.equal(matchesGatePassphrase("Falken", PASSPHRASE), false);
-  assert.equal(matchesGatePassphrase("Courts Citadel", "quartz citadel"), true);
+  assert.equal(matchesGatePassphrase("Courts Lantern", "quartz lantern"), true);
 });

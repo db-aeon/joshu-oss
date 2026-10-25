@@ -113,14 +113,14 @@ Revoked or missing shares return **404** for both web and Slack answers. Explici
 2. Query File Brain (`gbrain` MCP `/query`) for each variant.
 3. Keep only hits whose slug/path falls under the shared root (slug matching normalizes spaces↔hyphens and strips `.md`).
 4. Always pack shared-disk windows for **file and folder** shares (keyword neighborhoods + document head), then merge with gbrain hits and keep the top snippets by score. Folder shares previously skipped disk packing when gbrain already returned hits, which could miss exact phrases hybrid search ranked below other chunks.
-5. RAG answerer uses the **same OpenRouter model as Hermes** (`JOSHU_HERMES_MODEL` / `deepseek/deepseek-v4-flash-0731` by default) to reassemble snippets into an answer. Answers are rendered as **markdown** in the public UI (headings, lists, code, tables — sanitized/escape-first renderer, no external libs).
+5. RAG answerer uses the **same OpenRouter model as Hermes** (`JOSHU_HERMES_MODEL` / `deepseek/deepseek-v4.1-flash` by default) to reassemble snippets into an answer. Answers are rendered as **markdown** in the public UI (headings, lists, code, tables — sanitized/escape-first renderer, no external libs).
 
 ## Observability (Langfuse)
 
 Each LLM answer is traced via the shared Joshu Langfuse pipeline (`src/observability/langfuse.ts`, reuses `HERMES_LANGFUSE_*` keys):
 
 - trace `joshu-share-chat`, generation `share-chat-answer`
-- user id = box attribution (`HERMES_LANGFUSE_USER_ID`, e.g. `patrick`, or derived from `CUSTOMER_DOMAIN`)
+- user id = box attribution (`HERMES_LANGFUSE_USER_ID`, e.g. `acme`, or derived from `CUSTOMER_DOMAIN`)
 - tags: `joshu-app`, `share-chat`, `share-chat:web` / `share-chat:slack` / `share-chat:teams` / `share-chat:email`
 - metadata: share UUID, shared item name, evidence count/titles, channel
 - token + cost usage from OpenRouter (`usage.include=true` on the stream)
@@ -135,7 +135,7 @@ From the Chat sharing dialog, the owner can create a **named private Slack chann
 
 | Piece | Detail |
 |-------|--------|
-| Toolkit | Composio **`slackbot`** (bot identity + triggers) — **not** user toolkit `slack`, not Hermes Patrick Socket Mode |
+| Toolkit | Composio **`slackbot`** (bot identity + triggers) — **not** user toolkit `slack`, not Hermes Socket Mode |
 | Setup | **Connectors → Slackbot** wizard: Slack app manifest → Client ID/Secret, **Signing Secret**, **App-Level Token (`xapp-` + `authorizations:read`)** → Save & Connect (stores `ac_…` + creates Composio webhook endpoint). Paste the shown Event Subscriptions URL into the Slack app. |
 | Create | `POST /joshu/api/share-chat/:uuid/slack/channel` with `{ "name": "my-kb" }` |
 | Status / unlink | `GET …/slack/channel`, `POST …/slack/channel/unlink` |
@@ -179,7 +179,7 @@ Owners can bind **allowed senders** on the agent Nylas mailbox (`{slug}@joshu.me
 | Disable | **Turn off email Q&A** in dialog, or **Remove Sharing** (clears binding) |
 | Rate limit | ~10 answers/min per share+sender |
 
-Joshua clinic pilot used a cron + keyword script before this shipped; migrate by saving the same `@thejoint.com` / `@four8.co` allowlist on the Training share and retiring the Hermes cron.
+An early pilot used a cron + keyword script before this shipped; migrate by saving the same sender allowlist (for example `@clinic.example`) on the share and retiring the Hermes cron.
 
 ### Local setup with ngrok (plain English)
 
@@ -254,14 +254,14 @@ Fetch a starter manifest: `GET .../slack/manifest`.
 | Variable | Role |
 |----------|------|
 | `JOSHU_SHARE_CHAT_API_KEY` / `OPENROUTER_API_KEY` | LLM for answers (same OpenRouter key Hermes uses) |
-| `JOSHU_SHARE_CHAT_MODEL` / `JOSHU_HERMES_MODEL` | Model (defaults to Hermes box model / `deepseek/deepseek-v4-flash-0731`) |
+| `JOSHU_SHARE_CHAT_MODEL` / `JOSHU_HERMES_MODEL` | Model (defaults to Hermes box model / `deepseek/deepseek-v4.1-flash`) |
 | `JOSHU_SHARE_CHAT_ADMIN_KEY` | Protect Slack configure (falls back to `JOSHU_READ_API_KEY`) |
 | `AROZ_DATA` | Locate `system/ao.db` + shared real paths |
 | `GBRAIN_MCP_HTTP_URL` | File Brain inspect (default `http://127.0.0.1:8794`) |
 | `COMPOSIO_API_KEY` | Required for Slackbot channel create / triggers |
 | `JOSHU_COMPOSIO_SLACKBOT_AUTH_CONFIG_ID` | Optional operator override for Slackbot auth config id (`ac_…`); normally created via Connectors wizard |
 | `COMPOSIO_WEBHOOK_SECRET` | Verify Composio trigger webhooks |
-| `JOSHU_COMPOSIO_SLACKBOT_TOOLKIT_VERSION` | Optional toolkit version pin |
+| `JOSHU_COMPOSIO_SLACKBOT_TOOLKIT_VERSION` | Overrides the Slackbot toolkit pin (default `20261008_00`; see [Composio toolkit versions](connectors.md)) |
 
 ## Code map
 
@@ -296,7 +296,7 @@ See also [file-brain.md](file-brain.md) and [design/README.md](design/README.md)
 
 ## Packaging (VPS)
 
-The guest HTML is **not** a Vite app. It is listed in [`scripts/runtime-assets.json`](../scripts/runtime-assets.json); `npm run build` copies it to `dist/shareChat/ui/index.html`. The sandbox image also copies `apps/share-chat/`, and compose bind-mounts that folder from the host clone.
+The guest HTML is **not** a Vite app. It is listed in [`scripts/runtime-assets.json`](../scripts/runtime-assets.json); `npm run build` copies it to `dist/shareChat/ui/index.html`. The sandbox image also copies `apps/share-chat/`. Compose mounts no host copy.
 
 If guests see `Share chat UI missing`, the running container cannot read either path.
 
@@ -309,8 +309,8 @@ rsync -avz dist/shareChat/ui/ root@<host>:/opt/joshu/dist/shareChat/ui/
 rsync -avz apps/share-chat/ root@<host>:/opt/joshu/apps/share-chat/
 ```
 
-`uiHtmlPath()` checks `existsSync` per request, so the guest page comes back immediately. Also add the compose bind-mount on the **host** clone (`../apps/share-chat:/opt/joshu/apps/share-chat:ro`) so the next recreate keeps a second copy. Do **not** `syncDistFromImage` from **0.1.40** after that overlay — `--delete` wipes `dist/shareChat/ui/`.
+`uiHtmlPath()` checks `existsSync` per request, so the guest page comes back immediately. Do **not** `syncDistFromImage` from **0.1.40** after that overlay — `--delete` wipes `dist/shareChat/ui/`.
 
-Patrick lost this again **2026-08-18** after a `set_aroz_password` bounce: stop/start does not delete host `dist/`, but the overlay was missing and host compose had never been updated. Re-check both files after any stack bounce on a box that has not pulled this compose/dist packaging.
+A fleet box lost this again **2026-08-18** after a `set_aroz_password` bounce: stop/start does not delete host `dist/`, but the overlay was missing and host compose had never been updated. Re-check both files after any stack bounce on a box that has not pulled this compose/dist packaging.
 
 New API-served static files: add a row to `runtime-assets.json` — see [`runtime-assets.md`](runtime-assets.md).

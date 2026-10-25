@@ -6,7 +6,7 @@ import { classifyUserTranscript } from "../dist/userInputGate.js";
 test("non-ASCII STT is unclear so it does not burn passphrase attempts", () => {
   assert.equal(classifyUserTranscript("Hörst du das?"), "unclear");
   assert.equal(classifyUserTranscript("Não."), "unclear");
-  assert.equal(classifyUserTranscript("Courts Citadel"), "clear");
+  assert.equal(classifyUserTranscript("Courts Lantern"), "clear");
   assert.equal(classifyUserTranscript("uh"), "unclear");
   assert.equal(classifyUserTranscript(""), "empty");
 });

@@ -1,6 +1,5 @@
-import { listBlockedOnBoard } from "./crossBoardKanban.js";
+import { listBlockedOnBoard, type BlockedKanbanRow } from "./crossBoardKanban.js";
 import { listKanbanBoardSlugs } from "./boards.js";
-import { blockReasonNeedsOwnerInput } from "./blockReason.js";
 import {
   projectSlugFromBoard,
   rankCandidate,
@@ -11,49 +10,40 @@ import {
 import { isDateStaleForNudge } from "./stale.js";
 import type { ProactiveCandidate, ProactiveState } from "./types.js";
 import { wasTaskNudgedToday, wasOnboardingNudgedToday } from "./state.js";
-import { EA_ONBOARDING_KANBAN_BOARD } from "../hermesKanbanBridge.js";
+import {
+  EA_ONBOARDING_KANBAN_BOARD,
+  OWNER_QUESTION_BLOCK_KIND,
+  REALTIME_GOALS_KANBAN_BOARD,
+} from "../hermesKanbanBridge.js";
 import {
   isOnboardingCandidateSuppressed,
   isOnboardingSetupDebt,
   ONBOARDING_RANK_BOOST,
 } from "../onboarding/onboardingProactive.js";
 import { isOnboardingKanbanBody } from "../onboarding/promptState.js";
-import { shouldDeferSweepForHandoff } from "../ea/trackSignalEvaluate.js";
-import { isTaskInClarifyQueue } from "./clarifyQueue.js";
 
-async function toCandidate(
-  row: {
-    task_id: string;
-    title?: string;
-    status?: string;
-    body?: string;
-    block_reason?: string | null;
-    created_at_ms?: number | null;
-  },
+/**
+ * Owner question: a blocked task with block kind `needs_input` (openspec/glossary.md).
+ * The text of the block reason does not count.
+ */
+export function isOwnerQuestion(row: Pick<BlockedKanbanRow, "status" | "block_kind">): boolean {
+  return row.status === "blocked" && row.block_kind === OWNER_QUESTION_BLOCK_KIND;
+}
+
+/** The realtime-goal broker sends the questions of board `realtime-goals` to the owner itself. */
+function isBrokerBoard(board: string): boolean {
+  return board === REALTIME_GOALS_KANBAN_BOARD;
+}
+
+/** Proactive sweep check for one blocked task. Returns null when the task cannot get a nudge. */
+export async function toProactiveCandidate(
+  row: Pick<BlockedKanbanRow, "task_id" | "title" | "status" | "body" | "block_reason" | "block_kind" | "created_at_ms">,
   board: string,
   filesRoot: string,
   projectRoot: string,
-  state: ProactiveState,
 ): Promise<ProactiveCandidate | null> {
-  if (row.status !== "blocked") return null;
-  if (!blockReasonNeedsOwnerInput(row.block_reason)) return null;
-
-  if (isTaskInClarifyQueue(state, row.task_id)) return null;
-
-  if (
-    shouldDeferSweepForHandoff({
-      filesRoot,
-      title: row.title,
-      body: row.body,
-      blockReason: row.block_reason ?? null,
-      status: row.status,
-    })
-  ) {
-    console.info(
-      `[proactive-sweep] defer handoff task=${row.task_id} board=${board} (resolve/clarify path)`,
-    );
-    return null;
-  }
+  if (isBrokerBoard(board)) return null;
+  if (!isOwnerQuestion(row)) return null;
 
   const taskText = `${row.title ?? ""}\n${row.body ?? ""}`;
   if (!isOnboardingKanbanBody(row.body) && isDateStaleForNudge(taskText)) return null;
@@ -101,9 +91,10 @@ export async function sweepProactiveCandidates(opts: {
 
   for (const board of listKanbanBoardSlugs()) {
     if (onboardingCapHit && board === EA_ONBOARDING_KANBAN_BOARD) continue;
+    if (isBrokerBoard(board)) continue;
     const rows = await listBlockedOnBoard(board, { limit: 50 });
     for (const row of rows) {
-      const c = await toCandidate(row, board, filesRoot, projectRoot, state);
+      const c = await toProactiveCandidate(row, board, filesRoot, projectRoot);
       if (c && !wasTaskNudgedToday(state, c.taskId)) raw.push(c);
     }
   }

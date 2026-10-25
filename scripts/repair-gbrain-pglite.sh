@@ -94,22 +94,11 @@ run_gbrain config set search.mode "${GBRAIN_SEARCH_MODE:-balanced}" 2>/dev/null 
 source "${APP_DIR}/scripts/lib/joshu-files-paths.sh"
 joshu_files_resolve_paths "${APP_DIR}" 2>/dev/null || true
 
-shopt -s nullglob
-for desktop in "${AROZ_DATA}"/files/users/*/Desktop; do
-  [[ -d "${desktop}" ]] || continue
-  user_id="$(basename "$(dirname "${desktop}")")"
-  user_slug="$(printf '%s' "${user_id}" | tr '[:upper:]' '[:lower:]' | sed -e 's/@/-at-/g' -e 's/[^a-z0-9-]/-/g' -e 's/--*/-/g')"
-  source_id="j-${user_slug}"
-  if (( ${#source_id} > 32 )); then
-    source_id="${source_id:0:32}"
-    source_id="${source_id%-}"
-  fi
-  echo "[gbrain-repair] registering ${source_id} -> ${desktop}"
-  run_gbrain sources add "${source_id}" --path "${desktop}" --federated 2>/dev/null || true
-done
-
-if [[ -n "${JOSHU_FILES_ROOT:-}" ]]; then
-  run_gbrain config set sync.repo_path "${JOSHU_FILES_ROOT}" 2>/dev/null || true
+# Single `default` source for the whole Desktop (matches the MCP bridge's
+# sync_brain repo); no per-user `j-*` sources — they duplicate default pages.
+repo_root="${JOSHU_DESKTOP_ROOT:-${JOSHU_FILES_ROOT:-}}"
+if [[ -n "${repo_root}" ]]; then
+  run_gbrain config set sync.repo_path "${repo_root}" 2>/dev/null || true
 fi
 
 echo "[gbrain-repair] PGLite rebuilt; run start-gbrain.sh / start-gbrain-mcp-http.sh to re-index"

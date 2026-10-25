@@ -11,7 +11,7 @@ export interface JoshuFilesPaths {
   desktopRoot: string;
   filesRoot: string;
   arozUser: string;
-  /** gbrain source id for pages under sync.repo_path (joshu's files). */
+  /** gbrain source id for every Desktop page (sync.repo_path = Desktop). */
   gbrainSource: "default";
   joshuFilesDirName: string;
 }
@@ -88,10 +88,16 @@ export function joshuFilesPathEnv(paths: JoshuFilesPaths): Record<string, string
   };
 }
 
+/** Folder for scratch scripts of the companion and workers. The owner does not see it. */
+export const HERMES_SCRATCH_DIR = "/tmp/joshu-scratch";
+
 export interface JoshuHermesWorkspaceScope {
   /** Hermes terminal.cwd — ArozOS Desktop working folder. */
   terminalCwd: string;
-  /** Hermes HERMES_WRITE_SAFE_ROOT — blocks write_file/patch outside this tree. */
+  /**
+   * Hermes HERMES_WRITE_SAFE_ROOT — blocks write_file/patch outside these trees.
+   * Default: the Desktop and HERMES_SCRATCH_DIR, joined with path.delimiter.
+   */
   writeSafeRoot: string;
 }
 
@@ -99,6 +105,8 @@ export interface JoshuHermesWorkspaceScope {
 export function resolveJoshuHermesWorkspaceScope(paths: JoshuFilesPaths): JoshuHermesWorkspaceScope {
   return {
     terminalCwd: envTrim("JOSHU_HERMES_TERMINAL_CWD") || paths.desktopRoot,
-    writeSafeRoot: envTrim("JOSHU_HERMES_WRITE_SAFE_ROOT") || paths.desktopRoot,
+    writeSafeRoot:
+      envTrim("JOSHU_HERMES_WRITE_SAFE_ROOT") ||
+      [paths.desktopRoot, HERMES_SCRATCH_DIR].join(path.delimiter),
   };
 }

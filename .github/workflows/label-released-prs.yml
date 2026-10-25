@@ -1,0 +1,51 @@
+name: label-released-prs
+
+# When a GitHub Release is published, label each merged pull request that the
+# release first contains with "release:<tag>" and comment a link to the release.
+# Run by hand (workflow_dispatch) to label the pull requests of an earlier release.
+# Workflow release.yml calls this workflow (workflow_call), because a release that a
+# workflow publishes with GITHUB_TOKEN does not start the release trigger.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag, for example v0.1.48
+        required: true
+      dry_run:
+        description: Print the pull requests only
+        type: boolean
+        default: false
+  workflow_call:
+    inputs:
+      tag:
+        description: Release tag, for example v0.1.52
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: label-released-prs
+  cancel-in-progress: false
+
+jobs:
+  label:
+    if: inputs.tag != '' || !github.event.release.prerelease
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - name: Label released pull requests
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name || inputs.tag }}
+          DRY_RUN: ${{ inputs.dry_run && '--dry-run' || '' }}
+        run: bash scripts/label-released-prs.sh "$TAG" $DRY_RUN

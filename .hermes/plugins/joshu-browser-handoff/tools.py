@@ -66,7 +66,11 @@ def browser_handoff_request(args: dict, **kwargs) -> str:
     if not instructions:
         return json.dumps({"ok": False, "error": "instructions is required"})
     body: dict = {"instructions": instructions}
-    kanban_task_id = str(args.get("kanban_task_id") or "").strip()
+    # A Kanban worker has its task id in the environment. The SMS continuation reads
+    # the request from that task after the owner finishes the handoff.
+    kanban_task_id = str(
+        args.get("kanban_task_id") or os.environ.get("HERMES_KANBAN_TASK") or ""
+    ).strip()
     if kanban_task_id:
         body["kanbanTaskId"] = kanban_task_id
     session_key = _hermes_session_key(kwargs)

@@ -4,6 +4,7 @@
  */
 import assert from "node:assert/strict";
 import {
+  guardedComposioCalls,
   isActionGuarded,
   isActionGuardedExternalWrites,
   isComposioWriteTool,
@@ -31,6 +32,7 @@ assert.equal(isComposioWriteTool("GITHUB_CREATE_ISSUE"), true);
 assert.equal(isComposioWriteTool("GMAIL_LIST_EMAILS"), false);
 assert.equal(isComposioWriteTool("COMPOSIO_SEARCH_TOOLS"), false);
 assert.equal(isComposioWriteTool("GOOGLECALENDAR_FIND_FREE_SLOTS"), false);
+assert.equal(isComposioWriteTool("GOOGLECALENDAR_PATCH_EVENT"), true, "a patch can notify guests");
 
 // external_writes mode
 assert.equal(
@@ -57,6 +59,17 @@ assert.equal(isActionGuarded("nylas_send_message", { ...externalPolicy, enabled:
 assert.equal(
   isActionGuardedExternalWrites("composio:SLACK_POST_MESSAGE", externalPolicy),
   true,
+);
+
+// Composio meta tools stay reads by name. Their inner tool calls are checked
+// by guardedComposioCalls (more cases in scripts/test-composio-guard-bypasses.mjs).
+assert.equal(isComposioWriteTool("COMPOSIO_MULTI_EXECUTE_TOOL"), false);
+const calendarCreate = { tools: [{ tool_slug: "GOOGLECALENDAR_CREATE_EVENT", arguments: {} }] };
+assert.equal(guardedComposioCalls("COMPOSIO_MULTI_EXECUTE_TOOL", calendarCreate, externalPolicy).length, 1);
+assert.equal(
+  guardedComposioCalls("COMPOSIO_MULTI_EXECUTE_TOOL", calendarCreate, allowlistPolicy).length,
+  0,
+  "allowlist mode gates only listed ids",
 );
 
 console.log("action-guard classify fixtures: ok");

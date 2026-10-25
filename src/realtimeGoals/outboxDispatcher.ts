@@ -1,12 +1,13 @@
 /**
  * Executes the owner delivery plan (outboxPolicy.ts): texts, surface events, and
- * batched callbacks. One dispatch runs at a time; `kick()` coalesces bursts
+ * batched callbacks. Each pass first reads the Twilio status of pending SMS. One dispatch runs at a time; `kick()` coalesces bursts
  * (broker tick, owner message, call ended) into one more pass.
  */
 import type { OwnerCallBatch, OwnerOutbox } from "./outbox.js";
 import {
   callRequested,
   planOwnerDeliveries,
+  smsDeliveryVerdict,
   TEXT_LEASE_MS,
   type CallWindowVerdict,
   type DeliveryCapabilities,
@@ -14,7 +15,13 @@ import {
 } from "./outboxPolicy.js";
 import type { OwnerOutboxItem, RealtimeGoalOrigin } from "./types.js";
 
-export type OutboxSendResult = { ok: boolean; providerId?: string; error?: string };
+export type OutboxSendResult = {
+  ok: boolean;
+  providerId?: string;
+  error?: string;
+  /** SMS accepted, not delivered yet: the Twilio message SID of each part. */
+  pendingIds?: string[];
+};
 
 export type OwnerOutboxSenders = {
   capabilities(): DeliveryCapabilities;
@@ -25,9 +32,11 @@ export type OwnerOutboxSenders = {
     text: string,
     dedupeKey: string,
   ): Promise<OutboxSendResult>;
+  /** Twilio status of one SMS that sendText returned in `pendingIds`. */
+  smsStatus(sid: string): Promise<{ status: string; errorCode?: number }>;
   enqueueSurface(item: OwnerOutboxItem): Promise<OutboxSendResult>;
   placeCallback(batch: OwnerCallBatch): Promise<OutboxSendResult & { callSid?: string }>;
-  /** A text went out: record it on that channel's thread; bind a question so a reply answers it. */
+  /** A text reached the owner: record it on that channel's thread; bind a question so a reply answers it. */
   onTextDelivered?(
     item: OwnerOutboxItem,
     route: "sms" | "slack" | "telegram",
@@ -96,9 +105,36 @@ export class OwnerOutboxDispatcher {
     return this.current;
   }
 
+  /** Read the Twilio status of each pending SMS that is due. True when one settled. */
+  private async settlePendingSms(items: OwnerOutboxItem[], now: number): Promise<boolean> {
+    let settled = false;
+    for (const item of items) {
+      const pending = item.smsPending;
+      if (!pending || Date.parse(pending.checkAt) > now) continue;
+      const statuses = await Promise.all(
+        pending.sids.map((sid) => this.senders.smsStatus(sid).catch(() => undefined)),
+      );
+      const verdict = smsDeliveryVerdict(statuses, Date.parse(pending.sentAt), now);
+      const heard = await this.outbox.settleSms(item.id, verdict);
+      if (verdict.kind === "pending") continue;
+      settled = true;
+      console.info(
+        `[owner-outbox] sms ${verdict.kind} item=${item.id} goal=${item.goalId ?? "-"} sids=${pending.sids.join(",")}` +
+          `${verdict.kind === "undelivered" ? ` ${verdict.detail}` : ""}`,
+      );
+      if (heard) {
+        await this.senders.onTextDelivered?.(heard.item, "sms", heard.address, heard.text).catch((error) => {
+          console.warn(`[owner-outbox] post-delivery bookkeeping failed: ${(error as Error).message}`);
+        });
+      }
+    }
+    return settled;
+  }
+
   private async dispatchOnce(): Promise<void> {
-    const snapshot = await this.outbox.snapshot();
+    let snapshot = await this.outbox.snapshot();
     const now = Date.now();
+    if (await this.settlePendingSms(snapshot.items, now)) snapshot = await this.outbox.snapshot();
     if (snapshot.items.length === 0 && !callRequested(snapshot.presence, now)) return;
     const windows = new Map<string, CallWindowVerdict>();
     for (const item of snapshot.items) {
@@ -129,12 +165,14 @@ export class OwnerOutboxDispatcher {
       const result = await this.senders
         .sendText(action.route, action.address, text, `${item.id}:${action.route}`)
         .catch(errorResult);
-      await this.outbox.recordSend(item.id, action.route, result);
+      await this.outbox.recordSend(item.id, action.route, result, { address: action.address, text });
+      const pending = Boolean(result.pendingIds?.length);
       console.info(
-        `[owner-outbox] ${result.ok ? "texted" : "text failed"} item=${item.id} goal=${item.goalId ?? "-"} ` +
-          `route=${action.route} reason=${action.reason}${result.error ? ` error=${result.error}` : ""}`,
+        `[owner-outbox] ${result.ok ? (pending ? "texted, waiting for delivery receipt" : "texted") : "text failed"} ` +
+          `item=${item.id} goal=${item.goalId ?? "-"} route=${action.route} reason=${action.reason}` +
+          `${result.error ? ` error=${result.error}` : ""}`,
       );
-      if (result.ok) {
+      if (result.ok && !pending) {
         await this.senders.onTextDelivered?.(item, action.route, action.address, text).catch((error) => {
           console.warn(`[owner-outbox] post-delivery bookkeeping failed: ${(error as Error).message}`);
         });

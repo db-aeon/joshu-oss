@@ -27,7 +27,13 @@ import type { HermesApiRunner, HermesChatMessage } from "../hermesApi.js";
 import { isDirectLocalhostRequest } from "../httpLocalhost.js";
 import type { RealtimeGoalBroker } from "./broker.js";
 import type { RealtimeGoalChannel, RealtimeGoalOrigin } from "./types.js";
-import { extractLinks, linkDeliveryNote, speakableWithoutLinks, textLinksToOwner } from "./voiceLinks.js";
+import {
+  extractLinks,
+  linkDeliveryNote,
+  speakableWithoutLinks,
+  textLinksToOwner,
+  type OwnerTextResult,
+} from "./voiceLinks.js";
 
 /** Longest a jobs request waits before answering "working". */
 const MAX_BUDGET_MS = 25_000;
@@ -337,19 +343,21 @@ export class InlineJobs {
     const links = [...extractLinks(job.answer), ...this.missingHandoffLinks(job)];
     if (links.length === 0) return job.answer;
     const already = job.delivered?.find((fact) => fact.what === "link" && fact.ok);
-    const sent = already ? { texted: true } : await textLinksToOwner(this.projectRoot, links, job.title);
+    let sent: OwnerTextResult = { texted: true };
     if (!already) {
-      job.delivered = [
-        ...(job.delivered ?? []),
-        {
-          what: "link",
-          via: "sms",
-          ok: sent.texted,
-          at: isoNow(),
-          count: links.length,
-          ...("error" in sent && sent.error ? { error: sent.error } : {}),
-        },
-      ];
+      const fact: DeliveredFact = { what: "link", via: "sms", ok: false, at: isoNow(), count: links.length };
+      let undelivered: string | undefined;
+      // A carrier rejected the SMS after the answer was spoken: the fact says so from then on.
+      sent = await textLinksToOwner(this.projectRoot, links, job.title, (detail) => {
+        undelivered = detail;
+        fact.ok = false;
+        fact.error = detail;
+        this.persist();
+      });
+      fact.ok = sent.texted && !undelivered;
+      const error = undelivered ?? sent.error;
+      if (error) fact.error = error;
+      job.delivered = [...(job.delivered ?? []), fact];
     }
     const note = linkDeliveryNote(sent, links.length);
     return extractLinks(job.answer).length > 0

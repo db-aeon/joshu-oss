@@ -126,11 +126,23 @@ export function createGbrainMcpRestHandler(bridge, log, activity = {}) {
           Number.parseInt(url.searchParams.get("limit") || "50", 10) || 50,
         );
         const typeFilter = url.searchParams.get("type")?.trim() || "";
-        // list_pages only returns the default source; get_recent_salience spans all sources.
-        const text = await bridge.callToolText("get_recent_salience", {
-          limit,
-          days: Number.parseInt(url.searchParams.get("days") || "3650", 10) || 3650,
-        });
+        const sortParam = url.searchParams.get("sort") || "updated_desc";
+        // Type filter must run in gbrain: filtering the 100 most recent pages
+        // afterwards showed e.g. 0 journals on a box with 251 (recent pages were
+        // all calendar events). list_pages covers only the default source, which
+        // since 2026-10 holds every Desktop page.
+        const text = typeFilter
+          ? await bridge.callToolText("list_pages", {
+              limit,
+              type: typeFilter,
+              sort: ["updated_desc", "updated_asc", "created_desc", "slug"].includes(sortParam)
+                ? sortParam
+                : "updated_desc",
+            })
+          : await bridge.callToolText("get_recent_salience", {
+              limit,
+              days: Number.parseInt(url.searchParams.get("days") || "3650", 10) || 3650,
+            });
         let rows = [];
         try {
           const parsed = JSON.parse(text || "[]");
@@ -149,7 +161,7 @@ export function createGbrainMcpRestHandler(bridge, log, activity = {}) {
         if (typeFilter && Array.isArray(rows)) {
           rows = rows.filter((row) => row && typeof row === "object" && row.type === typeFilter);
         }
-        const sort = url.searchParams.get("sort") || "updated_desc";
+        const sort = sortParam;
         if (Array.isArray(rows) && sort.startsWith("updated")) {
           rows.sort((a, b) => {
             const av = Date.parse(String(a?.updated_at || "")) || 0;

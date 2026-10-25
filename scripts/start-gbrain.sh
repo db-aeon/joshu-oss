@@ -11,8 +11,12 @@ source "${SCRIPTS_DIR}/lib/gbrain-env.sh"
 gbrain_env_init "${BASH_SOURCE[0]}"
 # shellcheck source=lib/joshu-files-paths.sh
 source "${SCRIPTS_DIR}/lib/joshu-files-paths.sh"
+# shellcheck source=lib/pid-file.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/pid-file.sh"
 GBRAIN_HOME="${GBRAIN_HOME:-${HOME}/.gbrain}"
 GBRAIN_BIN="${GBRAIN_BIN:-gbrain}"
+# Joshu gbrain fixes (idempotent; also baked into the image).
+node "${SCRIPTS_DIR}/patch-gbrain.mjs" || true
 GBRAIN_LOG_FILE="${GBRAIN_LOG_FILE:-${GBRAIN_HOME}/gbrain-sync.log}"
 GBRAIN_PID_FILE="${GBRAIN_PID_FILE:-${GBRAIN_HOME}/gbrain-sync.pid}"
 GBRAIN_EMBED_INTERVAL_SEC="${GBRAIN_EMBED_INTERVAL_SEC:-900}"
@@ -37,24 +41,8 @@ run_gbrain() {
   )
 }
 
-slugify_source_id() {
-  local raw="$1"
-  printf '%s' "${raw}" \
-    | tr '[:upper:]' '[:lower:]' \
-    | sed -e 's/@/-at-/g' -e 's/[^a-z0-9-]/-/g' -e 's/--*/-/g' -e 's/^-//' -e 's/-$//'
-}
-
 stop_sync_watch_if_running() {
-  if [[ ! -f "${GBRAIN_PID_FILE}" ]]; then
-    return 0
-  fi
-  local old_pid
-  old_pid="$(cat "${GBRAIN_PID_FILE}" 2>/dev/null || true)"
-  if [[ -n "${old_pid}" ]] && kill -0 "${old_pid}" 2>/dev/null; then
-    echo "[gbrain] stopping existing sync --watch (pid ${old_pid})"
-    kill "${old_pid}" 2>/dev/null || true
-  fi
-  rm -f "${GBRAIN_PID_FILE}"
+  stop_pid_file_process "${GBRAIN_PID_FILE}" "sync --watch" "[gbrain]"
 }
 
 has_embedding=false
@@ -93,9 +81,10 @@ if [[ -n "${JOSHU_DESKTOP_ROOT:-}" ]]; then
   # shellcheck source=lib/ensure-gbrain-git.sh
   source "${SCRIPTS_DIR}/lib/ensure-gbrain-git.sh"
   ensure_gbrain_git_repo "${JOSHU_DESKTOP_ROOT}"
-  # sync.repo_path + slug map to files under joshu's files (filesystem source of record).
-  # slugs like journals/2026-05-24-todo land here, not Desktop/journals/.
-  run_gbrain config set sync.repo_path "${JOSHU_FILES_ROOT}" 2>/dev/null || true
+  # One source (`default`) for the whole Desktop, matching the MCP bridge's
+  # sync_brain(repo=Desktop). Slugs are Desktop-relative (joshus-files/journals/…),
+  # so sync.repo_path must be the Desktop for slug -> file resolution.
+  run_gbrain config set sync.repo_path "${JOSHU_DESKTOP_ROOT}" 2>/dev/null || true
   mkdir -p "${GBRAIN_HOME}"
   {
     echo "JOSHU_FILES_ROOT=${JOSHU_FILES_ROOT}"
@@ -148,40 +137,25 @@ fi
 
 run_gbrain config set search.mode "${GBRAIN_SEARCH_MODE:-balanced}" 2>/dev/null || true
 
-register_desktop_sources() {
-  local desktop user_id user_slug source_id marker="${GBRAIN_HOME}/registered-sources.env"
-  local needs_registration=false
-
-  shopt -s nullglob
-  for desktop in "${AROZ_DATA}"/files/users/*/Desktop; do
-    [[ -d "${desktop}" ]] || continue
-    user_id="$(basename "$(dirname "${desktop}")")"
-    user_slug="$(slugify_source_id "${user_id}")"
-    source_id="j-${user_slug}"
-    if (( ${#source_id} > 32 )); then
-      source_id="${source_id:0:32}"
-      source_id="${source_id%-}"
+# Pre-June-2026 boot registered a federated `j-<user>` source per Desktop and
+# synced into it, while the MCP bridge writes the same files into `default`.
+# Pages left in `j-*` break updates (createVersion "page not found" + re-embed
+# loop). Drop empty ones; leave non-empty ones for a manual repair.
+remove_legacy_desktop_sources() {
+  local id pages
+  while read -r id pages; do
+    [[ -n "${id}" ]] || continue
+    if [[ "${pages}" == "0" ]]; then
+      echo "[gbrain] removing empty legacy source ${id}"
+      run_gbrain sources remove "${id}" --yes >/dev/null 2>&1 || true
+    else
+      echo "[gbrain] WARN: legacy source ${id} still holds ${pages} pages (duplicates of default); repair needed" >&2
     fi
-    if run_gbrain sources list 2>/dev/null | grep -q "${source_id}"; then
-      continue
-    fi
-    needs_registration=true
-    echo "[gbrain] registering source ${source_id} -> ${desktop}"
-    run_gbrain sources add "${source_id}" --path "${desktop}" --federated
-  done
-
-  if [[ "${needs_registration}" == "true" ]]; then
-    printf 'REGISTERED_AROZ_DATA=%q\n' "${AROZ_DATA}" >"${marker}"
-  elif [[ -f "${marker}" ]]; then
-    # shellcheck disable=SC1090
-    source "${marker}"
-    if [[ "${REGISTERED_AROZ_DATA:-}" == "${AROZ_DATA}" ]]; then
-      echo "[gbrain] sources already registered for ${AROZ_DATA}"
-    fi
-  fi
+  done < <(run_gbrain sources list 2>/dev/null | awk '$1 ~ /^j-/ { for (i = 2; i <= NF; i++) if ($i == "pages") print $1, $(i - 1) }')
+  rm -f "${GBRAIN_HOME}/registered-sources.env"
 }
 
-register_desktop_sources
+remove_legacy_desktop_sources
 
 quick_boot=false
 if [[ "${GBRAIN_BOOT_QUICK:-}" =~ ^(1|true|yes)$ ]]; then
@@ -195,17 +169,25 @@ if [[ "${quick_boot}" != "true" ]]; then
     node "${SCRIPTS_DIR}/lib/run-stage-desktop-git.mjs" "${JOSHU_DESKTOP_ROOT}" 2>>"${GBRAIN_LOG_FILE}" || true
   fi
 
-  echo "[gbrain] initial sync + embed (all registered sources)"
+  sync_root="${JOSHU_DESKTOP_ROOT:-${JOSHU_FILES_ROOT:-}}"
+  echo "[gbrain] initial sync + embed (${sync_root:-sync.repo_path} -> default source)"
   # --skip-failed: do not block boot when a previously recorded bad file (e.g. HERMES.md)
   # is still in the failure ledger. Excludes are enforced via Desktop/.gitignore.
-  run_gbrain sync --apply --no-pull --all --yes --skip-failed 2>>"${GBRAIN_LOG_FILE}" || true
+  run_gbrain sync ${sync_root:+--repo "${sync_root}"} --no-pull --yes --skip-failed 2>>"${GBRAIN_LOG_FILE}" || true
   run_gbrain embed --stale 2>>"${GBRAIN_LOG_FILE}" || true
+fi
+
+# Soft-delete pages whose file is gone (full syncs never delete). Needs the
+# PGLite lock, so it runs here before gbrain serve starts.
+if [[ -n "${JOSHU_DESKTOP_ROOT:-}" ]]; then
+  ( unset DATABASE_URL GBRAIN_DATABASE_URL; export_gbrain_embedding_env
+    bun "${SCRIPTS_DIR}/gbrain-prune-orphans.ts" "${JOSHU_DESKTOP_ROOT}" --apply ) || true
 fi
 
 if [[ "${GBRAIN_SYNC_WATCH}" == "true" ]]; then
   if [[ -f "${GBRAIN_PID_FILE}" ]]; then
     old_pid="$(cat "${GBRAIN_PID_FILE}" 2>/dev/null || true)"
-    if [[ -n "${old_pid}" ]] && kill -0 "${old_pid}" 2>/dev/null; then
+    if pid_runs_command "${old_pid}" "sync --watch"; then
       if run_gbrain doctor --fast >/dev/null 2>&1; then
         echo "[gbrain] sync --watch already running (pid ${old_pid})"
         exit 0

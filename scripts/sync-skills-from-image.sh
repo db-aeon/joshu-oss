@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
+# LEGACY: only for boxes that still have a host checkout (before change image-owned-box-runtime).
+# On a box with the host bundle, compose mounts no host code; upgrade with scripts/upgrade-fleet-box-image.sh.
 # Sync host bind-mounted factory Hermes skills (+ factory manifest) from a Joshu sandbox image.
 # Host ../integrations/hermes/skills shadows the image in compose — git pull does not refresh it
 # on fleet boxes. Merge (no --delete) preserves any host-only skill dirs.
 #
-# After sync, recreate joshu-stack so vps-start runs bootstrap-hermes-learning-skills.sh when
-# factory/manifest.yaml release bumps.
+# After sync, recreate joshu-stack so vps-start runs bootstrap-hermes-learning-skills.sh. The
+# skills seed runs when the factory skills change (seed key = content hash of the skills tree).
 #
 # Usage: JOSHU_IMAGE_REF=ghcr.io/.../joshu-sandbox:0.1.44 bash scripts/sync-skills-from-image.sh
 set -euo pipefail

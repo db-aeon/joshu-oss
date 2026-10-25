@@ -59,9 +59,11 @@ export function formatOwnerCompletion(raw: string, handoffUrls: string[]): strin
   );
   text = layoutOwnerLines(text);
   const urls = unique(handoffUrls.map(trimUrl).filter(Boolean));
-  const missing = urls.filter((url) => !text.includes(url));
+  const lower = text.toLowerCase();
+  const missing = urls.filter((url) => !lower.includes(url.toLowerCase()));
   if (missing.length) {
-    text = `${text}\n\nFinish and pay here:\n${missing[0]}`;
+    // Neutral label: most handoffs are a sign-in or a code, not a payment.
+    text = `${text}\n\nOpen the live browser here:\n${missing[0]}`;
   }
   return text.trim();
 }
@@ -77,7 +79,8 @@ function layoutOwnerLines(raw: string): string {
     .split("\n")
     .map((line) => line.replace(/\s{2,}/g, " ").replace(/\s+([,.;])/g, "$1").trim())
     .filter(Boolean)
-    .map((line) => line.charAt(0).toUpperCase() + line.slice(1))
+    // A link stays as it is: "Https://" is not the same text as the link.
+    .map((line) => (/^https?:\/\//i.test(line) ? line : line.charAt(0).toUpperCase() + line.slice(1)))
     .join("\n");
 }
 

@@ -56,13 +56,34 @@ def _task_summary(task: Any, *, include_body: bool = False) -> Dict[str, Any]:
         "status": task.status,
         "assignee": task.assignee,
         "idempotency_key": getattr(task, "idempotency_key", None),
+        # Block kind (see openspec/glossary.md). "needs_input" marks an owner question.
+        "block_kind": getattr(task, "block_kind", None),
     }
     created = getattr(task, "created_at", None)
     if created is not None:
         out["created_at"] = created
+    completed = getattr(task, "completed_at", None)
+    if completed is not None:
+        out["completed_at"] = completed
     if include_body:
         out["body"] = task.body
     return out
+
+
+def _payload_block_kind(kanban_db: Any, payload: Dict[str, Any]) -> "tuple[Optional[str], Optional[str]]":
+    """Read the optional block kind of a payload. Return (error, kind)."""
+    raw = payload.get("kind")
+    if raw is None:
+        return None, None
+    kind = str(raw).strip()
+    if not kind:
+        return None, None
+    valid = getattr(kanban_db, "VALID_BLOCK_KINDS", None)
+    if valid is None:
+        return "this Hermes version does not support block kinds", None
+    if kind not in valid:
+        return f"kind must be one of {sorted(valid)}", None
+    return None, kind
 
 
 # Events that start or end a blocked period. The most recent one explains the
@@ -278,6 +299,55 @@ def _dispatch(payload: Dict[str, Any]) -> Dict[str, Any]:
         kanban_db.init_db(board=slug)
         return {"success": True, "board": meta}
 
+    if action == "find_open_by_text":
+        # Search many boards in one process: one bridge call instead of one call for each board.
+        text = str(payload.get("text") or "").strip()
+        boards = [str(b).strip() for b in (payload.get("boards") or []) if str(b).strip()]
+        statuses = [str(s).strip() for s in (payload.get("statuses") or []) if str(s).strip()]
+        if not text or not statuses:
+            return {"success": False, "error": "text and statuses are required"}
+        marks = ",".join("?" for _ in statuses)
+        found: List[Dict[str, Any]] = []
+        for slug in boards:
+            board_conn = kanban_db.connect(board=slug)
+            rows = board_conn.execute(
+                f"SELECT id FROM tasks WHERE status IN ({marks}) AND instr(body, ?) > 0",
+                (*statuses, text),
+            ).fetchall()
+            for row in rows:
+                task = kanban_db.get_task(board_conn, row["id"])
+                if task:
+                    found.append({**_task_summary(task, include_body=True), "board": slug})
+        return {"success": True, "tasks": found}
+
+    if action == "list_blocked":
+        # Blocked tasks of all boards in one process, for the blockers of a team stand-up
+        # (spec team-standup). Boards that start with `exclude_prefix` are skipped unless
+        # `include_boards` names them, so one team never sees the team board of another team.
+        exclude_prefix = str(payload.get("exclude_prefix") or "").strip()
+        include = {str(b).strip() for b in (payload.get("include_boards") or []) if str(b).strip()}
+        limit = int(payload.get("limit") or 200)
+        found: List[Dict[str, Any]] = []
+        for meta in kanban_db.list_boards(include_archived=False):
+            slug = str(meta.get("slug") or "").strip()
+            if not slug or (exclude_prefix and slug.startswith(exclude_prefix) and slug not in include):
+                continue
+            board_conn = kanban_db.connect(board=slug)
+            for task in kanban_db.list_tasks(board_conn, status="blocked", limit=limit):
+                cause = _block_cause(kanban_db.list_events(board_conn, task.id))
+                found.append(
+                    {
+                        "task_id": task.id,
+                        "board": slug,
+                        "title": task.title,
+                        "block_kind": getattr(task, "block_kind", None),
+                        "block_reason": (cause or {}).get("reason"),
+                    }
+                )
+                if len(found) >= limit:
+                    return {"success": True, "tasks": found, "truncated": True}
+        return {"success": True, "tasks": found, "truncated": False}
+
     conn = kanban_db.connect(board=board)
 
     if action == "find_by_idempotency":
@@ -291,7 +361,11 @@ def _dispatch(payload: Dict[str, Any]) -> Dict[str, Any]:
         )
         if not task:
             return {"success": True, "found": False}
-        return {"success": True, "found": True, "task": _task_summary(task)}
+        return {
+            "success": True,
+            "found": True,
+            "task": _task_summary(task, include_body=bool(payload.get("include_body"))),
+        }
 
     if action == "create":
         title = str(payload.get("title") or "").strip()
@@ -466,10 +540,13 @@ def _dispatch(payload: Dict[str, Any]) -> Dict[str, Any]:
         if not task_id:
             return {"success": False, "error": "task_id is required"}
         reason = str(payload.get("reason") or "blocked").strip() or "blocked"
+        kind_error, kind = _payload_block_kind(kanban_db, payload)
+        if kind_error:
+            return {"success": False, "error": kind_error}
         block_fn = getattr(kanban_db, "block_task", None)
         if not callable(block_fn):
             return {"success": False, "error": "kanban_db.block_task not available"}
-        ok = block_fn(conn, task_id, reason=reason)
+        ok = block_fn(conn, task_id, reason=reason, **({"kind": kind} if kind else {}))
         if not ok:
             task = kanban_db.get_task(conn, task_id)
             if task and task.status == "blocked":
@@ -543,6 +620,12 @@ def _dispatch(payload: Dict[str, Any]) -> Dict[str, Any]:
             return {"success": False, "error": "task_id is required"}
         if not reason:
             return {"success": False, "error": "reason is required"}
+        # The block kind changes only when the payload has key "kind".
+        # A null "kind" clears the block kind.
+        set_kind = "kind" in payload
+        kind_error, kind = _payload_block_kind(kanban_db, payload)
+        if kind_error:
+            return {"success": False, "error": kind_error}
         task = kanban_db.get_task(conn, task_id)
         if not task:
             return {"success": False, "error": f"task {task_id} not found"}
@@ -553,7 +636,9 @@ def _dispatch(payload: Dict[str, Any]) -> Dict[str, Any]:
                 "error": f"task {task_id} is done — refuse to rewrite block reason",
             }
         if status in ("ready", "running", "todo"):
-            ok = kanban_db.block_task(conn, task_id, reason=reason)
+            ok = kanban_db.block_task(
+                conn, task_id, reason=reason, **({"kind": kind} if kind else {})
+            )
             if not ok:
                 return {"success": False, "error": f"could not block task {task_id}"}
         elif status == "blocked":
@@ -564,8 +649,16 @@ def _dispatch(payload: Dict[str, Any]) -> Dict[str, Any]:
                     "success": False,
                     "error": "kanban_db._append_event/write_txn not available",
                 }
+            # Every "blocked" event that this bridge writes has key "kind", so that
+            # action clear_stale_block_kinds can find the events of earlier versions.
+            event_kind = kind if set_kind else getattr(task, "block_kind", None)
             with write_txn(conn):
-                append_fn(conn, task_id, "blocked", {"reason": reason})
+                append_fn(conn, task_id, "blocked", {"reason": reason, "kind": event_kind})
+                if set_kind:
+                    conn.execute(
+                        "UPDATE tasks SET block_kind = ? WHERE id = ?",
+                        (kind, task_id),
+                    )
         else:
             return {
                 "success": False,
@@ -585,6 +678,94 @@ def _dispatch(payload: Dict[str, Any]) -> Dict[str, Any]:
             "task": summary,
         }
 
+    if action == "clear_stale_block_kinds":
+        # Repair for change proactive-clarify-hardening. An earlier version of
+        # update_block_reason wrote "blocked" events without key "kind" and did not
+        # change the block kind of the task. When the newest "blocked" event of a
+        # blocked task has no key "kind", the block kind of the task is stale.
+        # Every "blocked" event that Hermes or this bridge writes now has key "kind",
+        # so this action is safe to run more than once.
+        append_fn = getattr(kanban_db, "_append_event", None)
+        write_txn = getattr(kanban_db, "write_txn", None)
+        if not callable(append_fn) or not callable(write_txn):
+            return {"success": False, "error": "kanban_db._append_event/write_txn not available"}
+        cleared: List[str] = []
+        rows = conn.execute(
+            "SELECT id FROM tasks WHERE status = 'blocked' AND block_kind IS NOT NULL"
+        ).fetchall()
+        for row in rows:
+            task_id = str(row[0])
+            blocked = [e for e in kanban_db.list_events(conn, task_id) if e.kind == "blocked"]
+            if not blocked:
+                continue
+            newest = blocked[-1].payload if isinstance(blocked[-1].payload, dict) else {}
+            if "kind" in newest:
+                continue
+            with write_txn(conn):
+                conn.execute(
+                    "UPDATE tasks SET block_kind = NULL WHERE id = ? AND status = 'blocked'",
+                    (task_id,),
+                )
+                append_fn(
+                    conn,
+                    task_id,
+                    "block_kind_cleared",
+                    {"reason": "stale block kind from an earlier block reason rewrite"},
+                )
+            cleared.append(task_id)
+        return {"success": True, "board": board, "cleared": cleared}
+
+    if action == "archive_stale_blocked":
+        # Ingress sweep (change stale-ingress-sweep). Archives each stale ingress task:
+        # a blocked task without block kind needs_input and without an event for
+        # max_age_seconds. Returns task ids only, never titles or bodies.
+        if board != "ea-mail-ingress":
+            return {"success": False, "error": "archive_stale_blocked is allowed only on board ea-mail-ingress"}
+        try:
+            max_age = int(payload.get("max_age_seconds"))
+            limit = int(payload.get("limit", 100))
+        except (TypeError, ValueError):
+            return {"success": False, "error": "max_age_seconds and limit must be integers"}
+        if max_age <= 0 or limit <= 0:
+            return {"success": False, "error": "max_age_seconds and limit must be above 0"}
+        import time
+
+        cutoff = int(time.time()) - max_age
+        # The newest task event is the last sign of life. Without any event, use created_at.
+        stale = [
+            str(row[0])
+            for row in conn.execute(
+                "SELECT t.id FROM tasks t"
+                " WHERE t.status = 'blocked'"
+                "   AND (t.block_kind IS NULL OR t.block_kind != 'needs_input')"
+                "   AND t.worker_pid IS NULL"
+                "   AND COALESCE((SELECT MAX(e.created_at) FROM task_events e WHERE e.task_id = t.id),"
+                "                t.created_at) < ?"
+                " ORDER BY COALESCE((SELECT MAX(e.created_at) FROM task_events e WHERE e.task_id = t.id),"
+                "                   t.created_at)",
+                (cutoff,),
+            ).fetchall()
+        ]
+        archived: List[str] = []
+        for task_id in stale[:limit]:
+            kanban_db.add_comment(
+                conn,
+                task_id,
+                author="joshu-ingress-sweep",
+                body=(
+                    "Archived by the ingress sweep, not by the owner: the task was blocked "
+                    f"and had no event for {max_age // 3600} hours."
+                ),
+            )
+            if kanban_db.archive_task(conn, task_id):
+                archived.append(task_id)
+        return {
+            "success": True,
+            "board": board,
+            "archived": archived,
+            "remaining": len(stale) - len(archived),
+        }
+
     if action == "append_body":
         task_id = str(payload.get("task_id") or "").strip()
         append = payload.get("append")
@@ -596,6 +777,34 @@ def _dispatch(payload: Dict[str, Any]) -> Dict[str, Any]:
         if not task:
             return {"success": False, "error": f"task {task_id} not found"}
         new_body = f"{(task.body or '').rstrip()}\n{str(append).strip()}\n"
+        if hasattr(kanban_db, "update_task"):
+            kanban_db.update_task(conn, task_id, body=new_body)
+        else:
+            conn.execute("UPDATE tasks SET body = ? WHERE id = ?", (new_body, task_id))
+            conn.commit()
+        refreshed = kanban_db.get_task(conn, task_id)
+        return {
+            "success": True,
+            "task_id": task_id,
+            "task": _task_summary(refreshed, include_body=True) if refreshed else {"task_id": task_id},
+        }
+
+    if action == "set_body":
+        # Replace the body of a setup card when the how-to of its setup step changed
+        # (change owner-setup-board). Only the setup board allows it: on other boards
+        # the body holds the history of the task (for example the handoffs of a track).
+        if board != "ea-onboarding":
+            return {"success": False, "error": "set_body is allowed only on board ea-onboarding"}
+        task_id = str(payload.get("task_id") or "").strip()
+        body = payload.get("body")
+        if not task_id:
+            return {"success": False, "error": "task_id is required"}
+        if body is None or not str(body).strip():
+            return {"success": False, "error": "body is required"}
+        task = kanban_db.get_task(conn, task_id)
+        if not task:
+            return {"success": False, "error": f"task {task_id} not found"}
+        new_body = f"{str(body).strip()}\n"
         if hasattr(kanban_db, "update_task"):
             kanban_db.update_task(conn, task_id, body=new_body)
         else:

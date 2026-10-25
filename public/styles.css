@@ -127,7 +127,7 @@ button:focus-visible {
 }
 
 /* Fill the workspace so #vnc-frame gets a real height. Without flex:1 the
-   viewport (flex:1; min-height:0) collapses and the noVNC canvas is clipped. */
+   viewport (flex:1; min-height:0) collapses and the live view canvas is clipped. */
 .browser-column {
   flex: 1;
   display: flex;
@@ -403,23 +403,6 @@ button:focus-visible {
   position: relative;
 }
 
-.vnc-debug {
-  position: absolute;
-  left: 0.65rem;
-  bottom: 0.65rem;
-  z-index: 3;
-  margin: 0;
-  padding: 0.35rem 0.5rem;
-  font-family: var(--font-mono);
-  font-size: 0.65rem;
-  line-height: 1.35;
-  color: #b8f0c8;
-  background: rgba(0, 0, 0, 0.82);
-  border: 1px solid rgba(184, 240, 200, 0.35);
-  pointer-events: none;
-  white-space: pre;
-}
-
 /* —— Settings modal —— */
 .modal {
   position: fixed;
@@ -542,4 +525,14 @@ body.modal-open {
 .field .label {
   font-size: 0.72rem;
   color: var(--color-text-muted);
+}
+
+/* Browser Use Cloud: the live view shows its own tab strip and address bar
+   (ui=true), so jWeb hides its address bar. The clipboard bar stays. */
+body.live-browser-chrome .chrome-dots,
+body.live-browser-chrome .chrome-url-form {
+  display: none;
+}
+body.live-browser-chrome .browser-chrome {
+  justify-content: flex-end;
 }

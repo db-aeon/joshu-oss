@@ -8,6 +8,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { listJoshuMcpDependencies, probeMcpHttpHealth } from "./mcpDependencyHealth.js";
 import { readProvisionInstanceEnv } from "./provisionInstanceEnv.js";
+import { resolveScriptPath } from "./scriptsRoot.js";
 
 const execFile = promisify(execFileCb);
 
@@ -17,6 +18,11 @@ const START_SCRIPTS: Record<string, string> = {
   "composio MCP guard": "start-composio-mcp-guard.sh",
   "fal MCP relay": "start-fal-mcp-relay.sh",
 };
+
+/** Boot scripts come from the scripts root of the image (see src/scriptsRoot.ts). */
+function resolveStartScript(projectRoot: string, script: string): string {
+  return resolveScriptPath(path.join(projectRoot, "scripts"), script);
+}
 
 export type McpSupervisorOptions = {
   projectRoot: string;
@@ -57,7 +63,7 @@ export function startJoshuMcpSupervisor(opts: McpSupervisorOptions): () => void 
             console.warn(`[mcp-supervisor] ${dep.label} unhealthy — restarting (${dep.healthUrl})`);
             lastRestartAt.set(dep.label, now);
             try {
-              await execFile("bash", [path.join(opts.projectRoot, "scripts", script)], {
+              await execFile("bash", [resolveStartScript(opts.projectRoot, script)], {
                 cwd: opts.projectRoot,
                 timeout: 120_000,
                 env: { ...process.env, ...readProvisionInstanceEnv(), APP_DIR: opts.projectRoot },

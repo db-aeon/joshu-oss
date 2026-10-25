@@ -1,0 +1,153 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Hourly nudge on a blocked task and the owner's reply",
+    "output": ".archify/sequence-kanban-proactive-nudge-20261006-223000/kanban-proactive-nudge.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/db-aeon/joshu.git",
+      "revision": "56143b5c8bd394b1046988d5196fad6701f11448",
+      "provider": "github",
+      "link_mode": "local-only"
+    }
+  },
+  "participants": [
+    {
+      "id": "cron",
+      "type": "messagebus",
+      "label": "Hermes cron",
+      "sublabel": "hourly, no LLM",
+      "sources": [
+        { "path": "src/proactive/proactiveCronJobs.ts", "line": 1, "end_line": 80, "label": "Joshu proactive tick" },
+        { "path": "scripts/proactive-tick.sh", "line": 1, "end_line": 11, "label": "proactive-tick.sh" }
+      ]
+    },
+    {
+      "id": "tick",
+      "type": "backend",
+      "label": "Joshu API",
+      "sublabel": "proactive tick",
+      "sources": [
+        { "path": "src/proactive/tick.ts", "line": 41, "end_line": 134, "label": "runProactiveTick" },
+        { "path": "src/proactive/state.ts", "line": 17, "end_line": 25, "label": "daily cap default 1" },
+        { "path": "src/proactive/delivery.ts", "line": 21, "end_line": 67, "label": "SMS, then email" }
+      ]
+    },
+    {
+      "id": "sweep",
+      "type": "backend",
+      "label": "Sweep",
+      "sublabel": "all boards",
+      "sources": [
+        { "path": "src/proactive/sweep.ts", "line": 25, "end_line": 112, "label": "owner question filter" },
+        { "path": "src/proactive/crossBoardKanban.ts", "line": 52, "end_line": 70, "label": "list blocked tasks" },
+        { "path": "src/proactive/prioritize.ts", "line": 36, "end_line": 41, "label": "project must be active" }
+      ]
+    },
+    {
+      "id": "bridge",
+      "type": "backend",
+      "label": "Kanban bridge",
+      "sublabel": "bridge script",
+      "sources": [
+        { "path": "scripts/hermes-kanban-bridge.py", "line": 453, "end_line": 554, "label": "unblock, list, comment" },
+        { "path": "scripts/hermes-kanban-bridge.py", "line": 685, "end_line": 721, "label": "complete" }
+      ]
+    },
+    {
+      "id": "boards",
+      "type": "database",
+      "label": "Boards",
+      "sublabel": "~/.hermes/kanban",
+      "sources": [
+        { "path": "src/proactive/boards.ts", "line": 10, "end_line": 22, "label": "board slugs on the box" }
+      ]
+    },
+    {
+      "id": "owner",
+      "type": "external",
+      "label": "Owner",
+      "sublabel": "SMS or email"
+    },
+    {
+      "id": "router",
+      "type": "backend",
+      "label": "Reply router",
+      "sublabel": "Joshu",
+      "sources": [
+        { "path": "src/twilioSmsGateway.ts", "line": 222, "end_line": 300, "label": "keyword, then resolve" },
+        { "path": "src/proactive/replyRouter.ts", "line": 40, "end_line": 170, "label": "DONE / KEEP, fallback" },
+        { "path": "src/proactive/resolveOwnerReply.ts", "line": 67, "end_line": 90, "label": "owner reply comment" }
+      ]
+    },
+    {
+      "id": "resolve",
+      "type": "backend",
+      "label": "Resolve turn",
+      "sublabel": "Hermes session",
+      "sources": [
+        { "path": "src/proactive/resolveOwnerReply.ts", "line": 44, "end_line": 57, "label": "session key, board skill" },
+        { "path": "src/proactive/resolveOwnerReply.ts", "line": 125, "end_line": 150, "label": "resolve instructions" },
+        { "path": "integrations/hermes/skills/proactive/joshu-proactive/SKILL.md", "line": 41, "end_line": 69, "label": "Resolve mode" }
+      ]
+    }
+  ],
+  "segments": [
+    { "from": 150, "to": 200, "label": "Tick" },
+    { "from": 208, "to": 398, "label": "Sweep" },
+    { "from": 406, "to": 470, "label": "Nudge" },
+    { "from": 478, "to": 850, "label": "Reply" }
+  ],
+  "messages": [
+    { "id": "c-tick", "from": "cron", "to": "tick", "y": 175, "label": "POST /api/proactive/tick", "variant": "emphasis", "note": "runs proactive-tick.sh" },
+    { "id": "c-pick", "from": "tick", "to": "sweep", "y": 230, "label": "pick top task", "variant": "emphasis", "note": "only inside working hours and under the daily cap" },
+    { "id": "c-list", "from": "sweep", "to": "bridge", "y": 272, "label": "list status=blocked", "variant": "default", "note": "each board except realtime-goals" },
+    { "id": "c-read", "from": "bridge", "to": "boards", "y": 310, "label": "read blocked tasks", "variant": "default" },
+    { "id": "c-rows", "from": "bridge", "to": "sweep", "y": 340, "label": "blocked tasks", "variant": "return" },
+    { "id": "c-ranked", "from": "sweep", "to": "tick", "y": 372, "label": "top owner question", "variant": "return", "note": "block kind needs_input, ranked" },
+    { "id": "c-nudge", "from": "tick", "to": "owner", "y": 435, "label": "nudge (SMS or email)", "variant": "emphasis", "note": "ends with Ref: pj/<task_id> · lastNudge saved" },
+    { "id": "c-reply", "from": "owner", "to": "router", "y": 500, "label": "reply", "variant": "emphasis" },
+    { "id": "c-done", "from": "router", "to": "bridge", "y": 540, "label": "DONE or CLOSE: complete", "variant": "default", "note": "exact keyword · author owner" },
+    { "id": "c-keep", "from": "router", "to": "bridge", "y": 580, "label": "KEEP: comment only", "variant": "default" },
+    { "id": "c-comment", "from": "router", "to": "bridge", "y": 615, "label": "free text: comment", "variant": "emphasis", "note": "## Owner reply (proactive nudge)" },
+    { "id": "c-resolve", "from": "router", "to": "resolve", "y": 660, "label": "resolve turn", "variant": "emphasis", "note": "proactive:resolve:<taskId>" },
+    { "id": "c-act", "from": "resolve", "to": "boards", "y": 705, "label": "kanban_unblock, complete or block", "variant": "emphasis", "note": "skills joshu-proactive + board skill" },
+    { "id": "c-text", "from": "resolve", "to": "router", "y": 750, "label": "reply text", "variant": "return" },
+    { "id": "c-sms", "from": "router", "to": "owner", "y": 780, "label": "SMS reply", "variant": "return" },
+    { "id": "c-fallback", "from": "router", "to": "bridge", "y": 820, "label": "fallback: unblock", "variant": "dashed", "note": "when Hermes fails; also wakes linked ea-scheduling tasks" }
+  ],
+  "activations": [
+    { "participant": "tick", "from": 170, "to": 440, "type": "backend" },
+    { "participant": "resolve", "from": 655, "to": 755, "type": "backend" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Sweep rules",
+      "items": [
+        "Keeps blocked tasks with block kind needs_input",
+        "Drops date-stale tasks, projects whose about.md status is not active, snoozed onboarding prompts, and tasks nudged today",
+        "Skips board realtime-goals: the goal broker asks those questions"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Before the nudge",
+      "items": [
+        "No owner question: first item of hygieneAmbiguousQueue (stale_review)",
+        "Calendar free/busy check: no nudge while the owner is in a meeting",
+        "State: .joshu/proactive/state.json (daily cap, lastNudge)"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Owner reply",
+      "items": [
+        "DONE or CLOSE completes the task; KEEP leaves it blocked",
+        "Other text goes to a Hermes resolve turn for that task",
+        "Fallback unblock on project boards also wakes linked ea-scheduling tasks"
+      ]
+    }
+  ]
+}

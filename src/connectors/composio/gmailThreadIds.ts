@@ -2,7 +2,7 @@
  * Normalize Gmail list payloads where Composio omits threadId (falls back to message id in rowToSummary).
  * Without this, each inbox message is synced/classified as its own "thread" on every cron tick.
  */
-import { isGmailJunk } from "../../ea/gmailJunk.js";
+import { isGmailSkippedMessage } from "../../ea/gmailJunk.js";
 import { fetchGmailMessageById, type GmailExecuteContext, type GmailMessageSummary } from "./gmail.js";
 
 export function gmailSummaryNeedsThreadResolve(m: GmailMessageSummary): boolean {
@@ -36,7 +36,7 @@ export async function resolveGmailThreadIdsFromSummaries(
   const toResolve: GmailMessageSummary[] = [];
 
   for (const m of summaries) {
-    if (isGmailJunk(m.labelIds)) continue;
+    if (isGmailSkippedMessage(m.labelIds)) continue;
     if (gmailSummaryNeedsThreadResolve(m)) {
       toResolve.push(m);
       continue;
@@ -51,10 +51,10 @@ export async function resolveGmailThreadIdsFromSummaries(
   let resolved = 0;
   for (const m of toResolve) {
     if (resolved >= maxResolves) break;
-    if (isGmailJunk(m.labelIds)) continue;
+    if (isGmailSkippedMessage(m.labelIds)) continue;
     try {
       const full = await fetchGmailMessageById(projectRoot, m.id, ctx);
-      if (!full || isGmailJunk(full.labelIds)) continue;
+      if (!full || isGmailSkippedMessage(full.labelIds)) continue;
       if (full.threadId && full.threadId !== full.id) {
         const prev = byThread.get(full.threadId);
         if (!prev || (full.messageTimestamp ?? 0) > (prev.messageTimestamp ?? 0)) {
@@ -68,6 +68,6 @@ export async function resolveGmailThreadIdsFromSummaries(
   }
 
   return [...byThread.entries()]
-    .filter(([, summary]) => !isGmailJunk(summary.labelIds))
+    .filter(([, summary]) => !isGmailSkippedMessage(summary.labelIds))
     .map(([threadId]) => threadId);
 }

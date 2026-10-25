@@ -1,13 +1,38 @@
 /**
  * GHCR login for release updates — docker CLI runs inside instance-agent with
- * host ~/.docker bind-mounted (see deploy/docker-compose.yml).
+ * host ~/.docker bind-mounted read-only (see deploy/docker-compose.yml).
  */
 import { spawn } from "node:child_process";
-import { access, readFile, writeFile, mkdir } from "node:fs/promises";
+import { access, copyFile, readFile, writeFile, mkdir } from "node:fs/promises";
 import { constants as fsConstants } from "node:fs";
+import path from "node:path";
 
-const DOCKER_CONFIG = "/root/.docker/config.json";
+const HOST_DOCKER_DIR = "/root/.docker";
+const AGENT_DOCKER_DIR = "/tmp/joshu-docker-config";
 const GHCR_SECRETS_PATH = "/etc/joshu/secrets/ghcr-read.env";
+
+/**
+ * The host ~/.docker mount is read-only, and `docker login` must write config.json. So the
+ * agent copies the host config.json to a writable folder once, and points DOCKER_CONFIG at it.
+ * Each docker command of the agent inherits process.env, so login and pulls use the same copy.
+ */
+export async function useWritableDockerConfig(
+  hostDir = HOST_DOCKER_DIR,
+  agentDir = AGENT_DOCKER_DIR,
+): Promise<void> {
+  if (process.env.DOCKER_CONFIG === agentDir) return;
+  await mkdir(agentDir, { recursive: true, mode: 0o700 });
+  try {
+    await copyFile(path.join(hostDir, "config.json"), path.join(agentDir, "config.json"));
+  } catch {
+    // No host config: docker login makes a new file.
+  }
+  process.env.DOCKER_CONFIG = agentDir;
+}
+
+function dockerConfigPath(): string {
+  return path.join(process.env.DOCKER_CONFIG || HOST_DOCKER_DIR, "config.json");
+}
 
 export type RegistryAuth = {
   host?: string;
@@ -87,10 +112,11 @@ async function dockerLogin(auth: RegistryAuth): Promise<void> {
   });
 }
 
-async function configHasGhcrAuth(): Promise<boolean> {
+export async function configHasGhcrAuth(): Promise<boolean> {
+  const configPath = dockerConfigPath();
   try {
-    await access(DOCKER_CONFIG, fsConstants.R_OK);
-    const raw = await readFile(DOCKER_CONFIG, "utf8");
+    await access(configPath, fsConstants.R_OK);
+    const raw = await readFile(configPath, "utf8");
     const parsed = JSON.parse(raw) as { auths?: Record<string, unknown> };
     return Boolean(parsed.auths?.["ghcr.io"]);
   } catch {
@@ -116,6 +142,7 @@ export async function persistGhcrSecretsFile(auth: RegistryAuth): Promise<void> 
 export async function ensureRegistryLoginForUpdate(
   payload: Record<string, unknown>,
 ): Promise<void> {
+  await useWritableDockerConfig();
   const fromPayload = registryAuthFromPayload(payload);
   if (fromPayload) {
     await dockerLogin(fromPayload);
@@ -135,7 +162,7 @@ export async function ensureRegistryLoginForUpdate(
 
   throw new Error(
     "GHCR login missing — no registryAuth on command, no /etc/joshu/secrets/ghcr-read.env, " +
-      "and no ghcr.io entry in /root/.docker/config.json. " +
+      `and no ghcr.io entry in ${dockerConfigPath()}. ` +
       "Retry admin Update after control-plane deploy, or refresh GHCR credentials on the host.",
   );
 }

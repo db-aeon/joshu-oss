@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
-# VPS entrypoint: Camofox + Hindsight + Joshu + ArozOS (VPS parity, durable Postgres).
+# VPS entrypoint: shared browser (local Chromium or Browser Use Cloud) + Hindsight + Joshu + ArozOS (durable Postgres).
 set -euo pipefail
 
 APP_DIR="${APP_DIR:-/opt/joshu}"
 export APP_DIR
-CAMOFOX_APP_DIR="${CAMOFOX_APP_DIR:-/app}"
 HERMES_DIR="${HERMES_DIR:-/opt/hermes-agent}"
 HERMES_HOME="${HERMES_HOME:-/root/.hermes}"
 HINDSIGHT_HOME="${HINDSIGHT_HOME:-/home/hindsight/.hindsight}"
@@ -66,8 +65,20 @@ load_env_file() {
   set +a
 }
 
+# Slack and Telegram keys that the Safety app manages (buildHermesMessagingDotenvEntries).
+# Joshu copies them into ~/.hermes/.env. Sourcing that copy would put the old values into
+# the environment of Joshu, where they win over a newer Safety app save until the next
+# restart (test box, 2026-10-11: Connect Slack saved new tokens, Hermes kept the old ones).
+# instance.env, sourced after this, still sets a key that the operator pins.
+unset_safety_messaging_env() {
+  unset TELEGRAM_BOT_TOKEN TELEGRAM_ALLOWED_USERS TELEGRAM_GROUP_ALLOWED_USERS TELEGRAM_GROUP_ALLOWED_CHATS \
+    TELEGRAM_HOME_CHANNEL TELEGRAM_HOME_CHANNEL_NAME TELEGRAM_WEBHOOK_URL TELEGRAM_WEBHOOK_SECRET \
+    SLACK_BOT_TOKEN SLACK_APP_TOKEN SLACK_ALLOWED_USERS SLACK_HOME_CHANNEL SLACK_ALLOWED_CHANNELS || true
+}
+
 # instance.env (provisioned secrets) must override stale keys in the persistent Hermes volume.
 load_env_file "${HERMES_HOME}/.env"
+unset_safety_messaging_env
 load_env_file "/etc/joshu/instance.env"
 
 # Relay mode: instance.env omits Langfuse pk/sk, but sourcing ~/.hermes/.env first would
@@ -169,24 +180,6 @@ load_safety_settings_browser_env
 # gbrain CLI is installed via Bun; the /usr/local/bin/gbrain symlink uses #!/usr/bin/env bun.
 export PATH="${HOME}/.bun/bin:/usr/local/bin:${PATH}"
 export GBRAIN_BIN="${GBRAIN_BIN:-$(command -v gbrain 2>/dev/null || echo "${HOME}/.bun/bin/gbrain")}"
-
-# Hindsight runs as ${HINDSIGHT_RUN_AS_USER}; GCP service-account JSON must be group-readable.
-fix_hindsight_secrets_permissions() {
-  local secrets_dir="/etc/joshu/secrets"
-  local sa_key="${HINDSIGHT_API_RERANKER_GOOGLE_SERVICE_ACCOUNT_KEY:-}"
-  [[ -n "${sa_key}" && -f "${sa_key}" ]] || return 0
-  if ! id "${HINDSIGHT_RUN_AS_USER}" >/dev/null 2>&1; then
-    return 0
-  fi
-  local h_gid
-  h_gid="$(id -g "${HINDSIGHT_RUN_AS_USER}")"
-  mkdir -p "${secrets_dir}"
-  chown "root:${h_gid}" "${secrets_dir}" "${sa_key}" 2>/dev/null || true
-  chmod 750 "${secrets_dir}" 2>/dev/null || true
-  chmod 640 "${sa_key}" 2>/dev/null || true
-}
-
-fix_hindsight_secrets_permissions
 
 # Idempotent Hermes config for product sandboxes (works even if the image predates ensureJoshuHermesConfig).
 ensure_hermes_runtime_config() {
@@ -355,6 +348,14 @@ apply_hermes_dsml_stream_scrub() {
   HERMES_DIR="${HERMES_DIR}" bash "${script}" || echo "[vps-start] WARN: DSML stream scrub patch failed" >&2
 }
 
+# No-training routing for OpenRouter auxiliary tasks (openspec model-provider-privacy).
+apply_hermes_openrouter_data_collection() {
+  local script="${JOSHU_SCRIPTS_ROOT}/apply-hermes-openrouter-data-collection.sh"
+  [[ -f "${script}" ]] || return 0
+  HERMES_DIR="${HERMES_DIR}" bash "${script}" \
+    || echo "[vps-start] WARN: OpenRouter data_collection patch failed" >&2
+}
+
 # EA scheduling/mail: one card → one worker. Skip auto_decompose + keep block_loop off triage.
 apply_hermes_ea_kanban_no_autodecompose() {
   local script="${JOSHU_SCRIPTS_ROOT}/apply-hermes-ea-kanban-no-autodecompose.sh"
@@ -395,7 +396,24 @@ apply_hermes_joshu_disable_native_sms_platform() {
     || echo "[vps-start] WARN: disable native SMS platform patch failed" >&2
 }
 
-# Block Hermes terminal from reading instance.env / secrets (jterm zero-shared-keys).
+# Pairing reply tells the owner to enter the code in the Safety app (slack-connect).
+apply_hermes_pairing_reply() {
+  local script="${JOSHU_SCRIPTS_ROOT}/apply-hermes-pairing-reply.sh"
+  [[ -f "${script}" ]] || return 0
+  HERMES_DIR="${HERMES_DIR}" bash "${script}" \
+    || echo "[vps-start] WARN: pairing reply patch failed" >&2
+}
+
+# No Always choice and no permanent approvals in Hermes approval prompts (change companion-runtime-guard).
+apply_hermes_approval_no_permanent() {
+  local script="${JOSHU_SCRIPTS_ROOT}/apply-hermes-approval-no-permanent.sh"
+  [[ -f "${script}" ]] || return 0
+  HERMES_DIR="${HERMES_DIR}" bash "${script}" \
+    || echo "[vps-start] WARN: approval no-permanent patch failed" >&2
+}
+
+# Block Hermes terminal and execute_code from reading secrets and changing runtime files
+# (jterm zero-shared-keys, change companion-runtime-guard).
 # Bind-mounted from host until baked into the next sandbox image.
 apply_hermes_terminal_secrets_guard() {
   local script="${JOSHU_SCRIPTS_ROOT}/patch-hermes-terminal-secrets-guard.mjs"
@@ -427,20 +445,41 @@ bootstrap_hermes_learning_skills() {
   HERMES_HOME="${HERMES_HOME}" APP_DIR="${APP_DIR}" bash "${script}" || echo "[vps-start] WARN: hermes learning skills seed failed" >&2
 }
 
+# Clear stale block kinds that the earlier action-guard rewrite left on blocked tasks
+# (change proactive-clarify-hardening). Safe to run at every start.
+clear_stale_kanban_block_kinds() {
+  local bridge="${JOSHU_SCRIPTS_ROOT}/hermes-kanban-bridge.py"
+  local python="${HERMES_DIR}/venv/bin/python"
+  local boards="${HERMES_HOME}/kanban/boards"
+  [[ -f "${bridge}" && -x "${python}" && -d "${boards}" ]] || return 0
+  local dir board
+  for dir in "${boards}"/*/; do
+    [[ -f "${dir}kanban.db" ]] || continue
+    board="$(basename "${dir}")"
+    printf '{"action":"clear_stale_block_kinds","board":"%s"}' "${board}" \
+      | HERMES_HOME="${HERMES_HOME}" HERMES_AGENT_ROOT="${HERMES_DIR}" "${python}" "${bridge}" >/dev/null 2>&1 \
+      || echo "[vps-start] WARN: clear stale block kinds failed for board ${board}" >&2
+  done
+}
+
 apply_hermes_langfuse_patches
 apply_hermes_kanban_ws_patch
 apply_hermes_content_filter_patch
 apply_hermes_read_file_utf8_patch
 apply_hermes_dsml_stream_scrub
+apply_hermes_openrouter_data_collection
 apply_hermes_ea_kanban_no_autodecompose
 apply_hermes_kanban_worker_terminate_on_complete
 apply_hermes_stale_stream_keepalive
 apply_hermes_kanban_guidance_gate
 apply_hermes_joshu_disable_native_sms_platform
+apply_hermes_pairing_reply
+apply_hermes_approval_no_permanent
 apply_hermes_terminal_secrets_guard
 apply_hermes_browser_cdp_guards
 apply_hermes_factory_skill_background_writes
 bootstrap_hermes_learning_skills
+clear_stale_kanban_block_kinds
 ensure_hermes_runtime_config
 restart_hermes_gateway_if_running
 
@@ -671,43 +710,20 @@ mkdir -p "${HERMES_HOME}" "${HINDSIGHT_POSTGRES_DATA_DIR}" "$(dirname "${HINDSIG
 export HOST="${HOST:-127.0.0.1}"
 export PORT="${JOSHU_PORT}"
 export PUBLIC_BASE_PATH
+# Shared browser (local Chromium). CAMOFOX_URL is the health URL of the Chromium
+# supervisor (the name is older than the Chromium supervisor; change remove-camofox).
 export CAMOFOX_URL="${CAMOFOX_URL:-http://127.0.0.1:9377}"
 export CAMOFOX_AUTO_RESTART="${CAMOFOX_AUTO_RESTART:-false}"
-# Camofox image serves noVNC on :6080 when ENABLE_VNC=1 (VPS parity — see deploy/scripts/vps-start.sh).
-export ENABLE_VNC="${ENABLE_VNC:-1}"
-export NOVNC_PORT="${NOVNC_PORT:-6080}"
-export NOVNC_URL="${NOVNC_URL:-/novnc}"
-export NOVNC_PROXY_TARGET="${NOVNC_PROXY_TARGET:-http://127.0.0.1:6080}"
-export NOVNC_CLIENT_PATH="${NOVNC_CLIENT_PATH:-/novnc}"
-# x11vnc redraw knobs (consumed by scripts/camofox-vnc-watcher.sh).
-export X11VNC_NOXDAMAGE="${X11VNC_NOXDAMAGE:-1}"
-export X11VNC_THREADS="${X11VNC_THREADS:-1}"
-export X11VNC_DEFER="${X11VNC_DEFER:-10}"
-export X11VNC_WAIT="${X11VNC_WAIT:-10}"
+# Xvfb screen size for headed Chromium (browser/chromium/entrypoint.sh).
 export VNC_RESOLUTION="${VNC_RESOLUTION:-1024x768}"
 export CAMOFOX_VIEWPORT_WIDTH="${CAMOFOX_VIEWPORT_WIDTH:-1024}"
 export CAMOFOX_VIEWPORT_HEIGHT="${CAMOFOX_VIEWPORT_HEIGHT:-768}"
-export CAMOFOX_FF_VERSION="${CAMOFOX_FF_VERSION:-139}"
 export CAMOFOX_START_URL="${CAMOFOX_START_URL:-https://joshu.me/}"
-# VNC clicks do not increment Camofox toolCalls — default 0 disables the inactivity tab reaper.
-export TAB_INACTIVITY_MS="${TAB_INACTIVITY_MS:-0}"
-export JOSHU_WARM_CAMOFOX="${JOSHU_WARM_CAMOFOX:-false}"
 export HITL_CAMOFOX_USER_ID="${HITL_CAMOFOX_USER_ID:-hitl-camofox}"
 export HITL_CAMOFOX_SESSION_KEY="${HITL_CAMOFOX_SESSION_KEY:-hitl-main}"
 export HITL_CAMOFOX_SINGLE_TAB="${HITL_CAMOFOX_SINGLE_TAB:-true}"
-export CAMOFOX_USER_ID="${CAMOFOX_USER_ID:-${HITL_CAMOFOX_USER_ID}}"
-export CAMOFOX_SESSION_KEY="${CAMOFOX_SESSION_KEY:-${HITL_CAMOFOX_SESSION_KEY}}"
-export CAMOFOX_ADOPT_EXISTING_TAB="${CAMOFOX_ADOPT_EXISTING_TAB:-true}"
-# Idle-shutdown Firefox after no sessions (saves CPU). jWeb / fit-viewport warm
-# relaunches cleanly on next open — do not set 0 unless you need always-on VNC.
+# Idle stop for the Browser Use Cloud session when CLOUD_BROWSER_IDLE_TIMEOUT_MS is unset.
 export BROWSER_IDLE_TIMEOUT_MS="${BROWSER_IDLE_TIMEOUT_MS:-300000}"
-export SESSION_TIMEOUT_MS="${SESSION_TIMEOUT_MS:-1800000}"
-# 1 recycles the opener when Google/GitHub registers an OAuth popup as a tab.
-export MAX_TABS_PER_SESSION="${MAX_TABS_PER_SESSION:-4}"
-export MAX_TABS_GLOBAL="${MAX_TABS_GLOBAL:-8}"
-export CAMOFOX_MAX_TABS="${CAMOFOX_MAX_TABS:-4}"
-export HITL_FORCE_SINGLE_VISIBLE_PAGE="${HITL_FORCE_SINGLE_VISIBLE_PAGE:-true}"
-export MAX_OLD_SPACE_SIZE="${MAX_OLD_SPACE_SIZE:-256}"
 export HERMES_BIN="${HERMES_BIN:-${HERMES_DIR}/venv/bin/hermes}"
 export HINDSIGHT_API_BIN="${HINDSIGHT_API_BIN:-${HERMES_DIR}/venv/bin/hindsight-api}"
 export HINDSIGHT_API_URL="${HINDSIGHT_API_URL:-http://127.0.0.1:8888}"
@@ -738,209 +754,6 @@ SELECT 'CREATE DATABASE hindsight OWNER hindsight' WHERE NOT EXISTS (SELECT 1 FR
 \connect hindsight
 CREATE EXTENSION IF NOT EXISTS vector;
 SQL
-}
-
-ensure_camoufox_browser_cache() {
-  if [[ -f /root/.cache/camoufox/version.json ]]; then
-    return 0
-  fi
-  echo "[vps-start] Camoufox browser cache missing; running npx camoufox-js fetch (first boot may take several minutes)"
-  (
-    cd "${CAMOFOX_APP_DIR}"
-    npx --yes camoufox-js fetch
-  ) || {
-    echo "[vps-start] ERROR: camoufox-js fetch failed; POST /tabs will return 500 until the browser is installed" >&2
-    return 1
-  }
-}
-
-warm_camofox_browser() {
-  ensure_camoufox_browser_cache || return 1
-  local user="${CAMOFOX_USER_ID}"
-  local sk="${CAMOFOX_SESSION_KEY}"
-  # Camofox rejects about:* schemes on POST /tabs when url is set; omit url for blank start.
-  local payload
-  if [[ -z "${CAMOFOX_START_URL}" || "${CAMOFOX_START_URL}" == "about:blank" || "${CAMOFOX_START_URL}" == "about:home" ]]; then
-    payload="{\"userId\":\"${user}\",\"sessionKey\":\"${sk}\"}"
-  else
-    payload="{\"userId\":\"${user}\",\"sessionKey\":\"${sk}\",\"url\":\"${CAMOFOX_START_URL}\"}"
-  fi
-  echo "[vps-start] warming Camofox browser (${user})"
-  if curl -fsS -m 120 -X POST "${CAMOFOX_URL}/tabs" \
-    -H "Content-Type: application/json" \
-    -d "${payload}" >/dev/null 2>&1; then
-    echo "[vps-start] Camofox browser tab ready"
-    return 0
-  fi
-  echo "[vps-start] WARN: Camofox browser warm-up failed; VNC may connect then drop until a tab exists" >&2
-  return 1
-}
-
-# 0.1.29 images shipped a broken Camofox viewport patch (`}););`). Repair in-place until next image cut.
-# Also re-apply HITL patch markers (insert-text / selection / reaper) when the baked /app/server.js is missing them
-# (older images, or writable-layer wipe after recreate before the next image cut).
-repair_camfox_server_js() {
-  local f="${CAMOFOX_APP_DIR}/server.js"
-  [[ -f "$f" ]] || return 0
-  if grep -q '}););' "$f" 2>/dev/null; then
-    echo "[vps-start] repairing Camofox server.js (duplicate route closer)" >&2
-    sed -i 's/}););/});/g' "$f"
-  fi
-  local patch_script="${JOSHU_SCRIPTS_ROOT}/patch-camofox-single-tab.mjs"
-  # Re-apply when HITL markers are missing OR when launchOptions still lack window size
-  # (Camofox 1.6 fingerprints ~1920x1080 without window: — jWeb looks too wide).
-  local needs_hitl_patch=0
-  if [[ -f "${patch_script}" ]]; then
-    if ! grep -q 'HITL_SELECTION_ROUTE' "$f" 2>/dev/null; then
-      needs_hitl_patch=1
-    elif ! grep -q 'HITL_INSERT_TEXT_ROUTE' "$f" 2>/dev/null; then
-      needs_hitl_patch=1
-    elif ! grep -q 'HITL_FORM_FIELDS_ROUTE' "$f" 2>/dev/null; then
-      needs_hitl_patch=1
-    elif ! grep -q 'HITL_FILL_FORM_ROUTE' "$f" 2>/dev/null; then
-      needs_hitl_patch=1
-    elif ! grep -q 'HITL_FORM_PAGE_KEY_ROUTE' "$f" 2>/dev/null; then
-      needs_hitl_patch=1
-    elif ! grep -q 'window: \[__hitlVp.width, __hitlVp.height\]' "$f" 2>/dev/null; then
-      needs_hitl_patch=1
-    elif ! grep -q 'HITL_ADDON_MANIFEST_REPAIR' "${CAMOFOX_APP_DIR}/node_modules/camoufox-js/dist/addons.js" 2>/dev/null; then
-      needs_hitl_patch=1
-    fi
-  fi
-  if [[ "${needs_hitl_patch}" -eq 1 ]]; then
-    echo "[vps-start] applying Camofox HITL patch (insert-text / selection / form overlay / reaper / keepalive / window size)" >&2
-    node "${patch_script}" "$f" || echo "[vps-start] WARN: Camofox HITL patch failed" >&2
-  fi
-}
-
-# Upstream vnc-watcher only reattaches x11vnc when the Xvfb *display number* changes.
-# Idle-shutdown + warm-on-open relaunches Xvfb on the same :99, so :5900 stays dead
-# and jWeb instant-disconnects (noVNC 1011). Overlay before Camofox starts the watcher.
-repair_camfox_vnc_watcher() {
-  local patch_script="${JOSHU_SCRIPTS_ROOT}/patch-camofox-vnc-watcher.sh"
-  local watcher="${CAMOFOX_APP_DIR}/plugins/vnc/vnc-watcher.sh"
-  [[ -x "${patch_script}" && -f "${watcher}" ]] || return 0
-  bash "${patch_script}" "${watcher}" || echo "[vps-start] WARN: Camofox vnc-watcher overlay failed" >&2
-}
-
-# Camofox 1.6+ gates noVNC behind plugins.vnc in camofox.config.json.
-# The loader skips plugins with enabled:false BEFORE register(), so ENABLE_VNC alone is not enough.
-# Plugin apt deps (x11vnc / novnc / websockify) are also missing from the base image unless installed.
-ensure_camofox_vnc() {
-  case "${ENABLE_VNC:-1}" in
-    1|true|yes|TRUE|YES) ;;
-    *)
-      echo "[vps-start] VNC disabled (ENABLE_VNC=${ENABLE_VNC})"
-      return 0
-      ;;
-  esac
-
-  local cfg="${CAMOFOX_APP_DIR}/camofox.config.json"
-  local res="${VNC_RESOLUTION:-1024x768}"
-  # Config wants WxH; vnc-launcher appends depth when missing.
-  case "${res}" in
-    *x*x*) res="${res%x*}" ;;
-  esac
-
-  if [[ -f "${cfg}" ]]; then
-    python3 - "${cfg}" "${res}" <<'PY' || echo "[vps-start] WARN: failed to enable Camofox VNC plugin in ${cfg}" >&2
-import json
-import sys
-
-path, res = sys.argv[1], sys.argv[2]
-with open(path, encoding="utf-8") as f:
-    config = json.load(f)
-plugins = config.setdefault("plugins", {})
-vnc = plugins.get("vnc")
-if not isinstance(vnc, dict):
-    vnc = {}
-changed = vnc.get("enabled") is not True or vnc.get("resolution") != res
-vnc["enabled"] = True
-vnc["resolution"] = res
-plugins["vnc"] = vnc
-if changed:
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(config, f, indent=2)
-        f.write("\n")
-    print(f"[vps-start] enabled Camofox VNC plugin ({res})", flush=True)
-else:
-    print(f"[vps-start] Camofox VNC plugin already enabled ({res})", flush=True)
-PY
-  else
-    echo "[vps-start] WARN: missing ${cfg}; cannot enable VNC plugin" >&2
-  fi
-
-  if ! command -v x11vnc >/dev/null 2>&1 || ! command -v websockify >/dev/null 2>&1; then
-    echo "[vps-start] installing Camofox VNC apt packages (x11vnc, novnc, python3-websockify)"
-    apt-get update -qq \
-      && apt-get install -y --no-install-recommends x11vnc novnc python3-websockify net-tools procps \
-      && rm -rf /var/lib/apt/lists/* \
-      || echo "[vps-start] WARN: VNC apt install failed; jWeb/noVNC will 504 until packages are present" >&2
-  fi
-}
-
-# Node 22 overlay leaves Camofox's better-sqlite3 on the base image Node ABI
-# until the next sandbox image cut. Recreate wipes earlier live rebuilds —
-# repair at boot so jWeb (browserConnected) works.
-#
-# Probe must OPEN a DB — `require()` / bare import can succeed while the
-# native addon later fails with "Module did not self-register" (ABI mismatch).
-camofox_better_sqlite3_ok() {
-  local app_dir="${1:-${CAMOFOX_APP_DIR:-/app}}"
-  (
-    cd "${app_dir}" && node --input-type=module -e '
-      import Database from "better-sqlite3";
-      const db = new Database(":memory:");
-      db.exec("select 1");
-      db.close();
-    '
-  ) >/dev/null 2>&1
-}
-
-ensure_camofox_better_sqlite3() {
-  local app_dir="${CAMOFOX_APP_DIR:-/app}"
-  [[ -d "${app_dir}/node_modules/better-sqlite3" ]] || return 0
-  if camofox_better_sqlite3_ok "${app_dir}"; then
-    echo "[vps-start] Camofox better-sqlite3 ok ($(node -v))"
-    return 0
-  fi
-  echo "[vps-start] repairing Camofox better-sqlite3 for $(node -v)…" >&2
-  (
-    set -euo pipefail
-    cd "${app_dir}"
-    # Prefer npm rebuild at package root (matches Dockerfile). Fall back to
-    # prebuild-install, then compile from source when build tools are available.
-    if npm rebuild better-sqlite3 --foreground-scripts >/tmp/camofox-bs3-rebuild.log 2>&1 \
-      && camofox_better_sqlite3_ok "${app_dir}"; then
-      :
-    elif (
-      cd "${app_dir}/node_modules/better-sqlite3" \
-        && npx --yes prebuild-install -r node >/tmp/camofox-bs3-prebuild.log 2>&1
-    ) && camofox_better_sqlite3_ok "${app_dir}"; then
-      :
-    elif command -v apt-get >/dev/null 2>&1; then
-      export DEBIAN_FRONTEND=noninteractive
-      apt-get update -qq
-      apt-get install -y --no-install-recommends python3 make g++
-      npm rebuild better-sqlite3 --build-from-source --foreground-scripts \
-        >/tmp/camofox-bs3-rebuild.log 2>&1
-      camofox_better_sqlite3_ok "${app_dir}"
-    else
-      return 1
-    fi
-    node --input-type=module -e '
-      import Database from "better-sqlite3";
-      const db = new Database(":memory:");
-      db.exec("select 1");
-      db.close();
-      console.log("[vps-start] better-sqlite3 ok", process.version);
-    '
-  ) || {
-    echo "[vps-start] WARN: better-sqlite3 repair failed; jWeb/browserConnected will stay false until fixed" >&2
-    tail -40 /tmp/camofox-bs3-rebuild.log 2>/dev/null || true
-    tail -20 /tmp/camofox-bs3-prebuild.log 2>/dev/null || true
-    return 1
-  }
 }
 
 # Hotfix bundle lives on the host bind (/opt/joshu/hotfix/browser) so a recreate
@@ -977,18 +790,7 @@ elif [[ -x /opt/browser/entrypoint.sh ]] && command -v chromium >/dev/null 2>&1;
   ( bash /opt/browser/entrypoint.sh ) &
   for _ in $(seq 1 90); do curl -fsS "${CAMOFOX_URL}/health" >/dev/null 2>&1 && break; sleep 1; done
 else
-echo "[vps-start] Camofox ${CAMOFOX_URL}"
-ensure_camofox_better_sqlite3 || true
-repair_camfox_server_js
-repair_camfox_vnc_watcher
-ensure_camofox_vnc
-( cd "${CAMOFOX_APP_DIR}" && node --max-old-space-size="${MAX_OLD_SPACE_SIZE}" server.js ) &
-for _ in $(seq 1 90); do curl -fsS "${CAMOFOX_URL}/health" >/dev/null 2>&1 && break; sleep 1; done
-if [[ "${JOSHU_WARM_CAMOFOX}" =~ ^(1|true|yes)$ ]]; then
-  warm_camofox_browser || true
-else
-  echo "[vps-start] Camofox warm-up skipped (JOSHU_WARM_CAMOFOX=false); browser starts on first use"
-fi
+  echo "[vps-start] WARN: no shared browser: /opt/browser/entrypoint.sh or chromium is missing" >&2
 fi
 
 start_hindsight_postgres_if_needed
@@ -1129,6 +931,7 @@ fi
 if [[ "${HERMES_API_AUTO_START:-true}" =~ ^(1|true|yes)$ ]]; then
   # Re-sync after Node may have updated ~/.hermes; instance.env values win.
   load_env_file "${HERMES_HOME}/.env"
+  unset_safety_messaging_env
   load_env_file "/etc/joshu/instance.env"
   ensure_hermes_runtime_config
   # Legacy image dist/hermesApi.js runs on health probes and omits gbrain MCP.

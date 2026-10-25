@@ -1,6 +1,6 @@
 # Root triage card body template
 
-Copy into the **triage** root task on board `project-<slug>`. Use for **any multi-step project** — not only email drips. Call out **HITL gates** explicitly so decomposed child tasks use `kanban_block` instead of guessing.
+Copy into the **triage** root task on board `project-<slug>`. Use for **any multi-step project** — not only email drips. Call out **HITL gates** explicitly so decomposed child tasks use `kanban_block(kind="needs_input")` instead of guessing.
 
 ```markdown
 kind: project
@@ -22,9 +22,9 @@ Decomposition hints:
 
 HITL / approval (required section for most projects):
 - List each gate: owner approve send, owner pick option, wait for reply, browser step, legal/financial sign-off
-- nylas_send_message → action guard — worker must kanban_block until approved
+- nylas_send_message → action guard — worker must kanban_block(kind="needs_input") until approved
 - Draft in kanban_comment before send when tone or list is sensitive
-- Never treat “waiting on owner” as done — kanban_block with clear reason
+- Never treat “waiting on owner” as done — kanban_block(reason="awaiting owner — <what>", kind="needs_input")
 
 Forbidden on this board:
 - scheduling_* MCP tools

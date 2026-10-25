@@ -12,9 +12,11 @@ The **control plane** (managed provisioning, customer portal at `hello.joshu.me`
 | [`../self-host.md`](../self-host.md) | Standalone Docker bootstrap |
 | [`runtime-topology.md`](runtime-topology.md) | How legacy assumptions map to Compose |
 | [`../runtime-assets.md`](../runtime-assets.md) | API-served HTML/PNG must be listed so they land in `dist/` |
-| [`hotpatch-running-box.md`](hotpatch-running-box.md) | Git / dist / image hotfixes on a live box |
 | [`instance-agent-protocol.md`](instance-agent-protocol.md) | Optional sidecar for managed hosting — heartbeats and signed commands |
-| [`control-plane.md`](control-plane.md) | Stub — points to proprietary CP repo |
+| [`voice-realtime.md`](voice-realtime.md) | Speech-to-speech voice: the voice sidecar, phone and browser paths |
+| [`voice-think-speak.md`](voice-think-speak.md) | How voice splits quick spoken answers from longer work (think vs speak) |
+| [`web-voice.md`](web-voice.md) | Voice in the browser |
+| [`twilio-self-host.md`](twilio-self-host.md) | Your own Twilio number for phone calls and SMS |
 
 ## Code layout
 

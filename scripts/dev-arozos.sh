@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Local parity dev runner: Camofox on localhost, Joshu private at /joshu, ArozOS public at /.
+# Local parity dev runner: local Chromium (CDP) on localhost, Joshu private at /joshu, ArozOS public at /.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -52,11 +52,12 @@ JOSHU_PORT="${JOSHU_PORT:-8788}"
 PUBLIC_BASE_PATH="${PUBLIC_BASE_PATH:-/joshu}"
 JOSHU_HEALTH_URL="${JOSHU_HEALTH_URL:-http://127.0.0.1:${JOSHU_PORT}${PUBLIC_BASE_PATH}/api/status}"
 CAMOFOX_URL="${CAMOFOX_URL:-http://127.0.0.1:9377}"
-NOVNC_PROXY_TARGET="${NOVNC_PROXY_TARGET:-http://127.0.0.1:6080}"
 CAMOFOX_CONTAINER="${CAMOFOX_CONTAINER:-camofox-hitl}"
 HERMES_HOME="${HERMES_HOME:-${HOME}/.hermes}"
 # shellcheck source=lib/arozos-desktop-shortcuts.sh
 source "${ROOT_DIR}/scripts/lib/arozos-desktop-shortcuts.sh"
+# shellcheck source=lib/pid-file.sh
+source "${ROOT_DIR}/scripts/lib/pid-file.sh"
 ICON_TEST_SHORTCUT_CONTENT=$'module\nIcon Test\nIcon Test\nimg/joshu/icon-test.png\n'
 PLACEHOLDER_IMAGE_SHORTCUT_CONTENT=$'module\nPictures\nPictures\nimg/joshu/pictures.png\n'
 
@@ -257,7 +258,7 @@ prepare_hermes_hitl_browser_patch() {
   if [[ -z "${hermes_dir}" && -n "${HERMES_BIN:-}" ]]; then
     hermes_dir="$(cd "$(dirname "${HERMES_BIN}")/.." && pwd)"
   fi
-  if [[ -f "${hermes_dir}/tools/browser_camofox.py" ]]; then
+  if [[ -f "${hermes_dir}/tools/browser_tool.py" ]]; then
     HERMES_DIR="${hermes_dir}" bash "${ROOT_DIR}/scripts/apply-hermes-hitl-patch.sh" || true
   fi
 }
@@ -355,6 +356,7 @@ prepare_arozos_template() {
   rsync -a "${ROOT_DIR}/arozos/subservice/welcome/" "${AROZ_TEMPLATE}/subservice/welcome/"
   rsync -a "${ROOT_DIR}/arozos/subservice/jterm/" "${AROZ_TEMPLATE}/subservice/jterm/"
   rsync -a "${ROOT_DIR}/arozos/subservice/telephone/" "${AROZ_TEMPLATE}/subservice/telephone/"
+  rsync -a "${ROOT_DIR}/arozos/subservice/boss-mode/" "${AROZ_TEMPLATE}/subservice/boss-mode/"
   rsync -a "${ROOT_DIR}/arozos/subservice/placeholder-image/" "${AROZ_TEMPLATE}/subservice/placeholder-image/"
   bash "${ROOT_DIR}/scripts/install-proprietary-apps.sh" "${AROZ_TEMPLATE}/subservice"
   (
@@ -373,6 +375,7 @@ prepare_arozos_template() {
     npm run build:welcome
     npm run build:jterm
     npm run build:telephone
+    npm run build:boss-mode
   )
   mkdir -p "${AROZ_TEMPLATE}/subservice/excalidraw/app"
   rsync -a --delete "${ROOT_DIR}/dist/excalidraw/" "${AROZ_TEMPLATE}/subservice/excalidraw/app/"
@@ -402,6 +405,8 @@ prepare_arozos_template() {
   rsync -a --delete "${ROOT_DIR}/dist/jterm/" "${AROZ_TEMPLATE}/subservice/jterm/app/"
   mkdir -p "${AROZ_TEMPLATE}/subservice/telephone/app"
   rsync -a --delete "${ROOT_DIR}/dist/telephone/" "${AROZ_TEMPLATE}/subservice/telephone/app/"
+  mkdir -p "${AROZ_TEMPLATE}/subservice/boss-mode/app"
+  rsync -a --delete "${ROOT_DIR}/dist/boss-mode/" "${AROZ_TEMPLATE}/subservice/boss-mode/app/"
   chmod +x "${AROZ_TEMPLATE}/subservice/joshu/start.sh"
   chmod +x "${AROZ_TEMPLATE}/subservice/excalidraw/start.sh"
   chmod +x "${AROZ_TEMPLATE}/subservice/md-editor/start.sh"
@@ -418,6 +423,7 @@ prepare_arozos_template() {
   chmod +x "${AROZ_TEMPLATE}/subservice/welcome/start.sh"
   chmod +x "${AROZ_TEMPLATE}/subservice/jterm/start.sh"
   chmod +x "${AROZ_TEMPLATE}/subservice/telephone/start.sh"
+  chmod +x "${AROZ_TEMPLATE}/subservice/boss-mode/start.sh"
   chmod +x "${AROZ_TEMPLATE}/subservice/placeholder-image/start.sh"
 }
 
@@ -447,7 +453,7 @@ cleanup() {
   if [[ -n "${HINDSIGHT_PID_FILE:-}" && -f "${HINDSIGHT_PID_FILE}" ]]; then
     local hindsight_pid
     read -r hindsight_pid < "${HINDSIGHT_PID_FILE}" || true
-    if [[ -n "${hindsight_pid:-}" ]] && kill -0 "${hindsight_pid}" >/dev/null 2>&1; then
+    if pid_runs_command "${hindsight_pid:-}" "hindsight-api"; then
       kill "${hindsight_pid}" >/dev/null 2>&1 || true
     fi
   fi
@@ -493,9 +499,6 @@ echo "[dev-arozos] starting Joshu on 127.0.0.1:${JOSHU_PORT} (base ${PUBLIC_BASE
   export PUBLIC_BASE_PATH
   export CAMOFOX_URL
   export BROWSER_CDP_URL="${BROWSER_CDP_URL:-http://127.0.0.1:9222}"
-  export NOVNC_URL="${NOVNC_URL:-/novnc}"
-  export NOVNC_PROXY_TARGET
-  export NOVNC_CLIENT_PATH="${NOVNC_CLIENT_PATH:-/novnc}"
   export HERMES_API_AUTO_START="${HERMES_API_AUTO_START:-true}"
   export JOSHU_HERMES_SKILLS_DIR="${JOSHU_HERMES_SKILLS_DIR:-${ROOT_DIR}/integrations/hermes/skills}"
   export HERMES_ENABLE_PROJECT_PLUGINS="${HERMES_ENABLE_PROJECT_PLUGINS:-true}"

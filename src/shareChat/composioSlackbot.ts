@@ -1,6 +1,6 @@
 /**
  * Composio Slackbot helpers for share-chat KB channels.
- * Distinct from owner-channel user `slack` toolkit (`composioSend.ts`).
+ * Distinct from the user `slack` toolkit, which Hermes calls through the Composio MCP.
  */
 
 import { getOrCreateComposioSession, isComposioEnabled, resolveComposioUserId } from "../composioApi.js";
@@ -13,17 +13,12 @@ import {
   SLACKBOT_FIND_USER_BY_EMAIL_ADDRESS,
   SLACKBOT_INVITE_USERS_TO_A_CHANNEL,
   SLACKBOT_SEND_MESSAGE,
-  composioSlackbotToolkitVersion,
+  COMPOSIO_SLACKBOT_TOOLKIT_VERSION,
 } from "../connectors/composio/slackbotConfig.js";
 import { resolveJoshuIdentity } from "../joshuIdentity.js";
 import { resolveJoshuFilesPaths } from "../joshuFilesPaths.js";
 
 type ExecuteResult = { successful?: boolean; error?: string; data?: unknown };
-
-function executeVersionParams(): { version: string } | { dangerouslySkipVersionCheck: true } {
-  const version = composioSlackbotToolkitVersion();
-  return version ? { version } : { dangerouslySkipVersionCheck: true };
-}
 
 async function resolveSlackbotConnectedAccountId(
   explicit: string | undefined,
@@ -76,7 +71,7 @@ async function composioSlackbotExecute(
     userId,
     connectedAccountId: accountId,
     arguments: args,
-    ...executeVersionParams(),
+    version: COMPOSIO_SLACKBOT_TOOLKIT_VERSION,
   });
 }
 

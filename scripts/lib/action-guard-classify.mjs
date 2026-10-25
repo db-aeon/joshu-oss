@@ -3,6 +3,8 @@
  * Keep in sync with the TypeScript module.
  */
 
+import { composioInnerToolCalls } from "./mcp-tool-policy.mjs";
+
 /** @typedef {"allowlist" | "external_writes"} ActionGuardGateMode */
 
 /** @typedef {{ enabled?: boolean; gateMode?: ActionGuardGateMode; guardedActions?: string[]; browserGateWrites?: boolean }} ActionGuardPolicySlice */
@@ -13,6 +15,7 @@ const COMPOSIO_WRITE_HEURISTICS = [
   /_SEND_/i,
   /_CREATE_/i,
   /_UPDATE_/i,
+  /_PATCH_/i,
   /_POST_/i,
   /_REPLY_/i,
 ];
@@ -47,6 +50,17 @@ export function isComposioWriteTool(toolName) {
   if (!name) return false;
   if (COMPOSIO_READ_EXCLUSIONS.some((re) => re.test(name))) return false;
   return COMPOSIO_WRITE_HEURISTICS.some((re) => re.test(name));
+}
+
+/**
+ * True when the tool name reads as a read: a Composio meta tool, or a _SEARCH_, _LIST_, _FETCH_,
+ * _FIND_, _READ_, or _GET_ tool. The Composio MCP guard uses this only to choose the session.
+ * @param {string} toolName
+ * @returns {boolean}
+ */
+export function isComposioReadTool(toolName) {
+  const name = String(toolName ?? "").trim();
+  return Boolean(name) && COMPOSIO_READ_EXCLUSIONS.some((re) => re.test(name));
 }
 
 /**
@@ -126,6 +140,20 @@ export function isGuardedComposioTool(toolName, policy) {
   const name = String(toolName ?? "").trim();
   const actionId = `composio:${name}`;
   return isActionGuarded(actionId, policy);
+}
+
+/**
+ * The tool calls of one Composio MCP call that need owner approval. For
+ * COMPOSIO_MULTI_EXECUTE_TOOL these are its gated inner tool calls; the
+ * COMPOSIO_ prefix of the outer name does not make the inner tool calls reads.
+ * @param {string} toolName
+ * @param {unknown} args
+ * @param {ActionGuardPolicySlice} policy
+ * @returns {import("./mcp-tool-policy.mjs").ComposioToolCall[]}
+ */
+export function guardedComposioCalls(toolName, args, policy) {
+  const calls = composioInnerToolCalls(toolName, args) ?? [];
+  return calls.filter((call) => isGuardedComposioTool(call.toolName, policy));
 }
 
 /**

@@ -27,11 +27,24 @@ import {
   twilioSmsAccountReady,
 } from "./twilioSmsSend.js";
 import { resolveOwnerSmsSessionKey } from "./twilioSmsSession.js";
-import { shouldRouteOwnerReplyToProactiveResolve } from "./proactive/ownerReplyRouting.js";
+import {
+  resolveProactiveFollowUpWindowMs,
+  shouldRouteOwnerReplyToProactiveResolve,
+} from "./proactive/ownerReplyRouting.js";
+import { ownerReminderService } from "./ownerReminders/service.js";
 import { tryCompletePendingHandoffForOwnerSession } from "./browserHandoff/ownerHandoffConfirm.js";
-import { defaultTwilioSmsSystemPrompt, smsHermesAbortSignal } from "./twilioSmsConfig.js";
+import { defaultTwilioSmsSystemPrompt } from "./twilioSmsConfig.js";
+import {
+  smsTurnDeadline,
+  smsTurnStopReason,
+  stoppedSmsTurnDeferredReply,
+  stoppedSmsTurnObjective,
+  stoppedSmsTurnPlainReply,
+  type SmsTurnStopped,
+} from "./smsTurnDeadline.js";
 import { withOwnerSmsMutex } from "./twilioSmsOwnerMutex.js";
 import type { RealtimeGoalBroker } from "./realtimeGoals/broker.js";
+import type { RealtimeGoalOrigin } from "./realtimeGoals/types.js";
 
 export { twilioSmsGatewayEnabled } from "./twilioSmsSend.js";
 
@@ -103,6 +116,31 @@ export function smsInterimAfterMs(): number {
   const raw = Number.parseInt(process.env.JOSHU_SMS_INTERIM_SECONDS ?? "", 10);
   const seconds = Number.isFinite(raw) && raw >= 0 ? raw : 25;
   return seconds === 0 ? 2 ** 31 - 1 : seconds * 1000;
+}
+
+/**
+ * The deadline stopped an SMS turn: hand the rest to a realtime goal when the
+ * broker runs, and return the SMS for the owner.
+ */
+export async function continueStoppedSmsTurn(
+  realtimeGoals: Pick<RealtimeGoalBroker, "defer"> | undefined,
+  origin: RealtimeGoalOrigin,
+  ownerText: string,
+  stop: SmsTurnStopped,
+): Promise<string> {
+  if (!realtimeGoals) return stoppedSmsTurnPlainReply(stop);
+  const intakeReply = stoppedSmsTurnDeferredReply(stop);
+  try {
+    await realtimeGoals.defer(
+      { origin, text: stoppedSmsTurnObjective(ownerText, stop) },
+      ownerText.trim(),
+      { intakeReply },
+    );
+    return intakeReply;
+  } catch (error) {
+    console.warn("[twilio-sms] defer of stopped SMS turn failed:", error);
+    return stoppedSmsTurnPlainReply(stop);
+  }
 }
 
 export function registerTwilioSmsRoutes(
@@ -220,6 +258,22 @@ export function registerTwilioSmsRoutes(
           );
         }
         const taskAction = parseTaskActionKeyword(body);
+        if (taskAction === "DONE") {
+          // DONE soon after an owner reminder SMS stops that owner reminder (not the last nudge).
+          const stopped = await ownerReminderService(projectRoot)
+            .retireForOwnerDone({
+              lastNudgeSentAt: readProactiveState(projectRoot).lastNudge?.sentAt,
+              windowMs: resolveProactiveFollowUpWindowMs(),
+            })
+            .catch((error) => {
+              console.warn("[owner-reminders] DONE handling failed:", error);
+              return undefined;
+            });
+          if (stopped) {
+            await sendSms(from, `Done. I stopped the reminder "${stopped.title}".`);
+            return;
+          }
+        }
         if (taskAction) {
           const paths = resolveJoshuFilesPaths(projectRoot);
           if (paths?.filesRoot) {
@@ -322,7 +376,7 @@ export function registerTwilioSmsRoutes(
             replyAddress: from,
           };
           const brokerContext = await realtimeGoals
-            ?.buildHermesContextSnapshot(smsOrigin)
+            ?.buildHermesContextSnapshot(smsOrigin, { setupMention: true })
             .catch(() => undefined);
           const messages: HermesChatMessage[] = [
             buildOwnerTimeSystemMessage(process.cwd()),
@@ -335,17 +389,33 @@ export function registerTwilioSmsRoutes(
             void sendSms(from, SMS_WORKING_INTERIM).catch(() => undefined);
           }, smsInterimAfterMs());
           interim.unref?.();
-          const { finalText } = await runner
-            .streamHermesChat(
+          // A turn that keeps making progress (a checkout) runs on; a stalled one stops.
+          const deadline = smsTurnDeadline();
+          let finalText: string;
+          try {
+            ({ finalText } = await runner.streamHermesChat(
               {
                 sessionId: sessionKey,
                 sessionKey,
                 messages,
-                signal: smsHermesAbortSignal(),
+                signal: deadline.signal,
               },
-              {},
-            )
-            .finally(() => clearTimeout(interim));
+              {
+                onTool: deadline.progress,
+                onDelta: deadline.progress,
+                onReasoning: deadline.progress,
+              },
+            ));
+          } catch (error) {
+            const stop = smsTurnStopReason(deadline.signal);
+            if (!stop) throw error;
+            console.warn(`[twilio-sms] ${stop.message}`);
+            await sendSms(from, await continueStoppedSmsTurn(realtimeGoals, smsOrigin, body, stop));
+            return;
+          } finally {
+            clearTimeout(interim);
+            deadline.dispose();
+          }
           const reply = await ownerSmsTextFromHermesTurn(sessionKey, finalText);
           if (!reply) {
             await sendSms(from, SMS_EMPTY_REPLY_FALLBACK);

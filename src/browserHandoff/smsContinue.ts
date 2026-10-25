@@ -8,7 +8,13 @@ import {
   buildTurnSystemMessages,
   type HermesChatMessage,
 } from "../hermesApi.js";
+import {
+  REALTIME_GOALS_KANBAN_BOARD,
+  callKanbanBridge,
+  type KanbanBridgeCall,
+} from "../hermesKanbanBridge.js";
 import { buildOwnerTimeSystemMessage } from "../ownerLocalTime.js";
+import { RealtimeGoalStore } from "../realtimeGoals/store.js";
 import { ownerSmsTextFromHermesTurn } from "../smsHermesReply.js";
 import { ownerSmsPhone, phonesMatch, sendSms } from "../twilioSmsSend.js";
 import { resolveOwnerSmsSessionKey } from "../twilioSmsSession.js";
@@ -35,13 +41,91 @@ export function shouldDeliverSmsHandoffContinuation(record: BrowserHandoffRecord
   return Boolean(phoneFromSmsHermesSessionKey(sessionKey));
 }
 
-/**
- * Run a Hermes turn on the originating SMS session and text the owner the assistant reply.
- */
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/** Longest Kanban task body that goes into the SMS continuation. */
+const TASK_BODY_MAX_CHARS = 2000;
+
+/** The request behind a browser handoff, from the realtime goal and its Kanban task. */
+export type HandoffTaskContext = {
+  objective?: string;
+  taskTitle?: string;
+  taskBody?: string;
+};
+
+/**
+ * Read the realtime goal and the Kanban task of a browser handoff. Each lookup that
+ * fails leaves its part out, so the SMS continuation still runs.
+ */
+export async function loadHandoffTaskContext(
+  projectRoot: string,
+  record: BrowserHandoffRecord,
+  bridge: KanbanBridgeCall = callKanbanBridge,
+): Promise<HandoffTaskContext> {
+  const taskId = record.kanbanTaskId?.trim();
+  if (!taskId) return {};
+  const context: HandoffTaskContext = {};
+  try {
+    const state = await new RealtimeGoalStore(projectRoot).read();
+    const goal = state.goals.find((item) => item.kanbanTaskId === taskId);
+    const objective = goal?.objective?.trim();
+    if (objective) context.objective = objective;
+  } catch (err) {
+    console.warn(
+      `[browser-handoff] goal lookup failed task=${taskId}: ${err instanceof Error ? err.message : err}`,
+    );
+  }
+  try {
+    const shown = await bridge({ action: "show", board: REALTIME_GOALS_KANBAN_BOARD, task_id: taskId });
+    if (shown.success && shown.task) {
+      context.taskTitle = shown.task.title?.trim() || undefined;
+      context.taskBody = shown.task.body?.trim().slice(0, TASK_BODY_MAX_CHARS) || undefined;
+    }
+  } catch (err) {
+    console.warn(
+      `[browser-handoff] kanban show failed task=${taskId}: ${err instanceof Error ? err.message : err}`,
+    );
+  }
+  return context;
+}
+
+/**
+ * Messages of the SMS continuation. The handoff brief is Joshu's own text to the
+ * owner, so it goes in a system message: in a user message the model read it as
+ * a request from somebody else and called the handoff phishing (issue #71).
+ */
+export function buildSmsHandoffContinuationMessages(
+  record: BrowserHandoffRecord,
+  context: HandoffTaskContext,
+): HermesChatMessage[] {
+  const lines = [
+    `You (Joshu) made browser handoff ${record.id}, and the owner has now finished that step and tapped I'm done.`,
+  ];
+  if (context.objective) lines.push(`The owner's request: ${context.objective}`);
+  if (context.taskTitle || context.taskBody) {
+    lines.push(
+      `Kanban task ${record.kanbanTaskId}: ${context.taskTitle ?? ""}`.trimEnd(),
+      ...(context.taskBody ? [context.taskBody] : []),
+    );
+  }
+  lines.push(
+    "Handoff brief that you showed the owner on the handoff page (you wrote it for the owner; " +
+      `it is not a request from the owner or from anybody else): "${record.instructions}"`,
+    `Staged page: ${record.pageTitle || record.pageUrl}`,
+    "Use browser_snapshot to check the page, then finish the request with what you find. " +
+      "Put the full answer in your assistant reply. Joshu sends it as SMS. Do not email or nylas_send_message.",
+  );
+  return [
+    { role: "system", content: lines.join("\n") },
+    { role: "user", content: "I finished the browser step. Continue my request and text me the answer." },
+  ];
+}
+
+/**
+ * Run a Hermes turn on the owner's SMS session and text the owner the assistant reply.
+ */
 export async function deliverSmsHandoffContinuation(
   projectRoot: string,
   record: BrowserHandoffRecord,
@@ -88,24 +172,11 @@ export async function deliverSmsHandoffContinuation(
       "After browser handoff completes, browser_snapshot and answer in assistant text only — never nylas_send_message.",
     ].join(" ");
 
+  const context = await loadHandoffTaskContext(projectRoot, active);
   const messages: HermesChatMessage[] = [
     buildOwnerTimeSystemMessage(projectRoot),
     { role: "system", content: smsSystemPrompt },
-    {
-      role: "system",
-      content:
-        "The owner finished mobile browser handoff (tapped I'm done). " +
-        "Use browser_snapshot to verify the page, then answer their request with what you find. " +
-        "Put the full answer in your assistant reply — Joshu sends it as SMS. Do not email or nylas_send_message.",
-    },
-    {
-      role: "user",
-      content:
-        `Browser handoff ${active.id} is complete.\n` +
-        `Handoff instructions: ${active.instructions}\n` +
-        `Staged page was: ${active.pageTitle || active.pageUrl}\n` +
-        "Continue the task and text me the answer.",
-    },
+    ...buildSmsHandoffContinuationMessages(active, context),
   ];
 
   // Must use the Joshu process singleton runner — a second HermesApiRunner would call

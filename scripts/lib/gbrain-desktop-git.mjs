@@ -4,7 +4,7 @@
  * joshu app repo or per-Desktop nested repos).
  */
 import { execFile } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
 
@@ -31,8 +31,21 @@ export const GBRAIN_DESKTOP_EXCLUDE_ENTRIES = [
 ];
 
 const GBRAIN_GITIGNORE_MARKER = "# joshu-managed: gbrain-desktop-excludes";
-/** Paths recorded in sync-failures.jsonl that we permanently exclude. */
+/** Recently failing paths from sync-failures.jsonl (block is rebuilt on every stage). */
 const GBRAIN_SYNC_FAILURE_IGNORE_MARKER = "# joshu-managed: gbrain-sync-failure-excludes";
+/**
+ * Exclude a failing file only for this long; after that it gets another try
+ * (fixed upstream, edited by the owner). The bridge's sync backoff bounds the
+ * cost of a file that is still broken.
+ */
+const SYNC_FAILURE_EXCLUDE_WINDOW_MS = 24 * 60 * 60 * 1000;
+/**
+ * Failures a retry can fix on its own: embedding provider errors (quota,
+ * spending cap, 429/5xx), lock/IO timeouts, files removed mid-sync. Excluding
+ * these hid files from File Brain indefinitely (2026-09-23 spending cap).
+ */
+const TRANSIENT_SYNC_FAILURE_RE =
+  /\[embed\(|quota|spending cap|rate.?limit|\b(429|5\d\d)\b|unavailable|timed? ?out|ECONNRESET|ECONNREFUSED|ETIMEDOUT|ENOENT|\block\b/i;
 
 /** @param {unknown} err */
 function gitExitCode(err) {
@@ -197,12 +210,14 @@ export function resolveGbrainSyncFailuresPath() {
 }
 
 /**
- * Relative Desktop paths that repeatedly block gbrain sync (MCP `sync_brain`
- * has no `--skip-failed`). Safe subset only — no absolute / `..` paths.
+ * Relative Desktop paths that block gbrain sync (MCP `sync_brain` has no
+ * `--skip-failed`): non-transient failures from the last 24h only. Safe subset
+ * only — no absolute / `..` paths.
  *
+ * @param {number} [now]
  * @returns {string[]}
  */
-export function listGbrainSyncFailureExcludePaths() {
+export function listGbrainSyncFailureExcludePaths(now = Date.now()) {
   const failuresPath = resolveGbrainSyncFailuresPath();
   if (!failuresPath || !existsSync(failuresPath)) return [];
 
@@ -221,6 +236,9 @@ export function listGbrainSyncFailureExcludePaths() {
       const row = JSON.parse(trimmed);
       const rel = typeof row?.path === "string" ? row.path.trim() : "";
       if (!rel || path.isAbsolute(rel) || rel.split(/[/\\]/).includes("..")) continue;
+      const at = Date.parse(typeof row?.ts === "string" ? row.ts : "");
+      if (!Number.isFinite(at) || now - at > SYNC_FAILURE_EXCLUDE_WINDOW_MS) continue;
+      if (TRANSIENT_SYNC_FAILURE_RE.test(String(row?.error ?? ""))) continue;
       paths.add(rel.replace(/\\/g, "/"));
     } catch {
       /* skip corrupt lines */
@@ -231,7 +249,10 @@ export function listGbrainSyncFailureExcludePaths() {
 
 /**
  * Keep Desktop/.gitignore excluding Joshu-managed Hermes context, ArozOS
- * metadata/trash, and recorded sync-failure paths. Idempotent.
+ * metadata/trash, and currently failing sync paths. The static block only
+ * grows; the sync-failure block is rebuilt from the ledger each time so paths
+ * drop out (and get re-tracked + retried) once their exclusion window passes.
+ * Idempotent.
  *
  * @param {string} desktopRoot
  * @returns {boolean} true when the file was created or changed
@@ -251,56 +272,39 @@ export function ensureDesktopGbrainGitignore(desktopRoot) {
     }
   }
 
-  const lines = existing.split(/\r?\n/);
-  const have = new Set(lines.map((l) => l.trim()).filter(Boolean));
+  // Strip the previous sync-failure block (marker through the next joshu marker).
   /** @type {string[]} */
-  const staticToAdd = [];
-  for (const entry of GBRAIN_DESKTOP_EXCLUDE_ENTRIES) {
-    if (!have.has(entry)) staticToAdd.push(entry);
+  const kept = [];
+  let inFailureBlock = false;
+  for (const line of existing.split(/\r?\n/)) {
+    const t = line.trim();
+    if (t === GBRAIN_SYNC_FAILURE_IGNORE_MARKER) {
+      inFailureBlock = true;
+      continue;
+    }
+    if (inFailureBlock && t.startsWith("# joshu-managed:")) inFailureBlock = false;
+    if (!inFailureBlock) kept.push(line);
   }
-  const failurePaths = listGbrainSyncFailureExcludePaths();
-  /** @type {string[]} */
-  const failureToAdd = [];
-  for (const rel of failurePaths) {
-    if (!have.has(rel)) failureToAdd.push(rel);
-  }
+  let next = kept.join("\n").replace(/\n+$/, "");
+  if (next) next += "\n";
 
-  const needStaticMarker = !have.has(GBRAIN_GITIGNORE_MARKER);
-  const needFailureMarker =
-    failurePaths.length > 0 && !have.has(GBRAIN_SYNC_FAILURE_IGNORE_MARKER);
-  if (
-    staticToAdd.length === 0 &&
-    failureToAdd.length === 0 &&
-    !needStaticMarker &&
-    !needFailureMarker
-  ) {
-    return false;
-  }
-
-  let next = existing;
-  if (next && !next.endsWith("\n")) next += "\n";
-  if (needStaticMarker || staticToAdd.length > 0) {
+  const have = new Set(kept.map((l) => l.trim()).filter(Boolean));
+  const staticToAdd = GBRAIN_DESKTOP_EXCLUDE_ENTRIES.filter((entry) => !have.has(entry));
+  if (!have.has(GBRAIN_GITIGNORE_MARKER) || staticToAdd.length > 0) {
     if (!have.has(GBRAIN_GITIGNORE_MARKER)) {
-      if (next && !next.endsWith("\n\n")) next += next.endsWith("\n") ? "\n" : "\n\n";
+      if (next) next += "\n";
       next += `${GBRAIN_GITIGNORE_MARKER}\n`;
-      have.add(GBRAIN_GITIGNORE_MARKER);
     }
-    for (const entry of staticToAdd) {
-      next += `${entry}\n`;
-      have.add(entry);
-    }
+    for (const entry of staticToAdd) next += `${entry}\n`;
   }
-  if (needFailureMarker || failureToAdd.length > 0) {
-    if (!have.has(GBRAIN_SYNC_FAILURE_IGNORE_MARKER)) {
-      if (next && !next.endsWith("\n\n")) next += next.endsWith("\n") ? "\n" : "\n\n";
-      next += `${GBRAIN_SYNC_FAILURE_IGNORE_MARKER}\n`;
-      have.add(GBRAIN_SYNC_FAILURE_IGNORE_MARKER);
-    }
-    for (const entry of failureToAdd) {
-      next += `${entry}\n`;
-      have.add(entry);
-    }
+
+  const failurePaths = listGbrainSyncFailureExcludePaths().filter((rel) => !have.has(rel));
+  if (failurePaths.length > 0) {
+    next += `\n${GBRAIN_SYNC_FAILURE_IGNORE_MARKER}\n`;
+    for (const rel of failurePaths) next += `${rel}\n`;
   }
+
+  if (next === existing) return false;
   writeFileSync(gitignorePath, next, "utf8");
   return true;
 }
@@ -409,8 +413,29 @@ export const ensureDesktopGitRepo = ensureGbrainGitRepo;
  * @param {string} gitRoot
  * @returns {Promise<boolean>} true when a commit was created
  */
+/** Git ops here finish in seconds; an older index.lock is a crashed process. */
+const STALE_INDEX_LOCK_MS = 10 * 60 * 1000;
+
+/**
+ * Drop a leftover `.git/index.lock`. Otherwise every `git add` fails and new
+ * Desktop files silently stop reaching gbrain (one fleet box was stuck 2026-09-16 → 10-02).
+ *
+ * @param {string} gitRoot
+ */
+function clearStaleIndexLock(gitRoot) {
+  const lock = path.join(gitRoot, ".git", "index.lock");
+  try {
+    if (Date.now() - statSync(lock).mtimeMs < STALE_INDEX_LOCK_MS) return;
+    rmSync(lock, { force: true });
+    console.warn(`[gbrain-desktop-git] removed stale ${lock}`);
+  } catch {
+    /* no lock */
+  }
+}
+
 async function commitAllInGbrainRepo(gitRoot) {
   await assertOwnGitRoot(gitRoot);
+  clearStaleIndexLock(gitRoot);
   await runGit(gitRoot, ["add", "-A"]);
   try {
     await runGit(gitRoot, ["diff", "--cached", "--quiet"]);
@@ -428,9 +453,8 @@ async function commitAllInGbrainRepo(gitRoot) {
  *
  * gbrain resolves every source to its nearest ancestor git repo. In gbrain
  * 0.40+ federated mode the Desktop is its own repo (see
- * `ensureDesktopFederatedGit`), so BOTH the default source
- * (`sync.repo_path` = `<Desktop>/joshu's files`) and the federated Desktop
- * source read `Desktop/.git`. New markdown must therefore be committed *inside*
+ * `ensureDesktopFederatedGit`), and the single `default` source
+ * (`sync.repo_path` = Desktop) reads `Desktop/.git`. New markdown must therefore be committed *inside*
  * the Desktop repo — committing only the outer `files/users/` repo records a
  * gitlink bump that gbrain never reads, leaving fresh files unindexed. We commit
  * in the Desktop repo (when present) and also keep the outer `files/users/` repo

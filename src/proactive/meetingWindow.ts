@@ -4,12 +4,9 @@
 import { Temporal } from "@js-temporal/polyfill";
 
 import { isComposioEnabled } from "../composioApi.js";
-import { fetchGoogleCalendarFreeSlots } from "../connectors/composio/calendar.js";
-import {
-  getDefaultCalendarAccount,
-  isAnyGoogleCalendarConnected,
-} from "../connectors/composio/calendarAccounts.js";
+import { isAnyGoogleCalendarConnected } from "../connectors/composio/calendarAccounts.js";
 import { combineCalendarFreeBusy } from "../connectors/composio/calendarAvailability.js";
+import { fetchOwnerFreeSlots } from "../connectors/composio/calendarOwner.js";
 import { normalizeIanaTimezone } from "../ianaTimezone.js";
 import { readAgentProfile } from "../nylas/profile.js";
 
@@ -25,7 +22,7 @@ export type OwnerMeetingCheck = {
 };
 
 /**
- * Returns ok:false when owner local time falls inside a combined FreeBusy interval.
+ * Returns ok:false when owner local time falls inside a busy interval of owner availability (all calendar accounts).
  * Fails open when calendar is unavailable so Composio outages do not silence nudges forever.
  */
 export async function isOwnerAvailableForProactive(
@@ -46,21 +43,13 @@ export async function isOwnerAvailableForProactive(
   }
   const tz = normalizeIanaTimezone(tzRaw);
 
-  const account = await getDefaultCalendarAccount(projectRoot);
-  if (!account?.connectedAccountId) {
-    return { ok: true, reason: "no_calendar_account" };
-  }
-
   const timeMin = instant.subtract({ minutes: 5 }).toString();
   const timeMax = instant.add({ hours: 3 }).toString();
   const nowMs = instant.epochMilliseconds;
 
   try {
-    const slots = await fetchGoogleCalendarFreeSlots(
-      projectRoot,
-      { connectedAccountId: account.connectedAccountId },
-      { timeMin, timeMax, timezone: tz },
-    );
+    // Owner availability of all calendar accounts; throws only when all calendar accounts fail.
+    const slots = await fetchOwnerFreeSlots(projectRoot, { timeMin, timeMax, timezone: tz });
     const combined = combineCalendarFreeBusy(slots.calendars, slots.timeMin, slots.timeMax);
 
     for (const block of combined.busy) {

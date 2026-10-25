@@ -383,7 +383,7 @@ try {
   assert.equal(stillQueued?.status, "queued", "ack must not cancel queued goal");
 
   // Canary replay: active branch binds follow-ups (search → reserve → rate).
-  const patrickSession = "sms:+15555550999";
+  const avaSession = "sms:+15555550999";
   const hotelSearch = {
     id: "goal-hotel-search",
     version: 1,
@@ -392,7 +392,7 @@ try {
     status: "blocked",
     origin: {
       channel: "sms",
-      sessionKey: patrickSession,
+      sessionKey: avaSession,
       messageId: "SM-search",
       replyAddress: "+15555550999",
     },
@@ -408,9 +408,9 @@ try {
     delivery: { state: "delivered", attempts: 1 },
   };
   await store.insert(hotelSearch);
-  await threads.setActiveGoal(patrickSession, hotelSearch.id);
+  await threads.setActiveGoal(avaSession, hotelSearch.id);
 
-  const patrickRouter = async (input) => {
+  const avaRouter = async (input) => {
     if (input.activeBranch) {
       return {
         decision: "update",
@@ -424,13 +424,13 @@ try {
     }
     return { decision: "pass", confidence: 0.78, reason: "would_sync_pass" };
   };
-  const patrickBroker = new RealtimeGoalBroker(process.cwd(), patrickRouter,
+  const avaBroker = new RealtimeGoalBroker(process.cwd(), avaRouter,
   );
 
-  const reserve = await patrickBroker.route({
+  const reserve = await avaBroker.route({
     origin: {
       channel: "sms",
-      sessionKey: patrickSession,
+      sessionKey: avaSession,
       messageId: "SM-reserve",
       replyAddress: "+15555550999",
     },
@@ -465,7 +465,7 @@ try {
   await store.insert(clarifyingGoal);
   await threads.setActiveGoal("sms:+15555551000", clarifyingGoal.id);
 
-  const clarifyingBroker = new RealtimeGoalBroker(process.cwd(), patrickRouter,
+  const clarifyingBroker = new RealtimeGoalBroker(process.cwd(), avaRouter,
   );
   const rateChoice = await clarifyingBroker.route({
     origin: {
@@ -482,11 +482,11 @@ try {
   assert.equal(promoted?.status, "queued", "clarifying answer must promote to queued");
   assert.ok(promoted?.releaseAt, "clarifying answer must set releaseAt");
 
-  await threads.clearActiveGoal(patrickSession);
-  const hey = await patrickBroker.route({
+  await threads.clearActiveGoal(avaSession);
+  const hey = await avaBroker.route({
     origin: {
       channel: "sms",
-      sessionKey: patrickSession,
+      sessionKey: avaSession,
       messageId: "SM-hey",
       replyAddress: "+15555550999",
     },
@@ -494,9 +494,9 @@ try {
   });
   assert.equal(hey.action, "pass", "unbound greeting must pass to sync Hermes");
 
-  assert.equal((await threads.getActiveGoal(patrickSession))?.goalId, undefined);
-  await threads.setActiveGoal(patrickSession, hotelSearch.id);
-  assert.equal((await threads.getActiveGoal(patrickSession))?.goalId, hotelSearch.id);
+  assert.equal((await threads.getActiveGoal(avaSession))?.goalId, undefined);
+  await threads.setActiveGoal(avaSession, hotelSearch.id);
+  assert.equal((await threads.getActiveGoal(avaSession))?.goalId, hotelSearch.id);
 
   const doneHotel = {
     ...hotelSearch,
@@ -508,7 +508,7 @@ try {
     idempotencyKey: "realtime-goal:v1:hotel-done",
   };
   await store.insert(doneHotel);
-  await threads.setActiveGoal(patrickSession, doneHotel.id);
+  await threads.setActiveGoal(avaSession, doneHotel.id);
 
   const pivotRouter = async (input) => {
     if (input.activeBranch?.id === doneHotel.id) {
@@ -531,7 +531,7 @@ try {
   const pivot = await pivotBroker.route({
     origin: {
       channel: "sms",
-      sessionKey: patrickSession,
+      sessionKey: avaSession,
       messageId: "SM-flight-new",
       replyAddress: "+15555550999",
     },
@@ -621,6 +621,9 @@ try {
     "utf8",
   );
   assert.match(noDecomposePatch, /"realtime-goals"/);
+  // Multiplayer team boards (change box-teams-standup): keep blocked, no auto-decompose.
+  assert.ok(noDecomposePatch.includes('startswith(("project-", "team-"))'), "team-<slug> boards stay blocked");
+  assert.ok(noDecomposePatch.includes('str(slug).startswith(\\"team-\\")'), "team-<slug> boards skip auto-decompose");
 
   const voiceCallback = await readFile(
     path.join(process.cwd(), "src", "realtimeGoals", "voiceCallback.ts"),
@@ -653,7 +656,7 @@ try {
   const raw =
     "Alaska LAX\u2194SFO same-day round trip for Mon 2026-09-28 is staged at checkout and handed to the owner. " +
     "Out AS 1501 LAX 7:16 AM \u2192 SFO 8:40 AM; back AS 520 SFO 3:41 PM \u2192 LAX 5:12 PM; Main cabin, $442.80 all-in. " +
-    "Contact fields prefilled (db@project-aeon.com, +1, US); owner enters name and pays at the handoff link. " +
+    "Contact fields prefilled (sam@acme.example, +1, US); owner enters name and pays at the handoff link. " +
     "An image CAPTCHA on alaskaair.com's cart\u2192checkout step was cleared this run.";
   const link = "https://box.example.com/joshu/handoff/ddc5d6eb-8a75-4d1a-9fee-2670383dec00?exp=1";
   const friendly = formatOwnerCompletion(raw, [link]);
@@ -662,13 +665,29 @@ try {
   assert.match(friendly, /^Out /m);
   assert.match(friendly, /ready for you to finish/);
   assert.match(friendly, /Please enter/);
-  assert.match(friendly, /Finish and pay here/);
+  assert.match(friendly, /Open the live browser here:/);
+  assert.doesNotMatch(friendly, /Finish and pay here/);
   assert.match(friendly, new RegExp(link.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   assert.doesNotMatch(friendly, /handed to the owner/);
   assert.doesNotMatch(friendly, /CAPTCHA/);
   assert.doesNotMatch(friendly, /cart to checkout/);
   assert.match(friendly, /^Back /m);
   assert.equal(formatOwnerCompletion(`Done.\n\nFinish and pay here:\n${link}`, [link]).split(link).length, 2);
+
+  // A handoff link on its own line stays as it is and is not added again (issue #73,
+  // 2026-10-09: "Https://" made the link look missing).
+  const xLink = "https://box.example.com/joshu/handoff/f24cd860-0000-4000-8000-000000000001?t=abc&exp=1";
+  const xSummary =
+    "Here's the live link to read your X DMs.\nOpen it and type your 4-digit passcode, then tap I'm done.\n" +
+    `Link expires ~30 min.\n${xLink}`;
+  const xFriendly = formatOwnerCompletion(xSummary, [xLink]);
+  assert.equal(xFriendly.split(xLink).length, 2, "the handoff link appears once");
+  assert.match(xFriendly, new RegExp(`^${xLink.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "m"));
+  assert.doesNotMatch(xFriendly, /Https:/);
+  assert.doesNotMatch(xFriendly, /Open the live browser here|Finish and pay here/);
+  // A worker that wrote "Https://" itself does not get the link twice.
+  const capitalized = formatOwnerCompletion(`Done.\nHttps://${xLink.slice("https://".length)}`, [xLink]);
+  assert.equal(capitalized.toLowerCase().split(xLink.toLowerCase()).length, 2);
 
   // ---- Phone goals: an unheard result is picked up by "any updates?" ----
   const pstnOrigin = { channel: "pstn_voice", sessionKey: "pstn:owner-test" };
@@ -763,7 +782,7 @@ try {
   // Voice links: a handoff URL is texted, never spoken (canary box 2026-09-24: the
   // RapidAPI link was only ever read into a phone call).
   const handoffUrl = "https://box.example.com/joshu/handoff/2d71?t=abc&exp=1790295605376";
-  const handoffResult = `RapidAPI cancellations are staged.\nLink expires 5:20pm PT:\n${handoffUrl}\n\nFinish and pay here:\n${handoffUrl}`;
+  const handoffResult = `RapidAPI cancellations are staged.\nLink expires 5:20pm PT:\n${handoffUrl}\n\nOpen the live browser here:\n${handoffUrl}`;
   assert.deepEqual(extractLinks(handoffResult), [handoffUrl], "duplicate links collapse to one");
   assert.deepEqual(
     extractLinks(`Https://${handoffUrl.slice("https://".length)}\n${handoffUrl}`),

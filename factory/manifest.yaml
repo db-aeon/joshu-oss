@@ -1,5 +1,7 @@
 # Joshu factory profile — product defaults on boot and soft factory-reset.
 schemaVersion: 1
+# release: product defaults version. It does not gate the Hermes skills seed; the seed key
+# is a content hash of hermes.skills_dir (scripts/hermes-skills-seed-key.py).
 release: "0.2.6"
 
 seeds:

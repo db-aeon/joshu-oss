@@ -11,7 +11,7 @@
     <link rel="stylesheet" href="design-system/tokens.css" />
     <link rel="stylesheet" href="design-system/base.css" />
     <link rel="stylesheet" href="jchat-bubble.css" />
-    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="styles.css?v=ui-browser-23" />
   </head>
   <body>
     <div class="workspace">
@@ -34,9 +34,9 @@
               <button id="url-go" type="submit" class="chrome-url-go" title="Go">Go</button>
             </form>
             <div class="chrome-tools">
-              <div class="chrome-tool-labeled" id="chrome-vnc-status" title="Remote desktop">
+              <div class="chrome-tool-labeled" id="chrome-vnc-status" title="Shared browser">
                 <span id="vnc-indicator" class="vnc-indicator" aria-hidden="true"></span>
-                <span id="chrome-vnc-label" class="chrome-tool-label">VNC</span>
+                <span id="chrome-vnc-label" class="chrome-tool-label">Live</span>
               </div>
               <button
                 id="open-settings"
@@ -59,7 +59,7 @@
               class="vnc-clipboard-text"
               rows="2"
               spellcheck="false"
-              placeholder="Paste here for page fields (Cmd+V), or use the URL bar above for navigation"
+              placeholder="Paste here for page fields (Cmd+V), or use the address bar of the browser for navigation"
               aria-label="Clipboard buffer"
             ></textarea>
             <button type="button" id="vnc-paste-remote" class="vnc-clipboard-btn vnc-clipboard-btn-primary" title="Insert Mac clipboard (or this box) into the focused page field">
@@ -69,13 +69,12 @@
               Copy from browser
             </button>
             <p id="vnc-clipboard-hint" class="vnc-clipboard-hint">
-              For URLs, use the address bar — paste targets page fields, not Firefox chrome.
+              For URLs, use the address bar — paste targets page fields, not the browser chrome.
             </p>
           </div>
           <div id="vnc-frame" class="browser-viewport">
-            <div id="vnc-screen" class="vnc-screen" aria-label="Camofox via noVNC"></div>
+            <div id="vnc-screen" class="vnc-screen" aria-label="Shared browser"></div>
           </div>
-          <pre id="vnc-debug" class="vnc-debug" hidden aria-live="polite"></pre>
         </div>
       </section>
     </div>
@@ -100,7 +99,7 @@
           <section class="settings-group">
             <h3>Status</h3>
             <div id="status" class="status">checking…</div>
-            <p id="vnc-status" class="vnc-status-line">VNC: disconnected</p>
+            <p id="vnc-status" class="vnc-status-line">Browser: disconnected</p>
             <p id="session-pill" class="session-line">No Hermes session</p>
           </section>
 
@@ -111,8 +110,7 @@
               <input id="initial-url" type="url" placeholder="https://example.com" autocomplete="off" spellcheck="false" />
             </label>
             <div class="settings-actions">
-              <button id="reload-vnc" type="button">Reconnect VNC</button>
-              <a id="open-vnc" href="#" target="_blank" rel="noopener" class="btn-link">Open standalone viewer</a>
+              <button id="reload-vnc" type="button">Reconnect browser</button>
             </div>
           </section>
 
@@ -124,18 +122,18 @@
           </section>
 
           <section class="settings-group">
-            <h3>Camofox</h3>
+            <h3>Shared browser</h3>
             <div class="settings-actions">
-              <button id="restart-camofox" type="button">Restart Camofox container</button>
+              <button id="restart-camofox" type="button">Restart browser</button>
             </div>
             <p class="settings-hint">
-              Hermes and you share one Camofox tab. Click the browser pane to drive it with the mouse.
+              Hermes and you share one browser tab. Click the browser pane to drive it with the mouse.
             </p>
           </section>
         </div>
       </div>
     </div>
 
-    <script type="module" src="app.js?v=ui-browser-22"></script>
+    <script type="module" src="app.js?v=ui-browser-23"></script>
   </body>
 </html>

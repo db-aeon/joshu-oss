@@ -5,10 +5,28 @@
  * Usage: npx tsx scripts/test-agent-authorization.mjs
  */
 import assert from "node:assert/strict";
-import { resolveAgentAuthorization } from "../src/ea/agentAuthorization.js";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 
-const agentEmail = "patrick@joshu.me";
-const ownerEmail = "db@project-aeon.com";
+const agentEmail = "ava@joshu.me";
+const ownerEmail = "sam@acme.example";
+
+// Agent grant lives under <AROZ_DATA>/files/users/<owner>/.joshu/nylas — isolate in a temp tree.
+const arozData = fs.mkdtempSync(path.join(os.tmpdir(), "joshu-agent-auth-"));
+const nylasDir = path.join(arozData, "files", "users", ownerEmail, ".joshu", "nylas");
+fs.mkdirSync(nylasDir, { recursive: true });
+fs.writeFileSync(
+  path.join(nylasDir, "agent.json"),
+  JSON.stringify({ grantId: "test-grant", email: agentEmail, createdAt: new Date(0).toISOString() }),
+);
+for (const key of ["JOSHU_FILES_ROOT", "JOSHU_DESKTOP_ROOT", "JOSHU_OWNER_EMAIL"]) delete process.env[key];
+process.env.AROZ_DATA = arozData;
+process.env.JOSHU_AROZ_USER = ownerEmail;
+
+const { bodyIndicatesSchedulingDelegation, resolveAgentAuthorization } = await import(
+  "../src/ea/agentAuthorization.js"
+);
 
 function baseInput(overrides = {}) {
   return {
@@ -25,10 +43,6 @@ function baseInput(overrides = {}) {
     ...overrides,
   };
 }
-
-// Patch agent emails via env for deterministic tests
-process.env.JOSHU_AGENT_EMAILS = agentEmail;
-process.env.JOSHU_AROZ_USER = ownerEmail;
 
 // Not copied — scheduling-shaped mail must not act
 {
@@ -61,9 +75,9 @@ process.env.JOSHU_AROZ_USER = ownerEmail;
 {
   const auth = resolveAgentAuthorization(
     baseInput({
-      from: `Dan B <${ownerEmail}>`,
-      triggerBodyPreview: "Copying Patrick to suggest some times.",
-      threadBodyPreview: "Copying Patrick to suggest some times.",
+      from: `Sam O <${ownerEmail}>`,
+      triggerBodyPreview: "Copying Ava to suggest some times.",
+      threadBodyPreview: "Copying Ava to suggest some times.",
       category: "scheduling",
     }),
   );
@@ -75,7 +89,7 @@ process.env.JOSHU_AROZ_USER = ownerEmail;
 // Agent-sent message — never authorize (ingest path)
 {
   const auth = resolveAgentAuthorization(
-    baseInput({ from: `Patrick <${agentEmail}>` }),
+    baseInput({ from: `Ava <${agentEmail}>` }),
   );
   assert.equal(auth.agent_authorized, false);
   assert.equal(auth.reason, "agent_sent_message");
@@ -85,21 +99,21 @@ process.env.JOSHU_AROZ_USER = ownerEmail;
 {
   const auth = resolveAgentAuthorization(
     baseInput({
-      from: `Patrick <${agentEmail}>`,
-      to: ["mcarneiro@google.com"],
-      cc: ["dbenyamin@gmail.com"],
+      from: `Ava <${agentEmail}>`,
+      to: ["guest@partner.example"],
+      cc: ["sam.owner@example.com"],
       skipAgentSentGuard: true,
-      triggerBodyPreview: "I am copying Patrick to share some availability.",
+      triggerBodyPreview: "I am copying Ava to share some availability.",
       threadBodyPreview: [
-        `### 2026-07-14T19:42:10.000Z — Dan Benyamin <${ownerEmail}>`,
+        `### 2026-07-14T19:42:10.000Z — Sam Owner <${ownerEmail}>`,
         "",
         "**Subject:** Fwd: intro",
         "",
-        "I am copying Patrick to share some availability.",
+        "I am copying Ava to share some availability.",
         "",
         "---",
         "",
-        `### 2026-07-14T20:02:53.000Z — Patrick <${agentEmail}>`,
+        `### 2026-07-14T20:02:53.000Z — Ava <${agentEmail}>`,
         "",
         "Here are some windows…",
       ].join("\n"),
@@ -110,4 +124,28 @@ process.env.JOSHU_AROZ_USER = ownerEmail;
   assert.equal(auth.reason, "owner_delegated_thread");
 }
 
+// Owner delegation by companion name (not only "copying …") (seen in production 2026-10-02)
+{
+  const auth = resolveAgentAuthorization(
+    baseInput({
+      from: `Sam O <${ownerEmail}>`,
+      to: ["petra@example.com"],
+      triggerBodyPreview: "Pretty open on the 15th. Ava can help schedule thanks!",
+      threadBodyPreview: "Pretty open on the 15th. Ava can help schedule thanks!",
+      category: "scheduling",
+    }),
+  );
+  assert.equal(auth.scheduling_eligible, true);
+  assert.equal(auth.reason, "owner_delegated_trigger");
+}
+
+// Scheduling delegation needs both a hand-off and a scheduling ask
+assert.equal(bodyIndicatesSchedulingDelegation("Ava can help schedule thanks!", ["ava"]), true);
+assert.equal(bodyIndicatesSchedulingDelegation("Copying Iris to find a time.", ["iris"]), true);
+assert.equal(bodyIndicatesSchedulingDelegation("My assistant can set up a meeting.", []), true);
+assert.equal(bodyIndicatesSchedulingDelegation("Copying Iris for the contract file.", ["iris"]), false);
+assert.equal(bodyIndicatesSchedulingDelegation("Let's schedule something soon.", ["iris"]), false);
+assert.equal(bodyIndicatesSchedulingDelegation("Irisbelle can help schedule.", ["iris"]), false);
+
+fs.rmSync(arozData, { recursive: true, force: true });
 console.log("test-agent-authorization: ok");

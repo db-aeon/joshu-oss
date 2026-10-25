@@ -9,7 +9,7 @@ import { ownerSmsTextFromHermesTurn, SMS_EMPTY_REPLY_FALLBACK } from "../smsHerm
 import { buildOwnerTimeSystemMessage } from "../ownerLocalTime.js";
 import { parseProactiveTaskRef } from "./blockReason.js";
 import { wakeProactiveTaskAfterOwnerReply } from "./replyRouter.js";
-import { readProactiveState, writeProactiveState } from "./state.js";
+import { boardForTaskRef, readProactiveState, writeProactiveState } from "./state.js";
 import type { ProactiveLastNudge } from "./types.js";
 import { defaultTwilioSmsSystemPrompt, smsHermesAbortSignal } from "../twilioSmsConfig.js";
 
@@ -31,7 +31,7 @@ function resolveTaskRef(opts: {
   const ref = parseProactiveTaskRef(opts.body);
   const last = state.lastNudge;
   const taskId = (opts.taskId ?? ref?.taskId ?? last?.taskId)?.trim();
-  const board = (opts.board ?? last?.board)?.trim();
+  const board = (opts.board ?? boardForTaskRef(state, taskId))?.trim();
   if (!taskId || !board) return null;
   return {
     taskId,
@@ -54,6 +54,7 @@ function skillForBoard(board: string): string {
   if (board === "ea-owner-reply") return "ea-owner-reply";
   if (board === "ea-onboarding") return "ea-onboarding";
   if (board.startsWith("project-")) return "ea-project-kanban";
+  if (board.startsWith("team-")) return "team-standup";
   return "joshu-proactive";
 }
 

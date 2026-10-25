@@ -28,7 +28,7 @@ import { isOwnerDirectAgentAsk } from "../src/ea/ownerReplyEligibility.js";
         rfcMessageId: "abc123@gmail.com",
       },
     ],
-    participants: ["dan@example.com", "michael@buildmomentum.dev"],
+    participants: ["dan@example.com", "michael@vendor.example"],
     topic: "checking in on joshu",
     threadIds: ["0cfcfa2f-nylas-thread"],
     sourcePaths: ["connectors/mail/nylas/threads/0cfcfa2f.md"],
@@ -52,7 +52,7 @@ import { isOwnerDirectAgentAsk } from "../src/ea/ownerReplyEligibility.js";
         rfcMessageId: "abc123@gmail.com",
       },
     ],
-    participants: ["dan@example.com", "michael@buildmomentum.dev"],
+    participants: ["dan@example.com", "michael@vendor.example"],
     topic: "checking in on joshu",
     threadIds: ["19ffc6a5-gmail-thread"],
     sourcePaths: ["connectors/mail/gmail/work/threads/19ffc6a5.md"],
@@ -162,18 +162,18 @@ import { isOwnerDirectAgentAsk } from "../src/ea/ownerReplyEligibility.js";
   process.env.JOSHU_AROZ_USER = "dan@example.com";
   const counterparty = isOwnerDirectAgentAsk({
     from: "Dan <dan@example.com>",
-    to: ["Michael <michael@buildmomentum.dev>"],
-    cc: ["finn@joshu.me"],
+    to: ["Michael <michael@vendor.example>"],
+    cc: ["nova@joshu.me"],
     projectRoot: process.cwd(),
-    agentEmails: ["finn@joshu.me"],
+    agentEmails: ["nova@joshu.me"],
   });
   assert.equal(counterparty, false);
 
   const direct = isOwnerDirectAgentAsk({
     from: "Dan <dan@example.com>",
-    to: ["finn@joshu.me"],
+    to: ["nova@joshu.me"],
     projectRoot: process.cwd(),
-    agentEmails: ["finn@joshu.me"],
+    agentEmails: ["nova@joshu.me"],
   });
   assert.equal(direct, true);
 }
@@ -183,12 +183,12 @@ import { isOwnerDirectAgentAsk } from "../src/ea/ownerReplyEligibility.js";
   const mailScope = {
     scopeId: deriveScopeId({
       facets: [{ channel: "mail", key: "thread-meo" }],
-      participants: ["dan@example.com", "michael@buildmomentum.dev"],
+      participants: ["dan@example.com", "michael@vendor.example"],
       topic: "schedule walkthrough with michael",
     }),
     channel: "mail",
     facets: [{ channel: "mail", key: "thread-meo" }],
-    participants: ["dan@example.com", "michael@buildmomentum.dev"],
+    participants: ["dan@example.com", "michael@vendor.example"],
     topic: "schedule walkthrough with michael",
     threadIds: ["thread-meo"],
     sourcePaths: [],

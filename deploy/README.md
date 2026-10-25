@@ -11,9 +11,9 @@ Production packaging for **one VPS per customer**. Replaces VPS for always-on sa
 ## Build image
 
 Hermes is baked at image build time from the pin in `deploy/RELEASE.json` (same as the sandbox image).
-`npm run vps:sync-hermes-pin` copies `hermesRef` into `deploy/Dockerfile`;
-`npm run vps:sync-camofox-pin` copies `camofoxBase` (digest pin for `camofox-browser`).
-`npm run vps:build-image` passes both as Docker build-args.
+`npm run vps:sync-hermes-pin` copies `hermesRef` into `deploy/Dockerfile`.
+`npm run vps:build-image` passes `hermesRef` and `gbrainRef` as Docker build-args.
+The sandbox image is built `FROM debian:trixie-slim`. The shared browser in the image is local Chromium.
 
 ```bash
 npm run build:deploy
@@ -22,20 +22,17 @@ npm run test:runtime-assets
 # Local load (default tag: local)
 npm run vps:build-image
 
-# Push to GHCR (sandbox + voice-realtime images, same tag)
+# Push to GHCR (sandbox, voice-realtime, and instance-agent images, same tag)
 JOSHU_IMAGE_TAG=0.1.14 JOSHU_IMAGE_REPO=ghcr.io/YOUR_ORG/joshu-sandbox JOSHU_IMAGE_PUSH=1 npm run vps:build-image
 ```
 
-Pushes **`ghcr.io/YOUR_ORG/joshu-sandbox:<tag>`** and **`ghcr.io/YOUR_ORG/joshu-voice-realtime:<tag>`** (override with `JOSHU_VOICE_IMAGE_REPO` / `JOSHU_VOICE_IMAGE_REF`).
+Pushes **`ghcr.io/YOUR_ORG/joshu-sandbox:<tag>`**, **`ghcr.io/YOUR_ORG/joshu-voice-realtime:<tag>`**, and **`ghcr.io/YOUR_ORG/joshu-instance-agent:<tag>`** (override with `JOSHU_VOICE_IMAGE_REPO` / `JOSHU_VOICE_IMAGE_REF` and `JOSHU_AGENT_IMAGE_REPO` / `JOSHU_AGENT_IMAGE_REF`). `JOSHU_BUILD_DRY_RUN=1` prints the three image refs and builds nothing.
 
-Current stable pin: [`deploy/RELEASE.json`](RELEASE.json) (**`0.1.46`**).
-
-After `rotate_secrets` or stack recreate, do not leave mixed `dist/` trees on boxes — sync from the pulled image before recreate ([hotpatch-running-box.md](../docs/vps-sandbox/hotpatch-running-box.md#dist-atomicity-after-secret-rotation-or-recreate)).
+Current stable pin: [`deploy/RELEASE.json`](RELEASE.json).
 
 After `npm run hermes:update`, `npm run vps:sync-hermes-pin` runs automatically (also invoked by `vps:build-image`).
-After bumping `camofoxBase`, run `npm run vps:sync-camofox-pin` before rebuild.
 
-Image tags and upstream pins (`hermesRef`, `gbrainRef`, `camofoxBase`) live in [`deploy/RELEASE.json`](RELEASE.json). See [runtime-topology — Image build](../docs/vps-sandbox/runtime-topology.md#image-build) for how they flow into the Docker image.
+Image tags and upstream pins (`hermesRef`, `gbrainRef`) live in [`deploy/RELEASE.json`](RELEASE.json). See [runtime-topology — Image build](../docs/vps-sandbox/runtime-topology.md#image-build) for how they flow into the Docker image.
 
 **Hermes config:** The image does not include your laptop `~/.hermes/config.yaml`. Product
 settings come from `instance.env`, `integrations/hermes/skills-enabled.yaml`, and
@@ -43,7 +40,7 @@ Joshu startup (`src/hermesApi.ts`). Details:
 [hermes-integration.md](../docs/hermes-integration.md) and [local-installation.md](../docs/local-installation.md).
 
 CI: [`.github/workflows/joshu-sandbox-image.yml`](../.github/workflows/joshu-sandbox-image.yml)
-— reads `hermesRef`, `camofoxBase`, and `gbrainRef` from `deploy/RELEASE.json` and passes them to `docker build`.
+— reads `hermesRef` and `gbrainRef` from `deploy/RELEASE.json`, passes them to `docker build`, and pushes the three release images (sandbox, voice-realtime, instance-agent) with the same tag. A `v*` tag push is a release (tags `vX`, `X`, `latest`). A manual run (`workflow_dispatch`) asks for a test tag and does not push `latest`. The fleet build needs the repository secret that can read the design pack (see the comment in the workflow). Workflow `release.yml` calls the build for a release, because a tag that a workflow pushes does not start the push trigger. Script `scripts/bump-release-pins.mjs <version>` sets the version and the image tags in `deploy/RELEASE.json` and `deploy/.env.vps.example`.
 
 ## Configure instance
 
@@ -66,7 +63,7 @@ Required runtime secrets:
 - Files referenced by secret env vars should live under `/etc/joshu/secrets`;
   that directory is mounted read-only into `joshu-stack`.
 
-**Runtime npm deps:** Container `node_modules` come from [`deploy/runtime/package.json`](runtime/package.json) at image build (not from host git). Adding deps there (e.g. `@langfuse/tracing` for Joshu deterministic Langfuse) requires a **new image** — rebuild, push a new tag, pull on the host, then sync `dist/`. Dist-only updates cannot change `node_modules` inside the image.
+**Runtime npm deps:** Container `node_modules` come from [`deploy/runtime/package.json`](runtime/package.json) at image build (not from host git). Adding deps there (e.g. `@langfuse/tracing` for Joshu deterministic Langfuse) requires a **new image** — rebuild, push a new tag, and upgrade the box. `dist/` and `node_modules` both come only from the image.
 
 ## Run
 
@@ -94,7 +91,7 @@ curl -fsS http://127.0.0.1:8794/health | jq '.session_ready,.page_count'
 curl -fsS 'http://127.0.0.1:8794/list?limit=5' | jq '.raw' | head -c 400
 ```
 
-Expect **`gbrain.indexed_ok: true`** and **`page_count > 0`** when markdown exists on Desktop (not just `gbrain.ok`). Manual recovery: `bash /opt/joshu/scripts/ensure-gbrain-indexed.sh` (see [`docs/file-brain.md`](../docs/file-brain.md#health-vs-indexed-pages-vps)).
+Expect **`gbrain.indexed_ok: true`** and **`page_count > 0`** when markdown exists on Desktop (not just `gbrain.ok`). Manual recovery: `docker exec deploy-joshu-stack-1 bash /opt/joshu/scripts/ensure-gbrain-indexed.sh` (see [`docs/file-brain.md`](../docs/file-brain.md#health-vs-indexed-pages-vps)).
 
 ### Hermes skills denylist (after upgrade)
 
@@ -132,49 +129,39 @@ docker compose -f deploy/docker-compose.yml --env-file /etc/joshu/instance.env -
 
 ## First-boot on empty VPS
 
-Cloud-init (control-plane provision) runs `bootstrap-vps.sh`, which clones the repo to **`/opt/joshu`** and starts compose from `/opt/joshu/deploy`.
-
-**Host bind-mounts:** Compose overlays a few paths from the **host** clone at `/opt/joshu`. **Boot scripts are not bind-mounted** — CMD is `/opt/joshu/.image/scripts/vps-start.sh`. Optional overlay: `hotfix/scripts/` (`bash scripts/hotpatch-boot.sh`).
-
-| Host path | Container path | Lane |
-| --- | --- | --- |
-| `dist/` | `/opt/joshu/dist/` | B — API hotfix / `syncDistFromImage` |
-| `hotfix/scripts/` | `/opt/joshu/hotfix/scripts/` | A — boot overlay (empty = image) |
-| `integrations/hermes/skills/` | `/opt/joshu/integrations/hermes/skills/` | A — factory skills source for bootstrap |
-| `integrations/hermes/skills-enabled.yaml` | same | A — Hermes allowlist / bundled denylist |
-| `factory/manifest.yaml` | `/opt/joshu/factory/manifest.yaml` | A — skills bootstrap release stamp |
-| `factory/onboarding-prompts.yaml` | `/opt/joshu/factory/onboarding-prompts.yaml` | A — setup-debt Kanban registry |
-| `templates/ea/` | `/opt/joshu/templates/ea/` | A — EA filesystem seeds |
-| `arozos/web-overlays-vanilla/` | `/opt/joshu/arozos/web-overlays-vanilla/` | A — vanilla shell overlays |
-| `apps/share-chat/` | `/opt/joshu/apps/share-chat/` | A — public Chat with files HTML |
-
-`git pull` alone does not refresh `dist/` — the host bind-mount shadows the image copy. Match the update path to what you changed:
-
-| You changed | Update path |
-| --- | --- |
-| Boot scripts (`vps-start.sh`, `scripts/lib`, MCP start/patch) | New image, **or** `bash scripts/hotpatch-boot.sh root@host <path>` |
-| Factory skills, templates (still bind-mounted) | `bash scripts/sync-skills-from-image.sh` → recreate `joshu-stack` (fleet: `bash scripts/sync-fleet-skills-from-image.sh`) |
-| Compiled Joshu API (`src/` → `dist/`) | Sync host `dist/` from image (below) → recreate |
-| `deploy/Dockerfile`, Hermes pin, `deploy/runtime/package.json` | New image tag → **`bash scripts/upgrade-fleet-box-image.sh root@host`** (dist + skills + recreate) |
-| New Hermes crons (e.g. proactive tick) | **`bash scripts/repair-fleet-ea-cron-timezone.sh`** after upgrade — crons are not in the image |
-
-Fleet boxes with the optional instance-agent may automate dist + skills sync — see [instance-agent-protocol.md](../docs/vps-sandbox/instance-agent-protocol.md). Proactive rollout checklist: [troubleshooting — Proactive fleet rollout](../docs/vps-sandbox/troubleshooting-and-lessons.md#proactive-fleet-rollout--lessons-learned-2026-09).
-
-Quick dist recovery after a release image pull:
-
-```bash
-JOSHU_IMAGE_REF=ghcr.io/db-aeon/joshu-sandbox:0.1.17 \
-JOSHU_RELEASE_VERSION=0.1.17 \
-bash /opt/joshu/scripts/sync-dist-from-image.sh
-cd /opt/joshu/deploy && docker compose -f docker-compose.yml --env-file /etc/joshu/instance.env up -d --force-recreate joshu-stack
-curl -fsS http://127.0.0.1:8788/joshu/api/instance/health | jq '.components.dist'
-```
-
-Manual bootstrap on an empty VPS:
+`bootstrap-vps.sh` installs Docker, pulls the sandbox image, and writes the **host bundle** from the image to `/opt/joshu/deploy/` (`deploy/scripts/install-host-bundle.sh`). It does not clone the repository, except with `JOSHU_BUILD_IMAGE=1`, where the clone in `/opt/joshu-src` is only the build context.
 
 ```bash
 sudo bash deploy/scripts/bootstrap-vps.sh
 ```
+
+## What runs from where
+
+The release images are the only source of code on a box:
+
+| Container | Image |
+| --- | --- |
+| `joshu-stack` | sandbox image (`JOSHU_IMAGE_REF`) |
+| `instance-agent` (profile `fleet`) | agent image (`JOSHU_INSTANCE_AGENT_IMAGE_REF`) |
+| `voice-realtime` (profile `voice-rt`) | voice image (`JOSHU_VOICE_IMAGE_REF`) |
+
+The host keeps only configuration (`/etc/joshu`), the Docker volumes, the host bundle, the hotfix overlay, and backups. Compose mounts **no host code** into `joshu-stack`. The one exception is the hotfix overlay `/opt/joshu/hotfix/scripts/`: at boot, `vps-start.sh` copies those files over the image scripts (`bash scripts/hotpatch-boot.sh root@host <path>`). Each upgrade empties the hotfix overlay.
+
+The host bundle is in the sandbox image at `/opt/joshu/.image/host/`: `deploy/docker-compose.yml`, `deploy/.env.vps.example`, the Caddy scripts, `install-host-bundle.sh`, `ensure-instance-env-secrets.sh`, and `scripts/arozos-reset-password*`. `/opt/joshu/deploy/.host-bundle.json` records its release. The compose file sets the project name `deploy`, so the volume names stay `deploy_joshu_*` and `deploy_caddy_*`.
+
+| You changed | Update path |
+| --- | --- |
+| Anything in the image (`src/`, skills, `factory/`, ArozOS overlays, `public/`, templates, Hermes plugins, `deploy/Dockerfile`) | New release images → upgrade (below) |
+| One boot or bridge script, urgent | `bash scripts/hotpatch-boot.sh root@host <path>` (hotfix overlay), then the next release |
+| New Hermes crons (e.g. proactive tick) | **`bash scripts/repair-fleet-ea-cron-timezone.sh`** after upgrade — crons are not in the image |
+
+Upgrade one box over SSH (also the first upgrade of a box that still has a git clone at `/opt/joshu`):
+
+```bash
+bash scripts/upgrade-fleet-box-image.sh root@host <version>
+```
+
+The script pulls the three images, moves an old clone at `/opt/joshu` aside (and removes credentials from its git remote URLs), writes the host bundle, empties the hotfix overlay, writes the release pins to `instance.env`, and recreates the services. Fleet boxes with the instance agent get the same steps from a control plane release update — see [instance-agent-protocol.md](../docs/vps-sandbox/instance-agent-protocol.md). Read-only check of a box: `bash scripts/audit-box-runtime-drift.sh <slug>`.
 
 ## Smoke checks
 

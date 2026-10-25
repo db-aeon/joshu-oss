@@ -5,6 +5,26 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${ROOT_DIR}"
 
+IMAGE_TAG="${JOSHU_IMAGE_TAG:-local}"
+IMAGE_REPO="${JOSHU_IMAGE_REPO:-ghcr.io/${GITHUB_REPOSITORY_OWNER:-your-org}/joshu-oss}"
+IMAGE_REF="${JOSHU_IMAGE_REF:-${IMAGE_REPO}:${IMAGE_TAG}}"
+VOICE_IMAGE_REPO="${JOSHU_VOICE_IMAGE_REPO:-ghcr.io/${GITHUB_REPOSITORY_OWNER:-your-org}/joshu-oss-voice-realtime}"
+VOICE_IMAGE_REF="${JOSHU_VOICE_IMAGE_REF:-${VOICE_IMAGE_REPO}:${IMAGE_TAG}}"
+# Agent image (change image-owned-box-runtime): same tag, sibling repository of the sandbox image.
+case "${IMAGE_REPO}" in
+  */joshu-sandbox) DEFAULT_AGENT_REPO="${IMAGE_REPO%/joshu-sandbox}/joshu-instance-agent" ;;
+  */joshu-oss) DEFAULT_AGENT_REPO="${IMAGE_REPO}-instance-agent" ;;
+  *) DEFAULT_AGENT_REPO="${IMAGE_REPO}-instance-agent" ;;
+esac
+AGENT_IMAGE_REPO="${JOSHU_AGENT_IMAGE_REPO:-${DEFAULT_AGENT_REPO}}"
+AGENT_IMAGE_REF="${JOSHU_AGENT_IMAGE_REF:-${AGENT_IMAGE_REPO}:${IMAGE_TAG}}"
+PUSH="${JOSHU_IMAGE_PUSH:-0}"
+
+if [[ "${JOSHU_BUILD_DRY_RUN:-0}" == "1" ]]; then
+  echo "[vps-build] dry run: sandbox=${IMAGE_REF} voice-realtime=${VOICE_IMAGE_REF} instance-agent=${AGENT_IMAGE_REF}"
+  exit 0
+fi
+
 # Fleet repo: stage Hermes skill-evolution patch before image build (matches CI workflow).
 if [[ -f "${ROOT_DIR}/proprietary/scripts/stage-fleet-docker-patches.sh" ]]; then
   bash "${ROOT_DIR}/proprietary/scripts/stage-fleet-docker-patches.sh"
@@ -14,23 +34,15 @@ fi
 bash "${ROOT_DIR}/scripts/stage-docker-design-pack.sh"
 
 node scripts/sync-vps-hermes-pin.mjs
-node scripts/sync-vps-camofox-pin.mjs
 HERMES_AGENT_REF="$(node scripts/sync-vps-hermes-pin.mjs --print)"
-CAMOFOX_BASE="$(node scripts/sync-vps-camofox-pin.mjs --print)"
 GBRAIN_REF="$(node -e "console.log(JSON.parse(require('fs').readFileSync('deploy/RELEASE.json','utf8')).gbrainRef)")"
 
-IMAGE_TAG="${JOSHU_IMAGE_TAG:-local}"
-IMAGE_REPO="${JOSHU_IMAGE_REPO:-ghcr.io/${GITHUB_REPOSITORY_OWNER:-your-org}/joshu-oss}"
-IMAGE_REF="${JOSHU_IMAGE_REF:-${IMAGE_REPO}:${IMAGE_TAG}}"
-VOICE_IMAGE_REPO="${JOSHU_VOICE_IMAGE_REPO:-ghcr.io/${GITHUB_REPOSITORY_OWNER:-your-org}/joshu-oss-voice-realtime}"
-VOICE_IMAGE_REF="${JOSHU_VOICE_IMAGE_REF:-${VOICE_IMAGE_REPO}:${IMAGE_TAG}}"
-PUSH="${JOSHU_IMAGE_PUSH:-0}"
 
 echo "[vps-build] HERMES_AGENT_REF=${HERMES_AGENT_REF}"
-echo "[vps-build] CAMOFOX_BASE=${CAMOFOX_BASE}"
 echo "[vps-build] GBRAIN_REF=${GBRAIN_REF}"
 echo "[vps-build] sandbox=${IMAGE_REF}"
 echo "[vps-build] voice-realtime=${VOICE_IMAGE_REF} push=${PUSH}"
+echo "[vps-build] instance-agent=${AGENT_IMAGE_REF}"
 
 # Fail closed: listed runtime files must exist in source *and* dist/ (npm run build).
 node scripts/copy-runtime-assets.mjs --check-source --check
@@ -55,7 +67,6 @@ SANDBOX_BUILD_ARGS+=(
   --platform linux/amd64
   -f deploy/Dockerfile
   --build-arg "HERMES_AGENT_REF=${HERMES_AGENT_REF}"
-  --build-arg "CAMOFOX_BASE=${CAMOFOX_BASE}"
   --build-arg "GBRAIN_REF=${GBRAIN_REF}"
   -t "${IMAGE_REF}"
 )
@@ -77,12 +88,23 @@ VOICE_BUILD_ARGS+=(
   -t "${VOICE_IMAGE_REF}"
 )
 
-if [[ "${PUSH}" == "1" ]]; then
-  docker buildx build "${SANDBOX_BUILD_ARGS[@]}" --push .
-  docker buildx build "${VOICE_BUILD_ARGS[@]}" --push .
-else
-  docker buildx build "${SANDBOX_BUILD_ARGS[@]}" --load .
-  docker buildx build "${VOICE_BUILD_ARGS[@]}" --load .
+AGENT_BUILD_ARGS=()
+if ((${#NETWORK_ARGS[@]} > 0)); then
+  AGENT_BUILD_ARGS+=("${NETWORK_ARGS[@]}")
 fi
+AGENT_BUILD_ARGS+=(
+  --platform linux/amd64
+  -f deploy/Dockerfile.instance-agent
+  -t "${AGENT_IMAGE_REF}"
+)
 
-echo "[vps-build] done: ${IMAGE_REF} + ${VOICE_IMAGE_REF}"
+if [[ "${PUSH}" == "1" ]]; then
+  OUTPUT=--push
+else
+  OUTPUT=--load
+fi
+docker buildx build "${SANDBOX_BUILD_ARGS[@]}" "${OUTPUT}" .
+docker buildx build "${VOICE_BUILD_ARGS[@]}" "${OUTPUT}" .
+docker buildx build "${AGENT_BUILD_ARGS[@]}" "${OUTPUT}" .
+
+echo "[vps-build] done: ${IMAGE_REF} + ${VOICE_IMAGE_REF} + ${AGENT_IMAGE_REF}"

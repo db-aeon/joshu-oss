@@ -4,7 +4,7 @@ description: Do the owner's ask then reply on that Nylas thread. Board ea-owner-
 metadata:
   hermes:
     category: executive-assistant
-    version: "1.1.0"
+    version: "1.3.0"
 ---
 
 # EA Owner Reply
@@ -13,7 +13,7 @@ metadata:
 
 | Board | `kind:` | Job |
 |-------|---------|-----|
-| **`ea-owner-reply`** | `owner_reply` | Research / tools as needed → reply on thread → `kanban_complete` or `kanban_block("awaiting owner")` |
+| **`ea-owner-reply`** | `owner_reply` | Research / tools as needed → reply on thread → `kanban_complete` or `kanban_block(reason="awaiting owner — <question>", kind="needs_input")` |
 | **`ea-mail-ingress`** | `mail_ingress` | File only — **never** send from ingress |
 | **`project-*`** | `mail_track` | File / wait — **must not** send owner replies |
 
@@ -36,6 +36,7 @@ kanban_show()
 3. **`kanban_show`** — `source_paths`, `thread_id`, `message_id`, `provider`, subject.
 4. **`read_file`** the mail mirror at `${JOSHU_FILES_ROOT}/<source_path>` (once).
 5. **Do the ask** — gbrain, mail mirrors, **`web_search` / Exa** when the owner asked for research. File notes under `Projects/<slug>/` if ingress already created a folder (link; do not paste mail bodies).
+   - **Reminders:** when the owner asks to be reminded, call `owner_reminder_create` (never the `cronjob` tool). When the owner replies "done" to a `Reminder: …` email (the body has `Reminder id: r_…`), or says the reminded thing is done, call `owner_reminder_stop` with that id and `ownerDone: true`. See skill `joshu-proactive`, section Owner reminders.
    - **Status / thread replies:** when the owner marks items DONE, KEEP, or gives carryover updates (common on morning/shutdown pointer threads), update the relevant project files and/or `Planning/daily-review-*.md` checkboxes, then ack in the reply. For **morning review** or **shutdown** pointer subjects, `skill_view('ea-morning-review')` or `skill_view('ea-shutdown')` and follow their interactive steps.
 6. **`nylas_send_message`** on **this thread**:
    - `replyToMessageId` = ingress `message_id`
@@ -43,7 +44,8 @@ kanban_show()
    - `sourcePath` = mirror path
    - **`attachments`** — when the deliverable is a file (`.pptx`, `.pdf`, …), pass Desktop-relative paths, e.g. `["Projects/<slug>/deck.pptx"]` or `[{ "path": "Projects/<slug>/deck.pptx" }]`. Do not paste long paths in the body when a file attach is intended.
    - Owner-only recipients bypass action guard; mixed threads may prompt SMS.
-7. **`kanban_complete`** if the deliverable was emailed. **`kanban_block("awaiting owner")`** only if the reply asked a **real** question the owner must answer.
+   - **Setup mention:** when the task body has a line `setup_mention: "<sentence>"`, end the reply with that sentence, in your voice, as the last line. Add nothing else about setup. Without that line, do not mention setup.
+7. **`kanban_complete`** if the deliverable was emailed. **`kanban_block(reason="awaiting owner — <question>", kind="needs_input")`** only if the reply asked a **real** question the owner must answer. Name the question in the reason.
 8. Never **delete/trash** Gmail or Nylas. Never send **scheduling slots** — `scheduling_list_meeting_tasks` / hand off to **`ea-scheduling`**.
 
 ### Forbidden
@@ -60,5 +62,6 @@ kanban_show()
 - **`coordination_scope_resolve`** / **`coordination_list_active`** — preflight before create or browser book
 - **`owner_reply_create_task`** — ingress only; returns `existing_thread` or `existing_coordination` if open card on same scope
 - **`owner_reply_handoff_task`** — later mail on the same thread (ingress)
+- **`owner_reminder_create`** / **`owner_reminder_list`** / **`owner_reminder_stop`** — owner reminders
 
 Call **`mcp_joshu_connectors_owner_reply_*`**.

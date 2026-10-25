@@ -115,7 +115,8 @@ async function postRealtimeGoals(path: string, body: unknown, timeoutMs: number)
 
 async function fetchBrokerContext(origin: VoiceThreadOrigin): Promise<string | undefined> {
   try {
-    const res = await postRealtimeGoals("context", { origin }, 5_000);
+    // The turn answers the owner: the context can carry the setup mention (change owner-setup-board).
+    const res = await postRealtimeGoals("context", { origin, setupMention: true }, 5_000);
     if (!res.ok) return undefined;
     const json = (await res.json()) as { context?: string | null };
     return typeof json.context === "string" && json.context.trim() ? json.context : undefined;

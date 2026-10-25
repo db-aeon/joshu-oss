@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import atexit
 import json
+import logging
 import os
 import threading
 import time
@@ -17,6 +18,11 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
 from typing import Any, Optional
+
+
+# Do not print() to stdout. A blocked write to stdout stops every turn in the
+# Hermes gateway. Spec: openspec hermes-gateway (change gateway-stdout-drain).
+_LOG = logging.getLogger("joshu_langfuse_relay")
 
 
 def _env(name: str, default: str = "") -> str:
@@ -312,7 +318,7 @@ def _post_events(events: list[dict[str, Any]]) -> None:
             headers={
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {token}",
-                "User-Agent": "joshu-langfuse-relay/1.1.4",
+                "User-Agent": "joshu-langfuse-relay/1.1.5",
             },
             method="POST",
         )
@@ -328,18 +334,16 @@ def _post_events(events: list[dict[str, Any]]) -> None:
             except Exception:
                 pass
             retryable = err.code in (401, 408, 429, 500, 502, 503, 504)
-            print(
-                f"[joshu-langfuse-relay] post failed attempt={attempt}/{attempts}: {err} "
+            _LOG.warning(
+                f"post failed attempt={attempt}/{attempts}: {err} "
                 f"body={body} types={[e.get('type') for e in compact]}",
-                flush=True,
             )
             if not retryable or attempt >= attempts:
                 return
             time.sleep(min(8.0, 0.4 * (2 ** (attempt - 1))))
         except (urllib.error.URLError, TimeoutError, OSError) as err:
-            print(
-                f"[joshu-langfuse-relay] post failed attempt={attempt}/{attempts}: {err}",
-                flush=True,
+            _LOG.warning(
+                f"post failed attempt={attempt}/{attempts}: {err}",
             )
             if attempt >= attempts:
                 return
@@ -426,7 +430,7 @@ def _hung_turn_ttl_s() -> float:
 
     Default 2100s sits just above typical gateway_timeout (1800) so a killed
     Slack/jChat turn still gets a Langfuse endTime even when post_llm_call /
-    on_session_end never fires (Patrick hang 2026-08-24).
+    on_session_end never fires (seen as a hung session on a box).
     """
     raw = _env("JOSHU_LANGFUSE_HUNG_TURN_TTL_S", "2100")
     try:
@@ -499,10 +503,9 @@ def _sweep_hung_turns_once() -> int:
                 candidates.append(state)
     for state in candidates:
         age = int(now - state.last_activity_mono)
-        print(
-            f"[joshu-langfuse-relay] hung-turn sweeper finalizing trace={state.trace_id[:12]}… "
+        _LOG.info(
+            f"hung-turn sweeper finalizing trace={state.trace_id[:12]}… "
             f"idle={age}s ttl={int(ttl)}s session={state.session_id!r}",
-            flush=True,
         )
         fallback = state.last_assistant_output or "[hung turn — finalize timeout]"
         _finalize_turn(
@@ -521,7 +524,7 @@ def _hung_turn_sweeper_loop() -> None:
         try:
             _sweep_hung_turns_once()
         except Exception as err:
-            print(f"[joshu-langfuse-relay] hung-turn sweeper error: {err}", flush=True)
+            _LOG.warning(f"hung-turn sweeper error: {err}")
         time.sleep(60.0)
 
 
@@ -626,9 +629,8 @@ def on_pre_api_request(
     system_prompt: Any = None,
     **kwargs: Any,
 ) -> None:
-    print(
-        f"[joshu-langfuse-relay] pre_api_request task={task_id!r} session={session_id!r} model={model!r}",
-        flush=True,
+    _LOG.debug(
+        f"pre_api_request task={task_id!r} session={session_id!r} model={model!r}",
     )
     sid = str(session_id or _session_key(kwargs) or "").strip()
     state = _get_or_create_turn(
@@ -813,10 +815,9 @@ def on_post_api_request(
     if state:
         _touch_turn(state)
     req_key = str(api_call_count or 0)
-    print(
-        f"[joshu-langfuse-relay] post_api_request task={task_id!r} session={sid!r} "
+    _LOG.debug(
+        f"post_api_request task={task_id!r} session={sid!r} "
         f"key={key!r} req_key={req_key!r} has_state={state is not None}",
-        flush=True,
     )
     pending = None
     if state:
@@ -1083,13 +1084,12 @@ def on_post_llm_call(
     sid = str(session_id or _session_key(kwargs) or "").strip()
     tid = str(task_id or kwargs.get("task_id") or "").strip()
     _key, state = _resolve_turn(tid, sid)
-    print(
-        f"[joshu-langfuse-relay] post_llm_call task={tid!r} session={sid!r} "
+    _LOG.debug(
+        f"post_llm_call task={tid!r} session={sid!r} "
         f"has_state={state is not None} "
         f"llm_calls={state.llm_call_count if state else 0} "
         f"pending={len(state.pending_gens) if state else 0} "
         f"emitted={state.generations_emitted if state else 0}",
-        flush=True,
     )
     if not state:
         return
@@ -1130,10 +1130,9 @@ def on_session_end(
         fallback = "[interrupted]"
     elif not fallback and not completed:
         fallback = "[turn ended without assistant text]"
-    print(
-        f"[joshu-langfuse-relay] on_session_end session={sid!r} completed={completed} "
+    _LOG.debug(
+        f"on_session_end session={sid!r} completed={completed} "
         f"interrupted={interrupted} has_output={bool(fallback)}",
-        flush=True,
     )
     _finalize_turn(
         state,
@@ -1156,9 +1155,8 @@ def register(ctx) -> None:
     atexit.register(_flush_emit_threads)
     url = _relay_url()
     has_auth = bool(_bearer_token())
-    print(
-        f"[joshu-langfuse-relay] registered v1.1.4 "
+    _LOG.info(
+        f"registered v1.1.5 "
         f"(url={'set' if url else 'missing'}, auth={'set' if has_auth else 'missing'}, "
         f"hung_ttl_s={int(_hung_turn_ttl_s())})",
-        flush=True,
     )

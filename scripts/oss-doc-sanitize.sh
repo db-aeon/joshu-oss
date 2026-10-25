@@ -39,7 +39,6 @@ find "${OUT_DIR}/docs" -type f \( -name '*.md' -o -name '*.json' \) -print0 |
       -e 's|Joshu-SOP/time-block-planning\.md|excalidraw-sandbox.md|g' \
       -e 's|Joshu-SOP/gtd-workspace-linking\.md|file-brain.md|g' \
       -e 's|Joshu-SOP/executive-assistant\.md|welcome-onboarding.md|g' \
-      -e 's|Joshu-SOP/ea-skill-future-fixes\.md|hermes-integration.md|g' \
       -e 's|docs/Joshu-SOP/|docs/|g' \
       -e 's|/Users/danbenyamin/Documents/dev/joshu|~/joshu-oss|g' \
       -e 's|/Users/danbenyamin/Documents/dev/hermes-agent|~/hermes-agent|g' \
@@ -57,5 +56,55 @@ find "${OUT_DIR}/docs" -type f \( -name '*.md' -o -name '*.json' \) -print0 |
 
 # Drop internal-only doc trees if they slipped through rsync excludes.
 rm -rf "${OUT_DIR}/docs/Joshu-SOP" 2>/dev/null || true
+
+# A relative Markdown link to a file that is not in the OSS tree (a private doc, openspec/,
+# vendor/, a fleet script) becomes plain text, so the public docs have no broken links.
+python3 - "${OUT_DIR}" <<'PY'
+import os, re, sys, urllib.parse
+
+root = sys.argv[1]
+link = re.compile(r'\[([^\]\n]*)\]\(([^)\s]+)(\s+"[^"]*")?\)')
+# Fenced code blocks, and inline code that holds a link example, keep their text as it is.
+# Inline code without "](" is left to the link pattern, because a link text such as
+# [`a.md`](a.md) has backticks of its own.
+code_span = re.compile(r'```.*?```|`[^`\n]*`', re.S)
+
+def code_blocks(text):
+    for m in code_span.finditer(text):
+        if m.group(0).startswith("```") or "](" in m.group(0):
+            yield m
+
+for folder, _, files in os.walk(os.path.join(root, "docs")):
+    for name in files:
+        if not name.endswith(".md"):
+            continue
+        path = os.path.join(folder, name)
+        with open(path, encoding="utf-8", errors="surrogateescape") as f:
+            text = f.read()
+        changed = []
+
+        def unlink(match):
+            target = match.group(2)
+            if re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*:", target) or target.startswith(("#", "/", "<")):
+                return match.group(0)
+            file_part = urllib.parse.unquote(target.split("#")[0])
+            if not file_part or os.path.exists(os.path.normpath(os.path.join(folder, file_part))):
+                return match.group(0)
+            changed.append(target)
+            return match.group(1)
+
+        parts, last = [], 0
+        for m in code_blocks(text):
+            parts.append(link.sub(unlink, text[last:m.start()]))
+            parts.append(m.group(0))
+            last = m.end()
+        parts.append(link.sub(unlink, text[last:]))
+        if changed:
+            with open(path, "w", encoding="utf-8", errors="surrogateescape") as f:
+                f.write("".join(parts))
+            rel = os.path.relpath(path, root)
+            for target in changed:
+                print(f"[oss-doc-sanitize] unlinked {rel} -> {target}")
+PY
 
 echo "[oss-doc-sanitize] done"

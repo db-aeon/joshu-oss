@@ -1,0 +1,633 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Joshu Kanban boards — system overview",
+    "output": ".archify/architecture-kanban-system-overview-20261006-223058/kanban-system-overview.html",
+    "quality_profile": "showcase",
+    "locale": "en",
+    "repository": {
+      "url": "https://github.com/db-aeon/joshu.git",
+      "revision": "56143b5c8bd394b1046988d5196fad6701f11448",
+      "provider": "github",
+      "link_mode": "local-only"
+    }
+  },
+  "components": [
+    {
+      "id": "mailProviders",
+      "type": "external",
+      "label": "Mail providers",
+      "sublabel": "Nylas inbox · Gmail (Composio)",
+      "pos": [
+        30,
+        178
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/connectors/scheduler.ts",
+          "line": 29,
+          "end_line": 30,
+          "label": "10-minute mail sync jobs"
+        }
+      ]
+    },
+    {
+      "id": "owner",
+      "type": "external",
+      "label": "Owner",
+      "sublabel": "SMS, voice, Slack, Telegram",
+      "tag": "SMS + voice via Twilio",
+      "pos": [
+        30,
+        290
+      ],
+      "size": [
+        170,
+        80
+      ],
+      "sources": [
+        {
+          "path": "src/twilioSmsGateway.ts",
+          "line": 253,
+          "end_line": 268,
+          "label": "owner SMS routed to broker"
+        }
+      ]
+    },
+    {
+      "id": "eaRoutes",
+      "type": "backend",
+      "label": "EA REST routes",
+      "sublabel": "meeting, reply, track routes",
+      "pos": [
+        340,
+        58
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/ea/triageRoutes.ts",
+          "line": 183,
+          "end_line": 183,
+          "label": "POST scheduling/meetings"
+        },
+        {
+          "path": "src/ea/triageRoutes.ts",
+          "line": 459,
+          "end_line": 459,
+          "label": "POST owner-reply/tasks"
+        },
+        {
+          "path": "src/ea/triageRoutes.ts",
+          "line": 768,
+          "end_line": 768,
+          "label": "POST mail/tracks"
+        }
+      ]
+    },
+    {
+      "id": "mailIngest",
+      "type": "backend",
+      "label": "Mail sync + ingest",
+      "sublabel": "mirror, triage stub, task",
+      "pos": [
+        340,
+        178
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/ea/triageStub.ts",
+          "line": 161,
+          "end_line": 183,
+          "label": "stub, then forwardTrackMail"
+        },
+        {
+          "path": "src/ea/mailCron.ts",
+          "line": 268,
+          "end_line": 315,
+          "label": "queueMailIngressTask"
+        }
+      ]
+    },
+    {
+      "id": "broker",
+      "type": "backend",
+      "label": "Realtime-goal broker",
+      "sublabel": "tick every 5 s",
+      "tag": "texts or calls owner",
+      "pos": [
+        340,
+        298
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/realtimeGoals/broker.ts",
+          "line": 51,
+          "end_line": 51,
+          "label": "DEFAULT_POLL_MS = 5 s"
+        },
+        {
+          "path": "src/realtimeGoals/broker.ts",
+          "line": 1400,
+          "end_line": 1415,
+          "label": "create on realtime-goals"
+        }
+      ]
+    },
+    {
+      "id": "onboarding",
+      "type": "backend",
+      "label": "Onboarding reconcile",
+      "sublabel": "setup checks, blocked cards",
+      "pos": [
+        340,
+        418
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/onboarding/reconcileOnboardingBoard.ts",
+          "line": 97,
+          "end_line": 160,
+          "label": "create, then block"
+        },
+        {
+          "path": "src/connectors/registry.ts",
+          "line": 112,
+          "end_line": 112,
+          "label": "Connectors trigger"
+        },
+        {
+          "path": "src/telephoneSettings/routes.ts",
+          "line": 86,
+          "end_line": 86,
+          "label": "Telephone trigger"
+        }
+      ]
+    },
+    {
+      "id": "proactive",
+      "type": "backend",
+      "label": "Proactive tick",
+      "sublabel": "hourly, POST /proactive/tick",
+      "pos": [
+        340,
+        538
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/proactive/proactiveCronJobs.ts",
+          "line": 53,
+          "end_line": 53,
+          "label": "hourly schedule"
+        },
+        {
+          "path": "src/proactive/sweep.ts",
+          "line": 79,
+          "end_line": 103,
+          "label": "sweep all boards"
+        },
+        {
+          "path": "src/proactive/delivery.ts",
+          "line": 36,
+          "end_line": 60,
+          "label": "SMS, else email"
+        }
+      ]
+    },
+    {
+      "id": "bridge",
+      "type": "backend",
+      "label": "Kanban bridge",
+      "sublabel": "Python, one JSON in and out",
+      "tag": "hermes_cli.kanban_db",
+      "pos": [
+        690,
+        220
+      ],
+      "size": [
+        160,
+        220
+      ],
+      "sources": [
+        {
+          "path": "scripts/hermes-kanban-bridge.py",
+          "line": 271,
+          "end_line": 299,
+          "label": "dispatch + connect board"
+        },
+        {
+          "path": "src/hermesKanbanBridge.ts",
+          "line": 80,
+          "end_line": 97,
+          "label": "callKanbanBridge"
+        }
+      ]
+    },
+    {
+      "id": "boards",
+      "type": "database",
+      "label": "Board databases",
+      "sublabel": "one kanban.db per board",
+      "tag": "~/.hermes/kanban/boards",
+      "pos": [
+        980,
+        298
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/proactive/boards.ts",
+          "line": 10,
+          "end_line": 23,
+          "label": "boards directory"
+        },
+        {
+          "path": "src/hermesKanbanBridge.ts",
+          "line": 99,
+          "end_line": 127,
+          "label": "EA board names"
+        },
+        {
+          "path": "scripts/hermes-kanban-orphan-reaper.py",
+          "line": 34,
+          "end_line": 38,
+          "label": "board folders"
+        }
+      ]
+    },
+    {
+      "id": "dispatcher",
+      "type": "backend",
+      "label": "Kanban dispatcher",
+      "sublabel": "Hermes gateway, every 60 s",
+      "pos": [
+        1250,
+        298
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/hermesApi.ts",
+          "line": 2239,
+          "end_line": 2255,
+          "label": "dispatch_in_gateway, 60 s"
+        }
+      ]
+    },
+    {
+      "id": "worker",
+      "type": "backend",
+      "label": "Worker",
+      "sublabel": "one Hermes run per task",
+      "tag": "follows task skills",
+      "pos": [
+        1520,
+        298
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "sources": [
+        {
+          "path": "scripts/hermes-kanban-orphan-reaper.py",
+          "line": 173,
+          "end_line": 173,
+          "label": "work kanban task command"
+        },
+        {
+          "path": "scripts/hermes-kanban-bridge.py",
+          "line": 749,
+          "end_line": 753,
+          "label": "HERMES_KANBAN_TASK env"
+        },
+        {
+          "path": "src/realtimeGoals/broker.ts",
+          "line": 197,
+          "end_line": 198,
+          "label": "end: complete or block"
+        }
+      ]
+    },
+    {
+      "id": "files",
+      "type": "database",
+      "label": "Owner files",
+      "sublabel": "mirrors, Projects/, Triage/",
+      "tag": "<files> root",
+      "pos": [
+        1520,
+        538
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/connectors/paths.ts",
+          "line": 17,
+          "end_line": 28,
+          "label": "mail mirror folders"
+        },
+        {
+          "path": "integrations/hermes/skills/executive-assistant/ea-playbook/SKILL.md",
+          "line": 39,
+          "end_line": 40,
+          "label": "worker writes todo + journal"
+        }
+      ]
+    },
+    {
+      "id": "mcp",
+      "type": "backend",
+      "label": "Connectors MCP",
+      "sublabel": "mail_*, scheduling_*, owner_reply_*",
+      "pos": [
+        1500,
+        58
+      ],
+      "size": [
+        210,
+        64
+      ],
+      "sources": [
+        {
+          "path": "scripts/joshu-connectors-mcp-http-server.mjs",
+          "line": 589,
+          "end_line": 770,
+          "label": "tool list"
+        },
+        {
+          "path": "scripts/joshu-connectors-mcp-http-server.mjs",
+          "line": 1097,
+          "end_line": 1190,
+          "label": "calls /api/ea/*"
+        }
+      ]
+    },
+    {
+      "id": "dashboard",
+      "type": "frontend",
+      "label": "Hermes dashboard",
+      "sublabel": "Kanban tab, board switcher",
+      "tag": "hermes-admin.<domain>",
+      "pos": [
+        980,
+        538
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "sources": [
+        {
+          "path": "deploy/scripts/render-caddyfile.sh",
+          "line": 117,
+          "end_line": 125,
+          "label": "basic auth to :9119"
+        },
+        {
+          "path": "scripts/start-hermes-dashboard.sh",
+          "line": 1,
+          "end_line": 4,
+          "label": "dashboard on :9119"
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "joshu-stack container",
+      "wraps": [
+        "eaRoutes",
+        "mailIngest",
+        "broker",
+        "onboarding",
+        "proactive",
+        "bridge",
+        "boards",
+        "dispatcher",
+        "worker",
+        "files",
+        "mcp",
+        "dashboard"
+      ],
+      "pad": 28
+    },
+    {
+      "kind": "region",
+      "label": "Joshu API (Node)",
+      "wraps": [
+        "eaRoutes",
+        "mailIngest",
+        "broker",
+        "onboarding",
+        "proactive"
+      ],
+      "pad": 14
+    }
+  ],
+  "connections": [
+    {
+      "id": "mail-sync",
+      "from": "mailProviders",
+      "to": "mailIngest",
+      "label": "sync every 10 min"
+    },
+    {
+      "id": "owner-goal",
+      "from": "owner",
+      "to": "broker",
+      "label": "SMS · voice · chat"
+    },
+    {
+      "id": "owner-setup",
+      "from": "owner",
+      "to": "onboarding",
+      "label": "setup actions"
+    },
+    {
+      "id": "nudge-owner",
+      "from": "proactive",
+      "to": "owner",
+      "label": "nudge SMS / email"
+    },
+    {
+      "id": "routes-bridge",
+      "from": "eaRoutes",
+      "to": "bridge",
+      "label": "create · handoff"
+    },
+    {
+      "id": "ingest-bridge",
+      "from": "mailIngest",
+      "to": "bridge",
+      "label": "create ingress task"
+    },
+    {
+      "id": "broker-bridge",
+      "from": "broker",
+      "to": "bridge",
+      "label": "create · show · reopen"
+    },
+    {
+      "id": "onboarding-bridge",
+      "from": "onboarding",
+      "to": "bridge",
+      "label": "create · block"
+    },
+    {
+      "id": "proactive-bridge",
+      "from": "proactive",
+      "to": "bridge",
+      "label": "list blocked"
+    },
+    {
+      "id": "bridge-boards",
+      "from": "bridge",
+      "to": "boards",
+      "label": "SQLite read/write",
+      "variant": "emphasis"
+    },
+    {
+      "id": "boards-dispatcher",
+      "from": "boards",
+      "to": "dispatcher",
+      "label": "ready tasks",
+      "variant": "emphasis"
+    },
+    {
+      "id": "dispatcher-worker",
+      "from": "dispatcher",
+      "to": "worker",
+      "label": "starts worker",
+      "variant": "emphasis"
+    },
+    {
+      "id": "worker-files",
+      "from": "worker",
+      "to": "files",
+      "label": "read / write"
+    },
+    {
+      "id": "worker-mcp",
+      "from": "worker",
+      "to": "mcp",
+      "label": "tool calls"
+    },
+    {
+      "id": "mcp-routes",
+      "from": "mcp",
+      "to": "eaRoutes",
+      "label": "HTTP /api/ea/* (tasks on other boards)",
+      "variant": "dashed",
+      "fromSide": "top",
+      "toSide": "top"
+    },
+    {
+      "id": "worker-boards",
+      "from": "worker",
+      "to": "boards",
+      "label": "complete · block",
+      "fromSide": "bottom",
+      "toSide": "bottom"
+    },
+    {
+      "id": "dashboard-boards",
+      "from": "dashboard",
+      "to": "boards",
+      "label": "reads",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "owner-dashboard",
+      "from": "owner",
+      "to": "dashboard",
+      "label": "Kanban tab (basic auth)",
+      "fromSide": "bottom",
+      "toSide": "bottom",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Boards the box works",
+      "items": [
+        "ea-mail-ingress, ea-scheduling, ea-owner-reply, realtime-goals",
+        "Tasks are created ready with an assignee",
+        "The dispatcher starts a worker at its next tick"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Boards that wait",
+      "items": [
+        "project-<slug> tracks and ea-onboarding tasks",
+        "Joshu creates each task, then blocks it at once",
+        "A task moves only when an email handoff, an owner reply, or a setup check wakes it"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Boards on the box",
+      "items": [
+        "EA boards: ea-mail-ingress, ea-scheduling, ea-owner-reply, ea-onboarding, realtime-goals, and legacy ea-sched-ingress",
+        "One project-<slug> board for each folder in Projects/",
+        "Each board: kanban.db, board.json, logs/<task>.log"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Worker",
+      "items": [
+        "Command: hermes -p default … work kanban task <id>, with HERMES_KANBAN_TASK set",
+        "Skills come from the task: ea-playbook, ea-scheduling, ea-owner-reply, ea-onboarding, realtime-goal",
+        "Each run ends with kanban_complete or kanban_block",
+        "A worker makes tasks on other boards only through the Connectors MCP and the Joshu API"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Cross-board readers",
+      "items": [
+        "Proactive tick: lists blocked tasks on every board except realtime-goals, and nudges the owner about one task with block kind needs_input",
+        "Realtime-goal broker: reads its own board every 5 s and texts or calls the owner",
+        "Weekday cron Joshu proactive hygiene reviews blocked tasks"
+      ]
+    }
+  ]
+}

@@ -2,12 +2,13 @@ import { readFile } from "node:fs/promises";
 import { gmailIngestSkipLabel, isGmailJunk } from "./gmailJunk.js";
 import {
   isStaleForScheduling,
-  shouldSkipSchedulingIngest,
+  resolveJoshuAgentEmails,
   shouldSkipTriageStub,
 } from "./ingestFilters.js";
 import {
   biasOwnerAgentInboxClassification,
   classifyInboundMail,
+  normalizeForIngressRouting,
   readBodyPreviewForClassify,
   shouldActOnMailClassification,
 } from "./classifier.js";
@@ -17,11 +18,15 @@ import {
   prepareMailIngestDedup,
 } from "./mailDedup.js";
 import {
+  bodyIndicatesSchedulingDelegation,
   resolveAgentAuthorizationForMirror,
+  resolveAssistantNames,
   resolveOwnerEmails,
 } from "./agentAuthorization.js";
 import {
+  isOwnerAgentInboxSender,
   ownerAgentInboxMailClassification,
+  ownerMailHasExternalRecipients,
   shouldForceTrackOwnerAgentInbox,
 } from "./ownerAgentInboxMail.js";
 import type { AfterMirrorThreadInput, InboundMailClassification } from "./triageTypes.js";
@@ -239,6 +244,12 @@ export async function createTriageStubAfterMirror(input: AfterMirrorThreadInput)
     if (handled) return;
   }
 
+  // Stale mail (a backfill or a long history catch-up): the mail mirror is enough, no stub.
+  if (isStaleForScheduling(receivedAt)) {
+    console.info(`[triage] skip stub for stale mail ${provider}/${threadId} (received ${receivedAt})`);
+    return;
+  }
+
   const latestMessageId = messageId?.trim() || `${threadId}-${receivedAt ?? "unknown"}`;
 
   const runClassifier =
@@ -271,19 +282,33 @@ export async function createTriageStubAfterMirror(input: AfterMirrorThreadInput)
     dedupKey = dedup.dedupKey;
   }
 
-  if (runClassifier && !shouldSkipSchedulingIngest({ from, receivedAt, projectRoot })) {
+  if (runClassifier) {
     let classification: InboundMailClassification;
+    const ownerEmails = projectRoot ? resolveOwnerEmails(projectRoot, input.accountEmail) : new Set<string>();
+    const agentEmails = projectRoot ? resolveJoshuAgentEmails(projectRoot) : new Set<string>();
+    const recipients = { to: input.to, cc: input.cc, bcc: input.bcc };
     if (
       projectRoot &&
-      shouldForceTrackOwnerAgentInbox({
-        provider,
-        from,
-        bodyPreview,
-        ownerEmails: resolveOwnerEmails(projectRoot, input.accountEmail),
-      })
+      shouldForceTrackOwnerAgentInbox({ provider, from, bodyPreview, ownerEmails, agentEmails, ...recipients })
     ) {
       classification = ownerAgentInboxMailClassification();
       console.info(`[triage] owner agent inbox mail ${provider}/${threadId}`);
+    } else if (
+      projectRoot &&
+      isOwnerAgentInboxSender({ provider, from, ownerEmails }) &&
+      ownerMailHasExternalRecipients({ ...recipients, ownerEmails, agentEmails }) &&
+      bodyIndicatesSchedulingDelegation(bodyPreview, resolveAssistantNames(projectRoot))
+    ) {
+      // Owner reply-all to a counterparty handing scheduling to the companion ("Clara can help schedule").
+      classification = normalizeForIngressRouting({
+        disposition: "track",
+        confidence: 0.95,
+        category: "scheduling",
+        project_slug: null,
+        is_new_track: false,
+        reason: "Owner delegated scheduling to companion on counterparty thread",
+      });
+      console.info(`[triage] owner scheduling delegation ${provider}/${threadId}`);
     } else {
       classification = await classifyInboundMail({ subject, from, bodyPreview });
       if (projectRoot) {
@@ -291,7 +316,7 @@ export async function createTriageStubAfterMirror(input: AfterMirrorThreadInput)
           classification,
           provider,
           from,
-          ownerEmails: resolveOwnerEmails(projectRoot, input.accountEmail),
+          ownerEmails,
           classifierBodyPreview: bodyPreview,
         });
       }
@@ -299,9 +324,6 @@ export async function createTriageStubAfterMirror(input: AfterMirrorThreadInput)
     if (await routeMailByClassification(input, classification, latestMessageId, dedupKey)) {
       return;
     }
-  } else if (runClassifier && shouldSkipSchedulingIngest({ from, receivedAt, projectRoot })) {
-    const reason = isStaleForScheduling(receivedAt) ? "stale" : "agent";
-    console.info(`[triage] skip mail classify for ${provider}/${threadId} (${reason})`);
   }
 
   if (await triageStubExists(filesRoot, provider, threadId, accountKey)) {

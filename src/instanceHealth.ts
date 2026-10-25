@@ -16,6 +16,7 @@ import {
   type DistProvenanceStatus,
 } from "./distProvenance.js";
 import { isDirectLocalhostRequest } from "./httpLocalhost.js";
+import { getFailureReport, type FailureReport } from "./instanceFailures.js";
 import { resolveJoshuIdentity } from "./joshuIdentity.js";
 import { resolveLast30DaysEngine } from "./last30days/config.js";
 import {
@@ -107,6 +108,8 @@ export interface InstanceHealthReport {
     // BEFORE a managed update tries (and fails) to snapshot.
     snapshot: { ok: boolean; expected: boolean; reason?: string };
     last30days: { ok: boolean; enginePresent: boolean; source: string };
+    // Background-work failures (Kanban runs, Hermes cron). Informational: never gates health.
+    failures: FailureReport | { ok: false; scanError: string };
   };
   uptimeSec: number;
 }
@@ -190,10 +193,14 @@ export function registerInstanceHealthRoutes(
     }
 
     const last30daysEngine = resolveLast30DaysEngine(process.cwd());
+    const failures = await getFailureReport().catch((err: unknown) => ({
+      ok: false as const,
+      scanError: (err as Error).message,
+    }));
 
     const components = {
       joshu: { ok: true },
-      // Cloud boxes have no local Camofox/Chromium on :9377. The shared browser is Browser Use.
+      // Cloud boxes have no local Chromium on :9377. The shared browser is Browser Use.
       camofox: { ok: cloudBrowserEnabled() || camofox.reachable },
       hermes: { ok: hermes.available },
       hindsight: { ok: hindsight.ok },
@@ -221,6 +228,7 @@ export function registerInstanceHealthRoutes(
         enginePresent: last30daysEngine.present,
         source: last30daysEngine.source,
       },
+      failures,
     };
 
     const connectorsMcpRequired = deps.connectorsMcpRequired !== false;

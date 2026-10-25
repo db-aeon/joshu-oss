@@ -27,6 +27,7 @@ LANGFUSE_SYSTEM_PATCH_SCRIPT="${ROOT_DIR}/scripts/apply-hermes-langfuse-system-p
 CONTENT_FILTER_PATCH_SCRIPT="${ROOT_DIR}/scripts/apply-hermes-content-filter-patch.sh"
 READ_FILE_UTF8_PATCH_SCRIPT="${ROOT_DIR}/scripts/apply-hermes-read-file-utf8-patch.sh"
 DSML_STREAM_SCRUB_PATCH_SCRIPT="${ROOT_DIR}/scripts/apply-hermes-dsml-stream-scrub.sh"
+OPENROUTER_DATA_COLLECTION_PATCH_SCRIPT="${ROOT_DIR}/scripts/apply-hermes-openrouter-data-collection.sh"
 STALE_STREAM_KEEPALIVE_PATCH_SCRIPT="${ROOT_DIR}/scripts/apply-hermes-stale-stream-keepalive.sh"
 INVOKE_TOOL_POST_HOOK_PATCH_SCRIPT="${ROOT_DIR}/scripts/apply-hermes-invoke-tool-post-hook-patch.sh"
 KANBAN_WORKER_TERMINATE_PATCH_SCRIPT="${ROOT_DIR}/scripts/apply-hermes-kanban-worker-terminate-on-complete.sh"
@@ -164,8 +165,8 @@ hermes_git_head() {
   git -C "${HERMES_DIR}" rev-parse HEAD
 }
 
-hermes_has_adoption_support() {
-  rg -q "adopt_existing_tab" "${HERMES_DIR}/tools/browser_camofox.py" 2>/dev/null
+hermes_has_browser_tool() {
+  [[ -f "${HERMES_DIR}/tools/browser_tool.py" ]]
 }
 
 create_snapshot() {
@@ -348,7 +349,8 @@ checkout_release_commit() {
 
 apply_hitl_patch_if_needed() {
   [[ -x "${HITL_PATCH_SCRIPT}" ]] || die "missing patch helper: ${HITL_PATCH_SCRIPT}"
-  HERMES_DIR="${HERMES_DIR}" bash "${HITL_PATCH_SCRIPT}"
+  # Exit code 2 means the script applied a patch (restart the gateway), not a failure.
+  HERMES_DIR="${HERMES_DIR}" bash "${HITL_PATCH_SCRIPT}" || [[ $? -eq 2 ]]
 }
 
 apply_langfuse_system_patch_if_needed() {
@@ -381,6 +383,9 @@ apply_content_filter_patch_if_needed() {
   if [[ -x "${DSML_STREAM_SCRUB_PATCH_SCRIPT}" ]]; then
     HERMES_DIR="${HERMES_DIR}" bash "${DSML_STREAM_SCRUB_PATCH_SCRIPT}" || true
   fi
+  if [[ -x "${OPENROUTER_DATA_COLLECTION_PATCH_SCRIPT}" ]]; then
+    HERMES_DIR="${HERMES_DIR}" bash "${OPENROUTER_DATA_COLLECTION_PATCH_SCRIPT}" || true
+  fi
   if [[ -x "${STALE_STREAM_KEEPALIVE_PATCH_SCRIPT}" ]]; then
     HERMES_DIR="${HERMES_DIR}" bash "${STALE_STREAM_KEEPALIVE_PATCH_SCRIPT}" || true
   fi
@@ -396,8 +401,8 @@ apply_content_filter_patch_if_needed() {
 }
 
 verify_hermes_checkout() {
-  hermes_has_adoption_support || die "Hermes checkout is missing tools/browser_camofox.py adopt_existing_tab support (required for Joshu)"
-  log "verified generic Camofox adopt_existing_tab support"
+  hermes_has_browser_tool || die "Hermes checkout is missing tools/browser_tool.py (the CDP browser guards patch needs it)"
+  log "verified tools/browser_tool.py"
 }
 
 cmd_status() {
@@ -543,7 +548,7 @@ cmd_update() {
 
   log "update complete"
   log "next steps:"
-  log "  1. Restart local stack and exercise HITL Camofox adoption"
+  log "  1. Restart local stack and exercise the shared browser (jWeb + a Hermes browser tool)"
   log "  2. cd ${ROOT_DIR} && npm run hindsight:smoke"
   log "  3. cd ${ROOT_DIR} && npm run vps:build-image"
   log "If testing fails: scripts/update-hermes-agent.sh rollback ${snapshot_id}"

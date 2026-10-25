@@ -1,21 +1,172 @@
-# Ship-with-release onboarding prompts — reconciled to ea-onboarding Kanban board.
-# Add new entries with introducedIn when features ship; reconcile creates cards on upgrade.
+# Setup steps of the setup board (board ea-onboarding). Terms: openspec/glossary.md.
+# The reconcile makes one card for each open setup step (src/onboarding/reconcileOnboardingBoard.ts).
+# type: required — counts as required setup, gets nudges and the setup mention.
+# type: tip — optional card, no nudge, no setup mention. showWhen: the card appears only while this check is true.
+# completeWhen / showWhen: a named check in src/onboarding/promptPredicates.ts.
+# introducedIn: the first release with the step. A step added in a new release shows up after the upgrade.
+# why, steps, mistakes: the how-to on the card. mention: the one sentence of the setup mention.
+# Order matters: the setup mention names the first open required setup step.
 schemaVersion: 1
 prompts:
-  - id: connect-work-gmail
-    title: Connect work Gmail and calendar
-    introducedIn: "0.1.44"
-    required: true
-    nudgeEligible: true
-    deepLink: Connectors
-    completeWhen: workGmailConnected
-    idempotencyKey: onboarding:connect-work-gmail
+  - id: owner-profile
+    type: required
+    title: Fill in your profile (work email and time zone)
+    introducedIn: "0.1.50"
+    deepLink: Welcome
+    completeWhen: ownerProfileComplete
+    idempotencyKey: onboarding:owner-profile
+    why: >-
+      Joshu uses your time zone to send the morning and evening briefs at the right time and to call you only
+      during your hours. Joshu sends the daily brief and email updates to your work email.
+    steps:
+      - Open Welcome on the desktop.
+      - Go to the section "Schedule & email".
+      - Fill in "Work email" with the address you use for work.
+      - Select your "Time zone" and your working hours.
+      - Go to "Review" and select Finish.
+    mistakes:
+      - A personal address in "Work email" when you work from another address. Joshu then sends work updates to the wrong inbox.
+      - Leaving the default time zone when you live in another time zone. The briefs then arrive at the wrong time.
+    mention: "One setup step is still open: add your work email and time zone in Welcome, so your briefs arrive on time."
 
   - id: owner-mobile-sms
+    type: required
     title: Add your mobile for SMS and voice
     introducedIn: "0.1.44"
-    required: true
-    nudgeEligible: true
     deepLink: Telephone
     completeWhen: ownerMobileConfigured
     idempotencyKey: onboarding:owner-mobile-sms
+    why: >-
+      Without your mobile, Joshu cannot text you or call you back. A request that you make by phone then has
+      no way to reach you when the work is done, and Joshu cannot ask you a quick question by text.
+    steps:
+      - Open Telephone on the desktop.
+      - In "Your mobile", type your mobile number with the country code, for example +1 555 123 4567.
+      - Select Save.
+    mistakes:
+      - A number without the country code. Joshu needs the full number, starting with +.
+      - The box number instead of your own mobile. The box number is the number that you call; your mobile is the number that Joshu calls.
+    mention: "One setup step is still open: add your mobile in the Telephone app, so I can text you and call you back."
+
+  - id: connect-work-gmail
+    type: required
+    title: Connect your work Gmail
+    introducedIn: "0.1.44"
+    deepLink: Connectors
+    completeWhen: workGmailConnected
+    idempotencyKey: onboarding:connect-work-gmail
+    why: >-
+      Joshu files and answers your work mail only after your work account is connected. Until then, Joshu sees
+      only the mail that people send to Joshu directly.
+    steps:
+      - Open Connectors on the desktop.
+      - In "Apps", find Gmail and select Connect.
+      - Sign in with your work account and allow the access that Google asks for.
+      - Check that Gmail in Connectors now shows your work address.
+    mistakes:
+      - Signing in with a personal Gmail account when your work mail is on another account. Connect the account of your work address.
+      - Closing the Google window before the last screen. Connectors then shows no account; select Connect again.
+    mention: "One setup step is still open: connect your work Gmail in Connectors, so I can file and answer your work mail."
+
+  - id: connect-calendar
+    type: required
+    title: Connect your work calendar
+    introducedIn: "0.1.50"
+    deepLink: Connectors
+    completeWhen: calendarConnected
+    idempotencyKey: onboarding:connect-calendar
+    why: >-
+      Joshu needs your calendar to schedule meetings, to protect your time, and to build the daily brief.
+    steps:
+      - Open Connectors on the desktop.
+      - In "Apps", find Google Calendar and select Connect.
+      - Sign in with your work account and allow the access that Google asks for.
+      - Check that Google Calendar in Connectors now shows your work address.
+    mistakes:
+      - Connecting a personal calendar when your meetings are on your work calendar. Joshu then schedules against the wrong calendar.
+    mention: "One setup step is still open: connect your calendar in Connectors, so I can schedule for you."
+
+  - id: tip-connect-work-account
+    type: tip
+    title: "Tip: connect the account of your work address"
+    introducedIn: "0.1.50"
+    deepLink: Connectors
+    showWhen: anyGoogleAccountConnected
+    completeWhen: workAccountConnected
+    idempotencyKey: onboarding:tip-connect-work-account
+    why: >-
+      None of the Google accounts in Connectors has your work email. If your work mail and meetings are on your
+      work account, Joshu cannot see them yet.
+    steps:
+      - Open Connectors on the desktop.
+      - For Gmail and for Google Calendar, select "Connect another account".
+      - Sign in with the account of your work email.
+    mistakes:
+      - Ignore this tip if your work mail is not on Google (for example Microsoft 365). Move the card to done.
+
+  - id: tip-voice-pin
+    type: tip
+    title: "Tip: set a keypad PIN for calls"
+    introducedIn: "0.1.50"
+    deepLink: Telephone
+    completeWhen: voicePinSet
+    idempotencyKey: onboarding:tip-voice-pin
+    why: >-
+      When you call Joshu from a number that it does not know, you unlock the call with your passphrase. A
+      keypad PIN is faster and works in a loud place.
+    steps:
+      - Open Telephone on the desktop.
+      - In "Keypad PIN", type a PIN of 4 to 8 digits and select Save.
+    mistakes:
+      - A PIN that is easy to guess, such as 1234 or your birth year.
+
+  - id: tip-save-box-number
+    type: tip
+    title: "Tip: save Joshu's phone number as a contact"
+    introducedIn: "0.1.50"
+    deepLink: Telephone
+    completeWhen: manual
+    idempotencyKey: onboarding:tip-save-box-number
+    why: >-
+      When Joshu calls you back or texts you, your phone shows the name instead of an unknown number, so you
+      answer the call.
+    steps:
+      - Open Telephone on the desktop and find the box number in "Phone number".
+      - Save that number as a contact on your phone, with Joshu's name.
+      - Move this card to done.
+    mistakes:
+      - Blocking or silencing unknown numbers on your phone before you save the contact. Joshu's callbacks then go to voicemail.
+
+  - id: tip-first-phone-request
+    type: tip
+    title: "Tip: ask Joshu something by phone"
+    introducedIn: "0.1.50"
+    deepLink: Telephone
+    completeWhen: ownerCalledBox
+    idempotencyKey: onboarding:tip-first-phone-request
+    why: >-
+      You can call Joshu like an assistant: ask about your day, dictate a note, or start a longer task, such as
+      a flight search. Joshu does the long work in the background and tells you the result.
+    steps:
+      - Call the box number in Telephone, "Phone number".
+      - Unlock the call with your passphrase or your keypad PIN.
+      - Ask a question, for example "What's on my calendar tomorrow?"
+    mistakes:
+      - Calling before your mobile is set. Joshu can then answer during the call, but cannot call or text you back later.
+
+  - id: tip-email-a-request
+    type: tip
+    title: "Tip: send Joshu a request by email"
+    introducedIn: "0.1.50"
+    deepLink: Welcome
+    completeWhen: manual
+    idempotencyKey: onboarding:tip-email-a-request
+    why: >-
+      Joshu has its own email address. You can email a request to Joshu, or forward a thread with a short note,
+      and Joshu does the work and answers on the same thread.
+    steps:
+      - Find Joshu's email address in Welcome ("Agent mailbox"), or on the first email that Joshu sent you.
+      - Send Joshu a short request, for example "Find a time next week for a call with Sam".
+      - Move this card to done.
+    mistakes:
+      - Sending from an address that Joshu does not know. Use your work email, so Joshu knows that the request comes from you.

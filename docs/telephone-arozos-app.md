@@ -37,13 +37,15 @@ Precedence: settings file `ownerCaller` → `TWILIO_OWNER_CALLER` in `instance.e
 
 Existing boxes that never had `TWILIO_OWNER_CALLER`: open **Telephone** and save a mobile. Action-guard SMS stays off until this is set *and* Twilio SMS is wired.
 
+**Save from a phone call.** On a box without an owner mobile, when the owner calls the box and unlocks the call with the passphrase or the PIN, the voice agent offers one time to save the number of the call as the owner mobile. On a clear yes, the box saves the caller ID as `ownerCaller` and closes the owner-mobile setup card. A blocked or hidden caller ID gets no offer. The save never replaces an owner mobile, sends no SMS, and does not turn on **Skip the passphrase from my phone**. Code: [`ownerMobileOffer.ts`](../packages/voice-realtime/src/ownerMobileOffer.ts).
+
 ### Think passphrase
 
 Every call — inbound or a Joshu callback — asks for this phrase (or the keypad PIN) before the assistant joins; there is no ungated mode. **Three incorrect attempts hang up** the call (silence and fillers do not count). Full call UX: [voice-realtime.md — Call gate](vps-sandbox/voice-realtime.md#call-gate-passphrase--pin).
 
 Owner can change it in the app:
 
-- **Show / Hide** reveals the currently configured passphrase (from settings file or env).
+- **Show / Hide** reveals the currently configured passphrase (from settings file or env). Show asks `POST /joshu/api/telephone/passphrase` for the passphrase, and the app forgets the passphrase on Hide, on a reload, and after a save. The status that `GET` returns never holds the passphrase.
 - **New passphrase** is always empty on load and after save — never prefilled with the live secret. **Save passphrase** stays disabled until the field is non-empty.
 - On save, the override is written to `.joshu/telephone/settings.json` and read by Joshu + voice-realtime on the **next inbound call** (no stack recreate required for the override path).
 
@@ -68,8 +70,12 @@ Both are checked by the call gate before any model joins the call ([voice-realti
 
 | Method | Path | Notes |
 |--------|------|-------|
-| `GET` | `/joshu/api/telephone` | Status: box number, owner mobile, passphrase (for Show), configured flags, sources |
-| `PUT` | `/joshu/api/telephone` | Body: `{ thinkPassword?: string, phoneNumber?: string, ownerCaller?: string, pin?: string, trustVerifiedCallerId?: boolean }` — empty `ownerCaller` clears the settings-file override; empty `pin` removes the PIN |
+| `GET` | `/joshu/api/telephone` | Desktop session. Status: box number, owner mobile, configured flags (`thinkPasswordConfigured`, `pinConfigured`), sources. Never the passphrase |
+| `POST` | `/joshu/api/telephone/passphrase` | Desktop session. Returns `{ thinkPassword }` for button Show, with `Cache-Control: no-store` |
+| `PUT` | `/joshu/api/telephone` | Desktop session. Returns the status without the passphrase. Body: `{ thinkPassword?: string, phoneNumber?: string, ownerCaller?: string, pin?: string, trustVerifiedCallerId?: boolean }` — empty `ownerCaller` clears the settings-file override; empty `pin` removes the PIN |
+| `POST` | `/joshu/api/telephone/owner-mobile/from-call` | Voice service only (loopback and service key). Body: `{ callSid, caller }`. Saves `caller` as `ownerCaller` when the box has no owner mobile: 200 `saved`, 409 `already_set`, 400 `invalid` (not a mobile, or the box number). |
+
+A request without a desktop session (the ArozOS login of the owner) gets `401 desktop_session_required`. A direct localhost request also passes, as on the other routes that check a desktop session. Gates: [box-api-edge-security.md](vps-sandbox/box-api-edge-security.md).
 
 ---
 

@@ -27,6 +27,9 @@ export function composioAuthConfigsFilePath(projectRoot = process.cwd()): string
 
 type AuthConfigsFile = Record<string, string>;
 
+/** Last invalid JOSHU_COMPOSIO_AUTH_CONFIGS value that was logged, so each value logs once. */
+let warnedInvalidAuthConfigsJson: string | null = null;
+
 function readAuthConfigsFile(projectRoot = process.cwd()): AuthConfigsFile {
   const p = composioAuthConfigsFilePath(projectRoot);
   if (!fs.existsSync(p)) return {};
@@ -89,7 +92,10 @@ export function resolveComposioToolkitAuthConfigs(
         if (slug.trim() && id) configs[slug.trim().toLowerCase()] = id;
       }
     } catch {
-      console.warn("[composio] JOSHU_COMPOSIO_AUTH_CONFIGS is not valid JSON — ignoring");
+      if (warnedInvalidAuthConfigsJson !== rawJson) {
+        warnedInvalidAuthConfigsJson = rawJson;
+        console.warn("[composio] JOSHU_COMPOSIO_AUTH_CONFIGS is not valid JSON — ignoring");
+      }
     }
   }
 

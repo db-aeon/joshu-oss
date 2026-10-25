@@ -12,7 +12,7 @@
 
 import WebSocket from "ws";
 
-import { mulaw8kB64ToPcm16k, pcm24kB64ToMulaw8kB64, pcm24kB64ToPcm16k } from "./audioResample.js";
+import { Pcm24kToMulaw8kStream, mulaw8kB64ToPcm16k, pcm24kB64ToPcm16k } from "./audioResample.js";
 import {
   GEMINI_LIVE_MODEL,
   GEMINI_LIVE_RESULT_SCHEDULING,
@@ -141,6 +141,8 @@ export class GeminiLiveClient implements VoiceS2sClient {
   private extraApplied = false;
   private readonly injectPresentation: InjectPresentation;
   private readonly turnDetection: RealtimeTurnDetection | undefined;
+  /** Anti-aliased 24k → 8k μ-law for the phone leg; filter state spans the whole call. */
+  private readonly phoneDownlink = new Pcm24kToMulaw8kStream();
 
   constructor(
     private readonly config: VoiceS2sConfig,
@@ -798,7 +800,7 @@ export class GeminiLiveClient implements VoiceS2sClient {
         if (dropModelOutput) continue;
         if (!this.responseInFlight) this.startSelfInitiatedGeneration();
         const deltaB64 =
-          this.audioFormat === "pcmu" ? pcm24kB64ToMulaw8kB64(data) : data;
+          this.audioFormat === "pcmu" ? this.phoneDownlink.encodeB64(data) : data;
         if (deltaB64) {
           const chunk: OutputAudioDelta = { deltaB64 };
           this.handlers.onOutputAudioDelta?.(chunk);

@@ -2,7 +2,7 @@
 # Overlay a boot script onto a live box without GHCR or host git credentials.
 #
 # Usage:
-#   bash scripts/hotpatch-boot.sh root@patrick.box.joshu.me scripts/lib/arozos-desktop-shortcuts.sh
+#   bash scripts/hotpatch-boot.sh root@<slug>.box.joshu.me scripts/lib/arozos-desktop-shortcuts.sh
 #   bash scripts/hotpatch-boot.sh root@box deploy/scripts/vps-start.sh
 #
 # Copies into /opt/joshu/hotfix/scripts/<rel> (survives recreate when compose

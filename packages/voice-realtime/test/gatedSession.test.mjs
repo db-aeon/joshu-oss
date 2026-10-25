@@ -14,6 +14,10 @@ const joshu = http.createServer((req, res) => {
   req.on("end", () => {
     posts.push({ path: req.url, body: body ? JSON.parse(body) : undefined });
     res.writeHead(200, { "Content-Type": "application/json" });
+    if (req.url === "/joshu/api/telephone/owner-mobile/from-call") {
+      res.end(JSON.stringify({ status: "saved", ownerCallerDisplay: "+1 (310) 555-0199" }));
+      return;
+    }
     if (req.url === "/joshu/api/realtime-goals/voice/opener") {
       res.end(
         JSON.stringify({
@@ -148,5 +152,79 @@ test("gated call: the owner talking first skips the greeting", async () => {
   await new Promise((resolve) => setTimeout(resolve, 50));
   const turns = gemini.sent.filter((msg) => msg.clientContent?.turnComplete === true);
   assert.equal(turns.length, 0, "no greeting over the owner");
+  session.close();
+});
+
+/** Declared tool names and the system instruction of a call's Gemini setup. */
+async function setupOf(gemini) {
+  gemini.emit("open");
+  await waitFor(() => gemini.sent.some((msg) => msg.setup), "setup");
+  const setup = gemini.sent.find((msg) => msg.setup).setup;
+  return {
+    tools: setup.tools.flatMap((tool) => tool.functionDeclarations ?? []).map((decl) => decl.name),
+    instruction: setup.systemInstruction.parts[0].text,
+  };
+}
+
+const toolResponses = (gemini) =>
+  gemini.sent.flatMap((msg) => msg.toolResponse?.functionResponses ?? []);
+const savePosts = () => posts.filter((post) => post.path === "/joshu/api/telephone/owner-mobile/from-call");
+
+test("owner mobile offer: eligible call declares the tool, saves the caller ID on a clear yes, once", async () => {
+  const session = new TwilioRealtimeSession(new FakeSocket());
+  session.handleStart("CA-offer-1", "MZ-o1", {
+    caller: "+13105550199",
+    gate: { mode: "inbound", via: "passphrase" },
+  });
+  const gemini = geminiSockets.at(-1);
+  const { tools, instruction } = await setupOf(gemini);
+  assert.ok(tools.includes("save_owner_mobile"));
+  assert.match(instruction, /ending in 0199/);
+  gemini.server({ setupComplete: {} });
+
+  gemini.server({ serverContent: { inputTranscription: { text: "Yes, save it." } } });
+  gemini.server({
+    toolCall: {
+      functionCalls: [{ id: "s1", name: "save_owner_mobile", args: { user_quote: "Yes, save it.", number: "+19995550000" } }],
+    },
+  });
+  await waitFor(() => toolResponses(gemini).some((r) => r.id === "s1"), "save result");
+  assert.deepEqual(savePosts().map((post) => post.body), [{ callSid: "CA-offer-1", caller: "+13105550199" }], "the caller ID, never a number from the model");
+  assert.match(toolResponses(gemini).find((r) => r.id === "s1").response.answer, /now the owner's mobile/);
+
+  gemini.server({ toolCall: { functionCalls: [{ id: "s2", name: "save_owner_mobile", args: { user_quote: "yes" } }] } });
+  await waitFor(() => toolResponses(gemini).some((r) => r.id === "s2"), "second result");
+  assert.equal(savePosts().length, 1, "one try per call");
+  session.close();
+});
+
+test("owner mobile offer: an unclear reply saves nothing", async () => {
+  const before = savePosts().length;
+  const session = new TwilioRealtimeSession(new FakeSocket());
+  session.handleStart("CA-offer-2", "MZ-o2", { caller: "+13105550199", gate: { mode: "inbound", via: "pin" } });
+  const gemini = geminiSockets.at(-1);
+  await setupOf(gemini);
+  gemini.server({ setupComplete: {} });
+  gemini.server({ serverContent: { inputTranscription: { text: "hmm, maybe later" } } });
+  gemini.server({
+    toolCall: { functionCalls: [{ id: "u1", name: "save_owner_mobile", args: { user_quote: "hmm, maybe later" } }] },
+  });
+  await waitFor(() => toolResponses(gemini).some((r) => r.id === "u1"), "unclear result");
+  assert.equal(savePosts().length, before, "nothing posted");
+  assert.match(toolResponses(gemini).find((r) => r.id === "u1").response.answer, /did not clearly say yes/);
+  session.close();
+});
+
+test("owner mobile offer: no tool and no offer when the box has an owner mobile", async () => {
+  const session = new TwilioRealtimeSession(new FakeSocket());
+  session.handleStart("CA-offer-3", "MZ-o3", {
+    caller: "+13105550199",
+    ownerCaller: "+13105550100",
+    gate: { mode: "inbound", via: "passphrase" },
+  });
+  const gemini = geminiSockets.at(-1);
+  const { tools, instruction } = await setupOf(gemini);
+  assert.equal(tools.includes("save_owner_mobile"), false);
+  assert.doesNotMatch(instruction, /\[Owner mobile\]/);
   session.close();
 });

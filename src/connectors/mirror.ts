@@ -6,11 +6,22 @@ import path from "node:path";
 import YAML from "yaml";
 import { safeEventFilename, safeThreadFilename } from "./paths.js";
 
+/** Attachment metadata of one mail attachment, in `thread_messages[].attachments`. */
+export type MailAttachmentMeta = {
+  filename: string;
+  content_type?: string;
+  size?: number;
+  message_id: string;
+  attachment_id: string;
+};
+
 export type MailThreadMessageMeta = {
   id: string;
   date?: string;
   from?: string;
   subject?: string;
+  /** Present only when the message has mail attachments. */
+  attachments?: MailAttachmentMeta[];
 };
 
 export type MailThreadFrontmatter = {

@@ -1,5 +1,5 @@
 /**
- * Outbound HTTP proxy URL from repo PROXY_* vars (same as Camofox / Decodo).
+ * Outbound HTTP proxy URL from repo PROXY_* vars (same as local Chromium / Decodo).
  * Override with HTTPS_PROXY or MS_GRAPH_PROXY_URL.
  */
 

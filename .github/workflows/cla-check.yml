@@ -37,13 +37,14 @@ jobs:
               exit 0
               ;;
           esac
-          if [[ "${AUTHOR}" == "dependabot[bot]" ]]; then
-            echo "Dependabot exempt"
+          # github-actions[bot] opens the release pull request (workflow release.yml).
+          if [[ "${AUTHOR}" == "dependabot[bot]" || "${AUTHOR}" == "github-actions[bot]" ]]; then
+            echo "${AUTHOR} exempt"
             exit 0
           fi
+          # signatures/cla.json is an object with signedContributors, or a plain array.
           if jq -e --arg u "${AUTHOR}" '
-              (.signedContributors[]? | select(.name == $u))
-              // (.[]? | select(.login == $u or .user == $u))
+              (.signedContributors? // .)[]? | select(.name == $u or .login == $u or .user == $u)
             ' signatures/cla.json >/dev/null; then
             echo "CLA signed by ${AUTHOR}"
             exit 0

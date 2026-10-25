@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * Unit smoke: syncHermesOwnerTimezone writes config.yaml + .env.
+ * Unit smoke: syncHermesOwnerTimezone writes config.yaml + .env, and calls the
+ * timezone change handler (cron realign + gateway restart) only when the zone changes.
  */
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
@@ -8,12 +9,17 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const { syncHermesOwnerTimezone } = await import(
+const { syncHermesOwnerTimezone, setOwnerTimezoneChangeHandler } = await import(
   pathToFileURL(path.join(rootDir, "dist/hermesOwnerTimezone.js")).href
 );
 
 const tmp = await mkdtemp(path.join(os.tmpdir(), "joshu-hermes-tz-"));
 process.env.HERMES_HOME = tmp;
+
+const handlerCalls = [];
+setOwnerTimezoneChangeHandler(async (timezone) => {
+  handlerCalls.push(timezone);
+});
 
 try {
   const first = await syncHermesOwnerTimezone("America/Los_Angeles");
@@ -40,7 +46,24 @@ try {
     process.exit(1);
   }
 
+  // The running gateway keeps its cached timezone: a change must reach the handler.
+  if (handlerCalls.length !== 1 || handlerCalls[0] !== "America/Los_Angeles") {
+    console.error("FAIL: handler should run once for the first sync only", handlerCalls);
+    process.exit(1);
+  }
+
+  // The config is on disk already, so a handler failure must not fail the sync.
+  setOwnerTimezoneChangeHandler(async () => {
+    throw new Error("gateway down");
+  });
+  const third = await syncHermesOwnerTimezone("Asia/Singapore");
+  if (!third.ok || !third.changed || third.timezone !== "Asia/Singapore") {
+    console.error("FAIL: sync should succeed when the handler fails", third);
+    process.exit(1);
+  }
+
   console.log("OK: Hermes owner timezone sync");
 } finally {
+  setOwnerTimezoneChangeHandler(null);
   await rm(tmp, { recursive: true, force: true });
 }

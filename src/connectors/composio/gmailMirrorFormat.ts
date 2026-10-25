@@ -1,15 +1,12 @@
 /**
  * Render and parse Gmail thread markdown mirrors (one file per thread).
  */
+import type { MailThreadMessageMeta } from "../mirror.js";
 import type { GmailMessageSummary } from "./gmail.js";
+import { formatAttachmentListMarkdown, toMirrorAttachmentMeta } from "./gmailAttachments.js";
 import { formatMessageDateLabel } from "./gmailBodies.js";
 
-export type GmailThreadMessageMeta = {
-  id: string;
-  date?: string;
-  from?: string;
-  subject?: string;
-};
+export type GmailThreadMessageMeta = MailThreadMessageMeta;
 
 export function buildGmailThreadMirrorBody(messages: GmailMessageSummary[]): {
   bodyMarkdown: string;
@@ -31,8 +28,12 @@ export function buildGmailThreadMirrorBody(messages: GmailMessageSummary[]): {
       date: dateIso,
       from: m.from,
       subject: m.subject,
+      ...(m.attachments?.length ? { attachments: m.attachments.map(toMirrorAttachmentMeta) } : {}),
     });
-    bodyParts.push(`### ${when} — ${from}\n\n**Subject:** ${subject}\n\n${text}`);
+    const attachmentList = formatAttachmentListMarkdown(m.attachments);
+    bodyParts.push(
+      `### ${when} — ${from}\n\n**Subject:** ${subject}\n\n${text}${attachmentList ? `\n\n${attachmentList}` : ""}`,
+    );
   }
 
   return {

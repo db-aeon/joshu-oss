@@ -16,6 +16,8 @@ export type OnboardingPromptEntryState = {
 export type OnboardingPromptState = {
   schemaVersion: 1;
   prompts: Record<string, OnboardingPromptEntryState>;
+  /** Setup mention: the owner-local date (YYYY-MM-DD) of the last setup mention on each channel. */
+  mentions?: Record<string, string>;
 };
 
 export const DEFAULT_ONBOARDING_PROMPT_STATE: OnboardingPromptState = {
@@ -46,7 +48,13 @@ export function readOnboardingPromptState(projectRoot = process.cwd()): Onboardi
       };
     }
   }
-  return { schemaVersion: 1, prompts };
+  const mentions: Record<string, string> = {};
+  if (raw.mentions && typeof raw.mentions === "object") {
+    for (const [channel, date] of Object.entries(raw.mentions)) {
+      if (typeof date === "string" && date.trim()) mentions[channel] = date.trim();
+    }
+  }
+  return { schemaVersion: 1, prompts, mentions };
 }
 
 export function writeOnboardingPromptState(

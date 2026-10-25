@@ -63,7 +63,7 @@ export class DockerSupervisor {
     try {
       const state = await this.inspectState().catch(() => null);
       if (!state) {
-        console.log(`[joshu] Camofox container ${this.opts.containerName} missing; creating (${reason})`);
+        console.log(`[joshu] shared browser container ${this.opts.containerName} missing; creating (${reason})`);
         await execFile("bash", [ENSURE_CAMOFOX_SCRIPT], {
           timeout: 120_000,
           env: { ...process.env, CAMOFOX_CONTAINER: this.opts.containerName },
@@ -77,7 +77,7 @@ export class DockerSupervisor {
       console.log(`[joshu] docker ${action} ${this.opts.containerName} (${reason})`);
     } catch (err) {
       this.lastError = (err as Error).message;
-      console.warn(`[joshu] Camofox recovery failed: ${this.lastError}`);
+      console.warn(`[joshu] shared browser recovery failed: ${this.lastError}`);
     } finally {
       this.restarting = false;
     }

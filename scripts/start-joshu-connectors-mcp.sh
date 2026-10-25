@@ -21,6 +21,8 @@ LOG_FILE="${JOSHU_CONNECTORS_MCP_LOG_FILE:-${HOME}/.joshu/connectors-mcp.log}"
 HEALTH_URL="http://${JOSHU_CONNECTORS_MCP_HOST}:${JOSHU_CONNECTORS_MCP_PORT}/health"
 
 mkdir -p "$(dirname "${PID_FILE}")" "$(dirname "${LOG_FILE}")"
+# shellcheck source=lib/pid-file.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/pid-file.sh"
 
 connectors_mcp_health_ok() {
   # Liveness: process responds (Joshu may still be booting — readiness is HTTP 200 on /health).
@@ -28,22 +30,12 @@ connectors_mcp_health_ok() {
 }
 
 stop_stale_connectors_mcp() {
-  if [[ ! -f "${PID_FILE}" ]]; then
-    return 0
-  fi
-  local old_pid
-  old_pid="$(cat "${PID_FILE}" 2>/dev/null || true)"
-  if [[ -n "${old_pid}" ]] && kill -0 "${old_pid}" 2>/dev/null; then
-    kill "${old_pid}" 2>/dev/null || true
-    sleep 1
-    kill -9 "${old_pid}" 2>/dev/null || true
-  fi
-  rm -f "${PID_FILE}"
+  stop_pid_file_process "${PID_FILE}" "joshu-connectors-mcp-http-server.mjs" "[connectors-mcp]" 1
 }
 
 if [[ -f "${PID_FILE}" ]]; then
   old_pid="$(cat "${PID_FILE}" 2>/dev/null || true)"
-  if [[ -n "${old_pid}" ]] && kill -0 "${old_pid}" 2>/dev/null && connectors_mcp_health_ok; then
+  if pid_runs_command "${old_pid}" "joshu-connectors-mcp-http-server.mjs" && connectors_mcp_health_ok; then
     echo "[connectors-mcp] already running pid=${old_pid}"
     exit 0
   fi

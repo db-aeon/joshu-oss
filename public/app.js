@@ -1,9 +1,5 @@
 import { connectScreencast } from "./screencast-client.js";
-import { mountCloudLiveFrame } from "./cloud-live-frame.js?v=ui-browser-22";
-import { attachVncClipboard } from "./vnc-clipboard.js";
-import { configureNovncRfb, loadNovncRfb, preferVncLocalGestures } from "./vnc-client.js";
-import { attachVncLocalGestures } from "./vnc-gestures.js";
-import { attachVncScrollBridge } from "./vnc-scroll.js";
+import { mountCloudLiveFrame } from "./cloud-live-frame.js?v=ui-browser-23";
 import { attachJChatBubble } from "./jchat-bubble.js";
 
 const $ = (sel) => document.querySelector(sel);
@@ -42,7 +38,6 @@ function layoutLetterboxedScreen(hostEl, screenEl, { width: fbW, height: fbH, ma
 }
 
 const STORAGE_KEY = "joshu-hitl-camofox-state";
-const DEBUG_VNC = new URLSearchParams(window.location.search).get("debugVnc") === "1";
 const CAMOFOX_FRAMEBUFFER = { width: 1024, height: 768 };
 
 const els = {
@@ -50,13 +45,11 @@ const els = {
   restartCamofox: $("#restart-camofox"),
   vncFrame: $("#vnc-frame"),
   vncScreen: $("#vnc-screen"),
-  vncDebug: $("#vnc-debug"),
   vncStatus: $("#vnc-status"),
   vncIndicator: $("#vnc-indicator"),
   chromeVncLabel: $("#chrome-vnc-label"),
   chromeVncStatus: $("#chrome-vnc-status"),
   reloadVnc: $("#reload-vnc"),
-  openVnc: $("#open-vnc"),
   vncPasteRemote: $("#vnc-paste-remote"),
   vncCopyRemote: $("#vnc-copy-remote"),
   vncClipboardText: $("#vnc-clipboard-text"),
@@ -74,15 +67,6 @@ const els = {
 
 const state = {
   sessionId: null,
-  RFB: null,
-  rfb: null,
-  intentionalRfbDisconnect: null,
-  novnc: null,
-  vncClipboardDetach: null,
-  vncScrollDetach: null,
-  vncGestureDetach: null,
-  vncReconnectAfter: 0,
-  vncAutoConnectDone: false,
   cloudFrame: null,
   urlBarEditing: false,
   urlBarDirty: false,
@@ -99,7 +83,7 @@ function escapeHtml(s) {
 }
 
 function setVncStatus(label, cls = "") {
-  const line = label ? `VNC: ${label}` : "VNC: disconnected";
+  const line = label ? `Browser: ${label}` : "Browser: disconnected";
   const short = label || "off";
   els.vncStatus.textContent = line;
   if (els.vncIndicator) {
@@ -158,48 +142,6 @@ function setSession(id) {
   els.sessionPill.classList.toggle("has-session", Boolean(id));
 }
 
-function buildWebsocketUrl(pathOrUrl) {
-  if (/^wss?:\/\//i.test(pathOrUrl)) return pathOrUrl;
-  const base = document.baseURI || window.location.href;
-  try {
-    const u = new URL(pathOrUrl, base);
-    u.protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    return u.toString();
-  } catch {
-    const path = pathOrUrl.startsWith("/") ? pathOrUrl : `/${pathOrUrl}`;
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    return `${protocol}//${window.location.host}${path}`;
-  }
-}
-
-async function loadRfb(clientBaseUrl) {
-  if (state.RFB) return state.RFB;
-  state.RFB = await loadNovncRfb(clientBaseUrl);
-  return state.RFB;
-}
-
-function disconnectVnc({ clear = true } = {}) {
-  if (state.vncClipboardDetach) {
-    state.vncClipboardDetach();
-    state.vncClipboardDetach = null;
-  }
-  if (state.vncScrollDetach) {
-    state.vncScrollDetach();
-    state.vncScrollDetach = null;
-  }
-  if (state.vncGestureDetach) {
-    state.vncGestureDetach();
-    state.vncGestureDetach = null;
-  }
-  const rfb = state.rfb;
-  state.rfb = null;
-  if (rfb) {
-    state.intentionalRfbDisconnect = rfb;
-    rfb.disconnect();
-  }
-  if (clear) els.vncScreen.replaceChildren();
-}
-
 function applyFramebufferAspect(width, height) {
   if (!(width > 0 && height > 0)) return;
   CAMOFOX_FRAMEBUFFER.width = width;
@@ -230,36 +172,6 @@ function layoutVncScreen() {
 
 function syncVncScale() {
   layoutVncScreen();
-  if (!state.rfb?.scaleViewport) return;
-  window.dispatchEvent(new Event("resize"));
-  updateVncDebug();
-}
-
-function updateVncDebug() {
-  if (!DEBUG_VNC || !els.vncDebug) return;
-  const frame = els.vncFrame?.getBoundingClientRect();
-  const screen = els.vncScreen?.getBoundingClientRect();
-  const rfb = state.rfb;
-  const box = layoutVncScreen();
-  const aspect = screen ? screen.width / Math.max(1, screen.height) : 0;
-  const target = CAMOFOX_FRAMEBUFFER.width / CAMOFOX_FRAMEBUFFER.height;
-  const lines = [
-    `frame: ${frame ? `${Math.round(frame.width)}×${Math.round(frame.height)}` : "—"}`,
-    `screen: ${screen ? `${Math.round(screen.width)}×${Math.round(screen.height)} (aspect ${aspect.toFixed(3)})` : "—"}`,
-    `target aspect: ${target.toFixed(3)} (${CAMOFOX_FRAMEBUFFER.width}×${CAMOFOX_FRAMEBUFFER.height})`,
-    box ? `layout: ${box.width}×${box.height}` : "layout: —",
-  ];
-  if (rfb) {
-    lines.push(`fb: ${rfb._fbWidth ?? "?"}×${rfb._fbHeight ?? "?"}`);
-    lines.push(`scale: ${rfb._display?.scale ?? "?"}`);
-  }
-  els.vncDebug.hidden = false;
-  els.vncDebug.textContent = lines.join("\n");
-  console.debug("[joshu vnc]", Object.fromEntries(lines.map((l) => l.split(": "))));
-}
-
-async function installCamofoxShimOnce() {
-  await fetch("api/camofox/shim", { method: "POST", cache: "no-store" }).catch(() => undefined);
 }
 
 function camofoxHandoffOperational(camofox) {
@@ -278,22 +190,18 @@ async function maybeWarmCamofoxBrowser(data) {
   if (camofoxHandoffOperational(data?.camofox)) return false;
   const now = Date.now();
   if (now - lastCamofoxWarmAt < 15_000) {
-    if (!state.rfb) setVncStatus("starting Camofox browser…", "warn");
+    if (!state.screencast) setVncStatus("starting browser…", "warn");
     return false;
   }
   lastCamofoxWarmAt = now;
-  if (!state.rfb) setVncStatus("starting Camofox browser…", "warn");
+  if (!state.screencast) setVncStatus("starting browser…", "warn");
   const res = await fetch("api/camofox/fit-viewport", { method: "POST", cache: "no-store" }).catch(() => undefined);
-  if (!res?.ok) return false;
-  state.vncReconnectAfter = 0;
-  state.vncAutoConnectDone = false;
-  return true;
+  return Boolean(res?.ok);
 }
 
 function connectScreencastView(websocketPath) {
   if (state.screencast && state.screencastPath === websocketPath) return;
   state.screencast?.close();
-  disconnectVnc({ clear: false });
   state.screencastPath = websocketPath;
   layoutFillScreen(els.vncScreen);
   state.screencast = connectScreencast(els.vncScreen, websocketPath, {
@@ -337,18 +245,20 @@ function connectCloudView(viewport) {
   if (state.cloudFrame) return;
   state.screencast?.close();
   state.screencast = null;
-  disconnectVnc({ clear: false });
   layoutFillScreen(els.vncScreen);
   const label = document.getElementById("chrome-vnc-label");
   if (label) label.textContent = "Live";
+  // Browser Use shows its own tabs and address bar; hide the jWeb address bar.
+  document.body.classList.add("live-browser-chrome");
   state.cloudFrame = mountCloudLiveFrame(els.vncScreen, "api/browser/live-frame", {
     width: viewport?.width,
     height: viewport?.height,
+    browserChrome: true,
     onStatus: (text) => setVncStatus(text, text.startsWith("connected") ? "ok" : "warn"),
   });
 }
 
-async function maybeConnectVncFromStatus(data, { force = false } = {}) {
+async function maybeConnectVncFromStatus(data) {
   if (data?.liveView?.mode === "cloud") {
     connectCloudView(data.browserViewport);
     return;
@@ -359,125 +269,6 @@ async function maybeConnectVncFromStatus(data, { force = false } = {}) {
       return;
     }
     connectScreencastView(data.liveView.websocketPath);
-    return;
-  }
-  if (!data?.novnc?.clientBaseUrl || !data?.novnc?.websocketPath) return;
-  if (!camofoxBrowserReady(data.camofox)) {
-    if (!state.rfb) setVncStatus("waiting for Camofox browser", "warn");
-    return;
-  }
-  if (!force) {
-    if (state.rfb) return;
-    if (state.vncReconnectAfter && Date.now() < state.vncReconnectAfter) return;
-    if (state.vncAutoConnectDone) return;
-    state.vncAutoConnectDone = true;
-  }
-  await connectVnc(data.novnc, { force });
-}
-
-async function connectVnc(novnc, { force = false } = {}) {
-  const clientBaseUrl = novnc?.clientBaseUrl?.replace(/\/+$/, "");
-  const websocketPath = novnc?.websocketPath;
-  if (!clientBaseUrl || !websocketPath) return;
-
-  const changed = !state.novnc || state.novnc.clientBaseUrl !== clientBaseUrl || state.novnc.websocketPath !== websocketPath;
-  state.novnc = { ...novnc, clientBaseUrl, websocketPath };
-  if (!force && state.rfb && !changed) return;
-  if (!force && state.vncReconnectAfter && Date.now() < state.vncReconnectAfter) return;
-
-  disconnectVnc();
-  setVncStatus("connecting", "running");
-  try {
-    const RFB = await loadRfb(clientBaseUrl);
-    const rfb = new RFB(els.vncScreen, buildWebsocketUrl(websocketPath), { shared: false });
-    state.rfb = rfb;
-    configureNovncRfb(rfb);
-    if (els.vncScreen) {
-      if (state.vncClipboardDetach) state.vncClipboardDetach();
-      state.vncClipboardDetach = attachVncClipboard(rfb, {
-        targetEl: els.vncScreen,
-        pasteViaApi: async (text) => {
-          const res = await fetch("api/camofox/insert-text", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ text }),
-            cache: "no-store",
-          });
-          if (!res.ok) {
-            const err = await res.json().catch(() => ({}));
-            throw new Error(err.error || `HTTP ${res.status}`);
-          }
-          return true;
-        },
-        copyViaApi: async () => {
-          const res = await fetch("api/camofox/copy-selection", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: "{}",
-            cache: "no-store",
-          });
-          if (!res.ok) {
-            const err = await res.json().catch(() => ({}));
-            throw new Error(err.error || `HTTP ${res.status}`);
-          }
-          const data = await res.json();
-          return typeof data.text === "string" ? data.text : "";
-        },
-        ui: {
-          pasteBtn: els.vncPasteRemote,
-          copyBtn: els.vncCopyRemote,
-          textarea: els.vncClipboardText,
-          hint: els.vncClipboardHint,
-        },
-      });
-      if (state.vncScrollDetach) state.vncScrollDetach();
-      if (state.vncGestureDetach) {
-        state.vncGestureDetach();
-        state.vncGestureDetach = null;
-      }
-      const useGestures = preferVncLocalGestures();
-      state.vncScrollDetach = attachVncScrollBridge(els.vncScreen, { skipWheel: useGestures });
-      if (useGestures) {
-        state.vncGestureDetach = attachVncLocalGestures(els.vncScreen, {
-          rfb,
-          onScroll: (direction, amount) => {
-            if (typeof state.vncScrollDetach?.enqueueWheel === "function") {
-              state.vncScrollDetach.enqueueWheel(direction, amount);
-            }
-          },
-        });
-      }
-    }
-    rfb.addEventListener("connect", () => {
-      state.vncReconnectAfter = 0;
-      requestAnimationFrame(() => {
-        syncVncScale();
-        setTimeout(syncVncScale, 50);
-      });
-      const fitViewport = () => {
-        void fetch("api/camofox/fit-viewport", { method: "POST", cache: "no-store" }).catch(() => undefined);
-      };
-      fitViewport();
-      setTimeout(fitViewport, 400);
-      setTimeout(fitViewport, 1200);
-      void installCamofoxShimOnce();
-      setVncStatus(`connected ${CAMOFOX_FRAMEBUFFER.width}×${CAMOFOX_FRAMEBUFFER.height}`, "ok");
-    });
-    rfb.addEventListener("desktopresize", () => syncVncScale());
-    rfb.addEventListener("disconnect", (event) => {
-      const intentional = state.intentionalRfbDisconnect === rfb;
-      if (intentional) {
-        state.intentionalRfbDisconnect = null;
-        return;
-      }
-      if (state.rfb === rfb) state.rfb = null;
-      state.vncReconnectAfter = Date.now() + 60_000;
-      const hint = event.detail?.clean ? "disconnected — Reload VNC" : "disconnected — Reload VNC";
-      setVncStatus(hint, event.detail?.clean ? "" : "warn");
-    });
-  } catch (err) {
-    setVncStatus("failed", "failed");
-    console.warn("[joshu] noVNC failed to connect:", err.message);
   }
 }
 
@@ -511,7 +302,7 @@ async function navigateFromUrlBar(raw) {
       window.setTimeout(() => {
         if (els.vncClipboardHint) {
           els.vncClipboardHint.textContent =
-            "For URLs, use the address bar — paste targets page fields, not Firefox chrome.";
+            "For URLs, use the address bar — paste targets page fields, not the browser chrome.";
         }
       }, 4000);
     }
@@ -528,20 +319,19 @@ async function refreshStatus() {
     const data = await res.json();
     const parts = [];
     parts.push(data.hermes.available ? `<span class="ok">hermes ok</span>` : `<span class="err">hermes missing</span>`);
-    parts.push(data.camofox.reachable ? `<span class="ok">camofox ${escapeHtml(data.camofox.url)}</span>` : `<span class="err">camofox down</span>`);
+    parts.push(data.camofox.reachable ? `<span class="ok">browser ${escapeHtml(data.camofox.url)}</span>` : `<span class="err">browser down</span>`);
     if (data.docker?.enabled) {
       parts.push(`<span class="${data.docker.running ? "ok" : "warn"}">docker ${escapeHtml(data.docker.status || "unknown")}</span>`);
     }
     if (data.lastCamofoxUserId) parts.push(`<span class="ok">${escapeHtml(data.lastCamofoxUserId)}</span>`);
     els.status.innerHTML = parts.join(" &middot; ");
     if (data.browserViewport) applyFramebufferAspect(data.browserViewport.width, data.browserViewport.height);
-    if (data.novnc?.embedUrl) els.openVnc.href = data.novnc.embedUrl;
     if (data.lastBrowserUrl) setUrlBar(data.lastBrowserUrl);
     const warmed = await maybeWarmCamofoxBrowser(data);
     const statusForVnc = warmed
       ? await fetch("api/status", { cache: "no-store" }).then((r) => (r.ok ? r.json() : data)).catch(() => data)
       : data;
-    await maybeConnectVncFromStatus(statusForVnc, warmed ? { force: true } : undefined);
+    await maybeConnectVncFromStatus(statusForVnc);
     if (!state.sessionId && data.activeSessionId) setSession(data.activeSessionId);
   } catch (err) {
     els.status.innerHTML = `<span class="err">status error: ${escapeHtml(err.message)}</span>`;
@@ -569,10 +359,10 @@ async function restartCamofox() {
   try {
     const res = await fetch("api/camofox/restart", { method: "POST" });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    await resetConversation("Camofox restarted");
+    await resetConversation("browser restarted");
     setTimeout(refreshStatus, 1500);
   } catch (err) {
-    console.warn("[joshu] Camofox restart failed:", err.message);
+    console.warn("[joshu] browser restart failed:", err.message);
   } finally {
     els.restartCamofox.disabled = false;
   }
@@ -597,14 +387,10 @@ els.urlBar?.addEventListener("input", () => {
 
 els.forgetSession.addEventListener("click", () => resetConversation("session forgotten"));
 els.reloadVnc.addEventListener("click", () => {
-  state.vncReconnectAfter = 0;
-  state.vncAutoConnectDone = false;
   state.screencast?.close();
   state.screencast = null;
   state.screencastPath = "";
-  void refreshStatus().then(() => {
-    if (!state.screencast && state.novnc) void connectVnc(state.novnc, { force: true });
-  });
+  void refreshStatus();
 });
 els.restartCamofox.addEventListener("click", restartCamofox);
 els.openSettings?.addEventListener("click", openSettingsModal);

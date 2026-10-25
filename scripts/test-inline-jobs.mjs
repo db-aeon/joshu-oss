@@ -33,6 +33,7 @@ const { InlineJobs, registerInlineJobRoutes } = await import("../src/realtimeGoa
 const { RealtimeGoalBroker } = await import("../src/realtimeGoals/broker.ts");
 const { routeRealtimeGoalMessage, voiceQueueConfidenceThreshold } = await import("../src/realtimeGoals/router.ts");
 const { smsInterimAfterMs } = await import("../src/twilioSmsGateway.ts");
+const { setSmsTransportForTests } = await import("../src/twilioSmsSend.ts");
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -148,6 +149,47 @@ try {
     [{ what: "link", via: "sms", ok: false, count: 1 }],
   );
 
+  // ---- Links: the answer does not wait for the SMS delivery receipt; an undelivered
+  // SMS found later turns the "texted" fact to failed (change owner-sms-delivery-receipt) ----
+  {
+    const twilioEnv = {
+      TWILIO_ACCOUNT_SID: "AC00000000000000000000000000000000",
+      TWILIO_AUTH_TOKEN: "test",
+      TWILIO_PHONE_NUMBER: "+15550009999",
+      TWILIO_SMS_WEBHOOK_URL: "https://box.test/sms/inbound",
+      TWILIO_OWNER_CALLER: "+15550001111",
+    };
+    Object.assign(process.env, twilioEnv);
+    let open;
+    const gate = new Promise((resolve) => (open = resolve));
+    let reads = 0;
+    setSmsTransportForTests({
+      send: async () => ["SM1"],
+      status: async (sid) => {
+        reads += 1;
+        return { sid, status: "undelivered", errorCode: 30007 };
+      },
+      sleep: () => gate,
+    });
+    try {
+      res = await post(base, startBody("CA-5", "j6", 2_000, "Send me the checkout link"));
+      assert.match(res.json.answer, /I just texted you the link/);
+      assert.equal(reads, 0, "the spoken answer does not wait for the receipt");
+      assert.deepEqual(res.json.delivered.map(({ ok }) => ok), [true]);
+      open();
+      for (let i = 0; i < 50 && reads === 0; i++) await new Promise((resolve) => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      const job = await (await fetch(`${base}/${res.json.jobId}?waitMs=0`, { headers: auth })).json();
+      assert.deepEqual(
+        job.delivered.map(({ what, ok, error }) => ({ what, ok, error })),
+        [{ what: "link", ok: false, error: "twilio undelivered 30007" }],
+      );
+    } finally {
+      setSmsTransportForTests();
+      for (const name of Object.keys(twilioEnv)) delete process.env[name];
+    }
+  }
+
   // ---- Joshu restarted mid-job: the owner hears so ----
   const running = {
     id: "lost-1",
@@ -193,5 +235,6 @@ try {
   console.log("test-inline-jobs: ok");
 } finally {
   server.close();
-  await rm(temp, { recursive: true, force: true });
+  // A background state write can land while rm runs (ENOTEMPTY in CI), so retry.
+  await rm(temp, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 }

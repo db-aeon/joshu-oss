@@ -15,6 +15,7 @@ import {
   getHandoffRecord,
   getPendingHandoff,
   getPendingHandoffPinUrl,
+  handoffStatusMessage,
   handoffUrlForRecord,
   isBrowserHandoffLocked,
   setHandoffLastScan,
@@ -144,7 +145,7 @@ function sendHandoffLoginPage(
 </html>`);
 }
 
-/** Keep Camofox/CDP warm and reset cloud-browser idle while the owner is on handoff. */
+/** Keep the CDP session warm and reset cloud-browser idle while the owner is on handoff. */
 async function touchBrowserKeepalive(camofoxSession: CamofoxSessionCoordinator): Promise<void> {
   await camofoxSession.listTabs().catch(() => undefined);
   if (cloudBrowserEnabled()) touchCloudBrowser();
@@ -273,7 +274,7 @@ export function registerBrowserHandoffRoutes(
       res.status(404).json({ error: "handoff_not_found" });
       return;
     }
-    res.json({ ok: true, handoff: record });
+    res.json({ ok: true, handoff: record, message: handoffStatusMessage(record) });
   });
 
   router.post("/api/browser-handoff/:id/cancel", (req: Request, res: Response) => {
@@ -487,7 +488,7 @@ export function registerBrowserHandoffRoutes(
   });
 
   /**
-   * Fill stamped controls from the overlay. Owner values go Joshu → Camofox only.
+   * Fill stamped controls from the overlay. Owner values go Joshu → shared browser only.
    * Do not log req.body — it may contain passwords / OTPs / cards.
    */
   router.post("/api/browser-handoff/:id/fill-form", async (req: Request, res: Response) => {

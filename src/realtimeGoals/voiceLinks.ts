@@ -1,4 +1,4 @@
-import { ownerSmsPhone, sendSms, twilioSmsGatewayEnabled } from "../twilioSmsSend.js";
+import { ownerSmsPhone, sendSmsCheckReceiptLater, twilioSmsGatewayEnabled } from "../twilioSmsSend.js";
 
 /**
  * Links cannot be delivered by voice: read aloud they are useless, and a
@@ -10,7 +10,7 @@ import { ownerSmsPhone, sendSms, twilioSmsGatewayEnabled } from "../twilioSmsSen
 const URL_PATTERN = /https?:\/\/[^\s<>"'`)\]]+/gi;
 /** Trailing punctuation that belongs to the sentence, not the URL. */
 const URL_TRAILING_PUNCTUATION = /[.,;:!?]+$/;
-/** Label-only lines left behind once their URL is removed ("Finish and pay here:"). */
+/** Label-only lines left behind once their URL is removed ("Open the live browser here:"). */
 const DANGLING_LINK_LABEL = /^[^\n]{0,80}\b(here|link|url|below)\s*:?\s*$/i;
 
 export function extractLinks(text: string): string[] {
@@ -50,22 +50,35 @@ function linkSmsBody(links: string[], context?: string): string {
 
 export type OwnerTextResult = { texted: boolean; error?: string };
 
+/** Runs when a carrier rejects an SMS that textOwner reported as texted. */
+export type OnUndeliveredText = (detail: string) => void | Promise<void>;
+
 /** Text links to the owner's phone. Never throws; returns whether it went out. */
 export async function textLinksToOwner(
   projectRoot: string,
   links: string[],
   context?: string,
+  onUndelivered?: OnUndeliveredText,
 ): Promise<OwnerTextResult> {
   if (links.length === 0) return { texted: false, error: "no links" };
-  return textOwner(projectRoot, linkSmsBody(links, context));
+  return textOwner(projectRoot, linkSmsBody(links, context), onUndelivered);
 }
 
-/** Text arbitrary content to the owner (e.g. an answer finished after hang-up). */
-export async function textOwner(projectRoot: string, body: string): Promise<OwnerTextResult> {
+/**
+ * Text arbitrary content to the owner (e.g. an answer finished after hang-up).
+ * Returns when Twilio accepts the SMS, so a live call does not wait. The
+ * delivery receipt is read in the background; `onUndelivered` runs when a
+ * carrier rejects the SMS, so the caller can correct its record.
+ */
+export async function textOwner(
+  projectRoot: string,
+  body: string,
+  onUndelivered?: OnUndeliveredText,
+): Promise<OwnerTextResult> {
   if (!body.trim()) return { texted: false, error: "empty body" };
   if (!twilioSmsGatewayEnabled(projectRoot)) return { texted: false, error: "SMS not configured" };
   try {
-    await sendSms(ownerSmsPhone(projectRoot), body.trim());
+    await sendSmsCheckReceiptLater(ownerSmsPhone(projectRoot), body.trim(), onUndelivered);
     return { texted: true };
   } catch (error) {
     const message = (error as Error).message;

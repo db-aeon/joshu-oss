@@ -10,7 +10,7 @@ import { writeJoshuIdentity } from "../joshuIdentity.js";
 import type { OnboardingDraft } from "./types.js";
 import { DEFAULT_ONBOARDING_STATE, type OnboardingState } from "./types.js";
 import { syncEaCronJobs } from "./eaCronJobs.js";
-import { resolveEaCronDraft } from "./resyncEaCronFromBox.js";
+import { syncBoxCronJobs } from "./boxCronSync.js";
 import { bootstrapEaSchedulingKanban } from "./eaKanbanBootstrap.js";
 import {
   EA_LAYOUT_VERSION,
@@ -275,14 +275,6 @@ export async function completeOnboarding(
     console.warn(`[onboarding] reconcile skipped: ${(err as Error).message}`);
   }
 
-  try {
-    const { syncOnboardingReconcileCron } = await import("./onboardingCronJobs.js");
-    const onboardingCron = await syncOnboardingReconcileCron(projectRoot);
-    console.info(`[onboarding] onboarding reconcile cron: ${onboardingCron}`);
-  } catch (err) {
-    console.warn(`[onboarding] onboarding reconcile cron sync skipped: ${(err as Error).message}`);
-  }
-
   const cronResult = await syncEaCronJobs(resolved);
   if (!cronResult.ok) {
     console.warn(`[onboarding] EA cron sync skipped: ${cronResult.error ?? "unknown error"}`);
@@ -293,24 +285,8 @@ export async function completeOnboarding(
     );
   }
 
-  try {
-    const { syncProactiveCron } = await import("../proactive/proactiveCronJobs.js");
-    const proactiveCron = await syncProactiveCron(projectRoot);
-    console.info(`[onboarding] proactive cron: ${proactiveCron}`);
-  } catch (err) {
-    console.warn(`[onboarding] proactive cron sync skipped: ${(err as Error).message}`);
-  }
-
-  try {
-    const draft = resolveEaCronDraft(projectRoot);
-    if (draft) {
-      const { syncProactiveHygieneCron } = await import("../proactive/hygieneCronJobs.js");
-      const proactiveHygieneCron = await syncProactiveHygieneCron(draft);
-      console.info(`[onboarding] proactive hygiene cron: ${proactiveHygieneCron}`);
-    }
-  } catch (err) {
-    console.warn(`[onboarding] proactive hygiene cron sync skipped: ${(err as Error).message}`);
-  }
+  // Onboarding reconcile, proactive tick, and proactive hygiene. The Joshu API also runs this at start.
+  await syncBoxCronJobs(projectRoot, "[onboarding]");
 
   return { filesRoot, projectsRoot: projects };
 }

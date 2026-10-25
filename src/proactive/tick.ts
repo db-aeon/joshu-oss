@@ -1,7 +1,7 @@
 import { readAgentProfile } from "../nylas/profile.js";
 import { resolveJoshuFilesPaths } from "../joshuFilesPaths.js";
+import { ownerTextChannelFor } from "../ownerTextChannel.js";
 import { deliverProactiveNudge } from "./delivery.js";
-import { pickTopClarifyCandidate, clarifyToCandidate } from "./clarifyQueue.js";
 import { pickTopStaleReviewCandidate } from "./hygieneRecord.js";
 import { isOwnerAvailableForProactive } from "./meetingWindow.js";
 import { pickTopProactiveCandidate } from "./sweep.js";
@@ -11,6 +11,7 @@ import {
   readProactiveState,
   rolloverProactiveState,
   writeProactiveState,
+  rememberRefBoard,
 } from "./state.js";
 import type { ProactiveCandidate, ProactiveLastNudge, ProactiveState, ProactiveTickResult } from "./types.js";
 import { isWithinProactiveWindow } from "./workingHours.js";
@@ -67,23 +68,14 @@ export async function runProactiveTick(opts: RunProactiveTickOpts = {}): Promise
     return { ok: true, action: "skipped", reason: cap.reason ?? "daily_cap" };
   }
 
-  let candidate: ProactiveCandidate | null = null;
-  let nudgeKind: "clarify" | "nudge" | "stale_review" = "nudge";
-
-  const clarify = pickTopClarifyCandidate(state);
-  if (clarify) {
-    candidate = clarifyToCandidate(clarify);
-    nudgeKind = "clarify";
-  }
-
-  if (!candidate) {
-    candidate = await pickTopProactiveCandidate({
-      filesRoot: paths.filesRoot,
-      projectRoot,
-      state,
-      today,
-    });
-  }
+  // An owner question from the proactive sweep first, then a stale-review question.
+  let nudgeKind: "nudge" | "stale_review" = "nudge";
+  let candidate: ProactiveCandidate | null = await pickTopProactiveCandidate({
+    filesRoot: paths.filesRoot,
+    projectRoot,
+    state,
+    today,
+  });
 
   if (!candidate) {
     const stale = pickTopStaleReviewCandidate(state);
@@ -96,6 +88,13 @@ export async function runProactiveTick(opts: RunProactiveTickOpts = {}): Promise
   if (!candidate) {
     writeProactiveState(state, projectRoot);
     return { ok: true, action: "skipped", reason: "no_candidates" };
+  }
+
+  // No owner mobile and no email route: skip before the meeting check and the compose,
+  // so a box without a route does not spend a Hermes turn each hour.
+  if (!ownerTextChannelFor(projectRoot)) {
+    writeProactiveState(state, projectRoot);
+    return { ok: true, action: "skipped", reason: "no_delivery_channel", candidate };
   }
 
   const meeting = await isOwnerAvailableForProactive(projectRoot);
@@ -154,7 +153,7 @@ export function applySentNudge(
   const lastOnboardingNudgeDate =
     nudge.board === "ea-onboarding" && today ? today : state.lastOnboardingNudgeDate ?? null;
   return {
-    ...state,
+    ...rememberRefBoard(state, nudge.taskId, nudge.board),
     sentCount: state.sentCount + 1,
     lastNudge: nudge,
     feedbackPending: true,

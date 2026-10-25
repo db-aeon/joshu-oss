@@ -38,6 +38,7 @@ Requires network once. Applies Joshu patches automatically:
 - `scripts/patch-last30days-xquik-relay.py` — optional xquik.com HTTP proxy (fleet relay installs)
 - `scripts/patch-last30days-watch-window.py` — watchlist companion uses `--days=7` (not 90d `--quick`)
 - `scripts/patch-last30days-share-dir.py` — `store.py` honors `LAST30DAYS_SHARE_DIR` (Aroz user-tree DB)
+- `scripts/patch-last30days-openrouter-data-collection.py` — OpenRouter planner, rerank, and Sonar requests send `provider.data_collection: "deny"` (no-training routing; see [`hermes-integration.md`](hermes-integration.md#no-training-routing))
 
 Re-apply after manual skill sync:
 
@@ -113,7 +114,7 @@ Setting `LAST30DAYS_NATIVE_SEARCH=1` tells the engine to **skip** keyless `groun
 
 **Joshu desktop app:** subprocess only — no host WebSearch in the loop. The runner **clears** `LAST30DAYS_NATIVE_SEARCH` and passes `--web-backend=exa` when `EXA_API_KEY` is on the box, else `--web-backend=keyless`. Native search must stay off here; otherwise the engine would skip web with nothing to replace it.
 
-**Joshu jChat / Telegram:** do **not** enable upstream’s `/last30days` skill (it assumes host WebSearch). Product path is the **`joshu-last30days` plugin** (callable tools) plus bundled skills **`last30days-chat`** (app closed) and **`last30days-gui`** (app window open). Hermes web browsing stays the **`browser` toolset** (Camofox).
+**Joshu jChat / Telegram:** do **not** enable upstream’s `/last30days` skill (it assumes host WebSearch). Product path is the **`joshu-last30days` plugin** (callable tools) plus bundled skills **`last30days-chat`** (app closed) and **`last30days-gui`** (app window open). Hermes web browsing stays the **`browser` toolset** (CDP to the shared browser).
 
 | Layer | Role |
 |-------|------|
@@ -172,7 +173,7 @@ Ships in `npm run build:deploy` → image includes `dist/last30days-app/` and `a
 - `dist/last30days/` (server routes + runner)
 - Surgical **`server.js`** patch — add `registerLast30DaysRoutes` import + call (do **not** rsync a dev-built `server.js` over the whole host `dist/`)
 - `dist/last30days-app/` → `arozos/subservice/last30days/app/` (built UI assets)
-- `integrations/last30days-skill/` snapshot **baked into the image** (`vps:predeploy` runs `sync-last30days-skill.sh`). Compose does **not** bind-mount it — a gitignored empty host dir used to shadow the engine and 400 Research. A second copy lives at `/opt/joshu/.image/last30days-skill` as a fallback. If Research 400s `engine missing`, see [troubleshooting #19b3](vps-sandbox/troubleshooting-and-lessons.md).
+- `integrations/last30days-skill/` snapshot **baked into the image** (`vps:predeploy` runs `sync-last30days-skill.sh`). Compose does **not** bind-mount it — a gitignored empty host dir used to shadow the engine and 400 Research. A second copy lives at `/opt/joshu/.image/last30days-skill` as a fallback. If Research 400s `engine missing`, see troubleshooting #19b3.
 - **`LAST30DAYS_PYTHON`** — engine requires **Python ≥ 3.12**. Image **0.1.39+** installs via `uv python install 3.12` at `/opt/joshu/.local/python312/bin/python3.12` (container `ENV`). Older boxes: set the same path in `/etc/joshu/instance.env` after manual uv install.
 - Recreate `joshu-stack`; hard-refresh ArozOS desktop
 

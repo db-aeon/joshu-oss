@@ -33,33 +33,6 @@ See [hermes-integration.md](hermes-integration.md) for the patch inventory.
 
 ---
 
-## Camofox browser (HITL)
-
-| | |
-|--|--|
-| **Upstream** | [jo-inc/camofox-browser](https://github.com/jo-inc/camofox-browser) (GHCR) |
-| **Pin** | `camofoxBase` digest in `deploy/RELEASE.json` |
-| **Joshu changes** | `scripts/patch-camofox-single-tab.mjs` applied at image build and local container create |
-
-See [hitl-camofox-notes.md](hitl-camofox-notes.md).
-
----
-
-## noVNC (jWeb / handoff client)
-
-| | |
-|--|--|
-| **Upstream** | [novnc/noVNC](https://github.com/novnc/noVNC) |
-| **Pin** | **1.7.0** (`public/vendor/novnc/VERSION`) |
-| **License** | Mozilla Public License 2.0 (`public/vendor/novnc/LICENSE.txt`) |
-| **In this repo** | `public/vendor/novnc/` (`core/` + `vendor/pako`) |
-| **Refresh** | `node scripts/sync-novnc-public.mjs --fetch` |
-
-Joshu serves the JS library. The RFB WebSocket still terminates on Camofox
-websockify (`x11vnc` + Debian `novnc`/`python3-websockify` apt packages).
-
----
-
 ## Excalidraw (jWhiteboard)
 
 | | |

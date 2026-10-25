@@ -6,7 +6,7 @@
  */
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { mock } from "node:test";
@@ -19,6 +19,9 @@ import {
   DEFAULT_OWNER_PREFS,
   MISS_BACKOFF_MS,
   planOwnerDeliveries,
+  SMS_RECEIPT_TIMEOUT_MS,
+  SMS_STATUS_POLL_MS,
+  smsDeliveryVerdict,
 } from "../src/realtimeGoals/outboxPolicy.ts";
 import {
   deterministicDeliveryCommand,
@@ -159,6 +162,57 @@ try {
   // Owner texting overrides a jChat surface? No — surfaces stay on their surface.
   assert.equal(plan([item("j", { origin: { channel: "jchat", sessionKey: "joshu-hermes-chat:x" } })], texting)[0].type, "surface");
 
+  // ---- SMS delivery receipt (fleet audit 2026-10-10) ----
+  const st = (status, errorCode) => ({ status, ...(errorCode ? { errorCode } : {}) });
+  const early = T0 + 30_000;
+  const late = T0 + SMS_RECEIPT_TIMEOUT_MS;
+  assert.deepEqual(smsDeliveryVerdict([st("delivered"), st("read")], T0, early), { kind: "delivered" });
+  assert.deepEqual(smsDeliveryVerdict([st("delivered"), st("undelivered", 30034)], T0, early), {
+    kind: "undelivered",
+    detail: "twilio undelivered 30034",
+  });
+  assert.deepEqual(smsDeliveryVerdict([st("failed", 30007)], T0, late), { kind: "undelivered", detail: "twilio failed 30007" });
+  assert.deepEqual(smsDeliveryVerdict([st("sent"), st("delivered")], T0, early), { kind: "pending" });
+  assert.deepEqual(smsDeliveryVerdict([st("queued")], T0, early), { kind: "pending" });
+  assert.deepEqual(smsDeliveryVerdict([undefined], T0, early), { kind: "pending" });
+  // No receipt after the timeout: `sent` is heard, anything else is a failed send.
+  assert.deepEqual(smsDeliveryVerdict([st("sent"), st("delivered")], T0, late), { kind: "sent" });
+  assert.deepEqual(smsDeliveryVerdict([st("sent"), st("sending")], T0, late), { kind: "unconfirmed" });
+  assert.deepEqual(smsDeliveryVerdict([st("sent"), undefined], T0, late), { kind: "unconfirmed" });
+  // A pending SMS holds the item: no second SMS, no callback.
+  const smsPending = {
+    sids: ["SM1"],
+    sentAt: iso(T0),
+    checkAt: iso(T0 + 3600_000),
+    address: smsOrigin,
+    text: "x",
+  };
+  assert.deepEqual(plan([item("p", { smsPending })])[0], {
+    type: "wait",
+    itemId: "p",
+    reason: "sms_pending",
+    until: T0 + 3600_000,
+  });
+  // After an undelivered SMS the item is never texted again; it takes the next route.
+  const rejected = { at: iso(T0), route: "sms", outcome: "undelivered", detail: "twilio undelivered 30034" };
+  const missedRejected = item("mr", {
+    attempts: [{ at: iso(T0), route: "voice", outcome: "voicemail_left" }, rejected],
+  });
+  assert.deepEqual(plan([missedRejected]), [{ type: "call", itemIds: ["mr"], reason: "due" }]);
+  assert.equal(plan([missedRejected], backoff)[0].type, "wait");
+  assert.equal(plan([missedRejected], backoff)[0].reason, "call_backoff");
+  assert.equal(plan([missedRejected], { consecutiveMisses: 2 })[0].type, "wait");
+  assert.equal(plan([missedRejected], { consecutiveMisses: 2 })[0].reason, "phone_unreachable");
+  assert.equal(plan([missedRejected], undefined, { window: outside })[0].reason, "quiet_hours");
+  assert.equal(plan([missedRejected], texting)[0].type, "call", "owner texting by SMS does not bring SMS back");
+  assert.equal(plan([missedRejected], undefined, { caps: { voice: false } })[0].reason, "sms_undelivered");
+  assert.equal(plan([item("sr", { origin: smsOrigin, attempts: [rejected] })])[0].reason, "sms_undelivered");
+  // A failed send (not a carrier rejection) is texted again after the backoff.
+  const apiFailed = item("af", {
+    attempts: [{ at: iso(T0), route: "voice", outcome: "voicemail_left" }, { at: iso(T0), route: "sms", outcome: "failed" }],
+  });
+  assert.equal(plan([apiFailed])[0].reason, "missed_call");
+
   // ---- Delivery commands ----
   const delivery = (text) => {
     const decision = deterministicDeliveryCommand(text);
@@ -245,6 +299,15 @@ try {
   const first = await outbox.upsertForGoal("g1", "completed", "Result v1");
   assert.equal(first.created, true);
   assert.equal((await outbox.upsertForGoal("g1", "completed", "Result v1")).created, false, "same content is not re-enqueued");
+  // The broker re-publishes a blocked goal's question every tick (2026-10-24):
+  // the repeat must not rewrite state.json, or File Brain reindexes nonstop.
+  const stateFile = path.join(temp, "state", "state.json");
+  const beforeRepeat = { text: await readFile(stateFile, "utf8"), mtimeMs: (await stat(stateFile)).mtimeMs };
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  await outbox.upsertForGoal("g1", "completed", "Result v1");
+  await store.transaction(() => ({ result: undefined, changed: true }));
+  assert.equal(await readFile(stateFile, "utf8"), beforeRepeat.text, "a repeat publish leaves state.json as it was");
+  assert.equal((await stat(stateFile)).mtimeMs, beforeRepeat.mtimeMs, "an unchanged state is not written again");
   const second = await outbox.upsertForGoal("g1", "completed", "Result v2");
   assert.equal(second.created, true);
   assert.equal((await outbox.get(first.item.id)).state, "superseded", "new content supersedes unheard old content");
@@ -259,6 +322,58 @@ try {
   await outbox.recordSend(second.item.id, "sms", { ok: true });
   assert.equal((await outbox.get(second.item.id)).state, "heard");
   assert.equal((await outbox.get(second.item.id)).heard.evidence, "channel_delivered");
+
+  // SMS accepted by Twilio: the item waits for the delivery receipt.
+  const sent = { address: smsOrigin, text: "Question about it" };
+  const smsItem = async (id) => {
+    await store.insert(goalRecord(id));
+    const created = (await outbox.upsertForGoal(id, "blocked", `Question ${id}`)).item;
+    await outbox.claim([created.id], "sms", 60_000);
+    await outbox.recordSend(created.id, "sms", { ok: true, pendingIds: ["SMa", "SMb"] }, sent);
+    return created.id;
+  };
+  const deliveredId = await smsItem("sms-delivered");
+  let pendingItem = await outbox.get(deliveredId);
+  assert.equal(pendingItem.state, "ready");
+  assert.equal(pendingItem.lease, undefined);
+  assert.deepEqual(pendingItem.smsPending.sids, ["SMa", "SMb"]);
+  assert.equal(pendingItem.attempts.at(-1).outcome, "pending");
+  assert.equal(pendingItem.attempts.at(-1).providerId, "SMa,SMb");
+  assert.equal(await outbox.settleSms(deliveredId, { kind: "pending" }), undefined);
+  pendingItem = await outbox.get(deliveredId);
+  assert.ok(Date.parse(pendingItem.smsPending.checkAt) > Date.now() + SMS_STATUS_POLL_MS - 5_000, "next status read later");
+  const heardSms = await outbox.settleSms(deliveredId, { kind: "delivered" });
+  assert.equal(heardSms.text, sent.text);
+  assert.equal(heardSms.address.replyAddress, smsOrigin.replyAddress);
+  pendingItem = await outbox.get(deliveredId);
+  assert.equal(pendingItem.state, "heard");
+  assert.deepEqual(pendingItem.heard.via, "sms");
+  assert.equal(pendingItem.heard.evidence, "channel_delivered");
+  assert.equal(pendingItem.smsPending, undefined);
+
+  const undeliveredId = await smsItem("sms-undelivered");
+  assert.equal(await outbox.settleSms(undeliveredId, { kind: "undelivered", detail: "twilio undelivered 30034" }), undefined);
+  const undeliveredItem = await outbox.get(undeliveredId);
+  assert.equal(undeliveredItem.state, "ready", "an undelivered SMS leaves the item open");
+  assert.equal(undeliveredItem.heard, undefined);
+  assert.equal(undeliveredItem.smsPending, undefined);
+  assert.deepEqual(
+    { route: undeliveredItem.attempts.at(-1).route, outcome: undeliveredItem.attempts.at(-1).outcome, detail: undeliveredItem.attempts.at(-1).detail },
+    { route: "sms", outcome: "undelivered", detail: "twilio undelivered 30034" },
+  );
+
+  const sentId = await smsItem("sms-sent");
+  assert.ok(await outbox.settleSms(sentId, { kind: "sent" }));
+  assert.equal((await outbox.get(sentId)).heard.evidence, "sms_sent");
+  assert.equal((await outbox.get(sentId)).attempts.at(-1).detail, "no delivery receipt");
+
+  const unconfirmedId = await smsItem("sms-unconfirmed");
+  assert.equal(await outbox.settleSms(unconfirmedId, { kind: "unconfirmed" }), undefined);
+  const unconfirmed = await outbox.get(unconfirmedId);
+  assert.equal(unconfirmed.state, "ready");
+  assert.equal(unconfirmed.attempts.at(-1).outcome, "failed");
+  assert.ok(Date.parse(unconfirmed.retryAt) > Date.now(), "an SMS without a final status is sent again after the backoff");
+  for (const id of [undeliveredId, unconfirmedId]) await outbox.markHeard([id], "voice", "transcript_coverage");
 
   // Callback batch → voicemail → missed, backoff, items back to ready.
   await store.insert(goalRecord("g2"));
@@ -496,6 +611,114 @@ try {
   assert.equal(texts.length, 1, "only the missed result was texted");
   const spokenTitles = calls.flatMap((call) => call.titles);
   assert.equal(new Set(spokenTitles).size, spokenTitles.length, "no result offered on two callbacks");
+
+  mock.timers.reset();
+
+  // ---- Replay: box darien 2026-10-09 — two voicemails, SMS undelivered (30034) ----
+  await rm(path.join(temp, "state"), { recursive: true, force: true });
+  mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-10-09T17:40:00Z") });
+  const smsSends = [];
+  const darienCalls = [];
+  const delivered = [];
+  const smsStatuses = new Map();
+  const darienSenders = {
+    capabilities: () => ({ voice: true, sms: true }),
+    callWindow: async () => ({ ok: true, civilHours: true }),
+    sendText: async (route, _address, text) => {
+      const sids = [1, 2].map((part) => `SM-${smsSends.length + 1}-${part}`);
+      smsSends.push({ route, text, sids });
+      return { ok: true, pendingIds: sids };
+    },
+    smsStatus: async (sid) => smsStatuses.get(sid) ?? { status: "sent" },
+    enqueueSurface: async () => ({ ok: true }),
+    placeCallback: async (callBatch) => {
+      const callSid = `CA-d-${darienCalls.length + 1}`;
+      darienCalls.push({ batchId: callBatch.id, callSid, items: callBatch.items.length });
+      return { ok: true, callSid };
+    },
+    onTextDelivered: async (entry, route) => {
+      delivered.push({ id: entry.id, route });
+    },
+  };
+  const darien = new RealtimeGoalBroker(process.cwd(), undefined, {
+    outboxSenders: () => darienSenders,
+    kanbanBridge: async () => ({ success: true }),
+  });
+  const pass = async (target) => {
+    mock.timers.setTime(Date.parse(target));
+    await darien.dispatchOutbox();
+  };
+  const voicemail = async (call) => {
+    await darien.recordBatchCallOutcome(call.batchId, call.callSid, "voicemail");
+    await darien.recordBatchCallStatus(call.batchId, "completed", call.callSid);
+  };
+  await darien.store.insert(goalRecord("darien-phone", { status: "blocked", lastBlockReason: "Which number?" }));
+  const question = (await darien.ownerOutbox.upsertForGoal("darien-phone", "blocked", "Which number should I use?")).item;
+  await pass("2026-10-09T17:43:00Z");
+  assert.equal(darienCalls.length, 1, "first callback");
+  await voicemail(darienCalls[0]);
+  // Missed callback → the question by SMS; Twilio accepted it.
+  await pass("2026-10-09T17:44:00Z");
+  assert.equal(smsSends.length, 1);
+  assert.equal((await darien.ownerOutbox.get(question.id)).state, "ready", "accepted is not heard");
+  // While the SMS is pending: no second SMS and no callback, even after the miss backoff.
+  await pass("2026-10-09T17:44:10Z");
+  await pass("2026-10-09T17:50:00Z");
+  assert.equal(smsSends.length, 1);
+  assert.equal(darienCalls.length, 1);
+  // Carrier rejects both parts (unregistered A2P number).
+  for (const sid of smsSends[0].sids) smsStatuses.set(sid, { status: "undelivered", errorCode: 30034 });
+  await pass("2026-10-09T17:50:20Z");
+  let open = await darien.ownerOutbox.get(question.id);
+  assert.equal(open.state, "ready", "the owner never saw the question: the item stays open");
+  assert.equal(open.attempts.at(-1).outcome, "undelivered");
+  assert.equal(open.attempts.at(-1).detail, "twilio undelivered 30034");
+  assert.equal(delivered.length, 0, "no thread record for an undelivered SMS");
+  // Next route: the callback rules — not during the 10 min backoff after the first miss.
+  await pass("2026-10-09T17:51:00Z");
+  assert.equal(darienCalls.length, 1);
+  assert.equal(smsSends.length, 1);
+  await pass("2026-10-09T17:56:00Z");
+  assert.equal(darienCalls.length, 2, "second callback instead of a second SMS");
+  await voicemail(darienCalls[1]);
+  // Two misses: phone unreachable, SMS rejected → the item waits; no SMS ever again.
+  await pass("2026-10-09T18:30:00Z");
+  await pass("2026-10-09T19:30:00Z");
+  assert.equal(smsSends.length, 1, "an item with an undelivered SMS is not texted again");
+  assert.equal(darienCalls.length, 2);
+  open = await darien.ownerOutbox.get(question.id);
+  assert.equal(open.state, "ready");
+  // The owner writes in web chat: misses reset, and the callback rules call again.
+  await darien.ownerOutbox.noteOwnerActivity({ channel: "jchat", sessionKey: "joshu-hermes-chat:owner" });
+  await pass("2026-10-09T19:31:00Z");
+  assert.equal(darienCalls.length, 3, "owner contact brings the callback back");
+  // The next unlocked call offers the question.
+  await darien.recordBatchCallStatus(darienCalls[2].batchId, "completed", darienCalls[2].callSid);
+  await darien.ownerOutbox.setActiveCall("CA-in-darien");
+  assert.deepEqual((await darien.ownerOutbox.pendingForCall("CA-in-darien")).map((entry) => entry.id), [question.id]);
+  await darien.ownerOutbox.endActiveCall("CA-in-darien");
+
+  // Delivered SMS → heard, recorded on the thread once.
+  await darien.store.insert(goalRecord("darien-sms", { origin: { ...smsOrigin, messageId: "src-darien-sms" } }));
+  const answer = (await darien.ownerOutbox.upsertForGoal("darien-sms", "completed", "Done.")).item;
+  await pass("2026-10-09T19:40:00Z");
+  assert.equal(smsSends.length, 2);
+  for (const sid of smsSends[1].sids) smsStatuses.set(sid, { status: "delivered" });
+  await pass("2026-10-09T19:40:20Z");
+  assert.equal((await darien.ownerOutbox.get(answer.id)).heard.evidence, "channel_delivered");
+  assert.deepEqual(delivered, [{ id: answer.id, route: "sms" }]);
+
+  // No receipt: status `sent` for 10 minutes → heard as `sms_sent`.
+  await darien.store.insert(goalRecord("darien-noreceipt", { origin: { ...smsOrigin, messageId: "src-darien-nr" } }));
+  const quiet = (await darien.ownerOutbox.upsertForGoal("darien-noreceipt", "completed", "Done too.")).item;
+  await pass("2026-10-09T20:00:00Z");
+  assert.equal(smsSends.length, 3);
+  await pass("2026-10-09T20:05:00Z");
+  assert.equal((await darien.ownerOutbox.get(quiet.id)).state, "ready", "still waiting for a receipt");
+  await pass("2026-10-09T20:10:30Z");
+  assert.equal((await darien.ownerOutbox.get(quiet.id)).heard.evidence, "sms_sent");
+  assert.equal(smsSends.length, 3, "no resend");
+  assert.equal(delivered.length, 2);
 
   mock.timers.reset();
   console.log("test-owner-outbox: ok");

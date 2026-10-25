@@ -220,7 +220,12 @@ def pre_llm_call(session_id: str = "", platform: str = "", **_kwargs):
         **({"sessionId": session_id} if session_id else {}),
     }
     try:
-        result = _post("/api/realtime-goals/context", {"origin": origin}, timeout=3.0)
+        # The turn answers the owner: the context can carry the setup mention (change owner-setup-board).
+        result = _post(
+            "/api/realtime-goals/context",
+            {"origin": origin, "setupMention": True},
+            timeout=3.0,
+        )
     except Exception as error:
         print(f"[joshu-realtime-goals] context fetch failed: {error}", file=sys.stderr)
         return None

@@ -10,7 +10,13 @@ import { readAgentProfile, type NylasAgentProfile } from "../nylas/profile.js";
 import { resolveOwnerTimezone } from "../ownerLocalTime.js";
 import { readProactiveState } from "../proactive/state.js";
 import type { ProactivePreferences } from "../proactive/types.js";
-import { normalizePhone, ownerSmsPhone, sendSms, twilioSmsGatewayEnabled } from "../twilioSmsSend.js";
+import {
+  fetchSmsStatus,
+  normalizePhone,
+  ownerSmsPhone,
+  sendSms,
+  twilioSmsGatewayEnabled,
+} from "../twilioSmsSend.js";
 import type { RealtimeGoalBroker } from "./broker.js";
 import {
   nextRealtimeGoalCallbackWindow,
@@ -75,8 +81,9 @@ export function createOwnerOutboxSenders(
             ? address.replyAddress.trim()
             : ownerSmsPhone(projectRoot);
         if (!to) return { ok: false, error: "owner mobile not configured" };
-        await sendSms(to, text);
-        return { ok: true };
+        // Twilio accepted the parts; the dispatcher waits for the delivery receipt.
+        const sids = await sendSms(to, text);
+        return sids.length > 0 ? { ok: true, pendingIds: sids } : { ok: false, error: "empty SMS" };
       }
       const sent =
         route === "slack"
@@ -93,6 +100,8 @@ export function createOwnerOutboxSenders(
             });
       return { ok: sent.delivered, providerId: sent.providerId, error: sent.error };
     },
+
+    smsStatus: (sid) => fetchSmsStatus(sid),
 
     async enqueueSurface(item) {
       if (!item.goalId) return { ok: false, error: "surface delivery needs a goal session" };

@@ -7,11 +7,11 @@ How the public **[joshu-oss](https://github.com/db-aeon/joshu-oss)** tree and th
 | Repo | Role |
 |------|------|
 | **joshu-oss** | **Canonical AGPL** — community PRs, self-host image (`joshu-oss`), public docs |
-| **joshu** (this repo) | **Fleet superset** — AGPL copy + `proprietary/`, `vendor/`, `docs/`, branded design pack |
+| **joshu** (this repo) | **Fleet superset** — AGPL copy + `proprietary/`, `vendor/`, `docs/Joshu-SOP`, branded design pack |
 
-**Rule:** Shared engine, deploy scripts, vanilla overlays, and generic docs are edited in **joshu-oss** first. Fleet picks them up with [`scripts/sync-from-oss.sh`](../scripts/sync-from-oss.sh).
+**Rule:** Shared engine, deploy scripts, vanilla overlays, and generic docs are edited in **joshu-oss** first. Fleet picks them up with `scripts/sync-from-oss.sh`.
 
-Fleet-only work stays here: `proprietary/`, `vendor/arozos`, `arozos/web-overlays-vanilla/` (paper shell), `docs/`, control-plane integration, learning-loop scripts.
+Fleet-only work stays here: `proprietary/`, `vendor/arozos`, `arozos/web-overlays-vanilla/` (paper shell), `docs/Joshu-SOP`, `docs/releases`, `openspec/`, `marketing/`, the agent rules (`AGENTS.md` and `CLAUDE.md` files), control-plane integration, learning-loop scripts.
 
 ## Why `git merge` does not work
 
@@ -23,7 +23,7 @@ Running `git merge oss/main` fails with:
 fatal: refusing to merge unrelated histories
 ```
 
-**Fix (2026-06-30):** [`scripts/sync-from-oss.sh`](../scripts/sync-from-oss.sh) extracts `oss/main` with `git archive` and **rsyncs** into fleet — the inverse of `prepare-oss-snapshot.sh`, preserving fleet-only paths.
+**Fix (2026-06-30):** `scripts/sync-from-oss.sh` extracts `oss/main` with `git archive` and **rsyncs** into fleet — the inverse of `prepare-oss-snapshot.sh`, preserving fleet-only paths.
 
 ## Day-to-day workflow
 
@@ -75,11 +75,15 @@ The script adds `oss` → `https://github.com/db-aeon/joshu-oss.git` if missing,
 | Fleet → OSS | `prepare-oss-snapshot.sh` + `oss-doc-sanitize.sh` | Full fleet docs are copied, fleet-only trees removed, links/paths rewritten for self-host |
 | OSS → Fleet | **not synced** | `sync-from-oss.sh` excludes `docs/` entirely |
 
-**Editing docs:** change fleet `docs/` (or `*.oss.md` indexes) here, then publish to OSS with `prepare-oss-snapshot.sh`. Community PRs that land only in **joshu-oss** need a **manual backport** of substantive edits into fleet canon — do not blind-rsync OSS docs into fleet.
+**Public twins:** a file `<name>.oss.md` anywhere in `docs/` replaces `<name>.md` in the OSS tree. The doc indexes and the self-host chapters of the user manual use this.
+
+**Release notes:** `docs/releases/` in joshu-oss holds the OSS release notes (for example `0.1.47-0.1.59.md`), written directly in joshu-oss. The fleet `docs/releases/` stays private, and the snapshot leaves the OSS folder alone.
+
+**Editing docs:** change fleet `docs/` (or a `*.oss.md` twin) here, then publish to OSS with `prepare-oss-snapshot.sh`. Community PRs that land only in **joshu-oss** need a **manual backport** of substantive edits into fleet canon — do not blind-rsync OSS docs into fleet.
 
 **Local image / code updates:** `bash scripts/sync-from-oss.sh` is safe for code and deploy pins; fleet docs stay untouched.
 
-Full exclude list: [`scripts/sync-from-oss.sh`](../scripts/sync-from-oss.sh).
+Full exclude list: `scripts/sync-from-oss.sh`.
 
 ## Legacy: fleet → OSS export
 
@@ -123,5 +127,4 @@ Shared deploy fixes: **OSS first**, then `sync-from-oss.sh`, then fleet image bu
 
 - [`README.md`](../README.md) — fleet workflow summary
 - [`CONTRIBUTING.md`](../CONTRIBUTING.md) — where to open PRs
-- [`proprietary/README.md`](../proprietary/README.md) — fleet-only layer
-- [Session 2026-06-30 — image 0.1.30](vps-sandbox/session-2026-06-30-fleet-image-0.1.30-patrick.md) — bootstrap / Camofox lessons
+- `proprietary/README.md` — fleet-only layer

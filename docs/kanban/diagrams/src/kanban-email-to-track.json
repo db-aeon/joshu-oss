@@ -1,0 +1,430 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "One email: ingress task → project track",
+    "output": ".archify/sequence-kanban-email-to-track-20261006-223000/kanban-email-to-track.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/db-aeon/joshu.git",
+      "revision": "56143b5c8bd394b1046988d5196fad6701f11448",
+      "provider": "github",
+      "link_mode": "local-only"
+    }
+  },
+  "participants": [
+    {
+      "id": "mailSync",
+      "type": "backend",
+      "label": "Mail sync",
+      "sublabel": "every 10 min",
+      "sources": [
+        {
+          "path": "src/connectors/scheduler.ts",
+          "line": 25,
+          "end_line": 32,
+          "label": "10 min sync jobs"
+        },
+        {
+          "path": "src/connectors/nylas/sync.ts",
+          "line": 129,
+          "end_line": 150,
+          "label": "mirror, then triage"
+        },
+        {
+          "path": "src/connectors/paths.ts",
+          "line": 18,
+          "end_line": 30,
+          "label": "threads/ mirror path"
+        }
+      ]
+    },
+    {
+      "id": "triage",
+      "type": "backend",
+      "label": "Triage",
+      "sublabel": "dedup + classify",
+      "sources": [
+        {
+          "path": "src/ea/triageStub.ts",
+          "line": 201,
+          "end_line": 330,
+          "label": "dedup and classify"
+        },
+        {
+          "path": "src/ea/triageStub.ts",
+          "line": 102,
+          "end_line": 199,
+          "label": "noise / info / track"
+        },
+        {
+          "path": "src/ea/mailIngress.ts",
+          "line": 5,
+          "end_line": 28,
+          "label": "forward track mail"
+        }
+      ]
+    },
+    {
+      "id": "joshuApi",
+      "type": "backend",
+      "label": "Joshu API",
+      "sublabel": "mail tracks",
+      "sources": [
+        {
+          "path": "src/ea/mailCron.ts",
+          "line": 267,
+          "end_line": 320,
+          "label": "queueMailIngressTask"
+        },
+        {
+          "path": "src/ea/mailCron.ts",
+          "line": 393,
+          "end_line": 582,
+          "label": "create track, handoff"
+        },
+        {
+          "path": "src/ea/triageRoutes.ts",
+          "line": 740,
+          "end_line": 863,
+          "label": "/api/ea/mail/tracks"
+        }
+      ]
+    },
+    {
+      "id": "bridge",
+      "type": "backend",
+      "label": "Kanban bridge",
+      "sublabel": "bridge script",
+      "sources": [
+        {
+          "path": "scripts/hermes-kanban-bridge.py",
+          "line": 280,
+          "end_line": 297,
+          "label": "ensure_board"
+        },
+        {
+          "path": "scripts/hermes-kanban-bridge.py",
+          "line": 314,
+          "end_line": 422,
+          "label": "create"
+        },
+        {
+          "path": "scripts/hermes-kanban-bridge.py",
+          "line": 453,
+          "end_line": 554,
+          "label": "unblock, block, list, show"
+        }
+      ]
+    },
+    {
+      "id": "ingressBoard",
+      "type": "database",
+      "label": "Ingress board",
+      "sublabel": "ea-mail-ingress",
+      "sources": [
+        {
+          "path": "src/ea/mailTypes.ts",
+          "line": 3,
+          "end_line": 3,
+          "label": "board slug"
+        },
+        {
+          "path": "src/hermesKanbanBridge.ts",
+          "line": 108,
+          "end_line": 127,
+          "label": "EA board: assignee, ready"
+        }
+      ]
+    },
+    {
+      "id": "dispatcher",
+      "type": "messagebus",
+      "label": "Dispatcher",
+      "sublabel": "Hermes, every 60 s",
+      "sources": [
+        {
+          "path": "src/hermesApi.ts",
+          "line": 2238,
+          "end_line": 2254,
+          "label": "dispatch every 60 s"
+        }
+      ]
+    },
+    {
+      "id": "worker",
+      "type": "backend",
+      "label": "Worker",
+      "sublabel": "ingress, ea-playbook",
+      "sources": [
+        {
+          "path": "integrations/hermes/skills/executive-assistant/ea-playbook/SKILL.md",
+          "line": 118,
+          "end_line": 136,
+          "label": "ingress steps"
+        },
+        {
+          "path": "src/ea/mailCron.ts",
+          "line": 171,
+          "end_line": 214,
+          "label": "ingress task body"
+        }
+      ]
+    },
+    {
+      "id": "projectBoard",
+      "type": "database",
+      "label": "Project board",
+      "sublabel": "project-<slug>",
+      "sources": [
+        {
+          "path": "src/ea/mailTypes.ts",
+          "line": 24,
+          "end_line": 32,
+          "label": "project board slug"
+        },
+        {
+          "path": "src/ea/mailCron.ts",
+          "line": 240,
+          "end_line": 265,
+          "label": "mail_track body"
+        }
+      ]
+    }
+  ],
+  "segments": [
+    {
+      "from": 150,
+      "to": 250,
+      "label": "Intake"
+    },
+    {
+      "from": 258,
+      "to": 432,
+      "label": "Queue"
+    },
+    {
+      "from": 440,
+      "to": 618,
+      "label": "Filing"
+    },
+    {
+      "from": 626,
+      "to": 994,
+      "label": "Track"
+    }
+  ],
+  "messages": [
+    {
+      "id": "a-mirror",
+      "from": "mailSync",
+      "to": "triage",
+      "y": 180,
+      "label": "mirror, then triage",
+      "variant": "default",
+      "note": "writes connectors/mail/…/threads/<thread_id>.md"
+    },
+    {
+      "id": "a-queue",
+      "from": "triage",
+      "to": "joshuApi",
+      "y": 225,
+      "label": "queueMailIngressTask",
+      "variant": "emphasis",
+      "note": "track mail: Triage stub written"
+    },
+    {
+      "id": "a-ensure",
+      "from": "joshuApi",
+      "to": "bridge",
+      "y": 285,
+      "label": "ensure_board ×2",
+      "variant": "default",
+      "note": "ea-mail-ingress and project-<hint>"
+    },
+    {
+      "id": "a-create",
+      "from": "joshuApi",
+      "to": "bridge",
+      "y": 330,
+      "label": "create mail_ingress",
+      "variant": "emphasis",
+      "note": "assignee default · skills [ea-playbook] · key ea-mail-ingress-<id>"
+    },
+    {
+      "id": "a-ready",
+      "from": "bridge",
+      "to": "ingressBoard",
+      "y": 372,
+      "label": "task → ready",
+      "variant": "emphasis"
+    },
+    {
+      "id": "a-claim",
+      "from": "dispatcher",
+      "to": "ingressBoard",
+      "y": 405,
+      "label": "claim task",
+      "variant": "default",
+      "note": "within 60 s"
+    },
+    {
+      "id": "a-start",
+      "from": "dispatcher",
+      "to": "worker",
+      "y": 465,
+      "label": "start worker",
+      "variant": "emphasis",
+      "note": "reads mirror; files Projects/<slug>/"
+    },
+    {
+      "id": "a-list",
+      "from": "worker",
+      "to": "joshuApi",
+      "y": 510,
+      "label": "MCP mail_list_track_tasks",
+      "variant": "default",
+      "note": "GET /api/ea/mail/tracks (projectSlug, threadId)"
+    },
+    {
+      "id": "a-bridge-list",
+      "from": "joshuApi",
+      "to": "bridge",
+      "y": 550,
+      "label": "list tracks",
+      "variant": "default"
+    },
+    {
+      "id": "a-board-list",
+      "from": "bridge",
+      "to": "projectBoard",
+      "y": 580,
+      "label": "read open tasks",
+      "variant": "default"
+    },
+    {
+      "id": "a-list-result",
+      "from": "joshuApi",
+      "to": "worker",
+      "y": 608,
+      "label": "match or none",
+      "variant": "return"
+    },
+    {
+      "id": "a-handoff",
+      "from": "worker",
+      "to": "joshuApi",
+      "y": 655,
+      "label": "match: mail_handoff_track_task",
+      "variant": "emphasis",
+      "note": "POST /api/ea/mail/tracks/:id/handoff"
+    },
+    {
+      "id": "a-append",
+      "from": "joshuApi",
+      "to": "bridge",
+      "y": 700,
+      "label": "show, append_body, comment",
+      "variant": "default",
+      "note": "mail_handoff: · comment author mail-ingress"
+    },
+    {
+      "id": "a-unblock",
+      "from": "bridge",
+      "to": "projectBoard",
+      "y": 745,
+      "label": "unblock if blocked → ready",
+      "variant": "emphasis",
+      "note": "a track worker later completes or re-blocks"
+    },
+    {
+      "id": "a-create-track",
+      "from": "worker",
+      "to": "joshuApi",
+      "y": 795,
+      "label": "no match: mail_create_track_task",
+      "variant": "default",
+      "note": "POST /api/ea/mail/tracks"
+    },
+    {
+      "id": "a-track-create",
+      "from": "joshuApi",
+      "to": "bridge",
+      "y": 840,
+      "label": "create mail_track",
+      "variant": "default",
+      "note": "key ea-mail-track-<msg>"
+    },
+    {
+      "id": "a-track-block",
+      "from": "bridge",
+      "to": "projectBoard",
+      "y": 882,
+      "label": "new track → blocked",
+      "variant": "default",
+      "note": "awaiting owner or external party (no block kind)"
+    },
+    {
+      "id": "a-children",
+      "from": "worker",
+      "to": "joshuApi",
+      "y": 930,
+      "label": "optional child tasks",
+      "variant": "dashed",
+      "note": "scheduling_* → ea-scheduling · owner_reply_* → ea-owner-reply"
+    },
+    {
+      "id": "a-complete",
+      "from": "worker",
+      "to": "ingressBoard",
+      "y": 975,
+      "label": "kanban_complete → done",
+      "variant": "emphasis",
+      "note": "after stub moves to Triage/_done/"
+    }
+  ],
+  "activations": [
+    {
+      "participant": "joshuApi",
+      "from": 220,
+      "to": 850,
+      "type": "backend"
+    },
+    {
+      "participant": "worker",
+      "from": 460,
+      "to": 980,
+      "type": "backend"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Triage outcomes",
+      "items": [
+        "Dedup state: connectors/_state/mail-dedup.json",
+        "noise: skipped; info: stub written and archived",
+        "track: Triage stub plus one ea-mail-ingress task",
+        "Agent authorization is written into the task body"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Task keys",
+      "items": [
+        "Ingress task: kind mail_ingress, key ea-mail-ingress-<id>",
+        "Project track: kind mail_track, key ea-mail-track-<msg>",
+        "Both are created with assignee default and skill ea-playbook"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Optional child tasks",
+      "items": [
+        "scheduling_* only when allowed_actions includes schedule",
+        "owner_reply_* only when owner_reply_eligible is true",
+        "The ingress worker does not send mail itself"
+      ]
+    }
+  ]
+}

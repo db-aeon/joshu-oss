@@ -3,7 +3,7 @@
 # Surgical dist overlay (no rsync --delete). Does not git pull.
 #
 # Usage:
-#   bash scripts/hotpatch-realtime-goals.sh patrick
+#   bash scripts/hotpatch-realtime-goals.sh <slug>
 #   bash scripts/hotpatch-realtime-goals.sh root@<slug>.box.example.com
 set -euo pipefail
 
@@ -172,7 +172,9 @@ rm -rf /tmp/hermes-chat-realtime-goals /tmp/vr-dist-realtime-goals
 
 # Restart gateway so plugin + skills reload
 pid=$(docker exec "${CID}" python3 -c "import json,pathlib; p=pathlib.Path('/root/.hermes/gateway.pid');
-print(json.loads(p.read_text()).get('pid','') if p.is_file() else '')" 2>/dev/null || true)
+pid=str(json.loads(p.read_text()).get('pid','')) if p.is_file() else ''
+c=pathlib.Path('/proc/'+pid+'/cmdline')
+print(pid if pid and c.is_file() and b'gateway run' in c.read_bytes() else '')" 2>/dev/null || true)
 if [[ -n "${pid}" ]]; then
   docker exec "${CID}" kill "${pid}" 2>/dev/null || true
 fi

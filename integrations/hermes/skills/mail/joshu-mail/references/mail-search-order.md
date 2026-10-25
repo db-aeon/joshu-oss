@@ -85,8 +85,9 @@ When action guard is enabled, owner approves by **SMS** (Y/N) before delivery. T
 | Agent message by id | `nylas_get_message` | `GET /joshu/api/nylas/messages/:id` |
 | Agent profile (TZ, emails) | `nylas_get_profile` | `GET /joshu/api/nylas/profile` |
 | Agent calendar (read only) | `nylas_list_events`, `nylas_get_event` | `GET …/nylas/events` — **writes blocked** |
-| Owner calendar create | `mcp_composio_GOOGLECALENDAR_CREATE_EVENT` | Composio MCP — see **`ea-scheduling`** |
+| Owner calendar create / move | `mcp_joshu_connectors_google_calendar_create_event` / `…_update_event` | Joshu connectors MCP (picks the calendar account) — see **`ea-scheduling`** |
 | Principal Gmail message | — | `GET /joshu/api/connectors/mail/gmail/messages/:id` |
+| Principal Gmail attachment | `gmail_fetch_attachment` | `POST /joshu/api/connectors/mail/gmail/attachments/fetch` — saves to `Projects/<slug>/attachments/` |
 | Principal Gmail send/reply | — | **Agent blocked** (jMail owner UI only) |
 
 **Agent send body + signature:** Pass message content in `body` (plain text or light markdown: links, bold/italic, lists). Joshu converts to HTML (clickable URLs) and appends a branded signature (companion name, `{owner}'s Joshu`, https://joshu.me) — do not include signature markup yourself.

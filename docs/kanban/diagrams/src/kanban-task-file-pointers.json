@@ -1,0 +1,456 @@
+{
+  "schema_version": 1,
+  "diagram_type": "dataflow",
+  "meta": {
+    "title": "How Kanban tasks point to files on disk",
+    "output": ".archify/dataflow-kanban-task-file-pointers-20261006-223058/kanban-task-file-pointers.html",
+    "quality_profile": "showcase",
+    "locale": "en",
+    "repository": {
+      "url": "https://github.com/db-aeon/joshu.git",
+      "revision": "56143b5c8bd394b1046988d5196fad6701f11448",
+      "provider": "github",
+      "link_mode": "local-only"
+    },
+    "viewBox": [
+      1080,
+      640
+    ]
+  },
+  "stages": [
+    {
+      "label": "Sync state"
+    },
+    {
+      "label": "Ingress task"
+    },
+    {
+      "label": "Triage + mirror"
+    },
+    {
+      "label": "Filed work"
+    },
+    {
+      "label": "State + reader"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "mirror",
+      "type": "database",
+      "label": "Mail mirror",
+      "sublabel": "<thread_id>.md",
+      "tag": "written by mail sync",
+      "stage": 2,
+      "row": 1,
+      "sources": [
+        {
+          "path": "src/connectors/paths.ts",
+          "line": 17,
+          "end_line": 28,
+          "label": "mirror folders"
+        },
+        {
+          "path": "src/connectors/paths.ts",
+          "line": 71,
+          "end_line": 74,
+          "label": "thread file name"
+        }
+      ],
+      "width": 116
+    },
+    {
+      "id": "dedup",
+      "type": "database",
+      "label": "Dedup record",
+      "sublabel": "mail-dedup.json",
+      "stage": 0,
+      "row": 1,
+      "sources": [
+        {
+          "path": "src/ea/mailDedup.ts",
+          "line": 17,
+          "end_line": 31,
+          "label": "record fields"
+        },
+        {
+          "path": "src/ea/mailDedup.ts",
+          "line": 39,
+          "end_line": 42,
+          "label": "file path"
+        }
+      ],
+      "width": 116,
+      "tag": "_state/"
+    },
+    {
+      "id": "stub",
+      "type": "database",
+      "label": "Triage stub",
+      "sublabel": "Triage/*.stub.md",
+      "tag": "moves to _done/",
+      "stage": 2,
+      "row": 0,
+      "sources": [
+        {
+          "path": "src/ea/triageStubFiles.ts",
+          "line": 5,
+          "end_line": 12,
+          "label": "stub file name"
+        },
+        {
+          "path": "src/ea/triageStub.ts",
+          "line": 63,
+          "end_line": 80,
+          "label": "stub frontmatter"
+        },
+        {
+          "path": "src/ea/triageStubFiles.ts",
+          "line": 104,
+          "end_line": 107,
+          "label": "move to _done/"
+        }
+      ],
+      "width": 116
+    },
+    {
+      "id": "ingress",
+      "type": "messagebus",
+      "label": "Ingress task",
+      "sublabel": "ea-mail-ingress",
+      "tag": "kind: mail_ingress",
+      "stage": 1,
+      "row": 1,
+      "sources": [
+        {
+          "path": "src/ea/mailCron.ts",
+          "line": 171,
+          "end_line": 186,
+          "label": "body fields"
+        },
+        {
+          "path": "src/ea/mailCron.ts",
+          "line": 302,
+          "end_line": 313,
+          "label": "create on board"
+        },
+        {
+          "path": "src/ea/mailDedup.ts",
+          "line": 248,
+          "end_line": 250,
+          "label": "idempotency key"
+        }
+      ],
+      "width": 116
+    },
+    {
+      "id": "project",
+      "type": "database",
+      "label": "Project folder",
+      "sublabel": "Projects/<slug>/",
+      "tag": "about, todo, journal",
+      "stage": 3,
+      "row": 0,
+      "sources": [
+        {
+          "path": "templates/ea/Projects/_template/about.md",
+          "line": 1,
+          "end_line": 10,
+          "label": "about.md frontmatter"
+        },
+        {
+          "path": "integrations/hermes/skills/executive-assistant/ea-playbook/SKILL.md",
+          "line": 39,
+          "end_line": 40,
+          "label": "todo + journal links"
+        }
+      ],
+      "width": 116
+    },
+    {
+      "id": "track",
+      "type": "messagebus",
+      "label": "Track task",
+      "sublabel": "project-<slug>",
+      "tag": "kind: mail_track",
+      "stage": 3,
+      "row": 1,
+      "sources": [
+        {
+          "path": "src/ea/mailCron.ts",
+          "line": 240,
+          "end_line": 265,
+          "label": "track body"
+        },
+        {
+          "path": "src/ea/mailCron.ts",
+          "line": 430,
+          "end_line": 500,
+          "label": "create + handoff append"
+        },
+        {
+          "path": "src/ea/mailTypes.ts",
+          "line": 24,
+          "end_line": 33,
+          "label": "projectBoardSlug"
+        }
+      ],
+      "width": 116
+    },
+    {
+      "id": "meeting",
+      "type": "messagebus",
+      "label": "Meeting task",
+      "sublabel": "ea-scheduling",
+      "stage": 3,
+      "row": 2,
+      "sources": [
+        {
+          "path": "src/ea/schedulingCron.ts",
+          "line": 62,
+          "end_line": 86,
+          "label": "meeting body"
+        },
+        {
+          "path": "src/ea/schedulingCron.ts",
+          "line": 375,
+          "end_line": 395,
+          "label": "ingress_handoff append"
+        }
+      ],
+      "width": 116,
+      "tag": "kind: meeting"
+    },
+    {
+      "id": "registry",
+      "type": "database",
+      "label": "Coordination registry",
+      "sublabel": "coordination-active.json",
+      "stage": 4,
+      "row": 2,
+      "sources": [
+        {
+          "path": "src/coordination/registry.ts",
+          "line": 6,
+          "end_line": 14,
+          "label": "registry file"
+        },
+        {
+          "path": "src/coordination/registry.ts",
+          "line": 32,
+          "end_line": 50,
+          "label": "scope to board + task"
+        },
+        {
+          "path": "src/ea/schedulingCron.ts",
+          "line": 280,
+          "end_line": 297,
+          "label": "register after create"
+        }
+      ],
+      "width": 140,
+      "tag": "_state/"
+    },
+    {
+      "id": "sidecar",
+      "type": "database",
+      "label": "Meeting sidecar",
+      "sublabel": "<task_id>.json",
+      "tag": "_state/meetings/",
+      "stage": 4,
+      "row": 3,
+      "sources": [
+        {
+          "path": "src/ea/schedulingCron.ts",
+          "line": 677,
+          "end_line": 681,
+          "label": "sidecar path"
+        },
+        {
+          "path": "src/ea/schedulingMeetingSidecar.ts",
+          "line": 9,
+          "end_line": 16,
+          "label": "sidecar fields"
+        }
+      ],
+      "width": 116
+    },
+    {
+      "id": "proactive",
+      "type": "backend",
+      "label": "Proactive tick",
+      "sublabel": "ranks blocked tasks",
+      "stage": 4,
+      "row": 0,
+      "sources": [
+        {
+          "path": "src/proactive/prioritize.ts",
+          "line": 11,
+          "end_line": 40,
+          "label": "about.md status"
+        },
+        {
+          "path": "src/proactive/prioritize.ts",
+          "line": 43,
+          "end_line": 77,
+          "label": "about.md urgency"
+        }
+      ],
+      "width": 116
+    }
+  ],
+  "flows": [
+    {
+      "id": "dedup-ingress",
+      "from": "dedup",
+      "to": "ingress",
+      "label": "message_id"
+    },
+    {
+      "id": "ingress-mirror",
+      "from": "ingress",
+      "to": "mirror",
+      "label": "source_path",
+      "variant": "emphasis"
+    },
+    {
+      "id": "stub-mirror",
+      "from": "stub",
+      "to": "mirror",
+      "label": "source_path",
+      "labelAt": [
+        530,
+        212
+      ]
+    },
+    {
+      "id": "track-mirror",
+      "from": "track",
+      "to": "mirror",
+      "label": "source_paths, mail_handoff",
+      "variant": "emphasis",
+      "labelAt": [
+        637,
+        226
+      ]
+    },
+    {
+      "id": "meeting-mirror",
+      "from": "meeting",
+      "to": "mirror",
+      "label": "source_paths, ingress_handoff",
+      "fromSide": "left",
+      "toSide": "bottom",
+      "via": [
+        [
+          530,
+          385
+        ]
+      ],
+      "labelAt": [
+        628,
+        442
+      ]
+    },
+    {
+      "id": "track-project",
+      "from": "track",
+      "to": "project",
+      "label": "project_slug"
+    },
+    {
+      "id": "registry-meeting",
+      "from": "registry",
+      "to": "meeting",
+      "label": "scope → task_id",
+      "labelAt": [
+        852,
+        442
+      ]
+    },
+    {
+      "id": "sidecar-meeting",
+      "from": "sidecar",
+      "to": "meeting",
+      "label": "task_id",
+      "fromSide": "left",
+      "toSide": "bottom",
+      "via": [
+        [
+          745,
+          499
+        ]
+      ]
+    },
+    {
+      "id": "proactive-project",
+      "from": "proactive",
+      "to": "project",
+      "label": "status, urgency",
+      "labelAt": [
+        852,
+        112
+      ]
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Paths (relative to <files>)",
+      "items": [
+        "Mail mirror: connectors/mail/<provider>/[<account_key>/]threads/<thread_id>.md (Gmail adds <account_key>)",
+        "Triage stub: Triage/<provider>[-<account_key>]-<thread_id>.stub.md; moved to Triage/_done/ when filed",
+        "Dedup record: connectors/_state/mail-dedup.json",
+        "Meeting sidecar: connectors/_state/meetings/<task_id>.json",
+        "Coordination registry: connectors/_state/coordination-active.json"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Ingress task fields",
+      "items": [
+        "Board ea-mail-ingress, body line kind: mail_ingress",
+        "source_path points to the mail mirror; account_key names the Gmail account",
+        "Task field workspace_path is the files root",
+        "Idempotency key: ea-mail-ingress-<message id>"
+      ]
+    },
+    {
+      "dot": "slate",
+      "title": "Who writes what",
+      "items": [
+        "Mail sync writes the mail mirror, the triage stub, and the dedup record",
+        "The ingress worker files the email in Projects/<slug>/ and creates or hands off the track and meeting tasks through the Connectors MCP",
+        "Joshu writes the coordination registry and the meeting sidecar",
+        "The dedup record keeps provider, thread_id, and message_id, so the same message does not get a second ingress task"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Track task fields",
+      "items": [
+        "Board name: project- + folder slug (projectBoardSlug)",
+        "project_slug names Projects/<slug>/; workspace_path is <files>/Projects/<slug>",
+        "source_path, the source_paths: list, and each mail_handoff: block point to mail mirrors"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Project folder",
+      "items": [
+        "about.md frontmatter: status, urgency, kanban_board, kanban_root_task",
+        "todo.md rows and journal_<date>.md entries link the mail as joshu://<source_path>",
+        "The ingress worker writes these files (ea-playbook skill)"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Meeting task and readers",
+      "items": [
+        "Meeting body: source_paths: list and ingress_handoff: blocks point to mail mirrors",
+        "The coordination registry maps a scope id to the open meeting or owner-reply task",
+        "The proactive tick reads about.md status and urgency for tasks on project-<slug> boards"
+      ]
+    }
+  ]
+}

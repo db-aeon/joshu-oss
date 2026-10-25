@@ -4,7 +4,7 @@ import {
   isSchedulableEmailCalendarId,
 } from "../dist/connectors/composio/calendarAvailability.js";
 
-assert.equal(isSchedulableEmailCalendarId("dbenyamin@gmail.com"), true);
+assert.equal(isSchedulableEmailCalendarId("sam.owner@example.com"), true);
 assert.equal(isSchedulableEmailCalendarId("en.usa#holiday@group.v.calendar.google.com"), false);
 
 const combined = combineCalendarFreeBusy(
@@ -13,7 +13,7 @@ const combined = combineCalendarFreeBusy(
       busy: [],
       free: [{ start: "2026-06-25T07:00:00.000Z", end: "2026-06-26T06:59:59.000Z" }],
     },
-    "dbenyamin@gmail.com": {
+    "sam.owner@example.com": {
       busy: [
         { start: "2026-06-25T14:30:00-07:00", end: "2026-06-25T17:30:00-07:00" },
       ],

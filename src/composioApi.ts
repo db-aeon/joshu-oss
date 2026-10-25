@@ -4,9 +4,9 @@
  * @see https://docs.composio.dev/cookbooks/app-connections-dashboard.md
  */
 
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { readFile, writeFile, mkdir, rename, unlink } from "node:fs/promises";
 import path from "node:path";
-import { Composio } from "@composio/core";
+import { composioClient } from "./connectors/composio/client.js";
 import { listActiveConnectedAccounts } from "./connectors/composio/connectedAccountsList.js";
 import { resolveJoshuFilesPaths } from "./joshuFilesPaths.js";
 import { joshuConfigDir } from "./nylas/paths.js";
@@ -113,8 +113,16 @@ type ComposioStore = {
   userId: string;
   sessionId: string;
   mcp?: ComposioMcpEndpoint;
+  /** Auth configs last sent to this session (stable key), so a restart does not update again. */
+  authConfigsKey?: string;
+  /** True once the Composio workbench is off on this session (new sessions start with it off). */
+  workbenchOff?: boolean;
+  /** The read session of the same user: read-only tools and the Composio workbench on. */
+  readSession?: ComposioReadSession;
   updatedAt: string;
 };
+
+type ComposioReadSession = { sessionId: string; mcp: ComposioMcpEndpoint; authConfigsKey?: string };
 
 function envTrim(name: string, fallback = ""): string {
   return process.env[name]?.trim() || fallback;
@@ -144,12 +152,6 @@ function featuredToolkitSlugs(): string[] {
     .filter(Boolean);
 }
 
-function composioClient(): Composio {
-  const apiKey = envTrim("COMPOSIO_API_KEY");
-  if (!apiKey) throw new Error("COMPOSIO_API_KEY is not set");
-  return new Composio({ apiKey });
-}
-
 function storePath(projectRoot: string): string | null {
   const dir = joshuConfigDir(projectRoot);
   if (!dir) return null;
@@ -175,15 +177,29 @@ async function writeStore(projectRoot: string, store: ComposioStore): Promise<vo
   const file = storePath(projectRoot);
   if (!file) throw new Error("Could not resolve Joshu config dir for Composio session storage");
   await mkdir(path.dirname(file), { recursive: true });
-  await writeFile(file, `${JSON.stringify(store, null, 2)}\n`, "utf8");
+  // Write a temp file and rename it, so a parallel reader never sees a half-written file.
+  const tmp = `${file}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
+  try {
+    await writeFile(tmp, `${JSON.stringify(store, null, 2)}\n`, "utf8");
+    await rename(tmp, file);
+  } catch (err) {
+    await unlink(tmp).catch(() => undefined);
+    throw err;
+  }
 }
 
-/** Upstream Composio cloud MCP endpoint (for guard proxy pass-through). */
-export async function readComposioUpstreamMcp(projectRoot = process.cwd()): Promise<ComposioMcpEndpoint | null> {
+/**
+ * Upstream Composio cloud MCP endpoints (for guard proxy pass-through): the main session, and the
+ * read session when it exists.
+ */
+export async function readComposioUpstreamMcp(
+  projectRoot = process.cwd(),
+): Promise<{ mcp: ComposioMcpEndpoint; readMcp: ComposioMcpEndpoint | null } | null> {
   const store = await readStore(projectRoot);
   const mcp = store?.mcp;
   if (!mcp?.url?.trim()) return null;
-  return mcp;
+  const readMcp = store?.readSession?.mcp;
+  return { mcp, readMcp: readMcp?.url?.trim() ? readMcp : null };
 }
 
 function mcpEndpointFromSession(session: { mcp: { type?: string; url: string; headers?: Record<string, string> } }): ComposioMcpEndpoint {
@@ -199,70 +215,245 @@ function mcpEndpointFromSession(session: { mcp: { type?: string; url: string; he
   };
 }
 
-async function applyToolkitAuthConfigsToSession(
-  session: { update?: (config: { authConfigs?: Record<string, string> }) => Promise<unknown> },
-  projectRoot = process.cwd(),
-): Promise<void> {
-  const authConfigs = resolveComposioToolkitAuthConfigs(projectRoot);
-  if (Object.keys(authConfigs).length === 0) return;
-  if (typeof session.update !== "function") return;
-  await session.update({ authConfigs });
-}
-
-function createSessionConfig(projectRoot = process.cwd()): {
+export function createSessionConfig(authConfigs: Record<string, string>): {
   manageConnections: { enable: boolean };
   workbench: { enable: boolean };
   authConfigs?: Record<string, string>;
 } {
-  const authConfigs = resolveComposioToolkitAuthConfigs(projectRoot);
   return {
     manageConnections: { enable: true },
-    workbench: { enable: true },
+    workbench: { enable: false },
     ...(Object.keys(authConfigs).length > 0 ? { authConfigs } : {}),
   };
 }
 
-/** Create or resume a Composio tool-router session for the sandbox user. */
-export async function getOrCreateComposioSession(projectRoot = process.cwd()): Promise<{
-  userId: string;
-  sessionId: string;
-  mcp: ComposioMcpEndpoint;
-}> {
-  if (!isComposioEnabled()) throw new Error("Composio is not configured (set COMPOSIO_API_KEY)");
+/**
+ * The read session: the same Composio user, with only the tools that have the MCP hint
+ * readOnlyHint, and the Composio workbench on with proxy execution off. Code in the workbench can
+ * call only the tools of its own session, so it can read mail but not send, delete, or write.
+ * Never add a per-toolkit enable or disable list here: Composio then skips the tag filter for
+ * that toolkit.
+ */
+export function createReadSessionConfig(authConfigs: Record<string, string>): {
+  manageConnections: { enable: boolean };
+  tags: "readOnlyHint"[];
+  workbench: { enable: boolean; enableProxyExecution: boolean };
+  authConfigs?: Record<string, string>;
+} {
+  return {
+    manageConnections: { enable: false },
+    tags: ["readOnlyHint"],
+    workbench: { enable: true, enableProxyExecution: false },
+    ...(Object.keys(authConfigs).length > 0 ? { authConfigs } : {}),
+  };
+}
 
+/** Same auth configs in any key order give the same key. */
+function authConfigsKey(authConfigs: Record<string, string>): string {
+  return JSON.stringify(Object.entries(authConfigs).sort(([a], [b]) => a.localeCompare(b)));
+}
+
+function composioErrorStatus(err: unknown): number | undefined {
+  const status = (err as { status?: unknown })?.status;
+  if (typeof status === "number") return status;
+  const match = /^\s*(\d{3})\b/.exec(err instanceof Error ? err.message : String(err));
+  return match ? Number(match[1]) : undefined;
+}
+
+/**
+ * True only when Composio says the session does not exist. A 409 (config version conflict),
+ * a 429 (rate limit), or a network error is not a reason to make a new session: each new
+ * session makes more conflicts, and Composio rate-limits a project that makes too many.
+ */
+export function isComposioSessionNotFoundError(err: unknown): boolean {
+  const status = composioErrorStatus(err);
+  if (status === 404 || status === 410) return true;
+  const msg = err instanceof Error ? err.message : String(err);
+  return /session[^"]*not[ _]?found|SessionNotFound/i.test(msg);
+}
+
+export type ComposioSessionInfo = { userId: string; sessionId: string; mcp: ComposioMcpEndpoint };
+
+type ComposioUsableSession = {
+  sessionId?: string;
+  mcp: { type?: string; url: string; headers?: Record<string, string> };
+  update?: (config: ComposioSessionUpdate) => Promise<unknown>;
+};
+
+type ComposioSessionUpdate = { authConfigs?: Record<string, string>; workbench?: { enable: boolean } };
+
+/** How long a process trusts its session before it checks the session with Composio again. */
+const COMPOSIO_SESSION_TTL_MS = 10 * 60_000;
+
+let sessionCache: { key: string; authKey: string; at: number; value: ComposioSessionInfo } | null = null;
+let sessionInFlight: { key: string; authKey: string; promise: Promise<ComposioSessionInfo> } | null = null;
+
+/** Forget the session of this process (after the store is cleared, and in tests). */
+export function resetComposioSessionCache(): void {
+  sessionCache = null;
+  sessionInFlight = null;
+}
+
+/**
+ * Send the auth configs, or turn the Composio workbench off, or both, in one session update.
+ * On a 409, re-fetch the session and retry once.
+ */
+async function updateSession(
+  sessionId: string,
+  session: ComposioUsableSession,
+  update: ComposioSessionUpdate,
+): Promise<boolean> {
+  if (typeof session.update !== "function") return false;
+  try {
+    await session.update(update);
+    return true;
+  } catch (err) {
+    if (composioErrorStatus(err) !== 409) {
+      console.warn(`[composio] session ${sessionId}: session update failed: ${(err as Error).message}`);
+      return false;
+    }
+  }
+  try {
+    const fresh = (await composioClient().use(sessionId)) as ComposioUsableSession;
+    if (typeof fresh.update !== "function") return false;
+    await fresh.update(update);
+    return true;
+  } catch (err) {
+    console.warn(`[composio] session ${sessionId}: session update failed after re-fetch: ${(err as Error).message}`);
+    return false;
+  }
+}
+
+/**
+ * Resume or create the read session. The read session gets changed auth configs in a session
+ * update, like the main session. A failure leaves the main session working without the
+ * Composio workbench.
+ */
+async function refreshComposioReadSession(
+  existing: ComposioReadSession | undefined,
+  userId: string,
+  authConfigs: Record<string, string>,
+  authKey: string,
+): Promise<ComposioReadSession | undefined> {
   const composio = composioClient();
-  const userId = resolveComposioUserId(projectRoot);
-  const existing = await readStore(projectRoot);
+  try {
+    if (existing?.sessionId) {
+      let session: ComposioUsableSession | null = null;
+      try {
+        session = (await composio.use(existing.sessionId)) as ComposioUsableSession;
+      } catch (err) {
+        if (!isComposioSessionNotFoundError(err)) throw err;
+        console.warn(`[composio] read session ${existing.sessionId} not found; creating a new one`);
+      }
+      if (session) {
+        let appliedKey = existing.authConfigsKey;
+        if (appliedKey !== authKey) {
+          const needsUpdate = Object.keys(authConfigs).length > 0;
+          if (!needsUpdate || (await updateSession(existing.sessionId, session, { authConfigs }))) appliedKey = authKey;
+        }
+        return { sessionId: existing.sessionId, mcp: mcpEndpointFromSession(session), authConfigsKey: appliedKey };
+      }
+    }
+    const session = await composio.create(userId, createReadSessionConfig(authConfigs));
+    return { sessionId: session.sessionId, mcp: mcpEndpointFromSession(session), authConfigsKey: authKey };
+  } catch (err) {
+    console.warn(`[composio] read session: ${(err as Error).message}`);
+    return existing;
+  }
+}
 
-  if (existing?.sessionId && existing.userId === userId) {
+async function refreshComposioSession(
+  projectRoot: string,
+  userId: string,
+  authConfigs: Record<string, string>,
+  authKey: string,
+): Promise<ComposioSessionInfo> {
+  const composio = composioClient();
+  const existing = await readStore(projectRoot);
+  const sameUser = existing?.userId === userId;
+  let main: Pick<ComposioStore, "sessionId" | "mcp" | "authConfigsKey" | "workbenchOff"> | null = null;
+
+  if (existing?.sessionId && sameUser) {
+    let session: ComposioUsableSession | null = null;
     try {
-      const session = await composio.use(existing.sessionId);
-      await applyToolkitAuthConfigsToSession(session, projectRoot);
-      const mcp = mcpEndpointFromSession(session);
-      const store: ComposioStore = {
-        userId,
-        sessionId: existing.sessionId,
-        mcp,
-        updatedAt: new Date().toISOString(),
-      };
-      await writeStore(projectRoot, store);
-      await applyComposioMcpToHermesConfig(mcp);
-      return { userId, sessionId: existing.sessionId, mcp };
+      session = (await composio.use(existing.sessionId)) as ComposioUsableSession;
     } catch (err) {
-      console.warn(`[composio] stale session ${existing.sessionId}: ${(err as Error).message}`);
+      if (!isComposioSessionNotFoundError(err)) throw err;
+      console.warn(`[composio] session ${existing.sessionId} not found; creating a new one: ${(err as Error).message}`);
+    }
+    if (session) {
+      let appliedKey = existing.authConfigsKey;
+      let workbenchOff = existing.workbenchOff === true;
+      // A session made before the workbench was off gets it turned off once, in the same update.
+      const update: ComposioSessionUpdate = {};
+      if (appliedKey !== authKey && Object.keys(authConfigs).length > 0) update.authConfigs = authConfigs;
+      if (!workbenchOff) update.workbench = { enable: false };
+      const updated = Object.keys(update).length > 0 && (await updateSession(existing.sessionId, session, update));
+      if (appliedKey !== authKey && (updated || !update.authConfigs)) appliedKey = authKey;
+      if (updated) workbenchOff = true;
+      main = { sessionId: existing.sessionId, mcp: mcpEndpointFromSession(session), authConfigsKey: appliedKey, workbenchOff };
     }
   }
 
-  const session = await composio.create(userId, createSessionConfig(projectRoot));
-  const mcp = mcpEndpointFromSession(session);
-  await writeStore(projectRoot, {
+  if (!main) {
+    const session = await composio.create(userId, createSessionConfig(authConfigs));
+    main = { sessionId: session.sessionId, mcp: mcpEndpointFromSession(session), authConfigsKey: authKey, workbenchOff: true };
+  }
+
+  const readSession = await refreshComposioReadSession(
+    sameUser ? existing?.readSession : undefined,
     userId,
-    sessionId: session.sessionId,
-    mcp,
-    updatedAt: new Date().toISOString(),
-  });
+    authConfigs,
+    authKey,
+  );
+  const next: Omit<ComposioStore, "updatedAt"> = { userId, ...main, ...(readSession ? { readSession } : {}) };
+  const { updatedAt: _updatedAt, ...previous } = existing ?? { updatedAt: "" };
+  if (JSON.stringify(next) !== JSON.stringify(previous)) {
+    await writeStore(projectRoot, { ...next, updatedAt: new Date().toISOString() });
+  }
+  const mcp = main.mcp!;
   await applyComposioMcpToHermesConfig(mcp);
-  return { userId, sessionId: session.sessionId, mcp };
+  return { userId, sessionId: main.sessionId, mcp };
+}
+
+/**
+ * Create or resume the Composio tool-router session for the sandbox user.
+ * The process keeps the session for COMPOSIO_SESSION_TTL_MS, and parallel callers share one
+ * request. The session gets the auth configs only when they change.
+ */
+export async function getOrCreateComposioSession(projectRoot = process.cwd()): Promise<ComposioSessionInfo> {
+  if (!isComposioEnabled()) throw new Error("Composio is not configured (set COMPOSIO_API_KEY)");
+
+  const userId = resolveComposioUserId(projectRoot);
+  const authConfigs = resolveComposioToolkitAuthConfigs(projectRoot);
+  const authKey = authConfigsKey(authConfigs);
+  const key = `${projectRoot}\0${userId}`;
+
+  if (
+    sessionCache &&
+    sessionCache.key === key &&
+    sessionCache.authKey === authKey &&
+    Date.now() - sessionCache.at < COMPOSIO_SESSION_TTL_MS
+  ) {
+    return sessionCache.value;
+  }
+  if (sessionInFlight && sessionInFlight.key === key && sessionInFlight.authKey === authKey) {
+    return sessionInFlight.promise;
+  }
+
+  const inFlight = {
+    key,
+    authKey,
+    promise: refreshComposioSession(projectRoot, userId, authConfigs, authKey),
+  };
+  sessionInFlight = inFlight;
+  try {
+    const value = await inFlight.promise;
+    if (sessionInFlight === inFlight) sessionCache = { key, authKey, at: Date.now(), value };
+    return value;
+  } finally {
+    if (sessionInFlight === inFlight) sessionInFlight = null;
+  }
 }
 
 /** jChat polls /hermes-chat/status often — debounce Composio session refresh. */
@@ -368,10 +559,10 @@ export async function connectComposioToolkit(
   }
 
   try {
+    // getOrCreateComposioSession sends changed auth configs to the session.
     const { sessionId } = await getOrCreateComposioSession(projectRoot);
     const composio = composioClient();
     const session = await composio.use(sessionId);
-    await applyToolkitAuthConfigsToSession(session, projectRoot);
     const connectionRequest = await session.authorize(slug, {
       callbackUrl: callbackUrl.trim() || undefined,
     });
@@ -488,10 +679,10 @@ export async function disconnectAllComposioConnections(
 
 /** Delete local Composio session pointer (metadata only; tokens are in Composio cloud). */
 export async function clearComposioSessionStore(projectRoot: string): Promise<void> {
+  resetComposioSessionCache();
   const file = storePath(projectRoot);
   if (!file) return;
   try {
-    const { unlink } = await import("node:fs/promises");
     await unlink(file);
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== "ENOENT") {

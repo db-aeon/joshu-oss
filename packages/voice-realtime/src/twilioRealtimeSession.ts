@@ -26,6 +26,7 @@ import {
   waitPhoneThinkJob,
 } from "./brainThink.js";
 import { claimCorrection, detectDeliveryClaim } from "./deliveryClaimGuard.js";
+import { sendWorkClaimNudge, WorkClaimGuard } from "./workClaimGuard.js";
 import {
   NATIVE_JOB_TOOL_NAMES,
   runNativeVoiceTool,
@@ -54,6 +55,14 @@ import type { GateMode, UnlockVia } from "./gate/unlockToken.js";
 import { resolveOwnerLanguage } from "./joshuIdentity.js";
 import { detectLanguageMismatch, languageCorrection } from "./languageGuard.js";
 import { buildInboundOpenerTurn, buildOpenerContext, fetchOpener, type OpenerPayload } from "./opener.js";
+import {
+  offerReplyAllowsSave,
+  ownerMobileOfferFor,
+  ownerMobileSaveAnswer,
+  SAVE_OWNER_MOBILE_TOOL,
+  SAVE_OWNER_MOBILE_TOOL_NAME,
+  type OwnerMobileOffer,
+} from "./ownerMobileOffer.js";
 import { voiceLog, voiceWarn } from "./voiceLog.js";
 
 const MAX_TRANSCRIPT_TURNS = 12;
@@ -218,10 +227,16 @@ export class TwilioRealtimeSession {
   private callerSpokeBeforeOpener = false;
   /** One language correction per call (see languageGuard.ts). */
   private languageCorrected = false;
+  /** Owner mobile offer of this call (inbound, unlocked by passphrase or PIN, no owner mobile). */
+  private ownerMobileOffer: OwnerMobileOffer | undefined;
+  /** save_owner_mobile already ran on this call (one try per call). */
+  private ownerMobileSaveTried = false;
   /** Phone think jobs past their budget, followed until the answer lands (jobId → quote). */
   private lateJobs = new Map<string, { quote?: string }>();
   /** Sends the model claimed while a think job was still running (deliveryClaimGuard). */
   private pendingDeliveryClaims: string[] = [];
+  /** Native: work claims that no tool call backs (workClaimGuard). */
+  private readonly workClaims = new WorkClaimGuard();
   private turn = 0;
   private responseNum = 0;
   /** responseNum of the last response that reported done (native end_call waits on it). */
@@ -273,6 +288,16 @@ export class TwilioRealtimeSession {
     this.openerSent = false;
     this.callerSpokeBeforeOpener = false;
     this.languageCorrected = false;
+    const offerDecision = ownerMobileOfferFor(metadata);
+    this.ownerMobileOffer = "offer" in offerDecision ? offerDecision.offer : undefined;
+    this.ownerMobileSaveTried = false;
+    voiceLog(
+      callSid,
+      "owner-mobile",
+      this.ownerMobileOffer
+        ? `offer eligible number=…${this.ownerMobileOffer.lastDigits}`
+        : `no offer (${"skip" in offerDecision ? offerDecision.skip : ""})`,
+    );
     // The gate authenticated this caller before the stream opened, so the model
     // joins an unlocked call and hears nothing stale. Its context is fetched now
     // and goes into the system instruction at setup.
@@ -284,12 +309,15 @@ export class TwilioRealtimeSession {
       {
         audioFormat: "pcmu",
         systemPrompt: PHONE_SYSTEM_PROMPT,
-        systemPromptExtra: this.openerPromise.then((opener) => buildOpenerContext(metadata.gate.mode, opener)),
+        systemPromptExtra: this.openerPromise.then((opener) =>
+          buildOpenerContext(metadata.gate.mode, opener, this.ownerMobileOffer),
+        ),
         injectPresentation: "voice_only",
         turnDetection: PHONE_VAD,
         // PSTN implements think (+ start_task natively) and dictation; declaring
         // open_desktop made the model fake app opens.
         toolNames: PHONE_TOOL_NAMES,
+        ...(this.ownerMobileOffer ? { extraTools: [SAVE_OWNER_MOBILE_TOOL] } : {}),
         thinkingLevel: GEMINI_LIVE_PHONE_THINKING_LEVEL,
       },
       {
@@ -393,6 +421,7 @@ export class TwilioRealtimeSession {
         if (functionCalls.length) {
           voiceLog(this.callSid, provider, "interaction idle", { functionCalls });
         }
+        this.checkWorkClaim(functionCalls);
       },
       onSessionResumed: ({ reason }) => {
         voiceLog(this.callSid, provider, "upstream session resumed", { reason });
@@ -851,6 +880,18 @@ export class TwilioRealtimeSession {
     this.noteSpokenForDelivery(t);
     this.checkReplyLanguage(t);
     this.checkDeliveryClaim(t, source);
+    if (this.nativeTools && source === "organic") this.workClaims.noteReply(t, interrupted);
+  }
+
+  /** Native: a work claim with no tool call behind it gets a note (workClaimGuard.ts). */
+  private checkWorkClaim(functionCalls: readonly string[]): void {
+    if (!this.nativeTools) return;
+    const nudge = this.workClaims.onInteractionEnd({
+      functionCalls,
+      toolRunning: this.hasPendingJob() || this.lateJobs.size > 0,
+      callEnding: this.hangingUp || this.endCallRequested || this.hangUpAfterSpeech,
+    });
+    sendWorkClaimNudge(this.s2s, this.callSid, nudge);
   }
 
   /** A send claimed while the answer is still being worked on is a guess. */
@@ -919,7 +960,9 @@ export class TwilioRealtimeSession {
       await this.postJoshu("/api/realtime-goals/voice/presence", { callSid: this.callSid, event: "unlocked" });
     }
     this.presenceReported = true;
-    if (!s2s.systemPromptExtraApplied) s2s.appendContext(buildOpenerContext(gate.mode, opener));
+    if (!s2s.systemPromptExtraApplied) {
+      s2s.appendContext(buildOpenerContext(gate.mode, opener, this.ownerMobileOffer));
+    }
     const items = opener?.items ?? [];
     if (gate.mode === "callback") {
       this.openerSent = true;
@@ -1011,6 +1054,7 @@ export class TwilioRealtimeSession {
     if (role === "user") {
       this.flushAssistantPartial();
       this.noteOwnerSpokeForDelivery();
+      this.workClaims.noteOwnerSpoke();
     }
     this.transcript.push({ role, text });
     while (this.transcript.length > MAX_TRANSCRIPT_TURNS) {
@@ -1161,6 +1205,11 @@ export class TwilioRealtimeSession {
 
     if (this.nativeTools && toolName === "end_call") {
       this.handleEndCall(call.callId);
+      return;
+    }
+
+    if (toolName === SAVE_OWNER_MOBILE_TOOL_NAME && this.ownerMobileOffer) {
+      await this.handleSaveOwnerMobile(call.callId, this.ownerMobileOffer, args);
       return;
     }
 
@@ -1409,6 +1458,38 @@ export class TwilioRealtimeSession {
       }
     }, 250);
     poll.unref?.();
+  }
+
+  /**
+   * Owner mobile offer: the owner said yes, so Joshu saves the caller ID of this call
+   * (never a number from the model). One try per call, and a save only on a clear yes.
+   */
+  private async handleSaveOwnerMobile(
+    callId: string,
+    offer: OwnerMobileOffer,
+    args: Record<string, unknown>,
+  ): Promise<void> {
+    let outcome: Parameters<typeof ownerMobileSaveAnswer>[0];
+    const userQuote = typeof args.user_quote === "string" ? args.user_quote : undefined;
+    if (this.ownerMobileSaveTried) {
+      outcome = "already_tried";
+    } else if (!offerReplyAllowsSave(userQuote, this.lastUserTranscript())) {
+      outcome = "not_clear_yes";
+      this.ownerMobileSaveTried = true;
+    } else {
+      this.ownerMobileSaveTried = true;
+      const response = await this.postJoshu("/api/telephone/owner-mobile/from-call", {
+        callSid: this.callSid,
+        caller: offer.caller,
+      });
+      const status = response
+        ? ((await response.json().catch(() => ({}))) as { status?: unknown }).status
+        : undefined;
+      outcome = status === "saved" || status === "already_set" || status === "invalid" ? status : "failed";
+    }
+    voiceLog(this.callSid, "owner-mobile", `save ${outcome} number=…${offer.lastDigits}`);
+    // Both paths speak this result (legacy: function output + response.create).
+    this.s2s?.sendFunctionResult(callId, { status: "done", answer: ownerMobileSaveAnswer(outcome, offer.lastDigits) });
   }
 
   /** A model response started and has not reported done yet. */

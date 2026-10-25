@@ -1,7 +1,7 @@
 /**
  * Joshu-native scheduler for connector sync jobs (no Hermes gateway).
  */
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { readFile, writeFile, mkdir, rename } from "node:fs/promises";
 import path from "node:path";
 import { isComposioEnabled } from "../composioApi.js";
 import { isNylasConfigured } from "../nylas/config.js";
@@ -55,7 +55,34 @@ export async function writeConnectorCronJobs(projectRoot: string, jobs: Connecto
   const file = cronPath(projectRoot);
   if (!file) throw new Error("Could not resolve Joshu config dir for connector cron");
   await mkdir(path.dirname(file), { recursive: true });
-  await writeFile(file, `${JSON.stringify({ jobs }, null, 2)}\n`, "utf8");
+  // Write a temporary file and rename it, so that a reader never sees a half-written file.
+  const tmp = `${file}.${process.pid}.tmp`;
+  await writeFile(tmp, `${JSON.stringify({ jobs }, null, 2)}\n`, "utf8");
+  await rename(tmp, file);
+}
+
+let cronFileQueue: Promise<unknown> = Promise.resolve();
+
+/**
+ * Re-reads connectors-cron.json and changes one job with `apply`, so that a run does not overwrite
+ * edits made while it ran (for example `enabled: false` set by an operator).
+ * Writes from this process wait for each other.
+ */
+function updateConnectorCronJob(
+  projectRoot: string,
+  jobId: string,
+  apply: (job: ConnectorCronJob) => void,
+): Promise<ConnectorCronJob | undefined> {
+  const update = cronFileQueue.then(async () => {
+    const jobs = await readConnectorCronJobs(projectRoot);
+    const job = jobs.find((j) => j.id === jobId);
+    if (!job) return undefined;
+    apply(job);
+    await writeConnectorCronJobs(projectRoot, jobs);
+    return job;
+  });
+  cronFileQueue = update.catch(() => undefined);
+  return update;
 }
 
 /** Parse `every 5m` / `every 2h` into milliseconds. */
@@ -111,13 +138,12 @@ async function connectorCronJobEligible(
   return { eligible: false, reason: "unknown action" };
 }
 
-async function runJob(projectRoot: string, job: ConnectorCronJob): Promise<ConnectorCronJob> {
-  const updated = { ...job, lastRunAt: new Date().toISOString() };
+/** Runs the sync of one job. Returns the error text, or undefined when the run passed. */
+async function runJob(projectRoot: string, job: ConnectorCronJob): Promise<string | undefined> {
   const eligibility = await connectorCronJobEligible(projectRoot, job);
   if (!eligibility.eligible) {
     // Nothing connected for this lane — do not call external APIs or log as an error.
-    delete updated.lastError;
-    return updated;
+    return undefined;
   }
   try {
     if (job.action === "sync_nylas") {
@@ -130,12 +156,70 @@ async function runJob(projectRoot: string, job: ConnectorCronJob): Promise<Conne
       const r = await runMailSync(projectRoot, "gmail", { syncMode: "incremental" });
       if (!r.ok) throw new Error(r.error || "composio sync failed");
     }
-    delete updated.lastError;
+    return undefined;
   } catch (err) {
-    updated.lastError = err instanceof Error ? err.message : String(err);
-    console.warn(`[connectors-cron] job ${job.id}: ${updated.lastError}`);
+    const lastError = err instanceof Error ? err.message : String(err);
+    console.warn(`[connectors-cron] job ${job.id}: ${lastError}`);
+    return lastError;
   }
-  return updated;
+}
+
+export type ConnectorCronRunner = (projectRoot: string, job: ConnectorCronJob) => Promise<string | undefined>;
+
+/** Ids of the jobs that run now in this process. A job runs at most one time at a time. */
+const runningJobIds = new Set<string>();
+
+/**
+ * Runs one job unless it already runs. Saves lastRunAt when the job starts, so that later ticks do
+ * not find the job due while it runs, and saves lastError when the job ends.
+ * Returns undefined when the job already runs.
+ */
+async function runJobOnce(
+  projectRoot: string,
+  job: ConnectorCronJob,
+  runner: ConnectorCronRunner,
+): Promise<ConnectorCronJob | undefined> {
+  if (runningJobIds.has(job.id)) {
+    console.info(`[connectors-cron] job ${job.id} skip: the previous run has not ended`);
+    return undefined;
+  }
+  runningJobIds.add(job.id);
+  const persistFailed = (err: Error) => {
+    console.warn(`[connectors-cron] persist failed: ${err.message}`);
+    return undefined;
+  };
+  try {
+    const lastRunAt = new Date().toISOString();
+    await updateConnectorCronJob(projectRoot, job.id, (j) => {
+      j.lastRunAt = lastRunAt;
+    }).catch(persistFailed);
+    console.info(`[connectors-cron] job ${job.id} start`);
+    const lastError = await runner(projectRoot, job);
+    console.info(
+      `[connectors-cron] job ${job.id} end after ${Math.round((Date.now() - Date.parse(lastRunAt)) / 1000)} s`,
+    );
+    const saved = await updateConnectorCronJob(projectRoot, job.id, (j) => {
+      if (lastError) j.lastError = lastError;
+      else delete j.lastError;
+    }).catch(persistFailed);
+    return saved ?? { ...job, lastRunAt, lastError };
+  } finally {
+    runningJobIds.delete(job.id);
+  }
+}
+
+/** One scheduler tick: starts each job that is due and does not run already. */
+export async function tickConnectorCron(
+  projectRoot: string,
+  runner: ConnectorCronRunner = runJob,
+): Promise<void> {
+  for (const { id } of await readConnectorCronJobs(projectRoot)) {
+    // Read the job again: an earlier job of this tick can run for minutes, and the operator can
+    // turn this job off in that time.
+    const job = (await readConnectorCronJobs(projectRoot)).find((j) => j.id === id);
+    if (!job || !jobDue(job, Date.now())) continue;
+    await runJobOnce(projectRoot, job, runner);
+  }
 }
 
 let tickTimer: ReturnType<typeof setInterval> | null = null;
@@ -144,28 +228,10 @@ export function startConnectorScheduler(projectRoot: string): void {
   if (tickTimer) return;
   const tickMs = 60_000;
 
-  const tick = async () => {
-    const nowMs = Date.now();
-    let jobs = await readConnectorCronJobs(projectRoot);
-    let changed = false;
-    const nextJobs: ConnectorCronJob[] = [];
-    for (const job of jobs) {
-      if (!jobDue(job, nowMs)) {
-        nextJobs.push(job);
-        continue;
-      }
-      const ran = await runJob(projectRoot, job);
-      nextJobs.push(ran);
-      changed = true;
-    }
-    if (changed) {
-      try {
-        await writeConnectorCronJobs(projectRoot, nextJobs);
-      } catch (err) {
-        console.warn(`[connectors-cron] persist failed: ${(err as Error).message}`);
-      }
-    }
-  };
+  const tick = () =>
+    tickConnectorCron(projectRoot).catch((err) => {
+      console.warn(`[connectors-cron] tick failed: ${(err as Error).message}`);
+    });
 
   void tick();
   tickTimer = setInterval(() => void tick(), tickMs);
@@ -183,11 +249,9 @@ export async function runConnectorCronJobNow(
   projectRoot: string,
   jobId: string,
 ): Promise<{ ok: boolean; job?: ConnectorCronJob; error?: string }> {
-  const jobs = await readConnectorCronJobs(projectRoot);
-  const idx = jobs.findIndex((j) => j.id === jobId);
-  if (idx < 0) return { ok: false, error: "job not found" };
-  const ran = await runJob(projectRoot, jobs[idx]!);
-  jobs[idx] = ran;
-  await writeConnectorCronJobs(projectRoot, jobs);
+  const job = (await readConnectorCronJobs(projectRoot)).find((j) => j.id === jobId);
+  if (!job) return { ok: false, error: "job not found" };
+  const ran = await runJobOnce(projectRoot, job, runJob);
+  if (!ran) return { ok: false, job, error: "job already runs" };
   return { ok: !ran.lastError, job: ran, error: ran.lastError };
 }

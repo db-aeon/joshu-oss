@@ -92,8 +92,52 @@ import { smsModelReplyPlaintext } from "../src/smsModelReplyPlaintext.js";
 
 {
   const handoff =
-    "Tap here to sign in: https://patrick.box.joshu.me/joshu/handoff/abc?t=token&exp=123";
-  assert.match(smsModelReplyPlaintext(handoff), /patrick\.box\.joshu\.me\/joshu\/handoff\/abc/);
+    "Tap here to sign in: https://example.box.joshu.me/joshu/handoff/abc?t=token&exp=123";
+  assert.match(smsModelReplyPlaintext(handoff), /example\.box\.joshu\.me\/joshu\/handoff\/abc/);
+}
+
+// SMS replies keep line breaks and list items (issue #74).
+{
+  const reply =
+    "**You have 3 new DMs:**\n\n* Axel (Orchid) - 3h. Booked\n* Maya - 5h. See you Friday\n+ Sam - 1d. Thanks!\n\nWant me to reply to any?";
+  const plain = smsModelReplyPlaintext(reply);
+  assert.equal(
+    plain,
+    "You have 3 new DMs:\n\n- Axel (Orchid) - 3h. Booked\n- Maya - 5h. See you Friday\n- Sam - 1d. Thanks!\n\nWant me to reply to any?",
+  );
+}
+
+{
+  const plain = smsModelReplyPlaintext("Your RSVP is approved.\n\nThe event page shows the address.");
+  assert.doesNotMatch(plain, /\.\./);
+  assert.equal(plain, "Your RSVP is approved.\n\nThe event page shows the address.");
+}
+
+{
+  const plain = smsModelReplyPlaintext(
+    "## Partiful\n> Open [the event page](https://partiful.com/e/abc) or [https://x.com](https://x.com).\n---\nCode: `ABC123` and *soon*.\n```\nCONF 9921\n```",
+  );
+  assert.match(plain, /^Partiful$/m);
+  assert.match(plain, /the event page: https:\/\/partiful\.com\/e\/abc/);
+  assert.match(plain, /or https:\/\/x\.com\./);
+  assert.doesNotMatch(plain, /[#>`*]|---/);
+  assert.match(plain, /Code: ABC123 and soon\./);
+  assert.match(plain, /CONF 9921/);
+}
+
+{
+  // A removed emoji leaves one space.
+  assert.equal(smsGsmFold('Reacted \u{1F44D} to "Booked"'), 'Reacted to "Booked"');
+}
+
+{
+  // A long list splits at line breaks, so no list item is cut across two SMS parts.
+  const items = Array.from({ length: 9 }, (_, i) => `${i + 1}. ${"x".repeat(95)}`);
+  const parts = smsGsmParts(items.join("\n"));
+  assert.ok(parts.length >= 2);
+  for (const part of parts) {
+    for (const line of part.split("\n")) assert.ok(items.includes(line), `whole list item: ${line.slice(0, 20)}`);
+  }
 }
 
 {

@@ -5,7 +5,15 @@
 
 /** @typedef {{ enabled: boolean; composioBlockedTools: string[]; connectorsBlockedTools: string[] }} McpToolPolicy */
 
+/** Composio workbench tools: the Composio MCP guard runs them on the read session only. */
+export const COMPOSIO_WORKBENCH_TOOLS = ["COMPOSIO_REMOTE_WORKBENCH", "COMPOSIO_REMOTE_BASH_TOOL"];
+
 export const COMPOSIO_BLOCKED_TOOLS = ["GMAIL_SEND_EMAIL", "GMAIL_REPLY_TO_THREAD"];
+
+export const COMPOSIO_MULTI_EXECUTE_TOOL = "COMPOSIO_MULTI_EXECUTE_TOOL";
+
+/** Depth limit for a COMPOSIO_MULTI_EXECUTE_TOOL inside another one. */
+const MAX_MULTI_EXECUTE_DEPTH = 4;
 
 export const CONNECTORS_BLOCKED_TOOLS = [
   "nylas_create_event",
@@ -60,6 +68,55 @@ export function composioToolBlockReason(toolName, policy = defaultMcpToolPolicy(
   return null;
 }
 
+/** @typedef {{ toolName: string; args: Record<string, unknown> }} ComposioToolCall */
+
+/**
+ * The tool calls that one Composio MCP call runs: the inner tool calls of
+ * COMPOSIO_MULTI_EXECUTE_TOOL (also nested ones), or the call itself for any other tool.
+ * Returns null when a COMPOSIO_MULTI_EXECUTE_TOOL call has no list of inner tool calls
+ * or an inner tool call has no tool name, because then nobody can tell what the call does.
+ * @param {string} toolName
+ * @param {unknown} args
+ * @returns {ComposioToolCall[] | null}
+ */
+export function composioInnerToolCalls(toolName, args, depth = 0) {
+  const name = String(toolName ?? "").trim();
+  const a = args && typeof args === "object" && !Array.isArray(args) ? /** @type {Record<string, unknown>} */ (args) : {};
+  if (name.toUpperCase() !== COMPOSIO_MULTI_EXECUTE_TOOL) return [{ toolName: name, args: a }];
+  if (depth >= MAX_MULTI_EXECUTE_DEPTH || !Array.isArray(a.tools)) return null;
+  /** @type {ComposioToolCall[]} */
+  const calls = [];
+  for (const item of a.tools) {
+    const row = item && typeof item === "object" ? /** @type {Record<string, unknown>} */ (item) : {};
+    const slug = typeof row.tool_slug === "string" ? row.tool_slug.trim() : "";
+    if (!slug) return null;
+    const inner = composioInnerToolCalls(slug, row.arguments, depth + 1);
+    if (!inner) return null;
+    calls.push(...inner);
+  }
+  return calls;
+}
+
+/**
+ * Hard block reason for a whole Composio MCP call: the first inner tool call with a hard block.
+ * @param {string} toolName
+ * @param {unknown} args
+ * @param {McpToolPolicy | null | undefined} policy
+ * @returns {string | null}
+ */
+export function composioCallBlockReason(toolName, args, policy = defaultMcpToolPolicy()) {
+  if (!policy?.enabled) return null;
+  const calls = composioInnerToolCalls(toolName, args);
+  if (!calls) {
+    return `${COMPOSIO_MULTI_EXECUTE_TOOL} needs a tools list where each entry has a tool_slug.`;
+  }
+  for (const call of calls) {
+    const reason = composioToolBlockReason(call.toolName, policy);
+    if (reason) return reason;
+  }
+  return null;
+}
+
 /**
  * @param {McpToolPolicy | null | undefined} policy
  * @param {string} toolName
@@ -69,7 +126,7 @@ export function connectorsToolBlockReason(toolName, policy = defaultMcpToolPolic
   if (!policy?.enabled) return null;
   const name = String(toolName ?? "").trim().toLowerCase();
   if (policy.connectorsBlockedTools.some((t) => t.toLowerCase() === name)) {
-    return "Nylas calendar writes are disabled. Book on owner Google Calendar via Composio GOOGLECALENDAR_CREATE_EVENT (after google_calendar_find_free_slots availability check).";
+    return "Nylas calendar writes are disabled. Book on the owner Google calendar with google_calendar_create_event, or move an event with google_calendar_update_event (after a google_calendar_find_free_slots availability check).";
   }
   return null;
 }

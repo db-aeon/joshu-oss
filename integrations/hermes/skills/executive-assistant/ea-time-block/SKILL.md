@@ -4,7 +4,7 @@ description: Cal Newport time-block plan for today as a linked Excalidraw diagra
 metadata:
   hermes:
     category: executive-assistant
-    version: "1.3.0"
+    version: "1.5.1"
 ---
 
 # EA Time Block (Cal Newport)
@@ -45,7 +45,7 @@ Local dev (repo root): `npm run time-block:gather -- --stdout` or `-o …`
 
 The script pre-fills **`blocks[]`** with today's **meeting** blocks (live calendar API when Joshu is up, else mirror scan), **`workHours`** expanded to cover meetings, **`yesterdayPlan`**, **`_gather.activeProjects`**, **`_gather.recentJournals`**, and **`_gather.planningFiles`** paths. See `references/calendar-api-quirks.md`.
 
-**Do not** glob mirror filenames by calendar date — mirrors are named by event UUID. Prefer **`google_calendar_list_events`** (Composio MCP) or Joshu `GET /joshu/api/connectors/calendar/google/events?date=&timezone=` when the gather script is unavailable.
+**Do not** glob mirror filenames by calendar date — mirrors are named by event UUID. Prefer **`google_calendar_list_events`** (Joshu connectors MCP; covers all calendar accounts) or Joshu `GET /joshu/api/connectors/calendar/google/events?date=&timezone=` when the gather script is unavailable.
 
 4. **Synthesize plan (LLM)** — read the gather output and fill gaps:
    - `Planning/daily-review-YYYY-MM-DD.md` — **carryover** checkboxes (after morning review)
@@ -141,7 +141,7 @@ See `references/link-targets.md`. Renderer emits `joshu://<path-from-files-root>
 ## Pitfalls & tips
 
 - **Mirror glob by date fails** — event files are UUID-named; use gather script or live list_events.
-- **FreeBusy `items` omitted by default (2026-06-24)** — Joshu queries `primary` + personal Gmail; use **`calendars.combined.free`** for scheduling. See [`calendar-api-quirks.md`](references/calendar-api-quirks.md).
+- **FreeBusy `items` omitted by default** — Joshu queries, for each calendar account (personal, work, …), `primary` + personal Gmail + selected calendars; use **`calendars.combined.free`** for scheduling. See [`calendar-api-quirks.md`](references/calendar-api-quirks.md).
 - **End-of-day awareness** — if owner local time is past ~6 PM, confirm whether they want **tomorrow's** block, not today's.
 - **Journal paths** — `Projects/*/journal_YYYY-MM-DD.md` and `Projects/_system/journal_*.md` (not repo-root journals).
 

@@ -21,7 +21,7 @@ Joshu is a different take on AI agents: instead of an AI trying to drive your la
 
 - **Hermes harness** — The LLM runs inside [Hermes](https://github.com/NousResearch/hermes-agent), which owns multi-gateway communication (chat, SMS, telephony, voice), routes messages to the model, and executes structured skills.
 - **Cloud desktop (LGUI)** — Not only a chat UI: a full cloud desktop where you and the agent operate the same apps (mail, files, whiteboard, browser) together. Apps expose language pipelines so the agent can open, read, and act — while you use them like normal desktop software. Purpose-built for joint human–AI use, not remote-control of macOS/Windows.
-- **Hybrid web browser (jWeb)** — A sandboxed browser-in-browser (Camofox + noVNC). Separate cookies from your laptop Chrome, with a human-in-the-loop path for login/2FA — the usual hard stop for “computer use” agents.
+- **Hybrid web browser (jWeb)** — A sandboxed browser-in-browser (Chromium with a live view in the desktop). Separate cookies from your laptop Chrome, with a human-in-the-loop path for login/2FA — the usual hard stop for “computer use” agents.
 - **GBrain semantic files** — Filesystem + [GBrain](https://github.com/garrytan/gbrain)-style semantic indexing. Agent work, saved mail threads, and uploads are searchable by meaning and by normal CLI tools.
 - **Hindsight memory** — Long-term recall wired in as the memory provider.
 - **Your box** — The stack runs on a dedicated Ubuntu VPS (Hetzner, DO, etc.) or locally for development — not a shared multi-tenant runtime in the open-source path.
@@ -33,7 +33,7 @@ Joshu is a different take on AI agents: instead of an AI trying to drive your la
 
 - **Node.js** 22+
 - **npm** (lockfile: `package-lock.json`)
-- **Docker** (Camofox browser container)
+- **Docker** (shared Chromium browser container)
 - **Go** 1.24+ (ArozOS desktop build)
 
 ### Installation
@@ -59,7 +59,7 @@ Joshu is a different take on AI agents: instead of an AI trying to drive your la
    ```bash
    npm run dev:arozos
    ```
-   Starts Camofox, builds ArozOS when needed, and boots the Joshu backend.
+   Starts the shared Chromium browser, builds ArozOS when needed, and boots the Joshu backend.
 
 5. **Open the desktop**  
    [http://127.0.0.1:8787](http://127.0.0.1:8787)
@@ -76,10 +76,10 @@ Joshu ships as public Docker images for a standalone VPS (no control plane requi
 | Self-host overview | [docs/self-host.md](docs/self-host.md) |
 | Deploy / image env | [deploy/README.md](deploy/README.md) |
 
-Pin images from [`deploy/RELEASE.json`](deploy/RELEASE.json) (currently **0.1.44**):
+Pin images from [`deploy/RELEASE.json`](deploy/RELEASE.json) (currently **0.1.59**):
 
-- `ghcr.io/db-aeon/joshu-oss:0.1.44` (+ `:latest`)
-- `ghcr.io/db-aeon/joshu-oss-voice-realtime:0.1.44` (+ `:latest`)
+- `ghcr.io/db-aeon/joshu-oss:0.1.59` (+ `:latest`)
+- `ghcr.io/db-aeon/joshu-oss-voice-realtime:0.1.59` (+ `:latest`)
 
 Bring your own API keys (OpenRouter via Welcome after first login; optional ScrapeCreators, Exa, Langfuse, Nylas, Twilio — see `deploy/.env.vps.example`). No managed relays are required for self-host.
 

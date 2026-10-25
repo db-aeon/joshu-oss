@@ -108,7 +108,7 @@ function callbackStatusUrl(batchId: string, token?: string): string | undefined 
 }
 
 /** Request comes from the co-located voice service (localhost + shared key). */
-function voiceLocalServiceAuthorized(req: Request): boolean {
+export function voiceLocalServiceAuthorized(req: Request): boolean {
   if (!isDirectLocalhostRequest(req)) return false;
   const expected = envTrim("HERMES_API_KEY");
   return Boolean(expected && String(req.headers.authorization ?? "") === `Bearer ${expected}`);
@@ -130,7 +130,14 @@ async function speakableCallbackText(
   const contentKey = realtimeGoalDeliveryContentKey(kind, text);
   let sent: OwnerTextResult = { texted: goal.linksTextedKey === contentKey };
   if (!sent.texted) {
-    sent = await textLinksToOwner(broker.projectRoot, links, goal.title);
+    sent = await textLinksToOwner(broker.projectRoot, links, goal.title, async () => {
+      // A carrier rejected the SMS: the goal no longer says that the links were texted.
+      await broker.store.update(goal.id, (item) => {
+        if (item.linksTextedKey !== contentKey) return;
+        delete item.linksTextedKey;
+        delete item.linksTextedAt;
+      });
+    });
     if (sent.texted) {
       await broker.store.update(goal.id, (item) => {
         item.linksTextedKey = contentKey;

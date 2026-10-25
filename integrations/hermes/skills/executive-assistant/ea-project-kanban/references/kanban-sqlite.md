@@ -153,7 +153,7 @@ conn.execute(
      "blocked",   # status
      None,        # assignee (None for blocked/parked)
      0,           # priority
-     "patrick",
+     "companion",
      int(time.time()),
      "scratch")
 )

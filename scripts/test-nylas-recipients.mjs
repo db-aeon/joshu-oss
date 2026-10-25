@@ -5,24 +5,24 @@ function assert(cond, msg) {
   if (!cond) throw new Error(msg);
 }
 
-const multi = parseRequiredTo("db@project-aeon.com, dbenyamin@gmail.com");
+const multi = parseRequiredTo("sam@acme.example, sam.owner@example.com");
 assert(multi.length === 2, "comma-separated to");
-assert(multi[0].email === "db@project-aeon.com", "first email");
+assert(multi[0].email === "sam@acme.example", "first email");
 
 const cc = parseOptionalRecipients(["guest@example.com"], "cc");
 assert(cc && cc[0].email === "guest@example.com", "cc array");
 
-const named = parseRequiredTo(["Giovanni Butera <gbutera@google.com>"]);
+const named = parseRequiredTo(["Casey Partner <casey@partner.example>"]);
 assert(named.length === 1, "display-name to length");
-assert(named[0].email === "gbutera@google.com", "display-name email");
-assert(named[0].name === "Giovanni Butera", "display-name name");
+assert(named[0].email === "casey@partner.example", "display-name email");
+assert(named[0].name === "Casey Partner", "display-name name");
 
 const namedCc = parseOptionalRecipients(
-  ["Allison Printz <aprintz@google.com>", "Dan Benyamin <dbenyamin@gmail.com>"],
+  ["Robin Partner <robin@partner.example>", "Sam Owner <sam.owner@example.com>"],
   "cc",
 );
 assert(namedCc?.length === 2, "display-name cc length");
-assert(namedCc?.[0].email === "aprintz@google.com", "display-name cc email");
+assert(namedCc?.[0].email === "robin@partner.example", "display-name cc email");
 
 try {
   parseRequiredTo("not-an-email");

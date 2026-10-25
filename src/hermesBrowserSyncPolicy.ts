@@ -4,7 +4,7 @@ export type BrowserSyncLevel = "off" | "light" | "full";
 export type BrowserSyncMode = BrowserSyncLevel | "auto";
 
 const BROWSER_INTENT_RE =
-  /\b(browser|click|button|page|screen|tab|navigate|snapshot|observe|sign\s*in|log\s*in|what'?s on|look at|scroll|website|novnc|camofox|element|link|fill in|type into|submit)\b/i;
+  /\b(browser|click|button|page|screen|tab|navigate|snapshot|observe|sign\s*in|log\s*in|what'?s on|look at|scroll|website|element|link|fill in|type into|submit)\b/i;
 const URL_IN_TEXT_RE = /https?:\/\/\S+/i;
 
 export function browserSyncModeFromEnv(): BrowserSyncMode {
@@ -41,7 +41,7 @@ function userWantsBrowserContext(userText: string): boolean {
   return BROWSER_INTENT_RE.test(userText);
 }
 
-/** Decide how much Camofox context to inject before a Hermes Chat turn. */
+/** Decide how much shared browser context to inject before a Hermes Chat turn. */
 export function resolveBrowserSyncLevel(input: {
   userText: string;
   priorUrl?: string;

@@ -25,7 +25,8 @@ jobs:
         github.event.pull_request.author_association != 'OWNER' &&
         github.event.pull_request.author_association != 'MEMBER' &&
         github.event.pull_request.author_association != 'COLLABORATOR' &&
-        github.event.pull_request.user.login != 'dependabot[bot]')
+        github.event.pull_request.user.login != 'dependabot[bot]' &&
+        github.event.pull_request.user.login != 'github-actions[bot]')
     runs-on: ubuntu-latest
     steps:
       - name: CLA Assistant
@@ -36,4 +37,4 @@ jobs:
           path-to-document: CLA.md
           path-to-signatures: signatures/cla.json
           branch: main
-          allowlist: dependabot[bot]
+          allowlist: dependabot[bot],github-actions[bot]

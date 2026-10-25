@@ -14,6 +14,7 @@ import {
   isCadenceReviewReplySubject,
   isOwnerSubstantiveBody,
   ownerAgentInboxMailClassification,
+  ownerMailHasExternalRecipients,
   shouldForceTrackOwnerAgentInbox,
 } from "../dist/ea/ownerAgentInboxMail.js";
 import { isOwnerReplyEligible } from "../dist/ea/ownerReplyEligibility.js";
@@ -60,46 +61,46 @@ const embedded = normalizeForIngressRouting({
   disposition: "track",
   confidence: 0.88,
   category: "scheduling",
-  project_slug: "uplabs-email-assistant",
+  project_slug: "partner-email-assistant",
   is_new_track: false,
   reason: "partner thread",
 });
-assert(embedded.project_slug === "uplabs-email-assistant", "keep project slug");
+assert(embedded.project_slug === "partner-email-assistant", "keep project slug");
 
 // Quote strip: Gmail "On … wrote:" tail
-const andrewAsk = `Finn,
+const ownerAsk = `Ava,
 
 What's on my agenda for tomorrow?
 
-On Sat, Aug 22, 2026, 4:36 PM <finn@joshu.me> wrote:
+On Sat, Aug 22, 2026, 4:36 PM <ava@joshu.me> wrote:
 
-Andrew, I just gave your box an upgrade. Phone & Voice: …`;
-const stripped = stripEmailReplyQuotes(andrewAsk);
+Sam, I just gave your box an upgrade. Phone & Voice: …`;
+const stripped = stripEmailReplyQuotes(ownerAsk);
 assert(stripped.includes("agenda for tomorrow"), "keep owner ask");
 assert(!stripped.includes("gave your box an upgrade"), "drop quoted upgrade FYI");
 assert(!isPureAckOrEmptyBody(stripped), "agenda ask is not a pure ack");
 assert(isPureAckOrEmptyBody("Thanks!"), "thanks is pure ack");
 
 // Classifier preview: latest section only + strip quotes (no prior FYI padding)
-const mirror = `### Sat — finn@joshu.me
+const mirror = `### Sat — ava@joshu.me
 
-**Subject:** A few upgrades for your box, Andrew
+**Subject:** A few upgrades for your box, Sam
 
-Andrew, I just gave your box an upgrade. Long FYI about Phone & Voice and Desktop.
+Sam, I just gave your box an upgrade. Long FYI about Phone & Voice and Desktop.
 
 ---
 
-### Sun — Andrew Goodrich <ag@andrewgoodrich.com>
+### Sun — Sam Owner <sam@owner.example>
 
-**Subject:** Re: A few upgrades for your box, Andrew
+**Subject:** Re: A few upgrades for your box, Sam
 
-Finn,
+Ava,
 
 What's on my agenda for tomorrow?
 
-On Sat, Aug 22, 2026, 4:36 PM <finn@joshu.me> wrote:
+On Sat, Aug 22, 2026, 4:36 PM <ava@joshu.me> wrote:
 
-Andrew, I just gave your box an upgrade. Long FYI about Phone & Voice and Desktop.
+Sam, I just gave your box an upgrade. Long FYI about Phone & Voice and Desktop.
 `;
 const threadPreview = buildThreadBodyPreview(mirror, 2000);
 assert(
@@ -113,7 +114,7 @@ assert(
   "classifier drops quoted companion FYI",
 );
 
-// Owner Nylas info → track override (Andrew case)
+// Owner Nylas info → track override
 const misclass = {
   disposition: "info",
   confidence: 0.78,
@@ -126,14 +127,14 @@ const misclass = {
 const fixed = biasOwnerAgentInboxClassification({
   classification: misclass,
   provider: "nylas",
-  from: "Andrew Goodrich <ag@andrewgoodrich.com>",
-  ownerEmails: ["ag@andrewgoodrich.com"],
+  from: "Sam Owner <sam@owner.example>",
+  ownerEmails: ["sam@owner.example"],
   classifierBodyPreview: classPreview,
 });
 assert(fixed.disposition === "track", "owner nylas info → track");
 assert(fixed.reason.includes("owner_nylas_substantive_override"), "override tagged in reason");
 
-// track + owner_sent_update → track + owner_note (Andrew DONE list case)
+// track + owner_sent_update → track + owner_note (owner DONE list)
 const sentUpdate = {
   disposition: "track",
   confidence: 0.9,
@@ -142,17 +143,17 @@ const sentUpdate = {
   is_new_track: false,
   reason: "Owner status update on cadence thread",
 };
-const andrewDoneList = `• Cascades cistern board vote - DONE
-• St. Mary RE decision (reply Courtney)
-• St. Faith's Confirmation - DONE
-• mom's annuity-vs-Ally - DONE
-Scituate ideas - KEEP`;
+const ownerDoneList = `• HOA board vote - DONE
+• School course decision (reply Pat)
+• Volunteer sign-up - DONE
+• Retirement account review - DONE
+Weekend trip ideas - KEEP`;
 const fixedUpdate = biasOwnerAgentInboxClassification({
   classification: sentUpdate,
   provider: "nylas",
-  from: "Andrew Goodrich <goodrich@graymediagroup.com>",
-  ownerEmails: ["goodrich@graymediagroup.com", "ag@andrewgoodrich.com"],
-  classifierBodyPreview: andrewDoneList,
+  from: "Sam Owner <sam@work.example>",
+  ownerEmails: ["sam@work.example", "sam@owner.example"],
+  classifierBodyPreview: ownerDoneList,
 });
 assert(fixedUpdate.disposition === "track", "owner_sent_update substantive → track");
 assert(fixedUpdate.category === "owner_note", "owner_sent_update → owner_note");
@@ -161,8 +162,8 @@ assert(fixedUpdate.category === "owner_note", "owner_sent_update → owner_note"
 const ack = biasOwnerAgentInboxClassification({
   classification: misclass,
   provider: "nylas",
-  from: "ag@andrewgoodrich.com",
-  ownerEmails: ["ag@andrewgoodrich.com"],
+  from: "sam@owner.example",
+  ownerEmails: ["sam@owner.example"],
   classifierBodyPreview: "Thanks!",
 });
 assert(ack.disposition === "info", "pure ack stays info");
@@ -172,33 +173,78 @@ const stranger = biasOwnerAgentInboxClassification({
   classification: misclass,
   provider: "nylas",
   from: "other@example.com",
-  ownerEmails: ["ag@andrewgoodrich.com"],
+  ownerEmails: ["sam@owner.example"],
   classifierBodyPreview: classPreview,
 });
 assert(stranger.disposition === "info", "non-owner info unchanged");
 
 // Deterministic owner agent inbox gate
-assert(isOwnerSubstantiveBody(andrewDoneList), "DONE list is substantive");
+assert(isOwnerSubstantiveBody(ownerDoneList), "DONE list is substantive");
 assert(
   shouldForceTrackOwnerAgentInbox({
     provider: "nylas",
-    from: "goodrich@graymediagroup.com",
-    bodyPreview: andrewDoneList,
-    ownerEmails: ["goodrich@graymediagroup.com"],
+    from: "sam@work.example",
+    bodyPreview: ownerDoneList,
+    ownerEmails: ["sam@work.example"],
   }),
   "force track owner DONE reply",
+);
+// Owner reply-all to a counterparty with companion CC'd is not an owner→agent note (seen in production 2026-10-02)
+const replyAllOwner = ["owner@acme.example"];
+const replyAllAgent = ["ava@joshu.me"];
+assert(
+  !shouldForceTrackOwnerAgentInbox({
+    provider: "nylas",
+    from: "Jordan Owner <owner@acme.example>",
+    bodyPreview: "Pretty open on the 15th. Ava can help schedule thanks!",
+    ownerEmails: replyAllOwner,
+    agentEmails: replyAllAgent,
+    to: ["riley@investor.example"],
+    cc: ["ava@joshu.me"],
+  }),
+  "owner reply-all with external To must reach the classifier",
+);
+assert(
+  shouldForceTrackOwnerAgentInbox({
+    provider: "nylas",
+    from: "Jordan Owner <owner@acme.example>",
+    bodyPreview: "Can you move my Thursday dentist to next week?",
+    ownerEmails: replyAllOwner,
+    agentEmails: replyAllAgent,
+    to: ["ava@joshu.me"],
+    cc: ["owner@acme.example"],
+  }),
+  "owner→agent note still force-tracked",
+);
+assert(
+  ownerMailHasExternalRecipients({
+    to: ["Riley <riley@investor.example>"],
+    cc: ["ava@joshu.me"],
+    ownerEmails: replyAllOwner,
+    agentEmails: replyAllAgent,
+  }),
+  "external recipient detected",
+);
+assert(
+  !ownerMailHasExternalRecipients({
+    to: ["Ava <ava@joshu.me>"],
+    cc: ["OWNER@acme.example"],
+    ownerEmails: replyAllOwner,
+    agentEmails: replyAllAgent,
+  }),
+  "owner + agent only is internal",
 );
 assert(isCadenceReviewReplySubject("Re: Morning review ready — Thu 9/3"));
 const ownerClass = ownerAgentInboxMailClassification();
 assert(ownerClass.disposition === "track" && ownerClass.category === "owner_note");
 const ownerReply = isOwnerReplyEligible({
   provider: "nylas",
-  from: "goodrich@graymediagroup.com",
-  to: ["finn@joshu.me"],
-  ownerEmails: ["goodrich@graymediagroup.com"],
+  from: "sam@work.example",
+  to: ["ava@joshu.me"],
+  ownerEmails: ["sam@work.example"],
   disposition: "track",
   category: "owner_note",
-  agentEmails: ["finn@joshu.me"],
+  agentEmails: ["ava@joshu.me"],
 });
 assert(ownerReply.eligible === true, "owner_note owner-reply eligible");
 

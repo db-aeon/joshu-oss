@@ -6,7 +6,7 @@ acknowledgment, may continue chatting or queue more work, and receives blocked
 questions and completion results on the originating channel.
 
 **Theory of operation** (routing model, session thread vs Hermes, channel
-policy): [`realtime-goals-theory-of-operation.md`](realtime-goals-theory-of-operation.md).
+policy): [`realtime-goals-theory-of-operation.md`](technical-reference/realtime-goals-theory-of-operation.md).
 This page is the implementation reference.
 
 ## Scope
@@ -139,8 +139,9 @@ acknowledgment instead of a newer goal response.
   Kanban run summary (`latest_run.summary`, else `completion_summary`, else the
   last comment). [`formatOwnerCompletion`](../src/realtimeGoals/ownerDelivery.ts)
   rewrites that before send: second person, one fact per line, CAPTCHA and
-  "this run" notes removed. If the summary mentions a handoff and does not
-  include a URL, the broker appends the pending handoff link (same
+  "this run" notes removed. A line that starts with a URL keeps its case. If
+  the summary mentions a handoff and does not include a URL, the broker
+  appends the pending handoff link under "Open the live browser here:" (same
   `kanbanTaskId`, otherwise the newest pending record). The factory
   `realtime-goal` skill and the task body tell the worker to write that summary
   as a text to the owner, with the full URL on its own line. A worker that
@@ -187,7 +188,7 @@ classifies it:
 | **System stall** | Hermes circuit breaker (`gave_up`: crashes, timeouts, spawn failures, or clean exits without `kanban_complete`/`kanban_block`), or a reasonless block | Never page the owner. Append a `Joshu recovery` note and unblock, up to 2 times. Then send one honest message: couldn't finish, say “try again” or “cancel”. |
 
 There is no generic “I need more information” fallback any more: with nothing
-concrete to ask, the voice model invented a question (patrick 2026-09-24, flight
+concrete to ask, the voice model invented a question (fleet box 2026-09-24, flight
 card that already had its dates).
 
 ### Blocked answers
@@ -230,7 +231,14 @@ detection (the gate still recognizes a voicemail greeting).
 **Links on voice.** A callback result or blocked question that contains URLs is
 spoken without them; Joshu texts the links to the owner (once per result,
 recorded as `linksTextedKey`/`linksTextedAt`) and the spoken text says so — or
-says honestly that the text failed. Live Hermes answers on a call go through the
+says honestly that the text failed. The spoken text does not wait for the
+delivery receipt of that SMS, because the voice service has short time limits
+(2.5 s for the opener, 5 s for pending results, 10 s for the callback batch).
+Joshu reads the receipt in the background for up to 45 s
+(`sendSmsCheckReceiptLater` in [`twilioSmsSend.ts`](../src/twilioSmsSend.ts)).
+When a carrier rejects the SMS, the inline job marks its link fact `ok: false`
+and the goal loses `linksTextedKey`/`linksTextedAt`, so later turns do not
+claim the link and the next delivery texts it again. Live Hermes answers on a call go through the
 same path (`POST /api/realtime-goals/voice/owner-text`, loopback +
 `HERMES_API_KEY`, recipient always the owner). Blocked questions are relayed as
 questions (options with exact details, then the ask), not as summaries.
@@ -293,6 +301,8 @@ never enqueued twice for a goal, and new content supersedes anything unheard.
 | Callback missed (no answer, busy, voicemail, hang-up before unlock) | Full result by SMS now; backoff 10 min → 30 min → no calls until the owner makes contact |
 | Outside call hours (07:00–22:00 owner-local) | Text instead of calling tomorrow |
 | Owner says "call me back" (any channel) | Dial now, whatever the backoff or window |
+| SMS sent, no delivery receipt yet | Wait; no other SMS and no callback for that item (up to 10 min) |
+| SMS undelivered (Twilio `undelivered` / `failed`) | Never texted again; a phone result goes back to the callback rules, else it waits for the next call |
 
 Any owner message on any channel, or unlocking a call, clears the backoff.
 
@@ -304,7 +314,21 @@ Clear phrasings are deterministic
 classifies the rest. A route change on a running goal also reaches its worker
 as an owner update ("just email me the link").
 
-**Heard.** Text routes count as heard on send. A phone result counts as heard
+**Heard.** Slack and Telegram count as heard when the API accepts the message.
+SMS counts as heard only with a delivery receipt: Twilio accepts an SMS before
+the carrier delivers it, and carriers reject SMS later (fleet audit
+2026-10-10: errors 30034 unregistered A2P number, 30003 unreachable handset,
+30007 carrier filter, all recorded as heard before this rule). After the send,
+the item keeps state `ready` with `smsPending` (the message SIDs), and each
+dispatch pass reads the Twilio status of each SMS part, at most every 15 s
+(`fetchSmsStatus` in [`twilioSmsSend.ts`](../src/twilioSmsSend.ts)). Every part
+`delivered` → heard (`channel_delivered`). Any part `undelivered`, `failed`, or
+`canceled` → attempt outcome `undelivered` with the Twilio error code; the item
+stays open and is never texted again. No final status after 10 min → every
+part `sent` counts as heard (`sms_sent`, the carrier took it without a
+receipt); any other status is a failed send and is texted again after the
+backoff. The SMS thread record and the binding of a texted question happen
+only when the SMS counts as heard. A phone result counts as heard
 when the voice service sees its key facts in what the model actually said
 ([`deliveryCoverage.ts`](../packages/voice-realtime/src/deliveryCoverage.ts)),
 when the owner answers while it is being spoken, when the batch playback ack
@@ -398,7 +422,15 @@ Repo plugin `.hermes/plugins/joshu-realtime-goals/`:
 - intercepts already-authorized Slack/Telegram owner messages through Hermes's
   gateway hook and calls the local broker;
 - exposes `realtime_goal_defer` when an initially synchronous Hermes turn
-  discovers that the work is long.
+  discovers that the work is long;
+- blocks a Hermes `cronjob` call whose delivery target cannot reach anyone
+  (`cron_guard.py`), for example a reminder made in an SMS turn without
+  `deliver`. Reminders to the owner use `owner_reminder_create`
+  ([executive-assistant.md — Owner reminders](executive-assistant.md#owner-reminders-2026-10)).
+
+The SMS gateway also defers an SMS turn that its deadline stopped, with the
+owner text and a note about partial work as the objective
+([How long an SMS turn runs](technical-reference/realtime-goals-theory-of-operation.md#how-long-an-sms-turn-runs)).
 
 The defer handler accepts only queue-capable session identities (SMS, PSTN,
 browser voice, Slack, Telegram). It rejects jChat, AG-UI, mail, public Share
@@ -446,7 +478,7 @@ Implementation: [`src/realtimeGoals/router.ts`](../src/realtimeGoals/router.ts),
 [`src/realtimeGoals/sessionThread.ts`](../src/realtimeGoals/sessionThread.ts),
 [`src/realtimeGoals/broker.ts`](../src/realtimeGoals/broker.ts).
 
-See also: [`realtime-goals-theory-of-operation.md`](realtime-goals-theory-of-operation.md).
+See also: [`realtime-goals-theory-of-operation.md`](technical-reference/realtime-goals-theory-of-operation.md).
 
 ## Verification
 

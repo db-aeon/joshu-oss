@@ -1,6 +1,6 @@
 # Runtime assets (API-served files that tsc does not emit)
 
-Laptop `tsx` can read anything in the git tree. A VPS box cannot. Compose bind-mounts **`dist/`** over the image; `tsc` only writes `.js`. HTML, PNG, and similar files the Joshu API `readFile`s are **invisible on the box** until they are copied into `dist/`.
+Laptop `tsx` can read anything in the git tree. A VPS box runs the `dist/` of the sandbox image; `tsc` only writes `.js`. HTML, PNG, and similar files the Joshu API `readFile`s are **invisible on the box** until they are copied into `dist/`.
 
 That is how public **Chat with files** 500ed (`Share chat UI missing`) while `apps/share-chat/index.html` existed in git.
 
@@ -25,7 +25,7 @@ Then:
 2. `npm run build` copies the list (`node scripts/copy-runtime-assets.mjs`).
 3. Image build and CI fail closed: `npm run test:runtime-assets` and `deploy/Dockerfile` run `--check`.
 
-Do **not** rely on a compose bind-mount of `apps/` as the product path. Bind-mounts are a git-pull hotfix lane, and they do nothing until that compose snippet is on the **box** and `joshu-stack` is recreated. `git pull` never copies `dest` files — overlay host `dist/` (or wait for an image that already contains them, then `syncDistFromImage`).
+Do **not** rely on another folder of the image (for example `apps/`) as the product path. Read the file from `dist/`. Compose mounts no host code into the stack container, so a box gets the file only from a release image.
 
 ## Commands
 
@@ -39,8 +39,8 @@ npm run test:runtime-assets                           # src + dest exist
 | What | How it reaches the box |
 |------|------------------------|
 | Vite desktop apps (jMail, last30days, jTerm) | `npm run build:<app>` → `dist/<app>/` → Dockerfile `rsync` into the ArozOS template. Add **both** the package.json script and the Dockerfile rsync line. |
-| Skills, MCP `.mjs`, vanilla overlays | Compose bind-mount from `/opt/joshu`. `git pull` + recreate. |
-| Factory YAML (`manifest.yaml`, `onboarding-prompts.yaml`) | Compose bind-mount from `/opt/joshu/factory/`. `git pull` + recreate. |
+| Skills, MCP `.mjs`, vanilla overlays | Sandbox image (`COPY` in `deploy/Dockerfile`). New release image. |
+| Factory YAML (`manifest.yaml`, `onboarding-prompts.yaml`) | Sandbox image. New release image. |
 | This list (API-served static) | Copy into `dist/` beside compiled JS. |
 
-See [share-chat.md — Packaging](share-chat.md#packaging-vps), [hotpatch-running-box.md](vps-sandbox/hotpatch-running-box.md), [app-sdk.md](app-sdk.md) (Vite apps).
+See [share-chat.md — Packaging](share-chat.md#packaging-vps), hotpatch-running-box.md, [app-sdk.md](app-sdk.md) (Vite apps).

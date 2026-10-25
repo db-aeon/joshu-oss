@@ -3,6 +3,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
+import { joshuStateDir } from "../joshuStateDir.js";
 import { provisionEnvTrim } from "../provisionInstanceEnv.js";
 
 export type MeteredProviderMode = "relay" | "direct" | "off";
@@ -34,7 +35,7 @@ function envTrim(name: string, fallback = ""): string {
 }
 
 function providersConfigPath(projectRoot = process.cwd()): string {
-  return path.join(projectRoot, ".joshu", "connectors-providers.env");
+  return path.join(joshuStateDir(projectRoot), "connectors-providers.env");
 }
 
 function parseDotEnv(text: string): Record<string, string> {

@@ -55,13 +55,10 @@ function buildHermesRunner(projectRoot: string): HermesApiRunner {
     readHermesGatewayPreference(projectRoot) ?? envOr("HERMES_API_AUTO_START", "true") !== "false";
   return new HermesApiRunner({
     binary: envOr("HERMES_BIN", "/Users/danbenyamin/Documents/dev/hermes-agent/venv/bin/hermes"),
-    camofoxUrl: envOr("CAMOFOX_URL", "http://localhost:9377"),
     cdpUrl: envOr("BROWSER_CDP_URL", ""),
     apiBaseUrl: envOr("HERMES_API_BASE_URL", "http://127.0.0.1:8642"),
     apiKey: envOr("HERMES_API_KEY", "change-me-local-dev"),
     autoStartGateway: autoStart,
-    hitlCamofoxUserId: envOr("HITL_CAMOFOX_USER_ID", "hitl-camofox"),
-    hitlCamofoxSessionKey: envOr("HITL_CAMOFOX_SESSION_KEY", "hitl-main"),
   });
 }
 

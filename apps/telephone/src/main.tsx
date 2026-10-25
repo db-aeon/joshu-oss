@@ -11,7 +11,6 @@ const API = "/joshu/api/telephone";
 type TelephoneStatus = {
   phoneNumber: string;
   phoneNumberDisplay: string;
-  thinkPassword: string;
   thinkPasswordConfigured: boolean;
   ownerCaller: string;
   ownerCallerDisplay: string;
@@ -34,7 +33,8 @@ function App() {
   const [draftPin, setDraftPin] = useState("");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
-  const [showPassphrase, setShowPassphrase] = useState(false);
+  /** The passphrase while Show is on; the status never holds it. */
+  const [shownPassphrase, setShownPassphrase] = useState<string | null>(null);
   const [draftPassphrase, setDraftPassphrase] = useState("");
   const [draftOwnerCaller, setDraftOwnerCaller] = useState("");
 
@@ -48,6 +48,7 @@ function App() {
       setStatus(json.telephone);
       // Never prefill the edit box with the live passphrase — Show/Hide covers that.
       setDraftPassphrase("");
+      setShownPassphrase(null);
       setDraftOwnerCaller(json.telephone.ownerCaller || "");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -75,6 +76,22 @@ function App() {
     setMessage(json.note || "Saved.");
   };
 
+  const togglePassphrase = async () => {
+    if (shownPassphrase !== null) {
+      setShownPassphrase(null);
+      return;
+    }
+    setError("");
+    try {
+      const res = await fetch(`${API}/passphrase`, { method: "POST", cache: "no-store" });
+      const json = (await res.json()) as { error?: string; thinkPassword?: string };
+      if (!res.ok) throw new Error(json.error || res.statusText);
+      setShownPassphrase(json.thinkPassword ?? "");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
   const savePassphrase = async () => {
     setSaving("passphrase");
     setError("");
@@ -82,7 +99,7 @@ function App() {
     try {
       await putTelephone({ thinkPassword: draftPassphrase });
       setDraftPassphrase("");
-      setShowPassphrase(false);
+      setShownPassphrase(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -233,9 +250,9 @@ function App() {
         </p>
         {status?.thinkPasswordConfigured ? (
           <div className="passphrase-row" style={{ marginBottom: "0.85rem" }}>
-            <code>{showPassphrase ? status.thinkPassword : "•••• ••••"}</code>
-            <button type="button" onClick={() => setShowPassphrase((v) => !v)}>
-              {showPassphrase ? "Hide" : "Show"}
+            <code>{shownPassphrase ?? "•••• ••••"}</code>
+            <button type="button" onClick={() => void togglePassphrase()}>
+              {shownPassphrase !== null ? "Hide" : "Show"}
             </button>
           </div>
         ) : (

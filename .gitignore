@@ -1,5 +1,8 @@
 .joshu/last30days/
 .joshu/proactive/
+.joshu/teams/
+.joshu/browser-handoff/
+.joshu/sms/
 node_modules/
 dist/
 .next/

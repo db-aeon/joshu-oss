@@ -33,8 +33,8 @@ test("fuzzy match accepts STT drift around a two-word passphrase", () => {
 });
 
 test("phonetic match accepts quartz heard as courts (PSTN STT)", () => {
-  const secret = "quartz citadel";
-  assert.equal(matchesThinkPassphrase("Courts Citadel", secret), true);
-  assert.equal(matchesThinkPassphrase("quartz citadel", secret), true);
+  const secret = "quartz lantern";
+  assert.equal(matchesThinkPassphrase("Courts Lantern", secret), true);
+  assert.equal(matchesThinkPassphrase("quartz lantern", secret), true);
   assert.equal(matchesThinkPassphrase("harbor lantern", secret), false);
 });

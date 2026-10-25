@@ -9,7 +9,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { resolveBoxSecret } from "../boxSecrets/resolve.js";
-import { JOSHU_OPENROUTER_HINDSIGHT_LLM_MODEL } from "../joshuOpenRouterDefaults.js";
+import {
+  JOSHU_OPENROUTER_HINDSIGHT_LLM_MODEL,
+  withOpenRouterDataPolicy,
+} from "../joshuOpenRouterDefaults.js";
 import type { ResearchRequest } from "./runner.js";
 import {
   last30daysPlanRuntimeDir,
@@ -576,16 +579,18 @@ Rules:
         "HTTP-Referer": "https://joshu.local",
         "X-Title": "Joshu last30days planner",
       },
-      body: JSON.stringify({
-        model,
-        messages: [
-          { role: "system", content: system },
-          { role: "user", content: user },
-        ],
-        max_tokens: 2048,
-        temperature: 0.2,
-        response_format: { type: "json_object" },
-      }),
+      body: JSON.stringify(
+        withOpenRouterDataPolicy({
+          model,
+          messages: [
+            { role: "system", content: system },
+            { role: "user", content: user },
+          ],
+          max_tokens: 2048,
+          temperature: 0.2,
+          response_format: { type: "json_object" },
+        }),
+      ),
       signal: AbortSignal.timeout(25_000),
     });
     if (!res.ok) return null;

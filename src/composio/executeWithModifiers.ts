@@ -17,6 +17,7 @@ export async function composioToolsExecute(
   params: ComposioExecuteParams,
   projectRoot = process.cwd(),
 ): Promise<ExecuteResult> {
+  // Cached per process, so a tool call makes no Composio session call (see getOrCreateComposioSession).
   await getOrCreateComposioSession(projectRoot);
   const beforeExecute = createOwnerChannelBeforeExecute(projectRoot);
   const composio = composioClient();

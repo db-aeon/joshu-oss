@@ -10,13 +10,14 @@ import { access, mkdir, readFile, rm, unlink, writeFile } from "node:fs/promises
 import os from "node:os";
 import path from "node:path";
 
-import {
-  assertDistProvenanceMatches,
-  shouldSyncDistFromImage,
-  syncDistFromImage,
-} from "./distSync.js";
+import { removeAgentReplaceHelper, replaceAgentContainer, startInstanceAgent } from "./agentReplace.js";
 import { ensureRegistryLoginForUpdate, persistGhcrSecretsFile, probeRegistryAuthOk } from "./registryAuth.js";
+import { defaultDiagnosticsDeps, runDiagnostics } from "./diagnostics.js";
 import { evaluateSnapshotCredStatus, type SnapshotCredStatus } from "./snapshotCreds.js";
+import { releaseEnvUpdates } from "./releaseEnv.js";
+import { finishReleaseUpdate } from "./releaseFinish.js";
+import { getRuntimeDrift } from "./runtimeDrift.js";
+import { carryOverJoshuState } from "./stateCarryOver.js";
 import { voiceImageRefFromSandbox } from "./voiceImageRef.js";
 
 const execFileAsync = promisify(execFile);
@@ -51,7 +52,12 @@ const HEALTH_POLL_MS = Number(env("INSTANCE_AGENT_HEALTH_POLL_MS", "5000"));
 const HERMES_GRACE_MS = Number(env("INSTANCE_AGENT_HERMES_GRACE_MS", "180000"));
 const COMPANION_SOUL_SECRET_PATH = "/etc/joshu/secrets/companion-soul.md";
 const PENDING_UPDATE_PATH = "/etc/joshu/secrets/pending-release-update.json";
-const PATCH_INSTANCE_ENV_SCRIPT = path.join(INSTALL_DIR, "scripts/patch-instance-env.mjs");
+/** In the host bundle (change prune-release-images). */
+const PRUNE_RELEASE_IMAGES_SCRIPT = path.join(INSTALL_DIR, "deploy", "scripts", "prune-release-images.sh");
+/** In the agent image (deploy/Dockerfile.instance-agent). */
+const PATCH_INSTANCE_ENV_SCRIPT = env("JOSHU_PATCH_INSTANCE_ENV_SCRIPT", "/app/scripts/patch-instance-env.mjs");
+/** Installer of the host bundle, inside the sandbox image (change image-owned-box-runtime). */
+const HOST_BUNDLE_INSTALLER = "/opt/joshu/.image/host/deploy/scripts/install-host-bundle.sh";
 const JOSHU_SYNC_IDENTITY_URL = env(
   "JOSHU_SYNC_IDENTITY_URL",
   "http://127.0.0.1:8788/joshu/api/instance/sync-companion-identity",
@@ -59,6 +65,10 @@ const JOSHU_SYNC_IDENTITY_URL = env(
 const JOSHU_SEND_OWNER_EMAIL_URL = env(
   "JOSHU_SEND_OWNER_EMAIL_URL",
   "http://127.0.0.1:8788/joshu/api/instance/send-owner-email",
+);
+const JOSHU_DESKTOP_LOGIN_URL = env(
+  "JOSHU_DESKTOP_LOGIN_URL",
+  "http://127.0.0.1:8788/joshu/api/desktop-login/code",
 );
 
 function authHeader(): string {
@@ -100,6 +110,8 @@ async function fetchJoshuHealth(): Promise<{
   readyForUpdate: boolean;
   releaseVersion: string;
   components: Record<string, unknown>;
+  /** Seconds since the Joshu API started; the failure digest uses it to mark old failures. */
+  uptimeSec?: number;
 }> {
   try {
     const res = await fetch(JOSHU_HEALTH_URL, { signal: AbortSignal.timeout(10_000) });
@@ -108,8 +120,10 @@ async function fetchJoshuHealth(): Promise<{
       readyForUpdate?: boolean;
       releaseVersion?: string;
       components?: Record<string, unknown>;
+      uptimeSec?: number;
     };
     return {
+      uptimeSec: typeof body.uptimeSec === "number" ? body.uptimeSec : undefined,
       healthy: Boolean(body.healthy) && res.ok,
       readyForUpdate: body.readyForUpdate !== false,
       releaseVersion: body.releaseVersion ?? env("JOSHU_RELEASE_VERSION", "0.0.0-dev"),
@@ -203,6 +217,7 @@ async function ackCommand(
 const COMPOSE_ENV_FILE_KEYS = [
   "JOSHU_IMAGE_REF",
   "JOSHU_VOICE_IMAGE_REF",
+  "JOSHU_INSTANCE_AGENT_IMAGE_REF",
   "JOSHU_RELEASE_VERSION",
   "JOSHU_RELEASE_CHANNEL",
   "HERMES_AGENT_REF",
@@ -218,28 +233,42 @@ function composeExecEnv(): NodeJS.ProcessEnv {
 
 const VOICE_RT_COMPOSE_PROFILE = "voice-rt";
 
-async function runCompose(args: string[], profiles: string[] = []): Promise<void> {
+async function runCompose(args: string[], profiles: string[] = [], timeout = 600_000): Promise<string> {
   const composeArgs = ["compose", "-f", COMPOSE_FILE, "--env-file", COMPOSE_ENV_FILE];
   for (const profile of profiles) {
     composeArgs.push("--profile", profile);
   }
   composeArgs.push(...args);
-  await execFileAsync("docker", composeArgs, {
-    timeout: 600_000,
+  const { stdout } = await execFileAsync("docker", composeArgs, {
+    timeout,
     env: composeExecEnv(),
   });
+  return String(stdout ?? "");
 }
 
-/** Speech-to-speech voice — GHCR image (JOSHU_VOICE_IMAGE_REF) or host compose build fallback. */
+/**
+ * Before a recreate of joshu-stack: copy the Joshu state of the running stack container
+ * from its writable layer into the volume (change joshu-state-volume). Best effort.
+ */
+async function carryOverStackState(services: string[]): Promise<void> {
+  if (!services.includes("joshu-stack")) return;
+  const result = await carryOverJoshuState(INSTALL_DIR, (script) =>
+    runCompose(["exec", "-T", "joshu-stack", "sh", "-c", script], [], 120_000),
+  );
+  if (result.ok) {
+    console.info(`[instance-agent] joshu state carry-over: ${result.lines.join("; ") || "nothing to copy"}`);
+  } else {
+    console.warn(
+      `[instance-agent] WARNING: joshu state carry-over incomplete: ${result.error ?? result.lines.join("; ")}`,
+    );
+  }
+}
+
+/** Speech-to-speech voice — GHCR image (JOSHU_VOICE_IMAGE_REF). */
 async function voiceRealtimeS2sEnabled(): Promise<boolean> {
   const fileEnv = await readEnvFileKeys();
   const mode = fileEnv.JOSHU_VOICE_MODE || env("JOSHU_VOICE_MODE", "realtime_s2s");
   return mode === "realtime_s2s";
-}
-
-async function buildVoiceRealtime(): Promise<void> {
-  console.info("[instance-agent] building voice-realtime from host clone (no GHCR ref)");
-  await runCompose(["build", "voice-realtime"], [VOICE_RT_COMPOSE_PROFILE]);
 }
 
 async function pullVoiceRealtime(imageRef: string): Promise<void> {
@@ -258,11 +287,10 @@ async function syncVoiceRealtimeForUpdate(payload: Record<string, unknown>): Pro
           : typeof payload.imageRef === "string" && payload.imageRef
             ? voiceImageRefFromSandbox(payload.imageRef)
             : "");
-  if (voiceRef) {
-    await pullVoiceRealtime(voiceRef);
-  } else {
-    await buildVoiceRealtime();
+  if (!voiceRef) {
+    throw new Error("voice-realtime update needs JOSHU_VOICE_IMAGE_REF or payload.imageRef");
   }
+  await pullVoiceRealtime(voiceRef);
 }
 
 async function recreateVoiceRealtime(): Promise<void> {
@@ -277,10 +305,6 @@ async function assertRegistryAuthForPull(): Promise<void> {
     "missing GHCR auth — mount /root/.docker:/root/.docker:ro on instance-agent " +
       "or provision /etc/joshu/secrets/ghcr-read.env (see deploy/docker-compose.yml)",
   );
-}
-
-async function runShell(command: string, args: string[], cwd: string): Promise<void> {
-  await execFileAsync(command, args, { cwd, timeout: 300_000, env: process.env });
 }
 
 async function readEnvFileKeys(): Promise<Record<string, string>> {
@@ -317,7 +341,7 @@ async function updateEnvFile(updates: Record<string, string>): Promise<void> {
     }
     return;
   } catch {
-    // Fall back when /opt/joshu is not mounted (local dev).
+    // Fall back when the patch script is missing (local dev).
   }
 
   let envText = "";
@@ -344,101 +368,72 @@ async function updateEnvFile(updates: Record<string, string>): Promise<void> {
   }
 }
 
-function releaseEnvUpdates(payload: Record<string, unknown>): Record<string, string> {
-  const updates: Record<string, string> = {};
-  const imageRef = typeof payload.imageRef === "string" ? payload.imageRef.trim() : "";
-  if (imageRef) {
-    updates.JOSHU_IMAGE_REF = imageRef;
-  }
-  if (typeof payload.version === "string" && payload.version) {
-    updates.JOSHU_RELEASE_VERSION = payload.version;
-  }
-  if (typeof payload.hermesRef === "string" && payload.hermesRef) {
-    updates.HERMES_AGENT_REF = payload.hermesRef;
-  }
-  const explicitVoice =
-    typeof payload.voiceImageRef === "string" ? payload.voiceImageRef.trim() : "";
-  if (explicitVoice) {
-    updates.JOSHU_VOICE_IMAGE_REF = explicitVoice;
-  } else if (imageRef) {
-    updates.JOSHU_VOICE_IMAGE_REF = voiceImageRefFromSandbox(imageRef);
-  }
-  return updates;
+async function pullImage(imageRef: string): Promise<void> {
+  console.info(`[instance-agent] pulling ${imageRef}`);
+  await execFileAsync("docker", ["pull", "-q", imageRef], { timeout: 900_000 });
 }
 
-async function commandExists(command: string): Promise<boolean> {
-  try {
-    await execFileAsync("sh", ["-c", `command -v ${command}`], { timeout: 5_000 });
-    return true;
-  } catch {
-    return false;
+/**
+ * Write the host bundle of the release to INSTALL_DIR/deploy (change image-owned-box-runtime).
+ * The installer comes from the sandbox image, so the host needs no copy of it.
+ * INSTALL_DIR is mounted at the same path in this container, so the files land on the host.
+ */
+async function installHostBundle(imageRef: string, version: string): Promise<void> {
+  const { stdout: installer } = await execFileAsync(
+    "docker",
+    ["run", "--rm", "--entrypoint", "cat", imageRef, HOST_BUNDLE_INSTALLER],
+    { timeout: 120_000, maxBuffer: 4 * 1024 * 1024 },
+  );
+  if (!installer.trim()) {
+    throw new Error(`${imageRef} has no host bundle installer (${HOST_BUNDLE_INSTALLER})`);
   }
-}
-
-async function syncHostGit(payload: Record<string, unknown>): Promise<void> {
-  if (!payload.hostGitRequired) return;
-  if (!(await commandExists("git"))) {
-    console.warn(
-      "[instance-agent] skipping host git sync (git not in PATH — rebuild instance-agent image)",
+  await new Promise<void>((resolve, reject) => {
+    const child = execFile(
+      "bash",
+      ["-s"],
+      {
+        timeout: 300_000,
+        env: {
+          ...process.env,
+          JOSHU_IMAGE_REF: imageRef,
+          JOSHU_RELEASE_VERSION: version,
+          JOSHU_INSTALL_DIR: INSTALL_DIR,
+          JOSHU_SKIP_PULL: "1",
+        },
+      },
+      (err, stdout, stderr) => {
+        if (stdout.trim()) console.info(stdout.trim());
+        if (err) reject(new Error(`install-host-bundle failed: ${stderr.trim() || err.message}`));
+        else resolve();
+      },
     );
+    child.stdin?.end(installer);
+  });
+}
+
+/**
+ * Remove old release images after a healthy update or rollback (change prune-release-images).
+ * The script keeps the current release images and the previous release for a rollback.
+ * Best effort: the new release already runs, so a failure here only logs a warning.
+ * composeExecEnv() drops the release pins of the boot env, so the script reads them from instance.env.
+ */
+async function pruneReleaseImages(): Promise<void> {
+  try {
+    await access(PRUNE_RELEASE_IMAGES_SCRIPT);
+  } catch {
+    console.info(`[instance-agent] no ${PRUNE_RELEASE_IMAGES_SCRIPT}; old release images stay`);
     return;
   }
-  const repoRef =
-    typeof payload.repoRef === "string" && payload.repoRef.trim()
-      ? payload.repoRef.trim()
-      : env("JOSHU_REPO_REF", "main");
-  console.info(`[instance-agent] syncing host clone at ${INSTALL_DIR} to ${repoRef}`);
-  await runShell("git", ["fetch", "--all"], INSTALL_DIR);
-  await runShell("git", ["checkout", repoRef], INSTALL_DIR);
   try {
-    await runShell("git", ["pull", "--ff-only", "origin", repoRef], INSTALL_DIR);
-  } catch {
-    console.info("[instance-agent] git pull skipped (detached ref or already current)");
-  }
-}
-
-async function buildHostInstanceAgent(): Promise<void> {
-  const agentDir = path.join(INSTALL_DIR, "packages/instance-agent");
-  const distDir = path.join(agentDir, "dist");
-  const nodeModulesDir = path.join(agentDir, "node_modules");
-
-  // Dev machines may have npm at repo root; VPS host has no npm and workspace:* breaks package-only install.
-  if (await commandExists("npm")) {
-    try {
-      console.info(`[instance-agent] building host agent at ${agentDir} (npm)`);
-      try {
-        await runShell("npm", ["ci", "--omit=dev"], agentDir);
-      } catch {
-        await runShell("npm", ["install", "--omit=dev"], agentDir);
-      }
-      await runShell("npm", ["run", "build"], agentDir);
-      return;
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.warn(`[instance-agent] npm build failed, falling back to docker compose build: ${msg}`);
-    }
-  }
-
-  console.info("[instance-agent] building host agent via docker compose build instance-agent");
-  await runCompose(["build", "instance-agent"]);
-  const { stdout } = await execFileAsync(
-    "docker",
-    ["compose", "-f", COMPOSE_FILE, "--env-file", COMPOSE_ENV_FILE, "images", "-q", "instance-agent"],
-    { timeout: 60_000, env: composeExecEnv() },
-  );
-  const imageId = stdout.trim().split("\n").find(Boolean);
-  if (!imageId) throw new Error("instance-agent image id missing after compose build");
-  const { stdout: cidOut } = await execFileAsync("docker", ["create", imageId], { timeout: 60_000 });
-  const cid = cidOut.trim();
-  try {
-    await rm(distDir, { recursive: true, force: true });
-    await rm(nodeModulesDir, { recursive: true, force: true });
-    await execFileAsync("docker", ["cp", `${cid}:/app/dist`, distDir], { timeout: 120_000 });
-    await execFileAsync("docker", ["cp", `${cid}:/app/node_modules`, nodeModulesDir], {
-      timeout: 120_000,
+    const { stdout } = await execFileAsync("bash", [PRUNE_RELEASE_IMAGES_SCRIPT], {
+      timeout: 600_000,
+      env: { ...composeExecEnv(), ENV_FILE: COMPOSE_ENV_FILE },
     });
-  } finally {
-    await execFileAsync("docker", ["rm", cid], { timeout: 30_000 }).catch(() => {});
+    if (stdout.trim()) console.info(stdout.trim());
+  } catch (err) {
+    console.warn(
+      `[instance-agent] removing old release images failed: ${err instanceof Error ? err.message : err}`,
+    );
   }
 }
 
@@ -473,21 +468,57 @@ async function clearPendingUpdate(): Promise<void> {
   await unlink(PENDING_UPDATE_PATH).catch(() => {});
 }
 
-/** git pull + build host agent, restart container, resume command on next boot. */
+/**
+ * Prepare a release update (change image-owned-box-runtime): install the host bundle and
+ * the agent image of the target release, then restart this agent on the new image.
+ * The new agent process resumes the command from the pending update file.
+ */
 async function prepareAgentThenRestart(cmd: Command): Promise<void> {
-  console.info("[instance-agent] refreshing host agent before release command");
-  await syncHostGit(cmd.payload);
-  await buildHostInstanceAgent();
+  const payload = cmd.payload ?? {};
+  const envUpdates = releaseEnvUpdates(payload);
+  const imageRef = envUpdates.JOSHU_IMAGE_REF || env("JOSHU_IMAGE_REF");
+  const version = envUpdates.JOSHU_RELEASE_VERSION || env("JOSHU_RELEASE_VERSION");
+  const agentImageRef = envUpdates.JOSHU_INSTANCE_AGENT_IMAGE_REF;
+  if (!imageRef || !version || !agentImageRef) {
+    throw new Error("release update needs payload.imageRef and payload.version");
+  }
+  console.info(`[instance-agent] preparing release ${version}: host bundle + agent image`);
+  await ensureRegistryLoginForUpdate(payload);
+  await assertRegistryAuthForPull();
+  // Pull both images before any change on the host. A failed pull stops here.
+  await pullImage(imageRef);
+  await pullImage(agentImageRef);
+  await installHostBundle(imageRef, version);
+  await applyReleaseEnvUpdates({ JOSHU_INSTANCE_AGENT_IMAGE_REF: agentImageRef });
   await writePendingUpdate(cmd);
-  // --no-deps is critical: without it, compose recreates the `depends_on` service
-  // (joshu-stack) too. Recreation uses whatever compose files THIS invocation was
-  // launched with — the base compose only — which drops the fleet overlay mounts,
-  // and the agent then exits (below) into a half-recreated stack, wedging both
-  // containers in "Created". Recreate ONLY the agent here; the actual stack
-  // recreate happens later in applyReleaseUpdate with the correct compose files.
-  await runCompose(["up", "-d", "--no-deps", "--force-recreate", "instance-agent"]);
-  process.exit(0);
+  // The agent replace helper recreates ONLY the agent (--no-deps); the stack recreate
+  // happens later in applyReleaseUpdate, in the new agent process (change agent-self-replace).
+  try {
+    await replaceAgentContainer(
+      {
+        agentImageRef,
+        composeFile: COMPOSE_FILE,
+        composeEnvFile: COMPOSE_ENV_FILE,
+        installDir: INSTALL_DIR,
+        composeProfiles: env("COMPOSE_PROFILES") || undefined,
+        composeProjectName: env("COMPOSE_PROJECT_NAME") || undefined,
+      },
+      agentReplaceDeps,
+    );
+  } catch (err) {
+    // This agent still runs, so no new agent resumes the update.
+    await clearPendingUpdate();
+    throw err;
+  }
 }
+
+const agentReplaceDeps = {
+  docker: async (args: string[]) =>
+    String((await execFileAsync("docker", args, { timeout: 120_000, env: composeExecEnv() })).stdout ?? ""),
+  sleep: (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)),
+  now: () => Date.now(),
+  log: (line: string) => console.info(`[instance-agent] ${line}`),
+};
 
 /** Resolve snapshot cred status from instance.env (falling back to process env). */
 async function resolveSnapshotCredStatus(): Promise<SnapshotCredStatus> {
@@ -669,6 +700,28 @@ async function applySetArozPassword(payload: Record<string, unknown>): Promise<v
   console.info(`[instance-agent] set_aroz_password applied for ${arozUser}`);
 }
 
+/**
+ * Admin desktop login (openspec change admin-desktop-login): ask the Joshu API
+ * for a one-time login link of the box owner. The link works one time, within
+ * two minutes, and the control plane sends the admin to it.
+ */
+async function applyDesktopLogin(payload: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const adminEmail = typeof payload.adminEmail === "string" ? payload.adminEmail.trim() : "";
+  const res = await fetch(JOSHU_DESKTOP_LOGIN_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ adminEmail }),
+    signal: AbortSignal.timeout(15_000),
+  });
+  const parsed = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!res.ok || parsed.ok !== true || typeof parsed.url !== "string") {
+    const errMsg = typeof parsed.error === "string" ? parsed.error : `HTTP ${res.status}`;
+    throw new Error(`desktop-login failed: ${errMsg}`);
+  }
+  console.info(`[instance-agent] desktop login link made for ${adminEmail || "unknown admin"}`);
+  return { url: parsed.url, expiresAt: parsed.expiresAt };
+}
+
 async function applySendOwnerEmail(payload: Record<string, unknown>): Promise<Record<string, unknown>> {
   const to = typeof payload.to === "string" ? payload.to.trim() : "";
   const subject = typeof payload.subject === "string" ? payload.subject.trim() : "";
@@ -748,19 +801,11 @@ async function applyReleaseUpdate(payload: Record<string, unknown>): Promise<voi
     typeof payload.version === "string" && payload.version
       ? payload.version
       : env("JOSHU_RELEASE_VERSION");
-  const imageRef =
-    typeof payload.imageRef === "string" && payload.imageRef
-      ? payload.imageRef
-      : env("JOSHU_IMAGE_REF");
-  const syncDist = shouldSyncDistFromImage(payload);
 
   if (!rollingBack) {
     await preUpdateSnapshot(payload);
   } else {
     console.info("[instance-agent] skipping pre-update snapshot (rollback)");
-  }
-  if (!payload._agentPrepared) {
-    await syncHostGit(payload);
   }
 
   const voiceRtEnabled = await voiceRealtimeS2sEnabled();
@@ -784,32 +829,17 @@ async function applyReleaseUpdate(payload: Record<string, unknown>): Promise<voi
       await syncVoiceRealtimeForUpdate(payload);
     }
 
-    // Host ../dist bind-mount shadows the image — sync from the release image after pull.
-    if (syncDist) {
-      if (!imageRef) {
-        throw new Error("syncDistFromImage requires JOSHU_IMAGE_REF or payload.imageRef");
-      }
-      if (!expectedVersion) {
-        throw new Error("syncDistFromImage requires JOSHU_RELEASE_VERSION or payload.version");
-      }
-      await syncDistFromImage({
-        installDir: INSTALL_DIR,
-        imageRef,
-        version: expectedVersion,
-      });
-      await assertDistProvenanceMatches(INSTALL_DIR, expectedVersion);
-    }
-
     if (UPDATE_RECREATE_SERVICES.length === 0) {
       throw new Error("JOSHU_UPDATE_SERVICES must include at least one service besides instance-agent");
     }
+    await carryOverStackState(UPDATE_RECREATE_SERVICES);
     // Never force-recreate instance-agent here — it SIGKILLs this process before ack.
     await runCompose(["up", "-d", "--force-recreate", ...UPDATE_RECREATE_SERVICES]);
-    await waitForHealthyAfterUpdate(expectedVersion, healthGraceStartedAt);
-
-    if (voiceRtEnabled) {
-      await recreateVoiceRealtime();
-    }
+    await finishReleaseUpdate({
+      waitForHealthy: () => waitForHealthyAfterUpdate(expectedVersion, healthGraceStartedAt),
+      recreateVoice: voiceRtEnabled ? recreateVoiceRealtime : undefined,
+      pruneImages: pruneReleaseImages,
+    });
   } finally {
     process.env.JOSHU_UPDATE_IN_PROGRESS = "false";
     try {
@@ -849,6 +879,18 @@ async function executeCommand(cmd: Command): Promise<Record<string, unknown> | v
       break;
     case "send_owner_email":
       return applySendOwnerEmail(payload);
+    case "desktop_login":
+      return applyDesktopLogin(payload);
+    case "diagnostics":
+      // Read-only answers for post-release checks (spec box-diagnostics). Changes nothing on the box.
+      return runDiagnostics(
+        payload,
+        defaultDiagnosticsDeps({
+          joshuBaseUrl: new URL(JOSHU_HEALTH_URL).origin,
+          instanceEnvFile: COMPOSE_ENV_FILE,
+          installDir: INSTALL_DIR,
+        }),
+      ) as unknown as Promise<Record<string, unknown>>;
     case "set_aroz_password":
       await applySetArozPassword(payload);
       break;
@@ -880,6 +922,7 @@ async function executeCommand(cmd: Command): Promise<Record<string, unknown> | v
           await ensureRegistryLoginForUpdate({ registryAuth: auth });
         }
       }
+      await carryOverStackState(["joshu-stack"]);
       await runCompose(["up", "-d", "--force-recreate", "joshu-stack"]);
       const fileEnv = await readEnvFileKeys();
       const version = fileEnv.JOSHU_RELEASE_VERSION?.trim() || env("JOSHU_RELEASE_VERSION", "0.0.0-dev");
@@ -901,18 +944,30 @@ async function heartbeatLoop(): Promise<void> {
   const health = await fetchJoshuHealth();
   const registryAuthOk = await probeRegistryAuthOk();
   const snapshotAuthOk = (await resolveSnapshotCredStatus()).ok;
+  const fileEnv = await readEnvFileKeys();
+  const runtimeDrift = await getRuntimeDrift({
+    installDir: INSTALL_DIR,
+    releaseVersion: fileEnv.JOSHU_RELEASE_VERSION || env("JOSHU_RELEASE_VERSION"),
+  }).catch((err: unknown) => ({
+    ok: false,
+    checkedAt: new Date().toISOString(),
+    items: [],
+    scanError: err instanceof Error ? err.message : String(err),
+  }));
   const res = await postJson("/api/instances/heartbeat", {
     instanceId: INSTANCE_ID,
     reportedAt: new Date().toISOString(),
     releaseVersion: health.releaseVersion,
     healthy: health.healthy,
-    components: health.components,
+    // runtimeDrift is informational, like `failures`: it never gates health.
+    components: { ...health.components, runtimeDrift },
     host: {
       uptimeSec: os.uptime(),
       memUsedPct: Math.round((1 - os.freemem() / os.totalmem()) * 100),
       loadAvg: os.loadavg(),
       readyForUpdate: health.readyForUpdate,
       imageRef: env("JOSHU_IMAGE_REF"),
+      joshuUptimeSec: health.uptimeSec,
       registryAuthOk,
       snapshotAuthOk,
     },
@@ -950,7 +1005,7 @@ async function heartbeatLoop(): Promise<void> {
   setTimeout(() => void heartbeatLoop(), intervalMs);
 }
 
-async function resumePendingUpdateIfAny(): Promise<void> {
+async function resumePendingUpdate(): Promise<void> {
   const pending = await readPendingUpdate();
   if (!pending) return;
   await clearPendingUpdate();
@@ -992,15 +1047,21 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const health = await fetchJoshuHealth();
-  await registerOnce(health.releaseVersion);
-
   console.info(
     `[instance-agent] started instance=${INSTANCE_ID} plane=${CONTROL_PLANE_URL} health=${JOSHU_HEALTH_URL}`,
   );
 
-  await resumePendingUpdateIfAny();
-  await heartbeatLoop();
+  await startInstanceAgent({
+    hasPendingUpdate: async () => {
+      const pending = (await readPendingUpdate()) !== null;
+      if (pending) console.info("[instance-agent] pending update file found; skipping register");
+      return pending;
+    },
+    register: async () => registerOnce((await fetchJoshuHealth()).releaseVersion),
+    resumePendingUpdate,
+    removeHelper: () => removeAgentReplaceHelper(agentReplaceDeps, false),
+    startHeartbeat: heartbeatLoop,
+  });
 }
 
 main().catch((err) => {

@@ -181,7 +181,7 @@ npm run dev:arozos
 
 1. loads Hermes-home defaults and then reloads the project `.env` so local
    project credentials win;
-2. starts or verifies Camofox, Hindsight, gbrain, connectors, voice, and Joshu;
+2. starts or verifies the local Chromium browser, Hindsight, gbrain, connectors, voice, and Joshu;
 3. builds the Excalidraw bundle;
 4. copies it into the local ArozOS subservice tree;
 5. launches ArozOS on `127.0.0.1:8787`.

@@ -4,7 +4,7 @@
 
 import { spawn } from "node:child_process";
 import { watch } from "node:fs";
-import { appendFileSync } from "node:fs";
+import { appendFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { filterReadOnlyToolList, isReadOnlyGbrainTool } from "./gbrain-mcp-readonly.mjs";
 import { stageDesktopForGbrainSync } from "./gbrain-desktop-git.mjs";
@@ -19,6 +19,58 @@ import { normalizeGbrainQueryArgs } from "./gbrain-query-args.mjs";
 /**
  * @param {(msg: string) => void} log
  */
+/**
+ * Desktop paths whose changes never schedule a reindex:
+ * - `.git/`, `.metadata/`: git internals and ArozOS trash (noise, and would re-index trash).
+ * - `.joshu/` at any depth: Joshu's own JSON state (realtime goals, Nylas profile).
+ *   The realtime goals broker rewrites `state.json` every few seconds; each
+ *   tmp-file rename reindexed File Brain and kept its toast on (2026-10-24).
+ * - `*.tmp`: the temporary half of an atomic write; the rename onto the real
+ *   file sends its own event.
+ *
+ * @param {string} lower lowercased path relative to the Desktop, with `/` separators
+ */
+function isIgnoredWatchPath(lower) {
+  if (
+    lower === ".git" ||
+    lower.startsWith(".git/") ||
+    lower === ".metadata" ||
+    lower.startsWith(".metadata/")
+  ) {
+    return true;
+  }
+  if (lower.split("/").includes(".joshu")) return true;
+  return lower.endsWith(".tmp");
+}
+
+/** @param {string} filename */
+export function shouldWatchPath(filename) {
+  if (!filename) return false;
+  const lower = filename.replace(/\\/g, "/").toLowerCase();
+  if (isIgnoredWatchPath(lower)) return false;
+  if (lower.endsWith(".shortcut")) return false;
+  return lower.endsWith(".md") || lower.endsWith(".mdx");
+}
+
+/**
+ * ArozOS "delete" is a rename into `.metadata/.trash/`. The recursive watcher
+ * often only reports the folder name (`Appliances`) — not each `.md` — so an
+ * extension-only filter would never schedule reindex and deleted folders stay
+ * in File Brain until the next periodic tick.
+ *
+ * @param {string} eventType
+ * @param {string} filename
+ */
+export function shouldWatchFsEvent(eventType, filename) {
+  if (!filename) return eventType === "rename";
+  const lower = filename.replace(/\\/g, "/").toLowerCase();
+  if (isIgnoredWatchPath(lower)) return false;
+  if (shouldWatchPath(filename)) return true;
+  // Directory / non-markdown rename or delete (folder trash, move, remove).
+  if (eventType === "rename") return true;
+  return false;
+}
+
 export function createGbrainMcpBridge(log) {
   const GBRAIN_BIN = process.env.GBRAIN_BIN?.trim() || "gbrain";
   const GBRAIN_HOME = process.env.GBRAIN_HOME?.trim();
@@ -40,6 +92,8 @@ export function createGbrainMcpBridge(log) {
   /** Touch this file to force the next sync_brain with full=true (orphan purge / recovery). */
   const FULL_SYNC_TOUCH = GBRAIN_HOME ? path.join(GBRAIN_HOME, ".joshu-full-sync-touch") : undefined;
   const FULL_SYNC_FLAG = GBRAIN_HOME ? path.join(GBRAIN_HOME, ".joshu-gbrain-needs-full-sync") : undefined;
+  /** Touch to pause every sync_brain (search keeps serving). Remove to resume. */
+  const SYNC_PAUSE_FILE = GBRAIN_HOME ? path.join(GBRAIN_HOME, ".joshu-sync-paused") : undefined;
   const VERBOSE = /^(1|true|yes)$/i.test(process.env.GBRAIN_MCP_VERBOSE?.trim() || "");
   /** After sync_brain, verify index when disk has markdown (catches silent sync failures). */
   const EMPTY_INDEX_CHECK = !/^(0|false|no)$/i.test(process.env.GBRAIN_EMPTY_INDEX_CHECK?.trim() || "true");
@@ -49,10 +103,27 @@ export function createGbrainMcpBridge(log) {
   );
   const MCP_HTTP_URL = process.env.GBRAIN_MCP_HTTP_URL?.trim() || "http://127.0.0.1:8794";
   const SYNC_RETRY_MAX = Math.max(1, Number.parseInt(process.env.GBRAIN_SYNC_RETRY_MAX || "3", 10) || 3);
+  /**
+   * gbrain embeds a file before its DB write, so a file that fails the write is
+   * re-embedded (and billed) on every attempt. Once quick retries are spent,
+   * back off exponentially instead of letting fs events / periodic ticks /
+   * watchdogs re-run the same failing sync every few seconds.
+   */
+  const SYNC_BACKOFF_BASE_SEC = Math.max(
+    60,
+    Number.parseInt(process.env.GBRAIN_SYNC_BACKOFF_BASE_SEC || "900", 10) || 900,
+  );
+  const SYNC_BACKOFF_MAX_SEC = Math.max(
+    SYNC_BACKOFF_BASE_SEC,
+    Number.parseInt(process.env.GBRAIN_SYNC_BACKOFF_MAX_SEC || "21600", 10) || 21600,
+  );
   let serveRespawnDelayMs = 2000;
   const SERVE_RESPAWN_MAX_MS = 60_000;
   let syncFailureStreak = 0;
   let emptyIndexStreak = 0;
+  /** Epoch ms before which sync_brain is skipped (failure backoff). */
+  let syncBackoffUntil = 0;
+  let syncPausedLogged = false;
 
   /** @type {Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: NodeJS.Timeout }>} */
   const pending = new Map();
@@ -128,13 +199,16 @@ export function createGbrainMcpBridge(log) {
         logLine(`sync_brain failed (${syncFailureStreak}/${SYNC_RETRY_MAX}): ${JSON.stringify(msg.error)}`);
         if (syncFailureStreak < SYNC_RETRY_MAX) {
           scheduleReindex(Math.min(30_000, 2000 * syncFailureStreak));
-        } else if (FULL_SYNC_FLAG) {
-          try {
-            appendFileSync(FULL_SYNC_FLAG, `${new Date().toISOString()} sync_brain failures\n`);
-          } catch {
-            /* ignore */
+        } else {
+          if (syncFailureStreak === SYNC_RETRY_MAX && FULL_SYNC_FLAG) {
+            try {
+              appendFileSync(FULL_SYNC_FLAG, `${new Date().toISOString()} sync_brain failures\n`);
+            } catch {
+              /* ignore */
+            }
+            logLine("sync_brain failed repeatedly — flagged for ensure-gbrain-indexed.sh full recovery");
           }
-          logLine("sync_brain failed repeatedly — flagged for ensure-gbrain-indexed.sh full recovery");
+          startSyncBackoff();
         }
       } else {
         // MCP sync_brain has no skip_failed; blocked_by_failures still returns
@@ -149,21 +223,20 @@ export function createGbrainMcpBridge(log) {
           logLine(
             `sync_brain blocked by file failures (${syncFailureStreak}/${SYNC_RETRY_MAX}) — excluding recorded paths and retrying`,
           );
-          // Incremental sync may have left orphan pages (Manuals → trash rename).
-          pendingFullSync = true;
+          // Stay incremental: a full sync walks the filesystem and ignores the
+          // gitignored failure excludes, so the same bad files would block again.
+          // Trash/rename orphans already request full sync via the fs watcher.
           if (syncFailureStreak < SYNC_RETRY_MAX) {
             // stageDesktopForGbrainSync gitignores sync-failures.jsonl paths
             scheduleReindex(Math.min(30_000, 2000 * syncFailureStreak));
-          } else if (FULL_SYNC_FLAG) {
-            try {
-              appendFileSync(FULL_SYNC_FLAG, `${new Date().toISOString()} sync_brain blocked_by_failures\n`);
-            } catch {
-              /* ignore */
-            }
-            logLine("sync_brain blocked repeatedly — flagged for ensure-gbrain-indexed.sh full recovery");
+          } else {
+            // No full-recovery flag: a restart + full sync re-embeds the same
+            // per-file failures without fixing them.
+            startSyncBackoff();
           }
         } else {
           syncFailureStreak = 0;
+          syncBackoffUntil = 0;
           if (VERBOSE) {
             logLine("sync_brain completed");
           }
@@ -321,8 +394,30 @@ export function createGbrainMcpBridge(log) {
     });
   }
 
+  function isSyncPaused() {
+    if (/^(1|true|yes)$/i.test(process.env.GBRAIN_SYNC_PAUSED?.trim() || "")) return true;
+    return Boolean(SYNC_PAUSE_FILE && existsSync(SYNC_PAUSE_FILE));
+  }
+
+  function startSyncBackoff() {
+    const exponent = Math.max(0, syncFailureStreak - SYNC_RETRY_MAX);
+    const delaySec = Math.min(SYNC_BACKOFF_MAX_SEC, SYNC_BACKOFF_BASE_SEC * 2 ** exponent);
+    syncBackoffUntil = Date.now() + delaySec * 1000;
+    logLine(`sync_brain still failing (streak ${syncFailureStreak}) — pausing syncs for ${delaySec}s`);
+  }
+
   async function runReindexPipeline() {
     if (!childWriter) return;
+    if (isSyncPaused()) {
+      if (!syncPausedLogged) logLine(`sync_brain paused (${SYNC_PAUSE_FILE ?? "GBRAIN_SYNC_PAUSED"})`);
+      syncPausedLogged = true;
+      return;
+    }
+    syncPausedLogged = false;
+    if (Date.now() < syncBackoffUntil) {
+      if (VERBOSE) logLine(`sync_brain skipped (backoff until ${new Date(syncBackoffUntil).toISOString()})`);
+      return;
+    }
     if (reindexInFlight) {
       pendingReindex = true;
       return;
@@ -354,45 +449,6 @@ export function createGbrainMcpBridge(log) {
     }, delayMs);
   }
 
-  function shouldWatchPath(filename) {
-    if (!filename) return false;
-    const lower = filename.replace(/\\/g, "/").toLowerCase();
-    // Never react to ArozOS trash / git internals (noise + would re-index trash).
-    if (
-      lower === ".git" ||
-      lower.startsWith(".git/") ||
-      lower === ".metadata" ||
-      lower.startsWith(".metadata/")
-    ) {
-      return false;
-    }
-    if (lower.endsWith(".shortcut")) return false;
-    return lower.endsWith(".md") || lower.endsWith(".mdx");
-  }
-
-  /**
-   * ArozOS "delete" is a rename into `.metadata/.trash/`. The recursive watcher
-   * often only reports the folder name (`Appliances`) — not each `.md` — so an
-   * extension-only filter would never schedule reindex and deleted folders stay
-   * in File Brain until the next periodic tick.
-   */
-  function shouldWatchFsEvent(eventType, filename) {
-    if (!filename) return eventType === "rename";
-    const lower = filename.replace(/\\/g, "/").toLowerCase();
-    if (
-      lower === ".git" ||
-      lower.startsWith(".git/") ||
-      lower === ".metadata" ||
-      lower.startsWith(".metadata/")
-    ) {
-      return false;
-    }
-    if (shouldWatchPath(filename)) return true;
-    // Directory / non-markdown rename or delete (folder trash, move, remove).
-    if (eventType === "rename") return true;
-    return false;
-  }
-
   function startFilesystemWatch() {
     if (!DESKTOP_ROOT) {
       logLine("JOSHU_DESKTOP_ROOT unset; fs watch disabled");
@@ -401,10 +457,9 @@ export function createGbrainMcpBridge(log) {
     try {
       watch(DESKTOP_ROOT, { recursive: true }, (eventType, filename) => {
         if (!shouldWatchFsEvent(eventType, filename || "")) return;
-        // Folder trash / rename: prefer full sync so orphan pages drop promptly.
-        if (eventType === "rename" && filename && !shouldWatchPath(filename)) {
-          pendingFullSync = true;
-        }
+        // Moves/trash stay incremental: the git diff carries the rename/delete and
+        // gbrain applies it. A full sync re-imports what is on disk, never deletes,
+        // and skips the bookmark past the move — leaving the old page orphaned.
         scheduleReindex();
       });
       logLine(`watching ${DESKTOP_ROOT} (debounce ${DEBOUNCE_MS}ms)`);
@@ -590,6 +645,9 @@ export function createGbrainMcpBridge(log) {
       reindex_scheduled: reindexTimer != null,
       reindex_pending: pendingReindex,
       active: reindexInFlight || reindexTimer != null || pendingReindex,
+      sync_paused: isSyncPaused(),
+      sync_failure_streak: syncFailureStreak,
+      sync_backoff_until: syncBackoffUntil > Date.now() ? new Date(syncBackoffUntil).toISOString() : null,
     };
   }
 

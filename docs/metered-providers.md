@@ -50,7 +50,7 @@ If balance is zero, Connectors still shows the card + top-up link; tools stay of
 
 Provision vars are hydrated into `process.env` at Joshu boot ([`provisionInstanceEnv.ts`](../src/provisionInstanceEnv.ts)) and merged into MCP spawn env so start scripts see them.
 
-OSS-only local file: `.joshu/connectors-providers.env` (`FAL_KEY`, `FAL_MCP_USER_ENABLED`) — managed by Connectors setup API. In **relay** mode Joshu **ignores** any `FAL_KEY` there for Hermes (prevents accidental direct key use / bad keys).
+OSS-only local file: `connectors-providers.env` in the Joshu state folder (`JOSHU_STATE_DIR`, `/var/lib/arozos/joshu-state` in the image; `.joshu/` of the repository in local development) (`FAL_KEY`, `FAL_MCP_USER_ENABLED`) — managed by Connectors setup API. In **relay** mode Joshu **ignores** any `FAL_KEY` there for Hermes (prevents accidental direct key use / bad keys).
 
 ## Connectors UI
 
@@ -64,7 +64,7 @@ Mint env against production CP (no local CP required):
 
 ```bash
 cd ../joshu-control-plane/apps/control-plane
-npx tsx scripts/issue-local-dev-relay-env.ts patrick   # --credit-usd defaults to 0
+npx tsx scripts/issue-local-dev-relay-env.ts <slug>   # --credit-usd defaults to 0
 ```
 
 **Warning:** this script **rotates** the instance `agentTokenHash` in the control plane and writes a new `INSTANCE_AGENT_TOKEN` to the laptop path (e.g. `joshu/.local/instance.env`). Any **live box** for that slug still holding the old token will 401 on heartbeat, usage relay, and Langfuse ingest until `/etc/joshu/instance.env` is updated and `instance-agent` / `joshu-stack` recreated. Prefer a dedicated local-dev instance slug when possible.

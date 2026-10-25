@@ -39,20 +39,12 @@ export interface StatusReport {
     lastError?: string;
     restarting?: boolean;
   };
-  novnc: {
-    embedUrl: string;
-    baseUrl: string;
-    /** Joshu-served noVNC library (public/vendor/novnc). */
-    clientBaseUrl: string;
-    /** Camofox websockify, still under /joshu/novnc/websockify. */
-    websocketPath: string;
-  };
   /**
-   * Chromium boxes use CDP screencast. Camofox boxes stay on noVNC.
-   * Cloud boxes embed a gated live frame. The live URL is not on this payload.
+   * Local Chromium uses the CDP screencast. Browser Use Cloud embeds a gated
+   * live frame. The live URL is not on this payload.
    */
   liveView?: {
-    mode: "screencast" | "novnc" | "cloud";
+    mode: "screencast" | "cloud";
     websocketPath?: string;
   };
   browserAgent?: {

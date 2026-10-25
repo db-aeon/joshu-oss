@@ -7,6 +7,7 @@
  * Requires `kanbanTaskId` on the send body — no thread inference in v1.
  */
 import { resolveJoshuFilesPaths } from "../joshuFilesPaths.js";
+import { OWNER_QUESTION_BLOCK_KIND, type KanbanBlockKind } from "../hermesKanbanBridge.js";
 import { updateSchedulingMeetingBlockReason } from "./schedulingCron.js";
 
 function readString(value: unknown): string {
@@ -55,10 +56,15 @@ export type SchedulingSendFollowupOutcome =
   | { kind: "timeout" }
   | { kind: "unavailable"; code?: string; message?: string };
 
-function buildReasonAndComment(
+/**
+ * Block reason, comment, and block kind for one outcome of the action guard.
+ * The owner must act only after `denied` or `timeout`, so only these outcomes
+ * get block kind `needs_input` (owner question). `null` clears the block kind.
+ */
+export function buildReasonAndComment(
   outcome: SchedulingSendFollowupOutcome,
   body: Record<string, unknown>,
-): { reason: string; comment: string } {
+): { reason: string; comment: string; blockKind: KanbanBlockKind | null } {
   const toLabel = formatRecipients(body.to);
   const subject = readString(body.subject) || "(no subject)";
   const day = new Date().toISOString().slice(0, 10);
@@ -66,6 +72,7 @@ function buildReasonAndComment(
   if (outcome.kind === "delivered") {
     return {
       reason: `awaiting reply: availability/outreach delivered to ${toLabel} (${day}); waiting on counterparty`,
+      blockKind: null,
       comment:
         `Action guard cleared — mail delivered (messageId=${outcome.messageId}). ` +
         `Subject: ${subject}. Waiting on reply from ${toLabel}.`,
@@ -74,18 +81,21 @@ function buildReasonAndComment(
   if (outcome.kind === "denied") {
     return {
       reason: `owner denied send: outreach to ${toLabel} was not delivered`,
+      blockKind: OWNER_QUESTION_BLOCK_KIND,
       comment: `Action guard denied — no mail sent to ${toLabel}. Subject: ${subject}.`,
     };
   }
   if (outcome.kind === "timeout") {
     return {
       reason: `approval timed out: outreach to ${toLabel} was not delivered`,
+      blockKind: OWNER_QUESTION_BLOCK_KIND,
       comment: `Action guard timed out — no mail sent to ${toLabel}. Subject: ${subject}.`,
     };
   }
   const detail = outcome.message || outcome.code || "owner channel unavailable";
   return {
     reason: `action-guard-unavailable: ${detail}`,
+    blockKind: null,
     comment: `Action guard unavailable (${outcome.code ?? "unknown"}) — no mail sent. ${detail}`,
   };
 }
@@ -110,7 +120,7 @@ export async function applySchedulingSendFollowup(opts: {
     return;
   }
 
-  const { reason, comment } = buildReasonAndComment(opts.outcome, opts.body);
+  const { reason, comment, blockKind } = buildReasonAndComment(opts.outcome, opts.body);
   try {
     const result = await updateSchedulingMeetingBlockReason({
       filesRoot,
@@ -118,6 +128,7 @@ export async function applySchedulingSendFollowup(opts: {
       reason,
       comment,
       author: "joshu",
+      kind: blockKind,
     });
     if (!result.ok) {
       console.warn(

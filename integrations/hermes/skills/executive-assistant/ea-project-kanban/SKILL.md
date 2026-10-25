@@ -4,7 +4,7 @@ description: "Drips, pipelines, HITL: Kanban project boards, not todo.md."
 metadata:
   hermes:
     category: executive-assistant
-    version: "1.4.0"
+    version: "1.5.0"
 ---
 
 # EA Project Kanban
@@ -98,10 +98,10 @@ Child tasks run via dispatcher (`kanban-worker` + assignee profile, default `def
 
 1. `kanban_show()` — read title, body, workspace
 2. Work in `$HERMES_KANBAN_WORKSPACE` (project folder)
-3. Outbound mail: **`nylas_send_message`** via Joshu connectors MCP — **action guard = HITL**; do not spin in chat; `kanban_block(reason="awaiting owner approval")` until send succeeds
-4. Browser / sensitive UI: use **joshu-browser** when the step needs owner in the loop; then `kanban_block` or `kanban_complete` with evidence in metadata
+3. Outbound mail: **`nylas_send_message`** via Joshu connectors MCP — **action guard = HITL**; do not spin in chat; `kanban_block(reason="awaiting owner approval", kind="needs_input")` until send succeeds
+4. Browser / sensitive UI: use **joshu-browser** when the step needs owner in the loop; then `kanban_block(reason="awaiting owner — <action>", kind="needs_input")` or `kanban_complete` with evidence in metadata
 5. Complete: `kanban_complete(summary=..., metadata={step, evidence})`
-6. **HITL / waiting:** `kanban_block(reason=...)` — owner reply, approval, external party, or "need decision"
+6. **HITL / waiting:** the owner must decide, approve, or act → `kanban_block(reason="awaiting owner — <decision or action>", kind="needs_input")`. An external party must reply → `kanban_block(reason="awaiting reply: <who and what>")` without `kind`. Only `kind="needs_input"` gets a proactive nudge to the owner.
 7. Follow-ups: prefer `scheduled_at` on create or `parents` deps (next wave after prior `done`)
 
 ## Follow-ups and replies

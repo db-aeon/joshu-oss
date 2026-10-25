@@ -1,0 +1,161 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Owner request by SMS → realtime-goals task → answer",
+    "output": ".archify/sequence-kanban-realtime-goal-20261006-223000/kanban-realtime-goal.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/db-aeon/joshu.git",
+      "revision": "56143b5c8bd394b1046988d5196fad6701f11448",
+      "provider": "github",
+      "link_mode": "local-only"
+    }
+  },
+  "participants": [
+    {
+      "id": "owner",
+      "type": "external",
+      "label": "Owner",
+      "sublabel": "phone (SMS)"
+    },
+    {
+      "id": "gateway",
+      "type": "backend",
+      "label": "SMS gateway",
+      "sublabel": "Twilio",
+      "sources": [
+        { "path": "src/twilioSmsGateway.ts", "line": 253, "end_line": 269, "label": "SMS to broker.route" }
+      ]
+    },
+    {
+      "id": "outbox",
+      "type": "messagebus",
+      "label": "Owner outbox",
+      "sublabel": "texts to owner",
+      "sources": [
+        { "path": "src/realtimeGoals/outboxDispatcher.ts", "line": 1, "end_line": 100, "label": "outbox dispatch" },
+        { "path": "src/realtimeGoals/broker.ts", "line": 736, "end_line": 746, "label": "publish owner item" }
+      ]
+    },
+    {
+      "id": "broker",
+      "type": "backend",
+      "label": "Goal broker",
+      "sublabel": "tick every 5 s",
+      "sources": [
+        { "path": "src/realtimeGoals/broker.ts", "line": 50, "end_line": 58, "label": "60 s release, 5 s tick" },
+        { "path": "src/realtimeGoals/broker.ts", "line": 1401, "end_line": 1445, "label": "release: create task" },
+        { "path": "src/realtimeGoals/broker.ts", "line": 1447, "end_line": 1505, "label": "reconcile task status" }
+      ]
+    },
+    {
+      "id": "state",
+      "type": "database",
+      "label": "Broker state",
+      "sublabel": "state.json",
+      "sources": [
+        { "path": "src/realtimeGoals/store.ts", "line": 30, "end_line": 39, "label": ".joshu/realtime-goals" },
+        { "path": "src/realtimeGoals/store.ts", "line": 66, "end_line": 76, "label": "state.json" },
+        { "path": "src/realtimeGoals/broker.ts", "line": 1184, "end_line": 1222, "label": "owner answer on goal" }
+      ]
+    },
+    {
+      "id": "bridge",
+      "type": "backend",
+      "label": "Kanban bridge",
+      "sublabel": "bridge script",
+      "sources": [
+        { "path": "scripts/hermes-kanban-bridge.py", "line": 86, "end_line": 126, "label": "block_cause" },
+        { "path": "scripts/hermes-kanban-bridge.py", "line": 314, "end_line": 422, "label": "create" },
+        { "path": "scripts/hermes-kanban-bridge.py", "line": 453, "end_line": 543, "label": "unblock, show" }
+      ]
+    },
+    {
+      "id": "board",
+      "type": "database",
+      "label": "Goals board",
+      "sublabel": "realtime-goals",
+      "sources": [
+        { "path": "src/hermesKanbanBridge.ts", "line": 116, "end_line": 127, "label": "realtime-goals board" },
+        { "path": "src/hermesApi.ts", "line": 2238, "end_line": 2254, "label": "dispatch every 60 s" }
+      ]
+    },
+    {
+      "id": "worker",
+      "type": "backend",
+      "label": "Worker",
+      "sublabel": "realtime-goal",
+      "sources": [
+        { "path": "integrations/hermes/skills/realtime/realtime-goal/SKILL.md", "line": 34, "end_line": 80, "label": "complete or block" }
+      ]
+    }
+  ],
+  "segments": [
+    { "from": 150, "to": 335, "label": "Intake" },
+    { "from": 343, "to": 478, "label": "Release" },
+    { "from": 486, "to": 780, "label": "Question" },
+    { "from": 788, "to": 942, "label": "Answer" },
+    { "from": 950, "to": 1185, "label": "Result" }
+  ],
+  "messages": [
+    { "id": "b-request", "from": "owner", "to": "gateway", "y": 175, "label": "SMS request", "variant": "emphasis" },
+    { "id": "b-route", "from": "gateway", "to": "broker", "y": 210, "label": "broker.route", "variant": "emphasis" },
+    { "id": "b-queued", "from": "broker", "to": "state", "y": 245, "label": "goal: queued", "variant": "default", "note": "LLM router: queue · releaseAt = now + 60 s" },
+    { "id": "b-reply", "from": "broker", "to": "gateway", "y": 290, "label": "reply \"queued…\"", "variant": "return" },
+    { "id": "b-reply-sms", "from": "gateway", "to": "owner", "y": 320, "label": "SMS reply", "variant": "return" },
+    { "id": "b-create", "from": "broker", "to": "bridge", "y": 370, "label": "create (after 60 s)", "variant": "emphasis", "note": "strict key realtime-goal:v1:<hash>" },
+    { "id": "b-ready", "from": "bridge", "to": "board", "y": 415, "label": "task → ready", "variant": "emphasis", "note": "skills [realtime-goal] · assignee default" },
+    { "id": "b-task-id", "from": "broker", "to": "state", "y": 460, "label": "save kanbanTaskId", "variant": "default" },
+    { "id": "b-start", "from": "board", "to": "worker", "y": 510, "label": "start worker", "variant": "emphasis", "note": "Hermes dispatcher" },
+    { "id": "b-block", "from": "worker", "to": "board", "y": 555, "label": "kanban_block", "variant": "default", "note": "question, kind needs_input" },
+    { "id": "b-show", "from": "broker", "to": "bridge", "y": 600, "label": "show + activity", "variant": "default", "note": "next 5 s tick" },
+    { "id": "b-blocked", "from": "bridge", "to": "broker", "y": 640, "label": "blocked by worker", "variant": "return" },
+    { "id": "b-question", "from": "broker", "to": "outbox", "y": 675, "label": "owner question", "variant": "default" },
+    { "id": "b-question-sms", "from": "outbox", "to": "owner", "y": 710, "label": "SMS question", "variant": "emphasis" },
+    { "id": "b-recovery", "from": "broker", "to": "bridge", "y": 750, "label": "alt: system block", "variant": "dashed", "note": "append ## Joshu recovery + unblock, up to 2 times" },
+    { "id": "b-answer", "from": "owner", "to": "gateway", "y": 810, "label": "SMS answer", "variant": "emphasis" },
+    { "id": "b-bind", "from": "gateway", "to": "broker", "y": 845, "label": "broker.route", "variant": "emphasis", "note": "binds to the blocked goal" },
+    { "id": "b-append", "from": "broker", "to": "bridge", "y": 885, "label": "append + unblock", "variant": "emphasis", "note": "## Owner answer" },
+    { "id": "b-unblocked", "from": "bridge", "to": "board", "y": 925, "label": "task → ready", "variant": "default" },
+    { "id": "b-rerun", "from": "board", "to": "worker", "y": 970, "label": "start worker", "variant": "default" },
+    { "id": "b-complete", "from": "worker", "to": "board", "y": 1005, "label": "kanban_complete", "variant": "emphasis", "note": "summary · task → done" },
+    { "id": "b-show-done", "from": "broker", "to": "bridge", "y": 1050, "label": "show", "variant": "default", "note": "next 5 s tick" },
+    { "id": "b-done", "from": "bridge", "to": "broker", "y": 1090, "label": "done + summary", "variant": "return" },
+    { "id": "b-result", "from": "broker", "to": "outbox", "y": 1125, "label": "result", "variant": "default", "note": "adds browser handoff link if any" },
+    { "id": "b-result-sms", "from": "outbox", "to": "owner", "y": 1165, "label": "SMS result", "variant": "emphasis" }
+  ],
+  "activations": [
+    { "participant": "worker", "from": 505, "to": 560, "type": "backend" },
+    { "participant": "worker", "from": 965, "to": 1010, "type": "backend" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Goal record",
+      "items": [
+        "Stored in .joshu/realtime-goals/state.json",
+        "queued → released after 60 s → kanbanTaskId saved",
+        "The broker polls every linked task every 5 s"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Two kinds of block",
+      "items": [
+        "Worker block with a question: the owner gets the question",
+        "System block (crash, timeout, exit without a call): Joshu recovery note and unblock",
+        "After 2 recoveries the owner gets a plain message"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Worker contract",
+      "items": [
+        "Each run ends with kanban_complete or kanban_block",
+        "kanban_block uses kind needs_input; the reason is the question",
+        "The completion summary is the text the owner receives"
+      ]
+    }
+  ]
+}

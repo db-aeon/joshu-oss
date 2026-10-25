@@ -39,7 +39,7 @@ HERMES_API_KEY=change-me-local-dev
 HERMES_API_AUTO_START=true
 # LLM via OpenRouter (verified local default — see docs/hermes-integration.md)
 JOSHU_HERMES_PROVIDER=openrouter
-JOSHU_HERMES_MODEL=deepseek/deepseek-v4-flash-0731
+JOSHU_HERMES_MODEL=deepseek/deepseek-v4.1-flash
 OPENROUTER_API_KEY=sk-or-...
 ```
 
@@ -77,7 +77,7 @@ brew install portaudio ffmpeg ripgrep
 
 Default **TTS** is **Edge** (`tts.provider: edge`) — no API key; requires network access.
 
-**Sandbox image:** Prefer Groq (or another cloud STT) on CPU workers instead of heavy local Whisper. Put keys in the sandbox image’s secret and load them into `/root/.hermes/.env` via **`HERMES_ENV_B64`** (see [`deploy/scripts/vps-start.sh`](../deploy/scripts/vps-start.sh)) — do not commit secrets into the repo-tracked [`.hermes/`](.hermes) snapshot. Override **`stt.provider`** for the container in that env-backed config if needed.
+**Sandbox image:** Prefer Groq (or another cloud STT) on CPU workers instead of heavy local Whisper. Put keys in the sandbox image’s secret and load them into `/root/.hermes/.env` via **`HERMES_ENV_B64`** (see [`deploy/scripts/vps-start.sh`](../deploy/scripts/vps-start.sh)) — do not commit secrets into the repo-tracked `.hermes/` snapshot. Override **`stt.provider`** for the container in that env-backed config if needed.
 
 ### Hermes Chat (browser voice)
 
@@ -246,7 +246,7 @@ Then temporarily point Joshu's `.env` `HERMES_BIN` at:
 ```
 
 Run the local stack and smoke tests. Promote the canary only after Hermes gateway,
-HITL Camofox adoption, Hermes Chat, and Hindsight recall all pass.
+the Hermes browser tools on the shared browser (CDP), Hermes Chat, and Hindsight recall all pass.
 
 ## File Brain (gbrain)
 
@@ -390,7 +390,7 @@ For the local ArozOS parity stack, run:
 npm run dev:arozos
 ```
 
-This starts or reuses Camofox, builds ArozOS, starts Joshu privately on
+This starts or reuses the local Chromium container, builds ArozOS, starts Joshu privately on
 `127.0.0.1:8788` under `/joshu`, and exposes ArozOS at:
 
 ```text
@@ -412,18 +412,19 @@ subservice is registered. Joshu Express is always available at
 `.local/arozos-data/subservice/joshu/.disabled` if present, then restart
 `npm run dev:arozos`.
 
-**Stopping the stack:** **Ctrl+C** in the `dev:arozos` terminal stops Joshu, ArozOS, Hindsight, voice-realtime, and gbrain (see [`scripts/dev-arozos.sh`](../scripts/dev-arozos.sh) `cleanup` trap). Connectors MCP (`:8795`), Composio guard (`:8796`), Hermes gateway, and Camofox Docker may keep running — usually fine for `npm run dev:arozos` again. For a full local teardown, stop the Hermes gateway (`hermes gateway stop`), kill connectors MCP on `:8795`, and stop the Camofox container.
+**Stopping the stack:** **Ctrl+C** in the `dev:arozos` terminal stops Joshu, ArozOS, Hindsight, voice-realtime, and gbrain (see [`scripts/dev-arozos.sh`](../scripts/dev-arozos.sh) `cleanup` trap). Connectors MCP (`:8795`), Composio guard (`:8796`), Hermes gateway, and the local Chromium container may keep running — usually fine for `npm run dev:arozos` again. For a full local teardown, stop the Hermes gateway (`hermes gateway stop`), kill connectors MCP on `:8795`, and stop the `camofox-hitl` container.
 
 **Browser container:** `bash scripts/ensure-camofox-container.sh` builds and
 starts `camofox-hitl` from `browser/chromium` (image `joshu-chromium-cdp:local`).
-CDP is `http://127.0.0.1:9222`, noVNC stays on `:6080`, health stays on `:9377`.
+CDP is `http://127.0.0.1:9222`, and health is on `:9377`. The live view in jWeb
+is the CDP screencast of this browser.
 `PROXY_*` from `.env` is passed through; the container name is still
 `camofox-hitl` so existing supervisors match. `dev:arozos` exports
 `BROWSER_CDP_URL` so Joshu drives that Chromium. Hermes is pointed at the same
 URL with `browser.backend: off`
 ([why](hitl-camofox-notes.md#why-hermes-browserbackend-is-off)).
 
-Recreate the container (not just `docker start`) when changing `VNC_RESOLUTION`
+Recreate the container (not just `docker start`) when changing `VNC_RESOLUTION` (Xvfb screen size)
 or `PROXY_*`:
 
 ```bash
@@ -431,10 +432,7 @@ docker rm -f camofox-hitl
 bash scripts/ensure-camofox-container.sh
 ```
 
-Details: [`hitl-camofox-notes.md`](hitl-camofox-notes.md#vnc-display-routing-and-troubleshooting).
-
-Full VNC / aspect-ratio / fingerprint notes:
-[`hitl-camofox-notes.md`](hitl-camofox-notes.md#vnc-display-routing-and-troubleshooting).
+Details: [`hitl-camofox-notes.md`](hitl-camofox-notes.md#troubleshooting).
 
 ### UI / design system
 
@@ -469,6 +467,37 @@ ephemeral `/tmp` in the container, the web `serve` function uses a long timeout 
 scaledown window (see `deploy/RELEASE.json`), and pgvector is built with portable compiler
 flags. See `README.md` (VPS sandbox) and `docs/hitl-camofox-notes.md`
 for details and debugging notes.
+
+## Unit tests
+
+Each `test:*` script in `package.json` is one unit test. `npm test` runs
+[`scripts/run-unit-tests.mjs`](../scripts/run-unit-tests.mjs). The runner builds one
+time, and then runs each `test:*` script, except the scripts in its list `EXCLUDED`.
+Then it runs the `test` script of each workspace package in `packages/` (for example
+`@joshu/voice-realtime`). The run takes about one minute.
+
+```bash
+npm test
+```
+
+To run some of the `test:*` scripts, give part of their names. The runner then does
+not run the workspace tests. To use the current `dist/`,
+add `--no-build`:
+
+```bash
+npm test -- --no-build owner-reply teams
+```
+
+The workflow [`unit-tests.yml`](../.github/workflows/unit-tests.yml) runs `npm test`
+on each pull request and on each push to `main`. The tests run offline, with no
+secrets and no box. The workflow also checks out Hermes at the pinned ref
+(`node scripts/sync-vps-hermes-pin.mjs --print`) with a venv in the checkout, and sets `HERMES_DIR`,
+`HERMES_AGENT_ROOT`, and `HERMES_PYTHON`, so that the Hermes patch tests run. On
+your computer, these tests print `skip` when the variables are not set.
+
+When you add a `test:*` script, it runs in CI automatically. The test must pass
+offline, with no secrets and no box. If it cannot, add it to `EXCLUDED` in
+`scripts/run-unit-tests.mjs` with the reason.
 
 ## Box state (personal snapshots)
 

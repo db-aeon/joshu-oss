@@ -41,8 +41,9 @@ export function isFromJoshuAgent(from: string | undefined, projectRoot = process
 }
 
 /**
- * Backfill guard: skip scheduling classify/queue for mail older than the incremental window.
- * Full sync / Day 0 recovery otherwise re-classifies stale meeting threads.
+ * Backfill guard: mail older than the incremental window gets no classifier call and no triage stub.
+ * A full sync, Day 0 recovery, or a long Gmail history catch-up would otherwise queue months of old mail.
+ * Limit: JOSHU_EA_SCHEDULING_MAX_AGE_HOURS (default 36).
  */
 export function isStaleForScheduling(receivedAt?: string): boolean {
   if (!receivedAt?.trim()) return false;
@@ -56,13 +57,4 @@ export function shouldSkipTriageStub(input: {
   projectRoot?: string;
 }): boolean {
   return isFromJoshuAgent(input.from, input.projectRoot);
-}
-
-export function shouldSkipSchedulingIngest(input: {
-  from?: string;
-  receivedAt?: string;
-  projectRoot?: string;
-}): boolean {
-  if (isFromJoshuAgent(input.from, input.projectRoot)) return true;
-  return isStaleForScheduling(input.receivedAt);
 }

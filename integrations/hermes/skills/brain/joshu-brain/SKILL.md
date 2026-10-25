@@ -54,9 +54,9 @@ The pattern: one journal entry per date, `about.md` as the living reference, and
    - `source_id`: `"__all__"` (cross-source; required for files outside `joshu's files`)
    - `limit`: 10–20
    - `recency`: `"on"` and `since`: `"90d"` (or `"30d"`, `"7d"`) for recent mail/journal questions — Joshu MCP normalizes these to ISO timestamps before SQL
-2. Do **not** rely on MCP **`search`** alone for Desktop-wide lookup — `search` is keyword FTS on the **default** source (`joshu's files` / journals) and often returns empty for federated paths like `investors/…` or `joshus-files/workspace/…`.
+2. Do **not** rely on MCP **`search`** alone for Desktop-wide lookup — `search` is keyword-only FTS and misses paraphrased matches that `query` (hybrid semantic + keyword) finds.
 3. Cite results with the **slug** from gbrain (lowercase; may not match on-disk folder casing).
-4. Use `chunk_text` from `query` results when `get_page` returns `page_not_found` for a federated slug.
+4. Use `chunk_text` from `query` results when `get_page` returns `page_not_found` for a slug.
 5. Use `hermes-cli` / `search_files` (ripgrep) on disk only when gbrain returns nothing relevant.
 
 MCP server URL (Joshu-supervised): `http://127.0.0.1:8794/mcp` — one shared `gbrain serve` process; do not spawn a second gbrain.
@@ -128,7 +128,7 @@ Write or edit **markdown** with Hermes filesystem tools at absolute paths, e.g.:
 
 Before creating a new journal, list `journals/` (filesystem or gbrain **`query`** with `source_id: "__all__"` and a journal keyword) and **update the existing file** instead of duplicating topics.
 
-Full Desktop (shortcuts, other folders) is indexed via a **federated** gbrain source registered at boot; **writes** stay under `JOSHU_FILES_ROOT` only.
+Full Desktop (shortcuts, other folders) is indexed in the single `default` gbrain source; **writes** stay under `JOSHU_FILES_ROOT` only.
 
 ## Joshu API (optional)
 

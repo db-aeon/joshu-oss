@@ -51,6 +51,8 @@ Pass the same **`session_id`** on every meta-tool call in the workflow.
 
 Meta-tool names in Hermes MCP are prefixed, e.g. `mcp_composio_COMPOSIO_SEARCH_TOOLS`, `mcp_composio_COMPOSIO_MULTI_EXECUTE_TOOL`, `mcp_composio_COMPOSIO_REMOTE_WORKBENCH`, `mcp_composio_COMPOSIO_REMOTE_BASH_TOOL`.
 
+The workbench is read-only: `run_composio_tool` in the workbench can read Gmail, but Composio refuses each send, delete, or other write there (`[Session Restriction]`). Do writes with `COMPOSIO_MULTI_EXECUTE_TOOL` or the Joshu tools.
+
 ## Session playbook
 
 ### 1. Search and plan

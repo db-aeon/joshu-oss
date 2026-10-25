@@ -1,6 +1,6 @@
 /**
  * Page.startScreencast for the shared Chromium tab, plus CDP input for handoff.
- * Xvfb stays so Chromium has a screen. jWeb does not go through x11vnc.
+ * Xvfb stays so Chromium has a screen. jWeb reads the page over CDP, not from the X screen.
  */
 import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";

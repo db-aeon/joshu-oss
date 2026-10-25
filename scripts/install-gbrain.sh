@@ -37,6 +37,7 @@ ensure_bun
 SPEC="github:garrytan/gbrain#${GBRAIN_REF}"
 echo "[install-gbrain] bun install -g ${SPEC}"
 bun install -g "${SPEC}"
+node "${ROOT_DIR}/scripts/patch-gbrain.mjs"
 
 if command -v gbrain >/dev/null 2>&1; then
   echo "[install-gbrain] $(gbrain --version 2>/dev/null || gbrain version 2>/dev/null || echo gbrain installed)"

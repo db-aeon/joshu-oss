@@ -49,7 +49,10 @@ export type SafetySettingsPayload = {
   };
   hermesMessaging: {
     slack: {
+      /** Both tokens are set. */
       configured: boolean;
+      /** `SLACK_ALLOWED_USERS` has the Slack user of the owner. */
+      ownerLinked: boolean;
       allowedUsers: string;
       homeChannel: string;
       allowedChannels: string;
@@ -179,8 +182,8 @@ export function readSafetySettings(projectRoot = process.cwd()): SafetySettingsP
     },
     hermesMessaging: {
       slack: {
-        configured:
-          Boolean(slackBot) && Boolean(slackApp) && Boolean(slackMessaging.allowedUsers.trim()),
+        configured: Boolean(slackBot) && Boolean(slackApp),
+        ownerLinked: Boolean(slackMessaging.allowedUsers.trim()),
         allowedUsers: slackMessaging.allowedUsers,
         homeChannel: slackMessaging.homeChannel,
         allowedChannels: slackMessaging.allowedChannels,

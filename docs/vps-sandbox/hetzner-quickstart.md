@@ -15,7 +15,7 @@ No proprietary control plane — this is **standalone self-host** only. Control-
 | --- | --- |
 | VPS public IP | `203.0.113.50` |
 | Hostname | `mybox.example.com` |
-| Release image | `ghcr.io/db-aeon/joshu-oss:0.1.47` (see [`deploy/RELEASE.json`](../../deploy/RELEASE.json)) |
+| Release image | `ghcr.io/db-aeon/joshu-oss:0.1.59` (see [`deploy/RELEASE.json`](../../deploy/RELEASE.json)) |
 
 ---
 
@@ -38,7 +38,7 @@ Pick one provider. The rest of this guide is the same.
 
 1. Open [DigitalOcean](https://cloud.digitalocean.com/) → **Create** → **Droplets**.
 2. **Image:** Ubuntu **24.04 LTS**
-3. **Size:** 4 vCPU / **8 GB RAM** (`s-4vcpu-8gb`) or larger — same class as Hetzner CPX31. 2 GB droplets OOM under Postgres + Hermes + Camofox.
+3. **Size:** 4 vCPU / **8 GB RAM** (`s-4vcpu-8gb`) or larger — same class as Hetzner CPX31. 2 GB droplets OOM under Postgres + Hermes + local Chromium.
 4. **Region:** close to you (`nyc3`, `sfo3`, `ams3`, …)
 5. **Authentication:** SSH key (you will `ssh root@…`)
 6. **Firewall (recommended):** **Networking → Firewalls** — inbound TCP **22**, **80**, **443**; outbound **all**. With no firewall, DO allows all inbound, which also works.
@@ -119,9 +119,9 @@ ACME_EMAIL=you@example.com
 # Same username you will type on the first-visit "Create account" page:
 JOSHU_AROZ_USER=yourname
 
-JOSHU_RELEASE_VERSION=0.1.47
-JOSHU_IMAGE_REF=ghcr.io/db-aeon/joshu-oss:0.1.47
-JOSHU_VOICE_IMAGE_REF=ghcr.io/db-aeon/joshu-oss-voice-realtime:0.1.47
+JOSHU_RELEASE_VERSION=0.1.59
+JOSHU_IMAGE_REF=ghcr.io/db-aeon/joshu-oss:0.1.59
+JOSHU_VOICE_IMAGE_REF=ghcr.io/db-aeon/joshu-oss-voice-realtime:0.1.59
 ```
 
 Save: **Ctrl+O** Enter, **Ctrl+X**.
@@ -219,9 +219,7 @@ Browser voice does **not** need Twilio. To answer a real phone number on this bo
 
 ## Forgot ArozOS password
 
-**Fleet boxes** (`*.box.joshu.me`): the login screen **Forgot password?** emails a 30-minute link via the control plane (SendGrid) to the owner address on file. You choose a new **desktop** password at `https://hello.joshu.me/auth/box-reset-password`. This is **not** the hello.joshu.me portal password. Existing desktop cookies on that box die only after a completed reset (session key rotate). The box looks down for about two minutes (`joshu-stack` stop/start) — wait for health, then log in with the **new** password. On **0.1.40** images, smoke Chat with files after the bounce (`Share chat UI missing` means host `dist/shareChat/ui/` was never overlaid — [share-chat.md](../share-chat.md#packaging-vps)). OSS / standalone boxes never send that email.
-
-**Self-host / OSS:** Joshu does **not** send email reset links. The **Forgot password?** panel points at SSH recovery. The old ArozOS `/reset.html` flow (temporary password from another admin) is still in the binary but the Joshu overlay no longer uses it.
+On a self-hosted box, Joshu does **not** send email reset links. The **Forgot password?** panel points at SSH recovery. The old ArozOS `/reset.html` flow (temporary password from another admin) is still in the binary but the Joshu overlay no longer uses it.
 
 On a **solo** self-host box you are usually both admin and user. If you are locked out but still have **SSH as root**:
 
@@ -259,7 +257,7 @@ Joshu overlays no longer use `validateResetKey`. If another admin is still signe
 | --- | --- |
 | `Could not get lock /var/lib/dpkg/lock-frontend` | First-boot unattended-upgrades (common on DigitalOcean). Wait and re-run bootstrap. |
 | `docker pull` → `registry: denied` | Image tag not published yet, or GHCR package still private. Confirm tag in [`deploy/RELEASE.json`](../../deploy/RELEASE.json). After a release build, `docker pull` should work without login. If building from source instead: run `bash scripts/ensure-vendor-for-build.sh` first (OSS clone has no `vendor/`). |
-| Joshu API crash: `Cannot find module '.../dist/excalidraw/errors.js'` | **0.1.41** — Vite wiped tsc CWM JS in `dist/excalidraw/`. Rebuilt GHCR tags include the files. If host `dist/` was synced from the old image: `docker pull` the pin, `bash scripts/sync-dist-from-image.sh`, recreate `joshu-stack`. `deploy/hotfixes/cwm-backend-js/` is a git fallback if the image still lacks `errors.js`. |
+| Joshu API crash: `Cannot find module '.../dist/excalidraw/errors.js'` | **0.1.59** — Vite wiped tsc CWM JS in `dist/excalidraw/`. Rebuilt GHCR tags include the files. If host `dist/` was synced from the old image: `docker pull` the pin, `bash scripts/sync-dist-from-image.sh`, recreate `joshu-stack`. `deploy/hotfixes/cwm-backend-js/` is a git fallback if the image still lacks `errors.js`. |
 | Certificate error in browser | DNS not pointing at VPS yet; records must be **DNS-only** (grey cloud), not proxied, for Caddy HTTP-01 |
 | Health `curl` fails with **503** | Expected until Welcome → Connect AI. Use `curl -sS` and check `components.joshu.ok` / `arozos.ok`. |
 | Chat empty / 401 | Add OpenRouter in **Welcome → Connect AI**, or check gateway keys in `instance.env` |
@@ -288,7 +286,7 @@ docker compose -f docker-compose.yml --env-file /etc/joshu/instance.env up -d --
 
 Wait for health: `curl -fsS http://127.0.0.1:8788/joshu/api/instance/health | head -c 200`
 
-Use **CPX31 / `s-4vcpu-8gb` (8 GB RAM)** or larger — 2 GB hosts OOM under Postgres + Hermes + Camofox.
+Use **CPX31 / `s-4vcpu-8gb` (8 GB RAM)** or larger — 2 GB hosts OOM under Postgres + Hermes + local Chromium.
 
 ### Desktop icons or missing chrome
 
@@ -314,4 +312,4 @@ Hard-refresh the browser (Cmd+Shift+R). Confirm: `curl -fsSI https://YOUR_DOMAIN
 - [connectors.md](../connectors.md) — mail and calendar
 - [self-host.md](../self-host.md) · [deploy/README.md](../../deploy/README.md)
 
-Managed hosting (control plane) — [control-plane.md](control-plane.md).
+Managed hosting (control plane) — control-plane.md.

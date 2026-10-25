@@ -8,7 +8,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { resolveBoxSecret } from "../boxSecrets/resolve.js";
 import { getHermesHomeDir } from "../hermesVoiceRuntime.js";
-import { JOSHU_OPENROUTER_DEFAULT_MODEL } from "../joshuOpenRouterDefaults.js";
+import { JOSHU_OPENROUTER_DEFAULT_MODEL, withOpenRouterDataPolicy } from "../joshuOpenRouterDefaults.js";
 import { withJoshuLlmObservation } from "../observability/langfuse.js";
 import { openRouterUsageToLangfuseDetails, type OpenRouterUsage } from "../day0/llm.js";
 import type { ShareScope } from "./shareScope.js";
@@ -175,15 +175,17 @@ async function streamLlmAnswerCore(
       "HTTP-Referer": "https://joshu.local",
       "X-Title": "Joshu Share Chat",
     },
-    body: JSON.stringify({
-      model,
-      messages,
-      max_tokens: 1600,
-      temperature: 0.25,
-      stream: true,
-      // Ask OpenRouter to append token/cost usage to the final stream chunk.
-      usage: { include: true },
-    }),
+    body: JSON.stringify(
+      withOpenRouterDataPolicy({
+        model,
+        messages,
+        max_tokens: 1600,
+        temperature: 0.25,
+        stream: true,
+        // Ask OpenRouter to append token/cost usage to the final stream chunk.
+        usage: { include: true },
+      }),
+    ),
     signal: signal ?? AbortSignal.timeout(90_000),
   });
 

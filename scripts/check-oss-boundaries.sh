@@ -7,6 +7,9 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${ROOT_DIR}"
 
 SCAN_DIRS=(
+  .env.example
+  .hermes
+  .joshu
   apps
   arozos
   deploy
@@ -43,32 +46,49 @@ PATTERNS=(
   'apps/control-plane/'
 )
 
-build_rg_globs() {
-  local args=()
-  for dir in "${SCAN_DIRS[@]}"; do
-    [[ -d "${ROOT_DIR}/${dir}" ]] && args+=(--glob "${dir}/**/*")
+# Paths that prepare-oss-snapshot.sh excludes (--exclude) or removes ("${OUT_DIR}/…") are not
+# published, so this check skips them. Reading the list from that script keeps both in step.
+# Names without a slash (dist, .git, …) match anywhere and are in EXCLUDE_PATHS above.
+SNAPSHOT_EXCLUDES=()
+while IFS= read -r excluded; do
+  [[ -n "${excluded}" ]] && SNAPSHOT_EXCLUDES+=("${excluded}")
+done < <(
+  {
+    grep -oE -- "--exclude +['\"]?[^'\" ]+" "${ROOT_DIR}/scripts/prepare-oss-snapshot.sh" | sed -E "s/^--exclude +['\"]?//"
+    grep -oE '"\$\{OUT_DIR\}"?/[^" ]+' "${ROOT_DIR}/scripts/prepare-oss-snapshot.sh" | sed -E 's#^"\$\{OUT_DIR\}"?/##'
+  } | sed -E 's#^/##; s#/$##' | grep '/' || true
+)
+
+is_snapshot_excluded() {
+  local file="$1" excluded
+  for excluded in ${SNAPSHOT_EXCLUDES[@]+"${SNAPSHOT_EXCLUDES[@]}"}; do
+    # Unquoted right side: the entry is a glob (for example scripts/hotpatch-*).
+    [[ "${file}" == ${excluded} || "${file}" == ${excluded}/* ]] && return 0
   done
-  printf '%s\n' "${args[@]}"
+  return 1
 }
 
 should_skip() {
   local file="$1"
+  is_snapshot_excluded "${file}" && return 0
   for ex in "${EXCLUDE_PATHS[@]}"; do
     [[ "${file}" == "${ex}"/* || "${file}" == *"/${ex}/"* || "${file}" == *"/${ex}" ]] && return 0
   done
+  # docs/<name>.md with a docs/<name>.oss.md twin: the twin replaces it in the OSS tree.
+  [[ "${file}" == docs/*.md && "${file}" != *.oss.md && -f "${ROOT_DIR}/${file%.md}.oss.md" ]] && return 0
   # Private-only docs excluded from OSS snapshot.
   case "${file}" in
-    docs/README.md|docs/joshu-identity.md|docs/day0-cold-start.md|docs/hermes-customizations.md|docs/box-state.md)
+    docs/joshu-identity.md|docs/day0-cold-start.md|docs/hermes-customizations.md)
       return 0
       ;;
-    docs/vps-sandbox/first-provisioning-notes.md|docs/vps-sandbox/troubleshooting-and-lessons.md|docs/vps-sandbox/session-*|docs/vps-sandbox/hotpatch-running-box.md|docs/vps-sandbox/existing-box-image-vs-host.md|docs/vps-sandbox/twilio-a2p-sms.md|docs/vps-sandbox/provider-choices.md|docs/vps-sandbox/voice-*|docs/vps-sandbox/web-voice.md|docs/vps-sandbox/phone-voice-local-test.md|docs/vps-sandbox/credential-isolation-langfuse-relay.md|docs/vps-sandbox/update-hardening-todo.md|docs/vps-sandbox/README.md|docs/vps-sandbox/control-plane.md)
+    docs/vps-sandbox/first-provisioning-notes.md|docs/vps-sandbox/troubleshooting-and-lessons.md|docs/vps-sandbox/hotpatch-running-box.md|docs/vps-sandbox/existing-box-image-vs-host.md|docs/vps-sandbox/twilio-a2p-sms.md|docs/vps-sandbox/provider-choices.md|docs/vps-sandbox/phone-voice-local-test.md|docs/vps-sandbox/credential-isolation-langfuse-relay.md|docs/vps-sandbox/control-plane.md)
       return 0
       ;;
     # Fleet release notes and fleet upgrade runbooks (excluded from OSS snapshot).
     docs/releases/*|docs/vps-sandbox/box-skill-reconcile-on-upgrade.md)
       return 0
       ;;
-    docs/design/brand-guidelines.md|docs/README.oss.md|docs/box-state.oss.md|docs/vps-sandbox/README.oss.md|docs/design/README.oss.md)
+    docs/design/brand-guidelines.md)
       return 0
       ;;
     README.md|CONTRIBUTING.md|README.oss.md|CONTRIBUTING.oss.md)
@@ -78,6 +98,10 @@ should_skip() {
     scripts/check-oss-boundaries.sh|scripts/prepare-oss-snapshot.sh|scripts/oss-doc-sanitize.sh|scripts/publish-oss-release.sh|scripts/sync-from-oss.sh|scripts/repair-fleet-*)
       return 0
       ;;
+    # Fleet-only scripts that prepare-oss-snapshot.sh removes from the OSS tree.
+    scripts/sync-hermes-to-vps.sh|scripts/patrick-travel-booking-owner-selection.md)
+      return 0
+      ;;
   esac
   return 1
 }
@@ -85,6 +109,11 @@ should_skip() {
 # Fleet runtime files may reference proprietary/ paths (private fleet repo only).
 PROPRIETARY_REF_ALLOW=(
   deploy/scripts/vps-start.sh
+  docs/oss-fleet-sync.md
+  scripts/ensure-vendor-for-build.sh
+  scripts/stage-docker-design-pack.sh
+  scripts/vps-build-image.sh
+  src/hermesLearningGitCron.ts
   deploy/docker-compose.yml
   scripts/install-proprietary-apps.sh
   src/hermesLearning.ts
@@ -100,15 +129,40 @@ is_proprietary_ref_allowed() {
 }
 
 FAILED=0
-RG_GLOBS=($(build_rg_globs))
+# Search the scan directories as rg path arguments.
+# An earlier unquoted $(...) of "dir/**/*" globs was expanded by the shell into file names,
+# so rg searched only some files. With --glob alone and no path, rg reads stdin instead.
+RG_PATHS=()
+for dir in "${SCAN_DIRS[@]}"; do
+  [[ -e "${ROOT_DIR}/${dir}" ]] && RG_PATHS+=("${dir}")
+done
 
 for pattern in "${PATTERNS[@]}"; do
   while IFS= read -r file; do
     should_skip "${file}" && continue
+    # secret-scan.sh names apps/control-plane/.env.local only to fail when that file is in the OSS tree.
+    [[ "${pattern}" == 'apps/control-plane/' && "${file}" == scripts/secret-scan.sh ]] && continue
     echo "[check-oss-boundaries] FAIL: '${pattern}' in ${file}" >&2
     FAILED=1
-  done < <(rg -l --no-messages "${pattern}" "${RG_GLOBS[@]}" 2>/dev/null || true)
+  done < <(rg -l --no-messages "${pattern}" "${RG_PATHS[@]}" 2>/dev/null </dev/null || true)
 done
+
+# Private identifiers from production (names, companies, mailbox keys, box addresses).
+# The list is in proprietary/, which is not published, so this script does not leak it.
+PRIVATE_IDENTIFIERS_FILE="${ROOT_DIR}/proprietary/oss-private-identifiers.txt"
+if [[ -f "${PRIVATE_IDENTIFIERS_FILE}" ]]; then
+  while IFS= read -r pattern; do
+    [[ -z "${pattern}" || "${pattern}" == \#* ]] && continue
+    while IFS= read -r file; do
+      should_skip "${file}" && continue
+      echo "[check-oss-boundaries] FAIL: private identifier /${pattern}/ in ${file}" >&2
+      FAILED=1
+    # rg reads stdin when it has no path argument; give it /dev/null, not the pattern file.
+    done < <(rg -l -i --no-messages "${pattern}" "${RG_PATHS[@]}" 2>/dev/null </dev/null || true)
+  done < "${PRIVATE_IDENTIFIERS_FILE}"
+else
+  echo "[check-oss-boundaries] note: ${PRIVATE_IDENTIFIERS_FILE} not found; private identifier check skipped" >&2
+fi
 
 # proprietary/ path references in scan dirs (not in proprietary itself)
 while IFS= read -r file; do
@@ -116,7 +170,7 @@ while IFS= read -r file; do
   is_proprietary_ref_allowed "${file}" && continue
   echo "[check-oss-boundaries] FAIL: proprietary path reference in ${file}" >&2
   FAILED=1
-done < <(rg -l --no-messages 'proprietary/' "${RG_GLOBS[@]}" 2>/dev/null | rg -v '^proprietary/' || true)
+done < <(rg -l --no-messages 'proprietary/' "${RG_PATHS[@]}" 2>/dev/null </dev/null | rg -v '^proprietary/' || true)
 
 if [[ "${FAILED}" -eq 1 ]]; then
   echo "[check-oss-boundaries] AGPL boundary violations found — fix before OSS publish." >&2

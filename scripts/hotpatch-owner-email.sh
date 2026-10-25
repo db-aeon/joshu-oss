@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# LEGACY: only for boxes that still have a host checkout (before change image-owned-box-runtime).
+# On a box with the host bundle, the instance agent runs from the agent image; ship a release instead.
 # Hotpatch CP send_owner_email (localhost route + instance-agent) onto a running box.
 # Safe for older release dist trees: does not replace server.js wholesale.
 #

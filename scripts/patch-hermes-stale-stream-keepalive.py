@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Patch Hermes chat_completion_helpers for keepalive-aware stale-stream detection.
 
-Root cause (patrick Slack hang 2026-08-24): every SSE frame — including empty
+Root cause (Slack hang on a fleet box, 2026-08-24): every SSE frame — including empty
 keepalives — refreshed ``last_chunk_time``, so a provider that pinged forever
 never tripped ``HERMES_STREAM_STALE_TIMEOUT``. Combined with deepseek-v4-flash's
 600s reasoning TTFB floor, the only backstop was ``gateway_timeout`` (1800s).
@@ -217,7 +217,7 @@ def _inject_helper(text: str) -> str:
     indented = "\n".join(("    " + line if line else line) for line in HELPER.splitlines())
     # Prefer module-level function (not nested inside another def)
     # Insert before _discard which may be nested — check indentation of needle
-    # On Patrick, _discard is nested inside a method. Use module-level before _derive.
+    # On a fleet box, _discard is nested inside a method. Use module-level before _derive.
     alt = "\ndef _derive_stream_stale_timeout("
     if alt in text:
         return text.replace(alt, "\n" + HELPER + "\n\n" + alt.lstrip("\n"), 1)

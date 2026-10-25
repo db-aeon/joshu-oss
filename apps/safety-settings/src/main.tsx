@@ -5,6 +5,7 @@ import "./styles.css";
 
 import { useCallback, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { PairingCodeField, SlackChatCard, type SlackManualFields } from "./SlackChatCard";
 
 const API = "/joshu/api/safety-settings";
 
@@ -46,6 +47,7 @@ type SafetySettings = {
   hermesMessaging: {
     slack: {
       configured: boolean;
+      ownerLinked: boolean;
       allowedUsers: string;
       homeChannel: string;
       allowedChannels: string;
@@ -103,8 +105,6 @@ function App() {
   const [slackAllowedUsers, setSlackAllowedUsers] = useState("");
   const [slackHomeChannel, setSlackHomeChannel] = useState("");
   const [slackAllowedChannels, setSlackAllowedChannels] = useState("");
-  const [slackSetupSteps, setSlackSetupSteps] = useState<string[]>([]);
-  const [slackManifestText, setSlackManifestText] = useState("");
   const [gatewayRunning, setGatewayRunning] = useState<boolean | null>(null);
   const [browserBackend, setBrowserBackend] = useState<"local" | "cloud">("local");
 
@@ -136,11 +136,6 @@ function App() {
       const json = (await res.json()) as { settings: SafetySettings };
       setSettings(json.settings);
       applyToForm(json.settings);
-      const setupRes = await fetch(`${API}/slack-setup`, { cache: "no-store" });
-      if (setupRes.ok) {
-        const setupJson = (await setupRes.json()) as { setup?: { steps?: string[] } };
-        setSlackSetupSteps(setupJson.setup?.steps ?? []);
-      }
       const gwRes = await fetch("/joshu/api/hermes/gateway", { cache: "no-store" });
       if (gwRes.ok) {
         const gwJson = (await gwRes.json()) as { running?: boolean };
@@ -157,37 +152,11 @@ function App() {
     void refresh();
   }, [refresh]);
 
-  const messagingSettingsChanged = useCallback((): boolean => {
-    if (!settings) return false;
-    const slack = settings.hermesMessaging.slack;
-    return (
-      Boolean(hermesBotToken.trim()) ||
-      Boolean(slackBotToken.trim()) ||
-      Boolean(slackAppToken.trim()) ||
-      slackAllowedUsers.trim() !== (slack.allowedUsers ?? "") ||
-      slackHomeChannel.trim() !== (slack.homeChannel ?? "") ||
-      slackAllowedChannels.trim() !== (slack.allowedChannels ?? "")
-    );
-  }, [
-    settings,
-    hermesBotToken,
-    slackBotToken,
-    slackAppToken,
-    slackAllowedUsers,
-    slackHomeChannel,
-    slackAllowedChannels,
-  ]);
-
   const save = async () => {
     setSaving(true);
     setError("");
     setMessage("");
     try {
-      const restartGateway =
-        messagingSettingsChanged() &&
-        window.confirm(
-          "Messaging settings changed.\n\nRestart the Hermes gateway now so Slack/Telegram picks them up?\n\nOK = Save and restart\nCancel = Save only (restart manually later)",
-        );
       const body: Record<string, unknown> = {
         actionGuard: {
           enabled,
@@ -221,7 +190,6 @@ function App() {
       if (slackAppToken.trim()) {
         body.secrets = { ...(body.secrets as object), slackAppToken: slackAppToken.trim() };
       }
-      if (restartGateway) body.restartGateway = true;
       const res = await fetch(API, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -242,99 +210,6 @@ function App() {
         setGatewayRunning(json.gateway.running);
       }
       setMessage(json.note ?? "Saved.");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const generateSlackManifest = async () => {
-    setSaving(true);
-    setError("");
-    setMessage("");
-    try {
-      const res = await fetch(`${API}/slack-manifest`, { method: "POST" });
-      const json = (await res.json()) as {
-        ok?: boolean;
-        manifest?: unknown;
-        urlNote?: string;
-        error?: string;
-      };
-      if (!res.ok || !json.ok) throw new Error(json.error ?? "Manifest generation failed");
-      const text = JSON.stringify(json.manifest, null, 2);
-      setSlackManifestText(text);
-      let copied = false;
-      try {
-        await navigator.clipboard.writeText(text);
-        copied = true;
-      } catch {
-        /* ArozOS webview often blocks clipboard — manifest is shown below */
-      }
-      setMessage(
-        copied
-          ? `Manifest generated for your companion. ${json.urlNote ?? ""} Copied to clipboard.`
-          : `Manifest generated below. ${json.urlNote ?? ""} Select all and copy, or use Download.`,
-      );
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const copySlackManifest = async () => {
-    if (!slackManifestText) return;
-    setError("");
-    try {
-      await navigator.clipboard.writeText(slackManifestText);
-      setMessage("Manifest copied to clipboard.");
-    } catch {
-      setError("Could not copy automatically — select the manifest text below and copy manually (Cmd/Ctrl+C).");
-    }
-  };
-
-  const downloadSlackManifest = () => {
-    if (!slackManifestText) return;
-    const blob = new Blob([slackManifestText], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = "slack-manifest.json";
-    anchor.click();
-    URL.revokeObjectURL(url);
-    setMessage("Manifest downloaded as slack-manifest.json.");
-  };
-
-  const verifySlackTokens = async () => {
-    setSaving(true);
-    setError("");
-    setMessage("");
-    try {
-      const res = await fetch(`${API}/slack-verify`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          botToken: slackBotToken.trim() || undefined,
-          appToken: slackAppToken.trim() || undefined,
-        }),
-      });
-      const json = (await res.json()) as {
-        ok?: boolean;
-        bot?: { ok: boolean; team?: string; user?: string; error?: string };
-        app?: { ok: boolean; error?: string };
-        error?: string;
-      };
-      if (!json.ok) {
-        const parts = [
-          json.bot && !json.bot.ok ? `bot: ${json.bot.error ?? "invalid"}` : "",
-          json.app && !json.app.ok ? `app: ${json.app.error ?? "invalid"}` : "",
-        ].filter(Boolean);
-        throw new Error(parts.join("; ") || json.error || "Verification failed");
-      }
-      setMessage(
-        `Slack tokens OK${json.bot?.team ? ` — workspace ${json.bot.team}` : ""}${json.bot?.user ? `, bot ${json.bot.user}` : ""}. Save and restart the gateway.`,
-      );
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -383,6 +258,23 @@ function App() {
   };
 
   const ag = settings?.actionGuard;
+  const slackFields: SlackManualFields = {
+    botToken: slackBotToken,
+    appToken: slackAppToken,
+    allowedUsers: slackAllowedUsers,
+    homeChannel: slackHomeChannel,
+    allowedChannels: slackAllowedChannels,
+  };
+  const setSlackField = (key: keyof SlackManualFields, value: string) => {
+    const setters: Record<keyof SlackManualFields, (v: string) => void> = {
+      botToken: setSlackBotToken,
+      appToken: setSlackAppToken,
+      allowedUsers: setSlackAllowedUsers,
+      homeChannel: setSlackHomeChannel,
+      allowedChannels: setSlackAllowedChannels,
+    };
+    setters[key](value);
+  };
 
   return (
     <div className="app">
@@ -617,124 +509,34 @@ function App() {
             autoComplete="off"
           />
         </div>
+        <PairingCodeField
+          platform="telegram"
+          disabled={saving || loading}
+          onApproved={(msg) => {
+            setError("");
+            setMessage(msg);
+          }}
+          onError={setError}
+        />
       </section>
 
-      <section className="card">
-        <h2>Hermes Slack chat</h2>
-        <p className="hint">
-          Values from <code>.env</code> show a red badge and cannot be changed here. Enter a new token to save to{" "}
-          <code>.joshu/safety-settings/local-env.json</code>.
-        </p>
-        {slackSetupSteps.length > 0 && (
-          <ol className="hint setup-steps">
-            {slackSetupSteps.map((step) => (
-              <li key={step}>{step}</li>
-            ))}
-          </ol>
-        )}
-        <div className="actions inline-actions">
-          <button type="button" className="btn" disabled={saving || loading} onClick={() => void generateSlackManifest()}>
-            {saving ? "Generating…" : "Generate manifest"}
-          </button>
-          <button type="button" className="btn" disabled={saving || loading} onClick={() => void verifySlackTokens()}>
-            Verify tokens
-          </button>
-          {slackManifestText ? (
-            <>
-              <button type="button" className="btn" onClick={() => void copySlackManifest()}>
-                Copy manifest
-              </button>
-              <button type="button" className="btn" onClick={downloadSlackManifest}>
-                Download .json
-              </button>
-            </>
-          ) : null}
-        </div>
-        {slackManifestText ? (
-          <div className="field">
-            <label htmlFor="slackManifestPreview">Slack app manifest</label>
-            <textarea
-              id="slackManifestPreview"
-              className="manifest-preview"
-              readOnly
-              value={slackManifestText}
-              rows={14}
-              onFocus={(e) => e.currentTarget.select()}
-            />
-            <p className="hint">
-              Paste this JSON at{" "}
-              <a href="https://api.slack.com/apps" target="_blank" rel="noreferrer">
-                api.slack.com/apps
-              </a>{" "}
-              → Create New App → From an app manifest.{" "}
-              <strong>Slash command URLs</strong> (e.g. <code>hermes-agent.local</code>) are required by
-              Slack&apos;s schema but unused — Socket Mode delivers commands over WebSocket, not HTTP.
-            </p>
-          </div>
-        ) : null}
-        <div className="field">
-          <label htmlFor="slackBotToken">
-            Slack bot token (xoxb-…)
-            {settings && <SourceBadge source={settings.secrets.slackBotTokenSource} />}
-            {settings?.secrets.slackBotTokenConfigured && !slackBotToken ? " · configured" : ""}
-          </label>
-          <input
-            id="slackBotToken"
-            type="password"
-            value={slackBotToken}
-            disabled={settings?.secrets.slackBotTokenSource === "env"}
-            onChange={(e) => setSlackBotToken(e.target.value)}
-            placeholder="Leave blank to keep current"
-            autoComplete="off"
-          />
-        </div>
-        <div className="field">
-          <label htmlFor="slackAppToken">
-            Slack app token (xapp-…, Socket Mode)
-            {settings && <SourceBadge source={settings.secrets.slackAppTokenSource} />}
-            {settings?.secrets.slackAppTokenConfigured && !slackAppToken ? " · configured" : ""}
-          </label>
-          <input
-            id="slackAppToken"
-            type="password"
-            value={slackAppToken}
-            disabled={settings?.secrets.slackAppTokenSource === "env"}
-            onChange={(e) => setSlackAppToken(e.target.value)}
-            placeholder="Leave blank to keep current"
-            autoComplete="off"
-          />
-        </div>
-        <div className="field">
-          <label htmlFor="slackAllowedUsers">Allowed Slack member IDs (U…, comma-separated)</label>
-          <input
-            id="slackAllowedUsers"
-            type="text"
-            value={slackAllowedUsers}
-            onChange={(e) => setSlackAllowedUsers(e.target.value)}
-            placeholder="U0123456789"
-          />
-        </div>
-        <div className="field">
-          <label htmlFor="slackHomeChannel">Home channel ID (optional, C… or D… for cron delivery)</label>
-          <input
-            id="slackHomeChannel"
-            type="text"
-            value={slackHomeChannel}
-            onChange={(e) => setSlackHomeChannel(e.target.value)}
-            placeholder="C01234567890"
-          />
-        </div>
-        <div className="field">
-          <label htmlFor="slackAllowedChannels">Allowed chat channel IDs (optional, comma-separated C…/G…)</label>
-          <input
-            id="slackAllowedChannels"
-            type="text"
-            value={slackAllowedChannels}
-            onChange={(e) => setSlackAllowedChannels(e.target.value)}
-            placeholder="C01234567890"
-          />
-        </div>
-      </section>
+      <SlackChatCard
+        disabled={saving || loading}
+        botTokenBadge={settings ? <SourceBadge source={settings.secrets.slackBotTokenSource} /> : null}
+        appTokenBadge={settings ? <SourceBadge source={settings.secrets.slackAppTokenSource} /> : null}
+        botTokenConfigured={Boolean(settings?.secrets.slackBotTokenConfigured)}
+        appTokenConfigured={Boolean(settings?.secrets.slackAppTokenConfigured)}
+        botTokenFromEnv={settings?.secrets.slackBotTokenSource === "env"}
+        appTokenFromEnv={settings?.secrets.slackAppTokenSource === "env"}
+        fields={slackFields}
+        setField={setSlackField}
+        onMessage={(msg) => {
+          setError("");
+          setMessage(msg);
+        }}
+        onError={setError}
+        onChanged={() => void refresh()}
+      />
 
       <div className="actions">
         <button type="button" className="btn btn-primary" disabled={saving || loading} onClick={() => void save()}>

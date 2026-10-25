@@ -22,6 +22,8 @@ type ArozDesktopWindow = Window & {
     appicon?: string;
     title?: string;
   }) => void;
+  /** ArozOS desktop: raise a float window (a `.floatWindow` element) above the others. */
+  MoveFloatWindowToTop?: (floatWindow: Element) => void;
 };
 
 /** Canonical module names for openModule() — see docs/arozos-desktop-shortcuts.md */
@@ -36,6 +38,7 @@ export const DESKTOP_MODULE_NAMES = new Set([
   "Connectors",
   "Schedules",
   "Welcome",
+  "Multiplayer",
   "File Manager",
   "System Setting",
   "Trash Bin",
@@ -45,6 +48,10 @@ const MODULE_ALIASES: Record<string, string> = {
   browser: "jWeb",
   web: "jWeb",
   jweb: "jWeb",
+  "multiplayer": "Multiplayer",
+  "boss mode": "Multiplayer",
+  bossmode: "Multiplayer",
+  teams: "Multiplayer",
   chat: "jChat",
   jchat: "jChat",
   hermes: "jChat",
@@ -203,6 +210,51 @@ export function openDesktopModule(moduleName: string): boolean {
   return false;
 }
 
+function decodedSrc(src: string): string {
+  try {
+    return decodeURIComponent(src);
+  } catch {
+    return src;
+  }
+}
+
+/**
+ * The open float window whose app page (`appPath`, e.g. `md-editor/index.html`) shows the
+ * file `filepath`, or null. ArozOS keeps each window as a `.floatWindow` element with an iframe.
+ */
+export function findOpenFileWindow(doc: Pick<Document, "querySelectorAll">, appPath: string, filepath: string): Element | null {
+  const wanted = JSON.stringify(filepath);
+  let found: Element | null = null;
+  for (const fw of Array.from(doc.querySelectorAll(".floatWindow"))) {
+    const src = decodedSrc(fw.querySelector("iframe")?.getAttribute("src") ?? "");
+    if (src.includes(appPath) && src.includes(wanted)) found = fw;
+  }
+  return found;
+}
+
+/**
+ * Open a file in its desktop app. When a window already shows that file, show it (also
+ * when it is minimized) and raise it, so that each click does not open one more window.
+ */
+function openFileWindow(
+  desktop: ArozDesktopWindow,
+  appPath: string,
+  filepath: string,
+  config: { url: string; width: number; height: number; appicon: string; title: string },
+): void {
+  try {
+    const open = findOpenFileWindow(desktop.document, appPath, filepath);
+    if (open && typeof desktop.MoveFloatWindowToTop === "function") {
+      (open as HTMLElement).style.display = "";
+      desktop.MoveFloatWindowToTop(open);
+      return;
+    }
+  } catch {
+    /* cross-origin desktop: open a new window */
+  }
+  desktop.newFloatWindow?.(config);
+}
+
 export async function openDesktopFile(relativePath: string): Promise<boolean> {
   const clean = validateFilePath(relativePath);
   if (!clean) return false;
@@ -217,13 +269,25 @@ export async function openDesktopFile(relativePath: string): Promise<boolean> {
   const filepath = `${ctx?.arozPathPrefix ?? `user:/Desktop/${dirName}`}/${clean}`;
   const openParam = encodeURIComponent(JSON.stringify([{ filepath, filename }]));
 
-  if (ext === "excalidraw" || ext === "md") {
-    desktop.newFloatWindow({
+  if (ext === "excalidraw") {
+    openFileWindow(desktop, "excalidraw/index.html", filepath, {
       url: `excalidraw/index.html#${openParam}`,
       width: 1280,
       height: 860,
       appicon: "img/joshu/whiteboard.png",
-      title: ext === "md" ? `jWhiteboard — ${filename}` : "jWhiteboard",
+      title: "jWhiteboard",
+    });
+    return true;
+  }
+
+  // Markdown and plain text open in jNotes, as a double-click on the desktop does.
+  if (ext === "md" || ext === "markdown" || ext === "mdx" || ext === "txt") {
+    openFileWindow(desktop, "md-editor/index.html", filepath, {
+      url: `md-editor/index.html#${openParam}`,
+      width: 1100,
+      height: 820,
+      appicon: "img/joshu/notes.png",
+      title: `jNotes — ${filename}`,
     });
     return true;
   }

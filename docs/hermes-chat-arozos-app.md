@@ -70,7 +70,7 @@ jChat session — use SMS, voice, Slack, or Telegram for deferred goals.
 
 Kanban completions for goals **started on other channels** may still appear via
 the durable per-session surface-event queue; the open client polls that into the
-transcript. See [theory of operation — channel policy](realtime-goals-theory-of-operation.md#channel-policy-summary).
+transcript. See [theory of operation — channel policy](technical-reference/realtime-goals-theory-of-operation.md#channel-policy-summary).
 
 ### System prompt layers
 
@@ -151,6 +151,8 @@ jChat can open ArozOS apps and files on the user's screen without asking them to
 | **Fast — typed** | Text chat | `open the mail app`, `open jWeb`, … | Client regex in `matchQuickDesktopOpen()` → `executeDesktopAction()` — **no Hermes stream** |
 | **Fast — voice** | Voice (S2S) | “open browser”, “open email”, … | Realtime `open_desktop` → `desktop_action` wire event → same executor |
 | **Brain** | Text + voice | Specific file, search, calendar content | Hermes `desktop_open` tool → Joshu queue → `desktop_action` SSE |
+
+A file opens in its app: `.md`, `.markdown`, `.mdx`, and `.txt` in jNotes (as a double-click on the desktop does), `.excalidraw` in jWhiteboard, and other files in MDEditor. When a window already shows the same file in that app, `openDesktopFile` shows and raises that window instead of opening another one (`packages/app-agent/src/desktopActions.ts`, test `npm run test:desktop-open-file`). The Multiplayer app uses the same function for "What I share".
 
 **Hermes plugin:** [`.hermes/plugins/joshu-desktop/`](../.hermes/plugins/joshu-desktop/) — tool `desktop_open` (`kind: module | file`, `target`). Enqueue runs in a **`post_tool_call` hook** (Hermes passes `session_id` to hooks, not tool handlers). Joshu drains the queue on `desktop_open` completion and emits `desktop_action` on the chat SSE stream.
 
@@ -396,9 +398,20 @@ Joshu uses Composio’s **tool-router session** pattern (`composio.create(user_i
 [Configuring sessions](https://docs.composio.dev/docs/configuring-sessions.md) and
 [Native tools vs MCP](https://docs.composio.dev/docs/native-tools-vs-mcp.md).
 
+The Joshu API keeps one tool-router session for each box, and `getOrCreateComposioSession` in `src/composioApi.ts` follows these rules:
+
+1. The process keeps the session in memory for 10 minutes, and parallel callers wait for one shared request. A Composio tool call (`composioToolsExecute`) therefore makes no session call of its own.
+2. Joshu sends the toolkit auth configs to the session (`session.update`) only when they change. The store file keeps a key of the last auth configs that Joshu sent, so a restart does not send them again.
+3. Joshu makes a new session only when Composio says that the stored session is not found (HTTP 404). A 409 ("Config version conflict") makes Joshu fetch the session again and retry the update one time. A 429 or another error fails the call and keeps the stored session.
+4. Joshu writes `composio-session.json` to a temp file and renames it, so a reader never sees a half-written file.
+
+The box also has a read session for the same Composio user (`readSession` in `composio-session.json`), with only read-only tools and the Composio workbench on. Joshu reuses it and sends it changed auth configs by the same rules. The Composio MCP guard runs the workbench on the read session only; see [`agent-safety.md`](agent-safety.md#architecture).
+
+A box with four Gmail accounts made about 7,400 sessions in 20 hours (2026-10-20) before these rules. Each Gmail tool call sent the auth configs again, the parallel updates got 409, and the old code made a new session for each error, so Composio rate-limited the project. Test: `npm run test:composio-session-cache`.
+
 Hermes config (written by `applyComposioMcpToHermesConfig` in `src/hermesApi.ts`):
 
-- `mcp_servers.composio` — URL, `x-api-key` header, `connect_timeout: 120`, `enabled: true` when session exists
+- `mcp_servers.composio` — the URL of the local Composio MCP guard (`http://127.0.0.1:8796/mcp`), no headers, `connect_timeout: 120` (1800 with the action guard on), `enabled: true` when a session exists. The guard reads the upstream session URL and headers from the Joshu API; see [`agent-safety.md`](agent-safety.md#architecture)
 - `toolsets` includes `mcp-composio` after `mcp-gbrain` and `mcp-joshu-connectors` (mail recall order in skills)
 
 On each chat stream, Joshu calls `syncComposioHermesMcp` so the session/MCP block stays current.
@@ -409,7 +422,7 @@ On each chat stream, Joshu calls `syncComposioHermesMcp` so the session/MCP bloc
 | ---- | ------------- | ----- |
 | OAuth access/refresh tokens | **Composio cloud** (connected accounts) | Keyed by Composio project + `user_id`; Composio refreshes tokens |
 | Tool-router `sessionId`, MCP URL | **`{AROZ_DATA}/files/users/{user}/.joshu/composio-session.json`** | Joshu metadata only — not the secrets |
-| Hermes MCP client config | **`~/.hermes/config.yaml`** → `mcp_servers.composio` | URL + API key header for the gateway |
+| Hermes MCP client config | **`~/.hermes/config.yaml`** → `mcp_servers.composio` | Local Composio MCP guard URL only, no Composio key |
 
 Composio **`user_id`** is **not** the jChat Hermes transcript id. Resolution order (`src/composioApi.ts`):
 

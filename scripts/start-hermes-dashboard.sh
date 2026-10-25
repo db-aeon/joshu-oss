@@ -4,6 +4,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+# shellcheck source=lib/pid-file.sh
+source "${SCRIPT_DIR}/lib/pid-file.sh"
 
 load_env_file() {
   local env_file="$1"
@@ -88,16 +90,7 @@ if curl -fsS "${health_url}" >/dev/null 2>&1; then
   exit 0
 fi
 
-if [[ -f "${HERMES_DASHBOARD_PID_FILE}" ]]; then
-  old_pid="$(cat "${HERMES_DASHBOARD_PID_FILE}" 2>/dev/null || true)"
-  if [[ -n "${old_pid}" ]] && kill -0 "${old_pid}" 2>/dev/null; then
-    echo "[hermes-dashboard] stopping stale process (pid ${old_pid})"
-    kill "${old_pid}" 2>/dev/null || true
-    sleep 0.5
-    kill -9 "${old_pid}" 2>/dev/null || true
-  fi
-  rm -f "${HERMES_DASHBOARD_PID_FILE}"
-fi
+stop_pid_file_process "${HERMES_DASHBOARD_PID_FILE}" "hermes dashboard" "[hermes-dashboard]"
 
 mkdir -p "${HERMES_HOME}" "$(dirname "${HERMES_DASHBOARD_LOG_FILE}")"
 

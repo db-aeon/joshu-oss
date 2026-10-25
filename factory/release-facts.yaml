@@ -1,0 +1,22 @@
+# Release facts: facts about Joshu tools that a release changed, so that an old note on a box is now untrue.
+# Terms: openspec/glossary.md ("Release fact").
+# On the first start at a new release, Joshu adds a one-time Hermes job that checks Hermes memory
+# (MEMORY.md, USER.md) and the box-made skills against each fact with introducedIn after the release
+# that the box checked last, and fixes what the fact makes untrue (src/releaseFacts.ts).
+# id: stable name. introducedIn: the first release where the fact is true.
+# fact: what is true now. wasBelieved: the old belief that the fact makes untrue, in words, so the
+# job can find notes that say it in other words.
+# Add a fact when a release removes a limit or a workaround that the companion may have written down.
+# Do not write owner names, email addresses, or phone numbers here.
+schemaVersion: 1
+facts:
+  - id: calendar-writes-all-calendar-accounts
+    introducedIn: "0.1.53"
+    fact: >-
+      The connectors MCP tools google_calendar_create_event and google_calendar_update_event write to every
+      connected calendar account of the owner. Joshu picks the calendar account that can write the target
+      calendar, so personal, work, and shared calendars all work.
+    wasBelieved: >-
+      Composio calendar writes run as one calendar account only. Other calendars answer 404 or "calendar not
+      found", so calendar events must be made, moved, or deleted in the browser on calendar.google.com, for
+      example with a calendar/render?action=TEMPLATE link.

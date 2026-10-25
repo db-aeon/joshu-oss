@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Cloud-init / first-boot script for a fresh VPS.
+# Cloud-init / first-boot script for a fresh VPS. Needs Docker and the sandbox image;
+# no git clone (change image-owned-box-runtime) unless JOSHU_BUILD_IMAGE=1.
 set -euo pipefail
 
 JOSHU_REPO="${JOSHU_REPO:-https://github.com/db-aeon/joshu-oss.git}"
@@ -22,7 +23,12 @@ apt_retry() {
 }
 
 apt_retry apt-get update
-apt_retry apt-get install -y ca-certificates curl git gettext-base
+APT_EXTRA=""
+if [[ "${JOSHU_BUILD_IMAGE:-0}" == "1" ]]; then
+  APT_EXTRA="git"
+fi
+# shellcheck disable=SC2086
+apt_retry apt-get install -y ca-certificates curl gettext-base ${APT_EXTRA}
 
 install -m 0755 -d /etc/apt/keyrings
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
@@ -33,13 +39,31 @@ apt_retry apt-get update
 apt_retry apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 
 mkdir -p /etc/joshu
-chmod 700 /etc/joshu
+# 711: other users can pass through to /etc/joshu/secrets (Hindsight runs as user hindsight)
+# but cannot list the directory. instance.env stays 600.
+chmod 711 /etc/joshu
 
-if [[ ! -d "${INSTALL_DIR}/.git" ]]; then
-  git clone --depth 1 --branch "${JOSHU_REF}" "${JOSHU_REPO}" "${INSTALL_DIR}"
+# The sandbox image is the only source of code (change image-owned-box-runtime).
+# The host gets the host bundle from the image, not a git clone.
+if [[ -z "${JOSHU_IMAGE_REF:-}" && -f "${ENV_FILE}" ]]; then
+  JOSHU_IMAGE_REF="$(sed -n 's/^JOSHU_IMAGE_REF=//p' "${ENV_FILE}" | tail -1 | tr -d '"')"
 fi
-# Compose always binds this overlay; empty = use image-baked boot scripts.
-mkdir -p "${INSTALL_DIR}/hotfix/scripts"
+IMAGE_REF="${JOSHU_IMAGE_REF:-ghcr.io/db-aeon/joshu-oss:latest}"
+if [[ "${JOSHU_BUILD_IMAGE:-0}" == "1" ]]; then
+  # Build from source: the clone is only a build context, outside the install directory.
+  SRC_DIR="${JOSHU_SRC_DIR:-/opt/joshu-src}"
+  if [[ ! -d "${SRC_DIR}/.git" ]]; then
+    git clone --depth 1 --branch "${JOSHU_REF}" "${JOSHU_REPO}" "${SRC_DIR}"
+  fi
+  echo "[bootstrap-vps] building ${IMAGE_REF} from ${SRC_DIR}/deploy/Dockerfile"
+  docker build -f "${SRC_DIR}/deploy/Dockerfile" -t "${IMAGE_REF}" "${SRC_DIR}"
+else
+  echo "[bootstrap-vps] pulling ${IMAGE_REF}"
+  docker pull "${IMAGE_REF}"
+fi
+
+docker run --rm --entrypoint cat "${IMAGE_REF}" /opt/joshu/.image/host/deploy/scripts/install-host-bundle.sh \
+  | JOSHU_IMAGE_REF="${IMAGE_REF}" JOSHU_INSTALL_DIR="${INSTALL_DIR}" JOSHU_SKIP_PULL=1 bash -s
 
 if [[ ! -f "${ENV_FILE}" ]]; then
   cp "${INSTALL_DIR}/deploy/.env.vps.example" "${ENV_FILE}"
@@ -50,22 +74,11 @@ fi
 bash "${INSTALL_DIR}/deploy/scripts/ensure-instance-env-secrets.sh" "${ENV_FILE}"
 
 cd "${INSTALL_DIR}"
-if [[ -f "${ENV_FILE}" ]]; then
-  set -a
-  # shellcheck disable=SC1090
-  source "${ENV_FILE}"
-  set +a
-fi
-
-# Pull prebuilt image (OSS default) or build on host when JOSHU_BUILD_IMAGE=1
-IMAGE_REF="${JOSHU_IMAGE_REF:-ghcr.io/db-aeon/joshu-oss:latest}"
-if [[ "${JOSHU_BUILD_IMAGE:-0}" == "1" ]]; then
-  echo "[bootstrap-vps] building ${IMAGE_REF} from Dockerfile"
-  docker build -f deploy/Dockerfile -t "${IMAGE_REF}" .
-else
-  echo "[bootstrap-vps] pulling ${IMAGE_REF}"
-  docker pull "${IMAGE_REF}"
-fi
+set -a
+# shellcheck disable=SC1090
+source "${ENV_FILE}"
+set +a
+export JOSHU_IMAGE_REF="${IMAGE_REF}"
 
 # Caddy site — render from instance.env (main site + optional Hermes admin vhost)
 bash deploy/scripts/render-caddyfile.sh "${ENV_FILE}"
@@ -95,16 +108,6 @@ if [[ -n "${PROFILES}" ]]; then
   export COMPOSE_PROFILES="${PROFILES}"
 else
   unset COMPOSE_PROFILES 2>/dev/null || true
-fi
-
-# Host compose bind-mounts gitignored trees over the image (dist/, last30days-skill/).
-# git clone leaves those dirs empty and shadows the baked copies.
-LAST30DAYS_ENGINE="${INSTALL_DIR}/integrations/last30days-skill/skills/last30days/scripts/last30days.py"
-if [[ ! -f "${INSTALL_DIR}/dist/server.js" || ! -f "${LAST30DAYS_ENGINE}" ]]; then
-  echo "[bootstrap-vps] syncing dist/ + last30days-skill from ${JOSHU_IMAGE_REF:-image}"
-  JOSHU_IMAGE_REF="${JOSHU_IMAGE_REF:?JOSHU_IMAGE_REF required}" \
-    JOSHU_RELEASE_VERSION="${JOSHU_RELEASE_VERSION:-}" \
-    bash "${INSTALL_DIR}/scripts/sync-dist-from-image.sh"
 fi
 
 docker compose -f deploy/docker-compose.yml --env-file "${ENV_FILE}" up -d

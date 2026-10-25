@@ -26,6 +26,11 @@ GBRAIN_MCP_HTTP_URL="${GBRAIN_MCP_HTTP_URL:-http://127.0.0.1:8794}"
 GBRAIN_LOG_FILE="${GBRAIN_LOG_FILE:-${GBRAIN_HOME}/gbrain-ensure-indexed.log}"
 FULL_SYNC_COOLDOWN_SEC="${GBRAIN_FULL_SYNC_COOLDOWN_SEC:-1800}"
 FULL_SYNC_STAMP="${GBRAIN_HOME}/.gbrain-full-sync.last"
+# Consecutive full recoveries that left the index unhealthy; doubles the cooldown.
+FULL_SYNC_FAILS="${GBRAIN_HOME}/.gbrain-full-sync.fails"
+FULL_SYNC_COOLDOWN_MAX_SEC="${GBRAIN_FULL_SYNC_COOLDOWN_MAX_SEC:-86400}"
+# Same pause switch as the MCP bridge (gbrain-mcp-bridge.mjs).
+SYNC_PAUSE_FILE="${GBRAIN_HOME}/.joshu-sync-paused"
 SOFT_WAIT_SEC="${GBRAIN_ENSURE_SOFT_WAIT_SEC:-45}"
 
 MODE="auto"
@@ -50,13 +55,33 @@ assess_index() {
     node "${SCRIPTS_DIR}/lib/gbrain-index-health.mjs" --json "${JOSHU_DESKTOP_ROOT:-}"
 }
 
+full_sync_fail_count() {
+  local n
+  n="$(cat "${FULL_SYNC_FAILS}" 2>/dev/null || echo 0)"
+  [[ "${n}" =~ ^[0-9]+$ ]] || n=0
+  echo "${n}"
+}
+
+# Cooldown doubles per consecutive failed full recovery (each one re-embeds).
+full_sync_cooldown_sec() {
+  local fails cooldown
+  fails="$(full_sync_fail_count)"
+  cooldown="${FULL_SYNC_COOLDOWN_SEC}"
+  while (( fails > 0 && cooldown < FULL_SYNC_COOLDOWN_MAX_SEC )); do
+    cooldown=$((cooldown * 2))
+    fails=$((fails - 1))
+  done
+  (( cooldown > FULL_SYNC_COOLDOWN_MAX_SEC )) && cooldown="${FULL_SYNC_COOLDOWN_MAX_SEC}"
+  echo "${cooldown}"
+}
+
 full_sync_cooldown_active() {
   [[ -f "${FULL_SYNC_STAMP}" ]] || return 1
   local now last age
   now="$(date +%s)"
   last="$(cat "${FULL_SYNC_STAMP}" 2>/dev/null || echo 0)"
   age=$((now - last))
-  (( age < FULL_SYNC_COOLDOWN_SEC ))
+  (( age < $(full_sync_cooldown_sec) ))
 }
 
 mark_full_sync() {
@@ -91,6 +116,11 @@ run_full_sync() {
   bash "${SCRIPTS_DIR}/start-gbrain-mcp-http.sh" >>"${GBRAIN_LOG_FILE}" 2>&1
 }
 
+if [[ -f "${SYNC_PAUSE_FILE}" ]]; then
+  log "sync paused (${SYNC_PAUSE_FILE}); skipping mode=${MODE}"
+  exit 0
+fi
+
 report="$(assess_index || true)"
 needs_recovery="$(node -e "const r=JSON.parse(process.argv[1]); process.stdout.write(r.needsRecovery?'yes':'no')" "${report}" 2>/dev/null || echo no)"
 disk_md="$(node -e "const r=JSON.parse(process.argv[1]); process.stdout.write(String(r.diskMarkdown??0))" "${report}" 2>/dev/null || echo 0)"
@@ -104,6 +134,7 @@ if [[ "${MODE}" == "check" ]]; then
 fi
 
 if [[ "${needs_recovery}" != "yes" ]]; then
+  rm -f "${FULL_SYNC_FAILS}" 2>/dev/null || true
   log "index OK or nothing to index"
   exit 0
 fi
@@ -129,12 +160,13 @@ indexed="$(node -e "const r=JSON.parse(process.argv[1]); process.stdout.write(St
 log "after soft recovery indexed=${indexed} needs_recovery=${needs_recovery}"
 
 if [[ "${needs_recovery}" != "yes" ]]; then
+  rm -f "${FULL_SYNC_FAILS}" 2>/dev/null || true
   log "soft recovery succeeded"
   exit 0
 fi
 
 if full_sync_cooldown_active; then
-  log "still empty but full-sync cooldown active (${FULL_SYNC_COOLDOWN_SEC}s); skipping"
+  log "still empty but full-sync cooldown active ($(full_sync_cooldown_sec)s); skipping"
   exit 1
 fi
 
@@ -142,8 +174,10 @@ run_full_sync
 report="$(assess_index || true)"
 needs_recovery="$(node -e "const r=JSON.parse(process.argv[1]); process.stdout.write(r.needsRecovery?'yes':'no')" "${report}" 2>/dev/null || echo yes)"
 if [[ "${needs_recovery}" == "yes" ]]; then
+  echo $(( $(full_sync_fail_count) + 1 )) >"${FULL_SYNC_FAILS}"
   log "WARN: full recovery completed but index still empty — check ${GBRAIN_HOME}/gbrain-mcp-http.log"
   exit 1
 fi
+rm -f "${FULL_SYNC_FAILS}" 2>/dev/null || true
 log "full recovery succeeded"
 exit 0

@@ -8,12 +8,11 @@ import { readAgentProfile } from "../nylas/profile.js";
 import { buildOwnerTimeSystemMessage } from "../ownerLocalTime.js";
 import { smsModelReplyPlaintext } from "../smsModelReplyPlaintext.js";
 import { isOnboardingKanbanBody, parseOnboardingPromptIdFromBody } from "../onboarding/promptState.js";
-import { ownerSmsPhone } from "../twilioSmsSend.js";
 import { smsHermesAbortSignal } from "../twilioSmsConfig.js";
 import type { FeedbackKeyword } from "./feedback.js";
 import type { ProactiveCandidate } from "./types.js";
 
-export type ProactiveComposeKind = "nudge" | "stale_review" | "clarify" | "feedback_ack" | "reply_ack";
+export type ProactiveComposeKind = "nudge" | "stale_review" | "feedback_ack" | "reply_ack";
 
 export type ProactiveComposeInput = {
   kind: ProactiveComposeKind;
@@ -22,6 +21,11 @@ export type ProactiveComposeInput = {
   feedbackKeyword?: FeedbackKeyword;
   ownerReplySnippet?: string;
   dailyCap?: number;
+  /**
+   * The owner text channel that the message goes out on (ownerTextChannelFor).
+   * Default "sms": the acknowledgements answer an SMS from the owner.
+   */
+  channel?: "sms" | "email";
 };
 
 let hermesRunner: HermesApiRunner | null = null;
@@ -55,20 +59,24 @@ function readHighLevelSnippet(projectRoot: string, maxChars = 600): string {
   }
 }
 
-function buildComposeUserPrompt(input: ProactiveComposeInput): string {
+export function buildComposeUserPrompt(input: ProactiveComposeInput): string {
   const identity = resolveJoshuIdentity(input.projectRoot ?? process.cwd());
   const profile = readAgentProfile(input.projectRoot);
   const owner = profile?.ownerName?.trim() || identity.owner.displayName || "the owner";
   const c = input.candidate;
+  const channel = input.channel ?? "sms";
+  const medium = channel === "email" ? "email" : "SMS";
 
   const lines = [
-    "Compose an outbound SMS to the box owner for proactive Joshu.",
+    `Compose an outbound ${medium} to the box owner for proactive Joshu.`,
     `Compose kind: ${input.kind}`,
     `Owner first name or display: ${owner}`,
     "Rules: first person as the companion (SOUL.md voice), warm and natural, plain text only, no markdown, no Kanban board slugs.",
-    "Weave feedback naturally when kind is nudge, stale_review, or clarify (MORE/LESS/USEFUL — not a rigid footer).",
+    channel === "email"
+      ? "This goes by email, not SMS. Do not ask the owner to reply MORE, LESS, or USEFUL: those words work only by SMS."
+      : "Weave feedback naturally when kind is nudge or stale_review (MORE/LESS/USEFUL — not a rigid footer).",
     "Include 1–2 specific suggested follow-ups for the task when kind is nudge or stale_review.",
-    "Keep SMS to about 2–4 sentences unless stale_review or clarify needs one more.",
+    `Keep the ${medium} to about 2–4 sentences unless stale_review needs one more.`,
   ];
 
   if (c) {
@@ -83,11 +91,10 @@ function buildComposeUserPrompt(input: ProactiveComposeInput): string {
         "This is a setup checklist item (onboarding), not mail or scheduling work.",
       );
       if (promptId === "owner-mobile-sms") {
-        const hasSms = Boolean(ownerSmsPhone(input.projectRoot ?? process.cwd()));
         lines.push(
-          hasSms
+          channel === "sms"
             ? "Ask the owner to confirm or add their mobile in the Telephone app or Welcome profile if needed."
-            : "The owner has no mobile on file yet — this message may deliver by email. Ask them to add their mobile in the Telephone app or Welcome (Schedule & email) so you can reach them by SMS for approvals and updates.",
+            : "The owner has no mobile on file yet. Ask them to add their mobile in the Telephone app or Welcome (Schedule & email) so you can reach them by SMS for approvals and updates.",
         );
       } else if (promptId === "connect-work-gmail") {
         lines.push(
@@ -121,21 +128,8 @@ function buildComposeUserPrompt(input: ProactiveComposeInput): string {
     lines.push(`Append final line exactly: Ref: pj/${c.taskId}`);
   }
 
-  if (input.kind === "clarify" && c) {
-    lines.push(
-      "Model conflict: new mail was filed on a blocked owner-decision track but did not auto-close.",
-    );
-    if (c.body?.trim()) {
-      lines.push(`Conflict context: ${c.body.trim().slice(0, 500)}`);
-    }
-    lines.push(
-      "Ask ONE specific disambiguation question — do not re-ask a decision already implied by the new mail.",
-      "Do not imply you will contact the counterparty; this is owner clarification only.",
-    );
-    lines.push(`Append final line exactly: Ref: pj/${c.taskId}`);
-  }
 
-  lines.push("Output ONLY the SMS body text.");
+  lines.push(`Output ONLY the ${medium} body text.`);
   return lines.join("\n");
 }
 
@@ -146,12 +140,17 @@ function ensureRefLine(text: string, taskId: string | undefined): string {
   return `${text.trim()}\n${ref}`;
 }
 
-/** Deterministic cadence hint — Hermes compose often omits MORE/LESS/USEFUL. */
+/** Deterministic cadence hint — Hermes compose often omits MORE/LESS/USEFUL. SMS only. */
 export const PROACTIVE_CADENCE_HINT =
   "Reply MORE for more check-ins, LESS for once a day, or USEFUL if this helped.";
 
-export function ensureCadenceHintLine(text: string, kind: ProactiveComposeKind): string {
-  if (kind !== "nudge" && kind !== "stale_review" && kind !== "clarify") return text.trim();
+export function ensureCadenceHintLine(
+  text: string,
+  kind: ProactiveComposeKind,
+  channel: "sms" | "email" = "sms",
+): string {
+  if (kind !== "nudge" && kind !== "stale_review") return text.trim();
+  if (channel === "email") return text.trim();
   const trimmed = text.trim();
   if (/\bMORE\b/i.test(trimmed) && /\bLESS\b/i.test(trimmed)) return trimmed;
 
@@ -194,15 +193,23 @@ function fallbackCompose(input: ProactiveComposeInput): string {
     const base =
       input.kind === "stale_review"
         ? `Hey ${owner} — "${title}" might be done. Reply DONE to close it or KEEP if it's still live.`
-        : input.kind === "clarify"
-          ? `Hey ${owner} — I filed new mail on "${title}" but the card is still open. ${c.body?.trim().slice(0, 120) ?? "Can you confirm whether I should close it?"}`
-          : `Hey ${owner} — quick one on "${title}". I'm blocked and need your call. Reply here with what you want me to do.`;
+        : `Hey ${owner} — quick one on "${title}". I'm blocked and need your call. Reply here with what you want me to do.`;
     let out = ensureRefLine(base, c.taskId);
-    out = ensureCadenceHintLine(out, input.kind);
+    out = ensureCadenceHintLine(out, input.kind, input.channel);
     return out;
   }
 
   return `Let me know if you need anything, ${owner}.`;
+}
+
+/**
+ * A new Hermes session for each compose. A shared session (one each day) gave
+ * the model every earlier compose of the day as history, so retries stacked up
+ * ("you've heard it before") and each turn cost more tokens.
+ */
+export function proactiveComposeSessionKey(input: ProactiveComposeInput, now = new Date()): string {
+  const task = input.candidate?.taskId ?? "none";
+  return `proactive:compose:${input.kind}:${task}:${now.toISOString()}`;
 }
 
 async function composeViaHermes(runner: HermesApiRunner, input: ProactiveComposeInput): Promise<string> {
@@ -211,14 +218,15 @@ async function composeViaHermes(runner: HermesApiRunner, input: ProactiveCompose
 
   const soul = readSoulSnippet();
   const highLevel = readHighLevelSnippet(projectRoot);
+  const medium = input.channel === "email" ? "email" : "SMS";
   const systemParts = [
-    "You compose outbound owner SMS for proactive Joshu. Use your SOUL.md personality — not a system alert.",
+    `You compose outbound owner ${medium} for proactive Joshu. Use your SOUL.md personality — not a system alert.`,
     "Plain text only. No markdown. No board slugs.",
   ];
   if (soul) systemParts.push(`Persona reminder (SOUL): ${soul}`);
   if (highLevel) systemParts.push(`Context: ${highLevel}`);
 
-  const sessionKey = `proactive:compose:${input.kind}:${new Date().toISOString().slice(0, 10)}`;
+  const sessionKey = proactiveComposeSessionKey(input);
   const messages: HermesChatMessage[] = [
     buildOwnerTimeSystemMessage(projectRoot),
     { role: "system", content: systemParts.join("\n\n") },
@@ -240,10 +248,10 @@ async function composeViaHermes(runner: HermesApiRunner, input: ProactiveCompose
   let out = plain;
   if (
     input.candidate?.taskId &&
-    (input.kind === "nudge" || input.kind === "stale_review" || input.kind === "clarify")
+    (input.kind === "nudge" || input.kind === "stale_review")
   ) {
     out = ensureRefLine(out, input.candidate.taskId);
-    out = ensureCadenceHintLine(out, input.kind);
+    out = ensureCadenceHintLine(out, input.kind, input.channel);
   }
   return out;
 }

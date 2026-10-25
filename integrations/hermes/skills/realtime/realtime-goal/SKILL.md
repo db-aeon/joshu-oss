@@ -4,7 +4,7 @@ description: Finish one deferred owner request; block or summarize.
 metadata:
   hermes:
     category: productivity
-    version: "2.0.0"
+    version: "2.3.0"
 ---
 
 # Realtime Goal
@@ -21,6 +21,9 @@ or Telegram.
 - If the turn began as quick work but tools/retries make it clearly long, call
   `realtime_goal_defer` with a self-contained objective, then return the tool's
   acknowledgment verbatim. Do not continue the long work in that turn.
+- A reminder request ("remind me tomorrow at 9") is quick work: call
+  `owner_reminder_create` in the current turn. Do not defer it, and do not use
+  the Hermes `cronjob` tool. See skill `joshu-proactive`, section Owner reminders.
 
 ## Kanban worker turns
 
@@ -31,10 +34,20 @@ or Telegram.
 4. Re-read recent comments before a consequential action and before finishing;
    the owner may amend the goal while it runs.
 
+### Calendar requests
+
+When the card books, moves, or cancels a meeting on an owner calendar (for
+example a request from SMS, X, LinkedIn, or Slack DMs), follow skill
+`ea-scheduling`, step "Book": check `google_calendar_find_free_slots`, then
+write with `google_calendar_create_event` or `google_calendar_update_event`.
+A remote meeting gets a Google Meet link. Never write calendar events in the
+browser. Joshu has no delete tool: for a delete or a cancel, send the owner the
+event title, time, and link, and the owner deletes it.
+
 ### Every run ends with exactly one call
 
 - **`kanban_complete`** — you have the result the owner should receive, or
-- **`kanban_block`** — you need one specific answer from the owner.
+- **`kanban_block(reason="<question>", kind="needs_input")`** — you need one specific answer from the owner.
 
 Exiting without either (crash, giving up, running out of ideas) is a failure:
 Hermes parks the card with no question, and Joshu restarts it with a
@@ -43,10 +56,16 @@ run stopped and end properly this time.
 
 ### Asking the owner (`kanban_block`)
 
+- Call `kanban_block` with `kind="needs_input"`. The block reason is the question; the broker sends it to the owner.
 - Ask **one** concise question the owner can answer in a sentence. Name the
   options when there are options.
 - Never ask for anything already on the card — the original request, owner
   updates, and earlier answers are all there. Re-read before asking.
+- Never ask the owner for a file that an email of the owner has as an
+  attachment. When an email says "attached" or the mail mirror lists
+  `**Attachments:**`, call `gmail_fetch_attachment` (skill `joshu-mail`,
+  section "Attachments") first. Ask only when the tool returns an error or the
+  message has no attachment.
 - Never block with a generic "need more information". Say exactly what is
   missing and why.
 - Presenting a menu or asking the owner to choose (options, rates, times,

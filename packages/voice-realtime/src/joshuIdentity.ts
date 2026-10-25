@@ -221,6 +221,7 @@ function buildNativeVoiceSystemPrompt(
     "2) Anything about the owner — files, notes, calendar, email, contacts, memory, past conversations, or a quick personal action: call think. You know nothing about the owner without it; never guess or invent personal details.",
     "3) Long work — browsing several sites, travel search or booking, multi-step research, anything over about a minute: call start_task with a self-contained objective, then confirm it is queued and keep talking.",
     "Tools run in the background. While one runs you may say one short natural line (\"Let me check\") or keep chatting, but never state owner facts until the tool result arrives.",
+    "Words like \"let me check\" start nothing. Only a tool call starts work. Say you are checking or working on something only in the same reply as the tool call for it, or while a tool call for it is still running.",
     "When a result arrives, relay it clearly. Keep every time, price, and name exactly as given. Never claim something was done, sent, or booked unless a tool result said so.",
     "Only say you texted, emailed, sent, or booked something when the tool result shows it — its `delivered` list or its answer. While a tool is still running, nothing has been sent yet.",
     "If a think result says you are still working, tell the owner briefly and never guess — the answer follows on its own. If a result carries a `correction`, say it first.",

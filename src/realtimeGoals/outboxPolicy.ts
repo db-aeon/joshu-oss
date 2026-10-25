@@ -14,6 +14,10 @@
  *    decision 2026-09-26), back off 10 min → 30 min → stop calling until contact.
  * 7. Outside call hours (civil hours) → text instead of waiting to call.
  * 8. Owner asked to be called → dial now, whatever the backoff or window.
+ * 9. An SMS counts as heard only with a delivery receipt; until then nothing
+ *    else goes out for the item. After an undelivered SMS the item is never
+ *    texted again: it takes the next route (fleet audit 2026-10-10: carriers
+ *    rejected SMS with 30034/30003/30007 and the owner never saw them).
  *
  * Nothing waits on a timer while the owner is reachable (canary box
  * 2026-09-26: one voicemail verdict held every result for an hour).
@@ -44,6 +48,10 @@ export const TEXT_LEASE_MS = 2 * 60_000;
 export const CALL_LEASE_MS = 30 * 60_000;
 /** Lease on the owner's live call; the voice service renews it while the call is up. */
 export const ACTIVE_CALL_LEASE_MS = 2 * 60_000;
+/** Read the Twilio status of a pending SMS at most this often. */
+export const SMS_STATUS_POLL_MS = 15_000;
+/** A pending SMS without a delivery receipt is settled from its last status after this. */
+export const SMS_RECEIPT_TIMEOUT_MS = 10 * 60_000;
 
 /** Voice attempt outcomes that mean the owner did not hear it. */
 export const MISSED_CALL_OUTCOMES: ReadonlySet<OwnerOutboxAttemptOutcome> = new Set([
@@ -55,6 +63,41 @@ export const MISSED_CALL_OUTCOMES: ReadonlySet<OwnerOutboxAttemptOutcome> = new 
   "not_heard",
   "failed",
 ]);
+
+/** Twilio message statuses that mean the SMS will not reach the owner. */
+const SMS_REJECTED = new Set(["undelivered", "failed", "canceled"]);
+/** Twilio message statuses with a delivery receipt. */
+const SMS_RECEIVED = new Set(["delivered", "read"]);
+
+export type SmsDeliveryVerdict =
+  | { kind: "delivered" | "sent" | "pending" | "unconfirmed" }
+  | { kind: "undelivered"; detail: string };
+
+/**
+ * Settle a pending SMS from the Twilio status of each part (undefined = the
+ * status read failed). Before the timeout only a receipt settles it; after
+ * it, `sent` counts as heard (carrier took it, no receipt) and anything else
+ * as a failed send.
+ */
+export function smsDeliveryVerdict(
+  statuses: Array<{ status: string; errorCode?: number } | undefined>,
+  sentAt: number,
+  now: number,
+): SmsDeliveryVerdict {
+  const rejected = statuses.find((entry) => entry && SMS_REJECTED.has(entry.status));
+  if (rejected) {
+    return {
+      kind: "undelivered",
+      detail: `twilio ${rejected.status}${rejected.errorCode ? ` ${rejected.errorCode}` : ""}`,
+    };
+  }
+  if (statuses.length > 0 && statuses.every((entry) => entry && SMS_RECEIVED.has(entry.status))) {
+    return { kind: "delivered" };
+  }
+  if (now - sentAt < SMS_RECEIPT_TIMEOUT_MS) return { kind: "pending" };
+  const sent = statuses.every((entry) => entry && (entry.status === "sent" || SMS_RECEIVED.has(entry.status)));
+  return { kind: statuses.length > 0 && sent ? "sent" : "unconfirmed" };
+}
 
 export const DEFAULT_OWNER_PREFS: OwnerDeliveryPrefs = {
   textResultAfterMissedCall: true,
@@ -162,6 +205,16 @@ export function missedByPhone(item: OwnerOutboxItem): boolean {
   );
 }
 
+/** A carrier rejected an SMS of this item: it is not texted again. */
+export function smsUndelivered(item: OwnerOutboxItem): boolean {
+  return item.attempts.some((attempt) => attempt.route === "sms" && attempt.outcome === "undelivered");
+}
+
+/** The item can go by SMS: the box can text the owner and no SMS of it was rejected. */
+export function smsUsable(item: OwnerOutboxItem, capabilities: DeliveryCapabilities): boolean {
+  return capabilities.sms && !smsUndelivered(item);
+}
+
 /** Backoff after `misses` consecutive undelivered callbacks (0 = none). */
 export function missBackoffMs(misses: number): number {
   if (misses <= 0) return 0;
@@ -212,7 +265,8 @@ function resolveRoute(
 
   // 3. Owner is texting right now — answer where they are.
   const texting = activeTextChannel(presence, now);
-  if (texting && (natural === "voice" || natural === texting.route)) {
+  const smsRejected = texting?.route === "sms" && smsUndelivered(item);
+  if (texting && !smsRejected && (natural === "voice" || natural === texting.route)) {
     return { route: texting.route, address: texting.address, reason: "owner_texting_now" };
   }
 
@@ -231,7 +285,13 @@ function resolveRoute(
     return { route: "sms", address: textAddress("sms"), reason: "voice_unavailable" };
   }
   // 6. Missed by phone → text it (owner preference).
-  if (prefs.textResultAfterMissedCall && missedByPhone(item) && !callRequested(presence, now)) {
+  // After an undelivered SMS, a missed item goes back to the callback rules.
+  if (
+    prefs.textResultAfterMissedCall &&
+    missedByPhone(item) &&
+    !callRequested(presence, now) &&
+    !smsUndelivered(item)
+  ) {
     return { route: "sms", address: textAddress("sms"), reason: "missed_call" };
   }
   return { route: "voice", reason: "origin_channel" };
@@ -253,6 +313,11 @@ export function planOwnerDeliveries(input: OwnerDeliveryPlanInput): OwnerDeliver
 
   for (const item of input.items) {
     if (item.state !== "ready" && item.state !== "offered") continue;
+    // 9. An SMS is out: wait for its delivery receipt (the dispatcher reads it).
+    if (item.smsPending) {
+      actions.push({ type: "wait", itemId: item.id, reason: "sms_pending", until: ms(item.smsPending.checkAt) });
+      continue;
+    }
     const leaseUntil = ms(item.lease?.until);
     if (Number.isFinite(leaseUntil) && leaseUntil > now) {
       actions.push({ type: "wait", itemId: item.id, reason: "in_flight", until: leaseUntil });
@@ -265,9 +330,10 @@ export function planOwnerDeliveries(input: OwnerDeliveryPlanInput): OwnerDeliver
     }
 
     const resolved = resolveRoute(item, input);
+    const canText = smsUsable(item, capabilities);
 
-    if (resolved.route === "sms" && !capabilities.sms) {
-      actions.push({ type: "wait", itemId: item.id, reason: "sms_unavailable" });
+    if (resolved.route === "sms" && !canText) {
+      actions.push({ type: "wait", itemId: item.id, reason: capabilities.sms ? "sms_undelivered" : "sms_unavailable" });
       continue;
     }
     if (resolved.route !== "voice") {
@@ -301,7 +367,7 @@ export function planOwnerDeliveries(input: OwnerDeliveryPlanInput): OwnerDeliver
     }
     // Phone is not reaching the owner right now: text instead when allowed.
     if (exhausted || inBackoff) {
-      if (prefs.textResultAfterMissedCall && capabilities.sms) {
+      if (prefs.textResultAfterMissedCall && canText) {
         actions.push({
           type: "text",
           route: "sms",
@@ -322,7 +388,7 @@ export function planOwnerDeliveries(input: OwnerDeliveryPlanInput): OwnerDeliver
     const window = input.callWindow(item);
     if (!window.ok) {
       // 7. Outside call hours: text during civil hours instead of calling tomorrow.
-      if (prefs.textOutsideCallHours && window.civilHours && capabilities.sms) {
+      if (prefs.textOutsideCallHours && window.civilHours && canText) {
         actions.push({
           type: "text",
           route: "sms",

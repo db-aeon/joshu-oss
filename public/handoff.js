@@ -1,10 +1,6 @@
-import { attachVncClipboard } from "./vnc-clipboard.js";
 import { wrapPasswordInput } from "./handoff-password-toggle.js";
 import { connectScreencast } from "./screencast-client.js?v=20260922d";
-import { mountCloudLiveFrame } from "./cloud-live-frame.js?v=ui-browser-22";
-import { configureNovncRfb, loadNovncRfb } from "./vnc-client.js";
-import { attachVncLocalGestures } from "./vnc-gestures.js";
-import { attachVncScrollBridge } from "./vnc-scroll.js";
+import { mountCloudLiveFrame } from "./cloud-live-frame.js?v=ui-browser-23";
 
 function readConfig() {
   const el = document.getElementById("handoff-config");
@@ -28,7 +24,7 @@ function renderShell(root, cfg) {
     </header>
     <div id="vnc-frame">
       <div id="status">connecting…</div>
-      <div id="vnc-screen" aria-label="Shared browser via noVNC"></div>
+      <div id="vnc-screen" aria-label="Shared browser"></div>
     </div>
     <section class="handoff-overlay" id="handoff-overlay">
       <p class="handoff-overlay-status" id="handoff-overlay-status">Scanning page fields…</p>
@@ -59,12 +55,6 @@ function renderShell(root, cfg) {
   root.querySelector(".handoff-meta").textContent = cfg.pageTitle
     ? `${cfg.pageTitle} — ${truncateUrl(cfg.pageUrl)}`
     : truncateUrl(cfg.pageUrl);
-}
-
-function wsUrl(path) {
-  const u = new URL(path, document.baseURI || location.href);
-  u.protocol = location.protocol === "https:" ? "wss:" : "ws:";
-  return u.toString();
 }
 
 function camofoxHandoffOperational(camofox) {
@@ -166,7 +156,7 @@ async function main() {
   const overlayStatus = document.getElementById("handoff-overlay-status");
   const metaEl = root.querySelector(".handoff-meta");
   const fb = { width: 1024, height: 768 };
-  let rfb = null;
+  let screencast = null;
   let heartbeatTimer = null;
   let rescanTimer = null;
   let lastWarmAt = 0;
@@ -340,10 +330,10 @@ async function main() {
   }
 
   async function maybeWarm(data) {
-    // Cloud: the live-frame poll wakes Browser Use itself; Camofox health always
+    // Cloud: the live-frame poll wakes Browser Use itself; local browser health always
     // reads "not running" there, and warming here remounted the iframe every ~15s.
     if (data?.liveView?.mode === "cloud") return false;
-    // OAuth can drop Playwright tab tracking while Firefox keeps running (activeTabs: 0).
+    // OAuth can drop Playwright tab tracking while Chromium keeps running (activeTabs: 0).
     if (camofoxHandoffOperational(data?.camofox)) return false;
     const now = Date.now();
     if (now - lastWarmAt < 15_000) return false;
@@ -361,7 +351,6 @@ async function main() {
     screenEl.style.flex = "1 1 auto";
     screenEl.style.width = `${w}px`;
     screenEl.style.height = `${h}px`;
-    if (rfb?.scaleViewport) window.dispatchEvent(new Event("resize"));
     return { width: w, height: h };
   }
 
@@ -432,11 +421,8 @@ async function main() {
       return;
     }
     if (data?.liveView?.mode === "screencast" && data.liveView.websocketPath) {
-      if (rfb) {
-        rfb.disconnect();
-        rfb = null;
-      }
-      connectScreencast(screenEl, data.liveView.websocketPath, {
+      screencast?.close();
+      screencast = connectScreencast(screenEl, data.liveView.websocketPath, {
         onStatus: (text) => {
           statusEl.textContent = text;
         },
@@ -461,68 +447,6 @@ async function main() {
       });
       return;
     }
-    const base = data.novnc?.clientBaseUrl?.replace(/\/+$/, "");
-    const path = data.novnc?.websocketPath;
-    if (!base || !path) throw new Error("noVNC not configured");
-    const RFB = await loadNovncRfb(base);
-    if (rfb) {
-      rfb.disconnect();
-      rfb = null;
-    }
-    rfb = new RFB(screenEl, wsUrl(path), { shared: false });
-    configureNovncRfb(rfb);
-    attachVncClipboard(rfb, {
-      targetEl: screenEl,
-      pasteViaApi: async (text) => {
-        const pasteRes = await fetch("api/camofox/insert-text", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text }),
-          cache: "no-store",
-        });
-        if (!pasteRes.ok) {
-          const err = await pasteRes.json().catch(() => ({}));
-          throw new Error(err.error || `HTTP ${pasteRes.status}`);
-        }
-        return true;
-      },
-      copyViaApi: async () => {
-        const copyRes = await fetch("api/camofox/copy-selection", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: "{}",
-          cache: "no-store",
-        });
-        if (!copyRes.ok) {
-          const err = await copyRes.json().catch(() => ({}));
-          throw new Error(err.error || `HTTP ${copyRes.status}`);
-        }
-        const copyData = await copyRes.json();
-        return typeof copyData.text === "string" ? copyData.text : "";
-      },
-      ui: {
-        pasteBtn: document.getElementById("vnc-paste-remote"),
-        copyBtn: document.getElementById("vnc-copy-remote"),
-        textarea: document.getElementById("vnc-clipboard-text"),
-        hint: document.querySelector(".vnc-clipboard-hint"),
-      },
-    });
-    const scrollDetach = attachVncScrollBridge(screenEl, { skipWheel: true });
-    attachVncLocalGestures(screenEl, {
-      rfb,
-      onScroll: (direction, amount) => {
-        if (typeof scrollDetach.enqueueWheel === "function") {
-          scrollDetach.enqueueWheel(direction, amount);
-        }
-      },
-    });
-    rfb.addEventListener("connect", () => {
-      statusEl.textContent = `connected ${fb.width}×${fb.height}`;
-      layout();
-    });
-    rfb.addEventListener("disconnect", () => {
-      statusEl.textContent = "disconnected — if jWeb is open on desktop, close it and reload";
-    });
   };
 
   // Defer until flex layout assigns height to #vnc-frame (mobile Safari).
@@ -542,7 +466,7 @@ async function main() {
     data = await statusRes.json();
     if (await maybeWarm(data)) {
       await fetch("api/camofox/fit-viewport", { method: "POST", cache: "no-store" }).catch(() => undefined);
-      if (!rfb) await connectLive().catch(() => undefined);
+      await connectLive().catch(() => undefined);
     }
   }, 8000);
 

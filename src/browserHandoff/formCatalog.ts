@@ -2,7 +2,7 @@
  * DOM catalog types + sanitizer for the mobile handoff overlay.
  *
  * Scan prompts import this module. Fill payloads (owner-typed values) must not
- * live here — they stay on the Joshu → Camofox fill path.
+ * live here — they stay on the Joshu → shared browser fill path.
  */
 
 export const HANDOFF_MAX_OVERLAY_FIELDS = 32;

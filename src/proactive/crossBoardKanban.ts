@@ -12,6 +12,7 @@ export type BlockedKanbanRow = {
   status?: string;
   body?: string;
   block_reason?: string | null;
+  block_kind?: KanbanTaskSummary["block_kind"];
   created_at_ms?: number | null;
   recent_comments?: KanbanTaskSummary["recent_comments"];
 };
@@ -38,6 +39,7 @@ function mapTaskRow(board: string, t: KanbanTaskSummary): BlockedKanbanRow | nul
     status: t.status,
     body: t.body,
     block_reason: t.block_reason ?? null,
+    block_kind: t.block_kind ?? null,
     created_at_ms: normalizeKanbanCreatedAtMs(t.created_at),
     recent_comments: t.recent_comments,
   };

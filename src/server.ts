@@ -4,10 +4,14 @@ import { hydrateProcessEnvFromProvisionFile } from "./provisionInstanceEnv.js";
 // Fleet relay vars live in JOSHU_COMPOSE_ENV_FILE / /etc/joshu/instance.env — not in .env.
 hydrateProcessEnvFromProvisionFile();
 
+import { migrateLegacyJoshuState } from "./joshuStateDir.js";
+// Before any code reads Joshu state (teams, proactive, handoffs): copy what is still in
+// /opt/joshu/.joshu into the Joshu state folder in the volume (src/joshuStateDir.ts).
+migrateLegacyJoshuState(process.cwd());
+
 import "./observability/langfuse.js";
 import express, { type Request, type Response, type Router } from "express";
 import { createProxyMiddleware } from "http-proxy-middleware";
-import httpProxy from "http-proxy";
 import type { IncomingMessage } from "node:http";
 import morgan from "morgan";
 import type { Duplex } from "node:stream";
@@ -19,7 +23,7 @@ import YAML from "yaml";
 import { getCamofoxStatus } from "./camofox.js";
 import { CamofoxSessionCoordinator } from "./camofoxSession.js";
 import { DockerSupervisor } from "./docker.js";
-import { HermesApiRunner, buildBrowserSyncSystemMessage, buildTurnSystemMessages } from "./hermesApi.js";
+import { HermesApiRunner, buildBrowserSyncSystemMessage, buildTurnSystemMessages, getJoshuHermesModel } from "./hermesApi.js";
 import {
   browserSyncModeFromEnv,
   extractLastUserMessageText,
@@ -31,15 +35,18 @@ import type { HermesChatMessage } from "./hermesApi.js";
 import { getHermesHomeDir, spawnHermesPython } from "./hermesVoiceRuntime.js";
 import { registerInstanceHealthRoutes } from "./instanceHealth.js";
 import { registerInstanceOwnerEmailRoutes } from "./instanceOwnerEmail.js";
+import { registerDesktopLoginRoutes } from "./desktopLogin.js";
 import { readHermesGatewayPreference, writeHermesGatewayPreference } from "./hermesGatewayPreference.js";
 import { hasCompanionIdentityBootstrap, syncCompanionIdentityFromEnv } from "./companionIdentitySync.js";
 import { registerBoxStateRoutes } from "./boxStateApi.js";
 import { registerBoxSecretsRoutes } from "./boxSecrets/routes.js";
 import { registerAuthRecoveryRoutes } from "./authRecovery/routes.js";
 import { registerOnboardingRoutes } from "./onboardingApi.js";
+import { setupMentionInstruction, takeSetupMention } from "./onboarding/setupMention.js";
 import { registerDay0Routes } from "./day0/day0Api.js";
 import { registerHermesCronRoutes } from "./hermesCronApi.js";
 import { syncAllAppManifestCronJobs } from "./appCronSync.js";
+import { syncBoxCronJobs } from "./onboarding/boxCronSync.js";
 import { registerHermesChatSessionListener } from "./hermesChatSessionPush.js";
 import { SSE_HEADERS, sseSend, startSseHeartbeat } from "./httpSse.js";
 import { registerLast30DaysRoutes } from "./last30days/routes.js";
@@ -62,10 +69,17 @@ import { registerConnectorRoutes } from "./connectors/routes.js";
 import { registerConnectorComposioRoutes } from "./connectors/composioRoutes.js";
 import { registerEaTriageRoutes } from "./ea/triageRoutes.js";
 import { registerProactiveRoutes } from "./proactive/routes.js";
+import { registerOwnerReminderRoutes } from "./ownerReminders/routes.js";
+import { teamRoomStore, teamService } from "./teams/index.js";
+import { teamWakeMinutes } from "./teams/wake.js";
+import { registerTeamRoutes } from "./teams/routes.js";
+import { ownerReminderService } from "./ownerReminders/service.js";
 import { setProactiveHermesRunner } from "./proactive/composeMessage.js";
+import { realignHermesCronToOwnerTimezone, setOwnerTimezoneChangeHandler } from "./hermesOwnerTimezone.js";
 import { registerActionGuardRoutes } from "./actionGuard/routes.js";
 import { registerOwnerChannelRoutes } from "./ownerChannel/routes.js";
-import { registerSafetySettingsRoutes } from "./safetySettings/routes.js";
+import { applyMessagingToHermesAndWait, registerSafetySettingsRoutes } from "./safetySettings/routes.js";
+import { createSlackConnectController, registerSlackOAuthCallbackRoute } from "./slackConnect/routes.js";
 import { registerTelephoneRoutes } from "./telephoneSettings/routes.js";
 import {
   isConnectorsMcpRequiredForHealth,
@@ -88,7 +102,7 @@ import { InlineJobs, registerInlineJobRoutes } from "./realtimeGoals/inlineJobs.
 import { registerRealtimeGoalVoiceRoutes } from "./realtimeGoals/voiceCallback.js";
 import { registerAppInvokeRoutes } from "./appInvokeApi.js";
 import { browserHandoffViewerAllowed, getPendingHandoffPinUrl, registerBrowserHandoffRoutes } from "./browserHandoff/index.js";
-import { pendingHandoffBlocksCloudBrowser } from "./browserHandoff/store.js";
+import { markHandoffsBrowserStopped, pendingHandoffBlocksCloudBrowser } from "./browserHandoff/store.js";
 import { browserAgentPhase, readBrowserAgentStatus, registerBrowserAgentRoutes, screencastInputAllowed } from "./browserAgent.js";
 import {
   CLOUD_BROWSER_SCREEN,
@@ -104,10 +118,12 @@ import {
   noteHermesBrowserActivity,
   noteLiveFramePoll,
   stopCloudBrowser,
+  takeCloudBrowserRestartNotice,
   touchCloudBrowser,
   fillCloudBrowserWindow,
   startCloudBrowserLifecycle,
 } from "./cloudBrowser.js";
+import { startCloudBrowserActivePage } from "./cloudBrowserActivePage.js";
 import { BrowserScreencastHub, screencastWsPath } from "./browserScreencast.js";
 import { CdpRelay, cdpRelayPort } from "./cdpRelay.js";
 import { registerHindsightRecallRoute } from "./hindsightRecallApi.js";
@@ -141,41 +157,6 @@ function isBlankBrowserUrl(url: string | undefined): boolean {
   return !value || value === "about:blank" || value === "about:home";
 }
 
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function novncPathFilter(clientPath: string, proxyPath: string): (pathname: string) => boolean {
-  const prefixes = new Set<string>();
-  for (const p of [clientPath, proxyPath]) {
-    const normalized = (p.startsWith("/") ? p : `/${p}`).replace(/\/+$/, "") || "/";
-    if (normalized !== "/") prefixes.add(normalized);
-  }
-  return (pathname) => [...prefixes].some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
-}
-
-/** Forward /joshu/novnc/websockify → /websockify on Camofox :6080 (bypasses http-proxy-middleware WS quirks). */
-function handleNovncUpgrade(
-  req: IncomingMessage,
-  socket: Duplex,
-  head: Buffer,
-  proxy: httpProxy,
-  clientPath: string,
-  proxyPath: string,
-): boolean {
-  const url = new URL(req.url ?? "/", "http://127.0.0.1");
-  for (const prefix of [clientPath, proxyPath]) {
-    if (url.pathname === prefix || url.pathname.startsWith(`${prefix}/`)) {
-      const rest = url.pathname.slice(prefix.length) || "/";
-      req.url = (rest.startsWith("/") ? rest : `/${rest}`) + url.search;
-      stripWsCompressionHeaders(req);
-      proxy.ws(req, socket, head);
-      return true;
-    }
-  }
-  return false;
-}
-
 function readString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -206,14 +187,14 @@ function isHermesChatMessage(value: unknown): value is HermesChatMessage {
   });
 }
 
-/** When set (e.g. /joshu), all HTTP routes and noVNC are mounted under this prefix (ArozOS subservice). */
+/** When set (e.g. /joshu), all HTTP routes are mounted under this prefix (ArozOS subservice). */
 const PUBLIC_BASE_PATH = envOr("PUBLIC_BASE_PATH", "").replace(/\/+$/, "");
 
 function withPublicBase(urlPath: string): string {
   const p = (urlPath.startsWith("/") ? urlPath : `/${urlPath}`).replace(/\/+$/, "") || "/";
   if (!PUBLIC_BASE_PATH) return p;
   const base = PUBLIC_BASE_PATH.replace(/\/+$/, "");
-  // Env may already include the prefix (e.g. NOVNC_CLIENT_PATH=/joshu/novnc); do not double-prefix.
+  // The path may already include the prefix; do not double-prefix.
   if (p === base || p.startsWith(`${base}/`)) return p;
   return `${base}${p}`.replace(/\/+$/, "") || "/";
 }
@@ -223,9 +204,6 @@ const HOST = envOr("HOST", "127.0.0.1");
 const VOICE_REALTIME_TARGET = envOr("VOICE_REALTIME_URL", "http://127.0.0.1:8792").replace(/\/+$/, "");
 const CAMOFOX_URL = envOr("CAMOFOX_URL", "http://localhost:9377");
 const BROWSER_CDP_URL = envOr("BROWSER_CDP_URL", "");
-const NOVNC_URL = envOr("NOVNC_URL", "http://localhost:6080");
-const NOVNC_CLIENT_PATH = envOr("NOVNC_CLIENT_PATH", NOVNC_URL.startsWith("/") ? NOVNC_URL : "/novnc");
-const NOVNC_PROXY_TARGET = envOr("NOVNC_PROXY_TARGET", NOVNC_URL.startsWith("/") ? "http://localhost:6080" : NOVNC_URL);
 const HERMES_BIN = envOr("HERMES_BIN", "/Users/danbenyamin/Documents/dev/hermes-agent/venv/bin/hermes");
 const HERMES_API_BASE_URL = envOr("HERMES_API_BASE_URL", "http://127.0.0.1:8642");
 const HERMES_API_KEY = envOr("HERMES_API_KEY", "change-me-local-dev");
@@ -264,8 +242,6 @@ if (browserScreencast) {
 const HERMES_API_AUTO_START =
   readHermesGatewayPreference(PROJECT_ROOT) ?? HERMES_API_AUTO_START_ENV;
 const PUBLIC_DIR = path.resolve(PROJECT_ROOT, "public");
-const normalizedNovncProxyPath = (NOVNC_CLIENT_PATH.startsWith("/") ? NOVNC_CLIENT_PATH : `/${NOVNC_CLIENT_PATH}`).replace(/\/+$/, "") || "/";
-const normalizedNovncClientPath = withPublicBase(NOVNC_CLIENT_PATH).replace(/\/+$/, "") || "/";
 
 /**
  * Cloud browser: Hermes talks to a fixed local CDP relay, so a new Browser Use
@@ -286,13 +262,10 @@ if (cdpRelay) {
 
 const runner = new HermesApiRunner({
   binary: HERMES_BIN,
-  camofoxUrl: CAMOFOX_URL,
   cdpUrl: cloudBrowserActive() ? (cdpRelay?.url ?? "") : BROWSER_CDP_URL,
   apiBaseUrl: HERMES_API_BASE_URL,
   apiKey: HERMES_API_KEY,
   autoStartGateway: HERMES_API_AUTO_START,
-  hitlCamofoxUserId: HITL_CAMOFOX_USER_ID,
-  hitlCamofoxSessionKey: HITL_CAMOFOX_SESSION_KEY,
 });
 const realtimeGoalBroker = new RealtimeGoalBroker(PROJECT_ROOT, undefined, {
   outboxSenders: (broker) => createOwnerOutboxSenders(PROJECT_ROOT, broker),
@@ -326,12 +299,16 @@ if (cloudBrowserActive()) {
       hermesBrowserActivityRecent(120_000),
     onCdp: async (cdpUrl) => {
       camofoxSession.useCdpUrl(cdpUrl);
+      // The live view shows the active page; follow sign-in popups for the owner.
+      startCloudBrowserActivePage(cdpUrl);
       await fillCloudBrowserWindow(cdpUrl).catch((err: Error) => {
         console.warn(`[cloud-browser] window fill skipped: ${err.message}`);
       });
       // Same endpoint for Hermes; the new generation tells it to reconnect.
       cdpRelay?.rotate();
     },
+    // browser_handoff_status tells the companion why a staged page is gone.
+    onStop: (reason) => markHandoffsBrowserStopped(PROJECT_ROOT, reason),
   });
 }
 
@@ -383,36 +360,36 @@ async function bootstrapCamofoxStartUrl(force = false): Promise<void> {
     if (!tab) {
       tab = await camofoxSession.currentTab().catch(() => undefined);
     }
-    // No tab after idle shutdown / cold boot: always create one so VNC has a
-    // live Firefox. Omit URL when start is about:blank (Camofox rejects about:*).
+    // No tab after a cold boot: always create one so jWeb has a live page.
+    // Omit the URL when the start URL is about:blank.
     const bootstrapUrl = resolveCamofoxBootstrapUrl();
     if (!tab) {
       tab = await camofoxSession.ensureTab(bootstrapUrl);
       runner.rememberBrowserTarget(tab.url, HITL_CAMOFOX_USER_ID);
-      console.log(`[joshu] Camofox opened bootstrap URL: ${tab.url}`);
+      console.log(`[joshu] shared browser opened bootstrap URL: ${tab.url}`);
     } else if (isBlankBrowserUrl(tab.url) && bootstrapUrl) {
       tab = await camofoxSession.ensureTab(bootstrapUrl);
       runner.rememberBrowserTarget(tab.url, HITL_CAMOFOX_USER_ID);
-      console.log(`[joshu] Camofox opened bootstrap URL: ${tab.url}`);
+      console.log(`[joshu] shared browser opened bootstrap URL: ${tab.url}`);
     }
     await camofoxSession.fitViewport(tab.tabId).catch((err: Error) => {
-      console.warn(`[joshu] Camofox viewport fit skipped: ${err.message}`);
+      console.warn(`[joshu] shared browser viewport fit skipped: ${err.message}`);
     });
     const metrics = await camofoxSession.readViewportMetrics(tab.tabId);
     const targetW = CAMOFOX_VIEWPORT_WIDTH;
     const targetH = CAMOFOX_VIEWPORT_HEIGHT;
     if (metrics && Math.abs(metrics.innerWidth - targetW) > 8) {
       console.warn(
-        `[joshu] Camofox layout width is ${metrics.innerWidth}px (expected ~${targetW}px). ` +
-          `Recreate the Camofox container: bash scripts/ensure-camofox-container.sh`,
+        `[joshu] shared browser layout width is ${metrics.innerWidth}px (expected ~${targetW}px). ` +
+          `Restart the local Chromium container: bash scripts/ensure-camofox-container.sh`,
       );
     }
   } catch (err) {
-    console.warn(`[joshu] Camofox start URL bootstrap skipped: ${(err as Error).message}`);
+    console.warn(`[joshu] shared browser start URL bootstrap skipped: ${(err as Error).message}`);
   }
 }
 
-/** Keep Joshu's Camofox view aligned with the single shared HITL tab Hermes should adopt. */
+/** Keep Joshu's view aligned with the single shared HITL tab Hermes should adopt. */
 async function alignSharedBrowserTab(opts: { observe?: boolean } = {}): Promise<{
   tab?: Awaited<ReturnType<CamofoxSessionCoordinator["currentTab"]>>;
   observation?: Awaited<ReturnType<CamofoxSessionCoordinator["observe"]>>;
@@ -422,7 +399,7 @@ async function alignSharedBrowserTab(opts: { observe?: boolean } = {}): Promise<
 
   if (opts.observe) {
     const observation = await camofoxSession.observe(tab).catch((err: Error) => {
-      console.warn(`[joshu] failed to observe shared Camofox tab: ${err.message}`);
+      console.warn(`[joshu] failed to observe shared browser tab: ${err.message}`);
       return undefined;
     });
     const url = observation?.url ?? tab.url;
@@ -466,7 +443,6 @@ async function proxyHindsightJson(pathname: string, query = new URLSearchParams(
 
 function buildAppRouter(): {
   router: Router;
-  novncProxy: ReturnType<typeof createProxyMiddleware> | undefined;
   hermesDashboardProxy:
     | (ReturnType<typeof createProxyMiddleware> & {
         upgrade?: (req: unknown, socket: unknown, head: unknown) => void;
@@ -481,6 +457,18 @@ function buildAppRouter(): {
   registerInlineJobRoutes(router, inlineJobs);
   registerTwilioSmsRoutes(router, runner, PUBLIC_BASE_PATH, realtimeGoalBroker);
   setProactiveHermesRunner(runner);
+  // Hermes caches the timezone per process: after the owner sets or changes it,
+  // fix the stored cron next_run_at values and restart the gateway (deferred while busy).
+  setOwnerTimezoneChangeHandler(async (timezone) => {
+    try {
+      const { realigned } = await realignHermesCronToOwnerTimezone();
+      if (realigned > 0) {
+        console.info(`[hermes-timezone] realigned ${realigned} cron job(s) to ${timezone}`);
+      }
+    } finally {
+      runner.scheduleGatewayMcpReload(`owner timezone changed to ${timezone}`);
+    }
+  });
 
   registerBrainRoutes(router);
   // Share-chat JSON routes register after express.json() below.
@@ -586,6 +574,10 @@ function buildAppRouter(): {
 
   // CP-initiated owner email (needs JSON body; localhost-only inside the handler).
   registerInstanceOwnerEmailRoutes(router, { projectRoot: process.cwd() });
+  registerDesktopLoginRoutes(router, {
+    ownerUser: () => process.env.JOSHU_AROZ_USER?.trim() ?? "",
+    boxHost: () => process.env.CUSTOMER_DOMAIN?.trim() ?? "",
+  });
 
   registerExcalidrawCwmRoutes(router);
   registerShareChatRoutes(router);
@@ -610,7 +602,56 @@ function buildAppRouter(): {
   registerConnectorRoutes(router, { projectRoot: PROJECT_ROOT, runner });
   registerEaTriageRoutes(router, { projectRoot: PROJECT_ROOT });
   registerProactiveRoutes(router, { projectRoot: PROJECT_ROOT });
-  registerSafetySettingsRoutes(router, { projectRoot: PROJECT_ROOT, hermesBinary: HERMES_BIN, runner });
+  registerOwnerReminderRoutes(router, () => ownerReminderService(PROJECT_ROOT));
+  const teams = () =>
+    teamService(PROJECT_ROOT, {
+      standupModel: getJoshuHermesModel,
+      onTeamsChanged: () => runner.applyConfigAndReloadGatewayInBackground("Multiplayer teams changed"),
+    });
+  registerTeamRoutes(router, { store: () => teamRoomStore(PROJECT_ROOT), service: teams });
+  // Team stand-ups made by an older Joshu get the current prompt (full path of the team folder).
+  setTimeout(() => {
+    void teams()
+      .syncStandupPrompts()
+      .then((out) => {
+        for (const r of out) if (!r.updated) console.warn(`[teams] prompt of the team stand-up of ${r.slug} not updated: ${r.error}`);
+      })
+      .catch((error: Error) => console.warn(`[teams] team stand-up prompts: ${error.message}`));
+  }, 30_000).unref();
+  // Existing team stand-ups get the current toolsets (`no_mcp`, spec team-standup).
+  void teams()
+    .syncStandupJobs()
+    .then((synced) => {
+      for (const s of synced) {
+        if (s.updated) console.info(`[teams] team stand-up of ${s.slug}: toolsets updated`);
+        else console.warn(`[teams] team stand-up of ${s.slug}: toolsets not synced: ${s.error}`);
+      }
+    })
+    .catch((error: Error) => console.warn(`[teams] team stand-up toolset sync failed: ${error.message}`));
+  // Early team stand-up and waiting team texts (change boss-mode-promise-fixes).
+  const wakeMinutes = teamWakeMinutes();
+  if (wakeMinutes > 0) {
+    let wakeInFlight = false;
+    setInterval(() => {
+      if (wakeInFlight) return;
+      wakeInFlight = true;
+      void teams()
+        .wakeCheck()
+        .catch((error: Error) => console.warn(`[teams] wake check failed: ${error.message}`))
+        .finally(() => {
+          wakeInFlight = false;
+        });
+    }, wakeMinutes * 60_000).unref();
+  }
+  const slackConnect = createSlackConnectController({
+    projectRoot: PROJECT_ROOT,
+    hermesBinary: HERMES_BIN,
+    session: camofoxSession,
+    applyToHermes: (onWaiting) => applyMessagingToHermesAndWait(PROJECT_ROOT, runner, onWaiting),
+  });
+  // Public: the shared browser follows the Slack redirect without a desktop session.
+  registerSlackOAuthCallbackRoute(router, slackConnect);
+  registerSafetySettingsRoutes(router, { projectRoot: PROJECT_ROOT, hermesBinary: HERMES_BIN, runner, slackConnect });
   registerTelephoneRoutes(router, { projectRoot: PROJECT_ROOT });
   registerOwnerChannelRoutes(router, { projectRoot: PROJECT_ROOT });
   registerActionGuardRoutes(router, { projectRoot: PROJECT_ROOT });
@@ -651,21 +692,6 @@ function buildAppRouter(): {
     }
   });
 
-  const novncProxy = (
-    normalizedNovncProxyPath.startsWith("/")
-      ? createProxyMiddleware({
-          target: NOVNC_PROXY_TARGET,
-          changeOrigin: true,
-          ws: false,
-          pathFilter: novncPathFilter(normalizedNovncClientPath, normalizedNovncProxyPath),
-          pathRewrite: {
-            [`^${escapeRegExp(normalizedNovncClientPath)}`]: "",
-            [`^${escapeRegExp(normalizedNovncProxyPath)}`]: "",
-          },
-        })
-      : undefined
-  ) as ReturnType<typeof createProxyMiddleware> | undefined;
-
   const hermesDashboardProxy = registerHermesDashboardRoutes(router, {
     proxyPath: hermesDashboardPathSegment(),
     publicBasePath: PUBLIC_BASE_PATH,
@@ -683,26 +709,13 @@ function buildAppRouter(): {
   router.get("/api/status", async (_req: Request, res: Response) => {
     let [hermes, cam, docker] = await Promise.all([
       runner.probe(),
-      getCamofoxStatus({
-        camofoxUrl: CAMOFOX_URL,
-        novncUrl: NOVNC_URL,
-        novncClientUrl: normalizedNovncClientPath,
-        novncLibraryUrl: withPublicBase("/vendor/novnc"),
-        appBasePath: PUBLIC_BASE_PATH || "/",
-      }),
+      getCamofoxStatus({ camofoxUrl: CAMOFOX_URL }),
       dockerSupervisor.report(),
     ]);
 
     if (!cam.camofox.reachable && dockerSupervisor.enabled) {
       docker = await dockerSupervisor.ensureRunning("camofox health probe failed");
-      cam = await getCamofoxStatus({
-        camofoxUrl: CAMOFOX_URL,
-        novncUrl: NOVNC_URL,
-        novncClientUrl: normalizedNovncClientPath,
-        novncLibraryUrl: withPublicBase("/vendor/novnc"),
-        appBasePath: PUBLIC_BASE_PATH || "/",
-        timeoutMs: 5_000,
-      });
+      cam = await getCamofoxStatus({ camofoxUrl: CAMOFOX_URL, timeoutMs: 5_000 });
     }
 
     // Do not bootstrap on status poll — every 8s from jWeb was treating blank/proxy
@@ -713,17 +726,13 @@ function buildAppRouter(): {
       runner.rememberBrowserTarget(currentTab.url, HITL_CAMOFOX_USER_ID);
     }
 
-    const engine = (cam.camofox.health as { engine?: string } | undefined)?.engine;
     const liveView = cloudBrowserActive()
       ? { mode: "cloud" as const }
-      : engine === "chromium" || Boolean(CDP_HTTP_URL)
-        ? { mode: "screencast" as const, websocketPath: SCRENCAST_WS_PATH }
-        : { mode: "novnc" as const, websocketPath: cam.novnc.websocketPath };
+      : { mode: "screencast" as const, websocketPath: SCRENCAST_WS_PATH };
     const report: StatusReport = {
       hermes: { available: hermes.available, binary: HERMES_BIN, version: hermes.version, error: hermes.error },
       camofox: cam.camofox,
       docker,
-      novnc: cam.novnc,
       liveView,
       browserAgent: { phase: browserAgentPhase() },
       browserViewport: cloudBrowserActive()
@@ -738,16 +747,9 @@ function buildAppRouter(): {
 
   router.post("/api/camofox/restart", async (_req: Request, res: Response) => {
     const docker = await dockerSupervisor.restart("manual API request");
-    const cam = await getCamofoxStatus({
-      camofoxUrl: CAMOFOX_URL,
-      novncUrl: NOVNC_URL,
-      novncClientUrl: normalizedNovncClientPath,
-      novncLibraryUrl: withPublicBase("/vendor/novnc"),
-      appBasePath: PUBLIC_BASE_PATH || "/",
-      timeoutMs: 5_000,
-    });
+    const cam = await getCamofoxStatus({ camofoxUrl: CAMOFOX_URL, timeoutMs: 5_000 });
     await bootstrapCamofoxStartUrl(true);
-    res.json({ docker, camofox: cam.camofox, novnc: cam.novnc });
+    res.json({ docker, camofox: cam.camofox });
   });
 
   router.post("/api/camofox/sync", async (_req: Request, res: Response) => {
@@ -796,11 +798,15 @@ function buildAppRouter(): {
     }
     try {
       const live = await ensureLiveCloudBrowser();
-      res.json(
-        cdpRelay
-          ? { ok: true, backend: "cloud", cdpUrl: cdpRelay.url, generation: cdpRelay.generation }
-          : { ok: true, backend: "cloud", cdpUrl: live.cdpUrl },
-      );
+      // One-time notice after an idle stop: the patched browser_* tool returns
+      // it as error browser_restarted, so the companion does not blame the site.
+      const restarted = takeCloudBrowserRestartNotice();
+      res.json({
+        ok: true,
+        backend: "cloud",
+        ...(cdpRelay ? { cdpUrl: cdpRelay.url, generation: cdpRelay.generation } : { cdpUrl: live.cdpUrl }),
+        ...(restarted ? { restarted } : {}),
+      });
     } catch (err) {
       console.warn(`[cloud-browser] ensure for Hermes failed: ${(err as Error).message}`);
       res.status(502).json({ ok: false, backend: "cloud", error: "browser_unavailable" });
@@ -837,13 +843,16 @@ function buildAppRouter(): {
       res.status(404).json({ error: "cloud_browser_off" });
       return;
     }
+    // jWeb asks for the browser chrome of Browser Use (tabs, address bar). The phone
+    // handoff page keeps the page only.
+    const browserChrome = !handoffViewer && String(req.query.chrome || "").trim() === "1";
     try {
       // Active session: touch only when a real viewer is active (handoff or visible jWeb tab).
       const viewerActive =
         handoffViewer || String(req.query.viewer || "").trim().toLowerCase() === "active";
       if (cloudBrowserSessionActive()) {
         if (viewerActive) touchCloudBrowser();
-        const url = cloudLiveFrameUrl();
+        const url = cloudLiveFrameUrl({ browserChrome });
         if (!url) {
           res.status(503).json({ error: "live_frame_unavailable" });
           return;
@@ -861,7 +870,7 @@ function buildAppRouter(): {
         return;
       }
       await ensureCloudBrowser();
-      const url = cloudLiveFrameUrl();
+      const url = cloudLiveFrameUrl({ browserChrome });
       if (!url) {
         res.status(503).json({ error: "live_frame_unavailable" });
         return;
@@ -888,8 +897,8 @@ function buildAppRouter(): {
         }
         touchCloudBrowser();
       }
-      // Also the jWeb warm path after Camofox browser idle_shutdown — creates a
-      // tab (and Firefox) when health shows browserConnected:false.
+      // Also the jWeb warm path after a browser restart — creates a
+      // tab when health shows browserConnected:false.
       await bootstrapCamofoxStartUrl(true);
       let tab = (await alignSharedBrowserTab()).tab;
       if (!tab) {
@@ -934,7 +943,7 @@ function buildAppRouter(): {
     res.json({ ok: true, tab });
   });
 
-  /** Navigate the shared HITL tab via Playwright (jWeb URL bar — not VNC paste). */
+  /** Navigate the shared HITL tab via Playwright (jWeb URL bar). */
   router.post("/api/camofox/navigate", async (req: Request, res: Response) => {
     try {
       const body = (req.body ?? {}) as { url?: unknown };
@@ -951,7 +960,7 @@ function buildAppRouter(): {
       const tab = await camofoxSession.ensureTab(url, { navigateExisting: true });
       runner.rememberBrowserTarget(tab.url, HITL_CAMOFOX_USER_ID);
       const observation = await camofoxSession.observe(tab).catch((err: Error) => {
-        console.warn(`[joshu] camofox navigate observe failed: ${err.message}`);
+        console.warn(`[joshu] shared browser navigate observe failed: ${err.message}`);
         return undefined;
       });
       res.json({
@@ -965,7 +974,7 @@ function buildAppRouter(): {
     }
   });
 
-  /** Paste/type into the focused Camofox page control via Playwright (correct braces/JSON). */
+  /** Paste/type into the focused page control via Playwright (correct braces/JSON). */
   router.post("/api/camofox/insert-text", async (req: Request, res: Response) => {
     try {
       const body = (req.body ?? {}) as { text?: unknown; selectAll?: unknown };
@@ -981,8 +990,8 @@ function buildAppRouter(): {
   });
 
   /**
-   * Scroll / page-nav without relying on VNC wheel or arrow keysyms.
-   * jWeb bridges host wheel + Arrow/Page/Home/End here when the VNC canvas is engaged.
+   * Scroll / page-nav through Playwright.
+   * jWeb bridges host wheel + Arrow/Page/Home/End here when the live view is engaged.
    */
   router.post("/api/camofox/scroll", async (req: Request, res: Response) => {
     try {
@@ -1009,7 +1018,7 @@ function buildAppRouter(): {
     }
   });
 
-  /** Copy selection / focused Slack token from Camofox (bypasses broken VNC clipboard). */
+  /** Copy selection / focused Slack token from the shared browser. */
   router.post("/api/camofox/copy-selection", async (_req: Request, res: Response) => {
     try {
       const text = await camofoxSession.readSelection();
@@ -1020,7 +1029,7 @@ function buildAppRouter(): {
   });
 
   // Clears HITL history and recycles the Hermes gateway (stop + start). Used by
-  // jWeb Camofox restart / forget-session — must not leave :8642 down.
+  // jWeb browser restart / forget-session — must not leave :8642 down.
   router.post("/api/hermes/reset", async (req: Request, res: Response) => {
     const body = (req.body ?? {}) as { purgeTabs?: boolean };
     await runner.reset();
@@ -1274,6 +1283,13 @@ function buildAppRouter(): {
             });
 
       const turnSystemMessages = buildTurnSystemMessages(PROJECT_ROOT, { browser: browserContext });
+      // Setup mention for web chat, at most once a day (change owner-setup-board).
+      const setupMention = ownerText
+        ? await takeSetupMention(PROJECT_ROOT, "jchat").catch(() => null)
+        : null;
+      if (setupMention) {
+        turnSystemMessages.push({ role: "system", content: setupMentionInstruction(setupMention) });
+      }
       const sessionCallbackHint: HermesChatMessage = {
         role: "system",
         content:
@@ -1349,7 +1365,7 @@ function buildAppRouter(): {
     let browserObservation: string | undefined;
     const priorUrl = runner.getLastBrowserUrl();
 
-    // Hermes must adopt the same tab the user sees in noVNC — enforce single-tab
+    // Hermes must adopt the same tab the user sees in jWeb — enforce single-tab
     // and snapshot the live page before composing the run prompt.
     await runner.ensureGatewayReady().catch(() => undefined);
 
@@ -1357,7 +1373,7 @@ function buildAppRouter(): {
       // Explicit run initialUrl — allowed to replace the current page.
       const tab = await camofoxSession.ensureTab(initialUrl, { navigateExisting: true });
       const observation = await camofoxSession.observe(tab).catch((err: Error) => {
-        console.warn(`[joshu] failed to observe Camofox tab after initialUrl: ${err.message}`);
+        console.warn(`[joshu] failed to observe shared browser tab after initialUrl: ${err.message}`);
         return undefined;
       });
       currentUrl = observation?.url ?? tab.url;
@@ -1439,23 +1455,10 @@ function buildAppRouter(): {
     });
   });
 
-  return { router, novncProxy, hermesDashboardProxy };
+  return { router, hermesDashboardProxy };
 }
 
-const { router: appRouter, novncProxy, hermesDashboardProxy } = buildAppRouter();
-
-const novncWsProxy = httpProxy.createProxyServer({
-  target: NOVNC_PROXY_TARGET,
-  ws: true,
-  changeOrigin: true,
-});
-novncWsProxy.on("proxyReqWs", (proxyReq) => {
-  proxyReq.removeHeader("sec-websocket-extensions");
-});
-novncWsProxy.on("error", (err, _req, socket) => {
-  console.warn("[joshu] noVNC websocket proxy error:", err.message);
-  if (socket && !socket.destroyed) socket.destroy();
-});
+const { router: appRouter, hermesDashboardProxy } = buildAppRouter();
 
 function stripWsCompressionHeaders(req: IncomingMessage): void {
   delete req.headers["sec-websocket-extensions"];
@@ -1487,16 +1490,6 @@ const voiceRealtimeProxy = createProxyMiddleware({
 
 const app = express();
 app.use("/voice-rt", voiceRealtimeProxy);
-if (novncProxy) {
-  // Do not use app.use(prefix, proxy): Express strips the prefix on HTTP, which breaks
-  // pathFilter/pathRewrite. Match the full browser path (/joshu/novnc/*) explicitly.
-  const matchNovnc = novncPathFilter(normalizedNovncClientPath, normalizedNovncProxyPath);
-  app.use((req, res, next) => {
-    const pathname = new URL(req.url ?? "/", "http://127.0.0.1").pathname;
-    if (matchNovnc(pathname)) return novncProxy(req, res, next);
-    next();
-  });
-}
 if (PUBLIC_BASE_PATH) {
   app.use(`${PUBLIC_BASE_PATH}/voice-rt`, voiceRealtimeProxy);
   app.use(PUBLIC_BASE_PATH, appRouter);
@@ -1531,7 +1524,7 @@ async function shutdownCloudBrowser(reason: string): Promise<void> {
   if (!cloudBrowserActive() || shuttingDown) return;
   shuttingDown = true;
   try {
-    await stopCloudBrowser();
+    await stopCloudBrowser("shutdown");
     console.log(`[cloud-browser] stopped on ${reason}`);
   } catch (err) {
     console.warn(`[cloud-browser] stop on ${reason} failed:`, (err as Error).message);
@@ -1550,8 +1543,6 @@ const server = app.listen(PORT, HOST, () => {
       `  PUBLIC_BASE_PATH=${PUBLIC_BASE_PATH || "(root)"}\n` +
       `  CAMOFOX_URL=${CAMOFOX_URL}\n` +
       `  CAMOFOX_START_URL=${CAMOFOX_START_URL}\n` +
-      `  NOVNC_PROXY_PATH=${normalizedNovncProxyPath}\n` +
-      `  NOVNC_CLIENT_PATH=${normalizedNovncClientPath} -> ${NOVNC_PROXY_TARGET}\n` +
       `  HERMES_BIN=${HERMES_BIN}`,
   );
   const companionSync = syncCompanionIdentityFromEnv(PROJECT_ROOT, { forceSoul: true });
@@ -1591,6 +1582,8 @@ const server = app.listen(PORT, HOST, () => {
           err instanceof Error ? err.message : String(err),
         );
       }
+      // Boxes that finished setup on an older release, or never finished it, lack these jobs.
+      await syncBoxCronJobs(PROJECT_ROOT, `[joshu]${delayMs ? ` (deferred ${delayMs}ms)` : ""}`);
     }
   })();
   void import("./shareChat/triggerSubscribe.js")
@@ -1633,13 +1626,13 @@ const server = app.listen(PORT, HOST, () => {
   }
 });
 
-// WebSocket upgrades: voice-realtime (/voice-rt, incl. Twilio media), noVNC, Hermes dashboard.
+// WebSocket upgrades: browser screencast, voice-realtime (/voice-rt, incl. Twilio media), Hermes dashboard.
 const hermesDashboardUpgradePrefixesList = hermesDashboardUpgradePrefixes(
   hermesDashboardProxyPath(PUBLIC_BASE_PATH),
   PUBLIC_BASE_PATH,
 );
 
-if (voiceRealtimeProxy.upgrade || novncProxy || hermesDashboardProxy?.upgrade || browserScreencast) {
+if (voiceRealtimeProxy.upgrade || hermesDashboardProxy?.upgrade || browserScreencast) {
   server.on("upgrade", (req, socket, head) => {
     const pathOnly = (req.url ?? "").split("?")[0] ?? "";
     if (browserScreencast && (pathOnly === SCRENCAST_WS_PATH || pathOnly.endsWith("/api/browser/screencast"))) {
@@ -1658,9 +1651,6 @@ if (voiceRealtimeProxy.upgrade || novncProxy || hermesDashboardProxy?.upgrade ||
     if (pathOnly.startsWith("/voice-rt") && voiceRealtimeProxy.upgrade) {
       stripWsCompressionHeaders(req);
       voiceRealtimeProxy.upgrade(req, socket, head);
-      return;
-    }
-    if (handleNovncUpgrade(req, socket as Duplex, head as Buffer, novncWsProxy, normalizedNovncClientPath, normalizedNovncProxyPath)) {
       return;
     }
     if (

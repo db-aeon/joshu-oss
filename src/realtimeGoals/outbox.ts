@@ -13,6 +13,8 @@ import {
   DEFAULT_OWNER_PREFS,
   missBackoffMs,
   routeForChannel,
+  SMS_STATUS_POLL_MS,
+  type SmsDeliveryVerdict,
 } from "./outboxPolicy.js";
 import type { RealtimeGoalStore } from "./store.js";
 import {
@@ -68,6 +70,22 @@ function items(state: RealtimeGoalState): OwnerOutboxItem[] {
 
 function isOpen(item: OwnerOutboxItem): boolean {
   return OPEN_STATES.has(item.state);
+}
+
+/** A send failed: back off 15 s doubling up to 15 min. */
+function backOffAfterFailure(item: OwnerOutboxItem): void {
+  item.failures = (item.failures ?? 0) + 1;
+  const wait = Math.min(TEXT_RETRY_MAX_MS, TEXT_RETRY_BASE_MS * 2 ** (item.failures - 1));
+  item.retryAt = new Date(Date.now() + wait).toISOString();
+}
+
+function markItemHeard(item: OwnerOutboxItem, via: OwnerRoute, evidence: OwnerHeardEvidence, at: string): void {
+  if (isOpen(item)) {
+    item.state = "heard";
+    item.heard = { at, via, evidence };
+  }
+  item.failures = 0;
+  item.retryAt = undefined;
 }
 
 /** Origin fields safe to keep in presence (no message ids). */
@@ -242,8 +260,11 @@ export class OwnerOutbox {
           item.state !== "cancelled",
       );
       if (existing) {
+        // The broker re-publishes a blocked goal's question on every tick; only
+        // write when the delivery state actually moves.
+        const changed = goal.delivery.state !== "outbox";
         goal.delivery.state = "outbox";
-        return { result: { item: structuredClone(existing), created: false }, changed: true };
+        return { result: { item: structuredClone(existing), created: false }, changed };
       }
       const now = isoNow();
       for (const item of items(state)) {
@@ -393,43 +414,96 @@ export class OwnerOutbox {
     });
   }
 
-  /** Result of a text / surface delivery claimed with `claim`. */
+  /**
+   * Result of a text / surface delivery claimed with `claim`. A send with
+   * `pendingIds` (SMS accepted by Twilio) is not heard yet: the item waits
+   * for the delivery receipt (`settleSms`).
+   */
   async recordSend(
     itemId: string,
     route: OwnerRoute,
-    result: { ok: boolean; providerId?: string; error?: string },
+    result: { ok: boolean; providerId?: string; error?: string; pendingIds?: string[] },
+    sent?: { address: RealtimeGoalOrigin; text: string },
   ): Promise<void> {
     await this.store.transaction((state) => {
       const item = items(state).find((candidate) => candidate.id === itemId);
       if (!item) return { result: undefined, changed: false };
       const now = isoNow();
+      const pending = result.ok && Boolean(result.pendingIds?.length) && sent !== undefined;
+      const providerId = result.providerId ?? result.pendingIds?.join(",");
       item.attempts.push({
         at: now,
         route,
-        outcome: result.ok ? "delivered" : "failed",
-        ...(result.providerId ? { providerId: result.providerId } : {}),
+        outcome: pending ? "pending" : result.ok ? "delivered" : "failed",
+        ...(providerId ? { providerId } : {}),
         ...(result.error ? { detail: result.error.slice(0, 300) } : {}),
       });
       item.lease = undefined;
       item.updatedAt = now;
-      if (result.ok) {
-        if (isOpen(item)) {
-          item.state = "heard";
-          item.heard = {
-            at: now,
-            via: route,
-            evidence: route === "surface" ? "surface_consumed" : "channel_delivered",
-          };
-        }
-        item.failures = 0;
-        item.retryAt = undefined;
+      if (pending) {
+        item.smsPending = {
+          sids: result.pendingIds!,
+          sentAt: now,
+          checkAt: new Date(Date.now() + SMS_STATUS_POLL_MS).toISOString(),
+          address: replyOrigin(sent!.address),
+          text: sent!.text,
+        };
+      } else if (result.ok) {
+        markItemHeard(item, route, route === "surface" ? "surface_consumed" : "channel_delivered", now);
       } else {
-        item.failures = (item.failures ?? 0) + 1;
-        const wait = Math.min(TEXT_RETRY_MAX_MS, TEXT_RETRY_BASE_MS * 2 ** (item.failures - 1));
-        item.retryAt = new Date(Date.now() + wait).toISOString();
+        backOffAfterFailure(item);
       }
       return { result: undefined, changed: true };
     });
+  }
+
+  /**
+   * Settle the pending SMS of an item from its Twilio status. Returns the item
+   * and what was texted when the SMS now counts as heard.
+   */
+  async settleSms(
+    itemId: string,
+    verdict: SmsDeliveryVerdict,
+  ): Promise<{ item: OwnerOutboxItem; address: RealtimeGoalOrigin; text: string } | undefined> {
+    return this.store.transaction<{ item: OwnerOutboxItem; address: RealtimeGoalOrigin; text: string } | undefined>(
+      (state) => {
+        const item = items(state).find((candidate) => candidate.id === itemId);
+        const pending = item?.smsPending;
+        if (!item || !pending) return { result: undefined, changed: false };
+        const now = isoNow();
+        if (verdict.kind === "pending") {
+          pending.checkAt = new Date(Date.now() + SMS_STATUS_POLL_MS).toISOString();
+          return { result: undefined, changed: true };
+        }
+        item.smsPending = undefined;
+        item.updatedAt = now;
+        const providerId = pending.sids.join(",");
+        if (verdict.kind === "delivered" || verdict.kind === "sent") {
+          item.attempts.push({
+            at: now,
+            route: "sms",
+            outcome: "delivered",
+            providerId,
+            ...(verdict.kind === "sent" ? { detail: "no delivery receipt" } : {}),
+          });
+          const wasOpen = isOpen(item);
+          markItemHeard(item, "sms", verdict.kind === "sent" ? "sms_sent" : "channel_delivered", now);
+          return {
+            result: wasOpen ? { item: structuredClone(item), address: pending.address, text: pending.text } : undefined,
+            changed: true,
+          };
+        }
+        item.attempts.push({
+          at: now,
+          route: "sms",
+          outcome: verdict.kind === "undelivered" ? "undelivered" : "failed",
+          providerId,
+          detail: verdict.kind === "undelivered" ? verdict.detail : "no final SMS status",
+        });
+        backOffAfterFailure(item);
+        return { result: undefined, changed: true };
+      },
+    );
   }
 
   /** "Don't call me back, just text me" for one goal (applies to its future results too). */

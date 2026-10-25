@@ -39,7 +39,7 @@ function compact(text: string): string {
 
 /**
  * Rough English phonetic skeleton so PSTN STT homophones match.
- * "quartz" and "courts" both collapse to "krts" (Gideon 2026-09-01).
+ * "quartz" and "courts" both collapse to "krts" (seen on a real phone call).
  */
 function phoneticKey(word: string): string {
   let s = word.toLowerCase();

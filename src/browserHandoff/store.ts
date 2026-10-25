@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import { randomUUID } from "node:crypto";
 
+import type { CloudBrowserStopReason } from "../cloudBrowser.js";
 import { resolveJoshuPublicApiBase } from "../ownerChannel/publicUrl.js";
 import { ensureBrowserHandoffDir, handoffRecordPath } from "./paths.js";
 import { mintHandoffToken } from "./token.js";
@@ -27,6 +28,11 @@ export type BrowserHandoffRecord = {
   expiresAt: string;
   /** Last owner interaction on the handoff page (heartbeat, overlay poll, fill). */
   lastOwnerActivityAt?: string;
+  /** First owner interaction on the handoff page. Unset = the owner has not opened the link yet. */
+  ownerOpenedAt?: string;
+  /** Joshu stopped the shared browser while this handoff was pending or soon after it ended. */
+  browserStoppedAt?: string;
+  browserStopReason?: CloudBrowserStopReason;
   completedAt?: string;
   cancelledAt?: string;
   lastScan?: BrowserHandoffLastScan;
@@ -39,8 +45,10 @@ const HEARTBEAT_EXTEND_MS = 15 * 60 * 1000;
 /** Absolute cap from createdAt — heartbeats cannot push expiresAt past this. */
 const MAX_TTL_MS = 3 * 60 * 60 * 1000;
 /**
- * Pending handoff keeps Browser Use Cloud alive only while owner activity is this
- * recent. Agent handoff lock is unchanged (still pending until complete/expiry).
+ * After the owner opened the handoff page, a pending handoff keeps Browser Use
+ * Cloud alive only while owner activity is this recent. An unopened handoff keeps
+ * it alive until the link expires. Agent handoff lock is unchanged (still pending
+ * until complete/expiry).
  */
 const OWNER_ACTIVITY_MS = 10 * 60 * 1000;
 
@@ -86,10 +94,15 @@ function handoffOwnerActivityAt(record: BrowserHandoffRecord): number {
   return Number.isFinite(at) ? at : Date.parse(record.createdAt);
 }
 
-/** True when a pending handoff should block cloud-browser idle shutdown. */
+/**
+ * True when a pending handoff should block cloud-browser idle shutdown: until the
+ * link expires while the owner has not opened it (the staged page must still be
+ * there when they do), then only while the owner was active recently.
+ */
 export function pendingHandoffBlocksCloudBrowser(projectRoot: string): boolean {
   const pending = getPendingHandoff(projectRoot);
   if (!pending) return false;
+  if (!pending.ownerOpenedAt) return true;
   return Date.now() - handoffOwnerActivityAt(pending) < handoffOwnerActivityMs();
 }
 
@@ -193,7 +206,8 @@ export function touchHandoffOwnerActivity(
 ): BrowserHandoffRecord | null {
   const record = getHandoffRecord(projectRoot, id);
   if (!record || record.status !== "pending") return record;
-  const next = { ...record, lastOwnerActivityAt: new Date().toISOString() };
+  const now = new Date().toISOString();
+  const next = { ...record, lastOwnerActivityAt: now, ownerOpenedAt: record.ownerOpenedAt ?? now };
   writeRecord(projectRoot, next);
   return next;
 }
@@ -204,10 +218,12 @@ export function extendHandoffExpiry(projectRoot: string, id: string): BrowserHan
   const now = Date.now();
   const floorMs = Math.max(Date.parse(record.expiresAt), now);
   const cappedExp = Math.min(floorMs + handoffHeartbeatExtendMs(), maxHandoffExpiresAtMs(record));
+  const nowIso = new Date(now).toISOString();
   const next = {
     ...record,
     expiresAt: new Date(cappedExp).toISOString(),
-    lastOwnerActivityAt: new Date(now).toISOString(),
+    lastOwnerActivityAt: nowIso,
+    ownerOpenedAt: record.ownerOpenedAt ?? nowIso,
   };
   writeRecord(projectRoot, next);
   return next;
@@ -298,7 +314,6 @@ export function getPendingHandoffPinUrl(projectRoot: string): string | undefined
   return getPendingHandoff(projectRoot)?.pageUrl;
 }
 
-/** Recent SMS-originated handoff still in flight or just completed. */
 export function markSmsContinuationDelivered(
   projectRoot: string,
   id: string,
@@ -313,19 +328,89 @@ export function markSmsContinuationDelivered(
   return next;
 }
 
-export function hasRecentSmsHandoff(
+/** A handoff that ended this recently still gets the stop stamp: its staged page was lost with the browser. */
+const BROWSER_STOP_STAMP_WINDOW_MS = 60 * 60 * 1000;
+
+function handoffEndedAtMs(record: BrowserHandoffRecord): number {
+  const raw =
+    record.status === "completed"
+      ? record.completedAt
+      : record.status === "cancelled"
+        ? record.cancelledAt
+        : record.expiresAt;
+  return Date.parse(raw ?? "");
+}
+
+/**
+ * Joshu stopped the shared browser: stamp each handoff whose staged page went with
+ * it (pending, or ended within the last hour), so browser_handoff_status can tell
+ * the companion the true reason.
+ */
+export function markHandoffsBrowserStopped(
   projectRoot: string,
-  opts?: { nowMs?: number; withinMs?: number },
-): boolean {
-  const nowMs = opts?.nowMs ?? Date.now();
-  const withinMs = opts?.withinMs ?? 60 * 60_000;
+  reason: CloudBrowserStopReason,
+  nowMs = Date.now(),
+): BrowserHandoffRecord[] {
+  const stamped: BrowserHandoffRecord[] = [];
   for (const record of listHandoffRecords(projectRoot)) {
-    const sessionKey = record.hermesSessionKey?.trim() ?? "";
-    if (!sessionKey.startsWith("sms:")) continue;
-    if (record.status !== "pending" && record.status !== "completed") continue;
-    const anchorMs = Date.parse(record.completedAt ?? record.createdAt);
-    if (!Number.isFinite(anchorMs) || nowMs - anchorMs >= withinMs) continue;
-    return true;
+    if (record.browserStoppedAt) continue;
+    if (record.status !== "pending") {
+      const endedMs = handoffEndedAtMs(record);
+      if (!Number.isFinite(endedMs) || nowMs - endedMs > BROWSER_STOP_STAMP_WINDOW_MS) continue;
+    }
+    const next: BrowserHandoffRecord = {
+      ...record,
+      browserStoppedAt: new Date(nowMs).toISOString(),
+      browserStopReason: reason,
+    };
+    writeRecord(projectRoot, next);
+    stamped.push(next);
   }
-  return false;
+  return stamped;
+}
+
+function browserStopSentence(record: BrowserHandoffRecord): string {
+  const why =
+    record.browserStopReason === "idle"
+      ? "because nothing used it, to save cost"
+      : "because the Joshu service restarted";
+  return (
+    `Joshu stopped the shared browser at ${record.browserStoppedAt} ${why}, so the staged page ` +
+    "(for example a cart or a half-filled form) is gone. The website did not cause this."
+  );
+}
+
+/** Plain status for the companion (browser_handoff_status `message`). */
+export function handoffStatusMessage(record: BrowserHandoffRecord): string {
+  const stopped = record.browserStoppedAt ? ` ${browserStopSentence(record)}` : "";
+  const restage = " Tell the owner plainly what happened, and offer to stage the page again.";
+  switch (record.status) {
+    case "pending":
+      if (record.browserStoppedAt) {
+        return (
+          "The owner opened the browser handoff page and then left it idle." +
+          stopped +
+          " Cancel this browser handoff before you use the browser again." +
+          restage
+        );
+      }
+      if (!record.ownerOpenedAt) {
+        return (
+          "The owner has not opened the browser handoff link yet. Joshu keeps the shared browser " +
+          `with the staged page until the link expires at ${record.expiresAt}.`
+        );
+      }
+      return `The owner opened the browser handoff page and has not finished yet. The link expires at ${record.expiresAt}.`;
+    case "completed":
+      return `The owner finished the step on the browser handoff page at ${record.completedAt}.${stopped}`;
+    case "cancelled":
+      return `The browser handoff was cancelled at ${record.cancelledAt}.${stopped}`;
+    case "expired":
+      return (
+        `The browser handoff link expired at ${record.expiresAt} before the owner finished.` +
+        (stopped ||
+          " Joshu stops the shared browser a few minutes after the link expires, so the staged page may be gone.") +
+        restage
+      );
+  }
 }

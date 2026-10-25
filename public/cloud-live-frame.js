@@ -1,7 +1,9 @@
 /**
  * Browser Use live view. The frame URL comes from a gated Joshu route.
- * The iframe matches the cloud screen (1024×768, 4:3) and is centered in the pane.
- * ui=false is applied on the server.
+ * Without `browserChrome`, the iframe matches the cloud screen (1024×768, 4:3)
+ * and is centered in the pane, and the server sets ui=false (page only).
+ * With `browserChrome` (jWeb), the server sets ui=true: Browser Use shows its
+ * tab strip and address bar and fits the page itself, so the iframe fills the pane.
  */
 export function mountCloudLiveFrame(screenEl, framePath, opts = {}) {
   const ratio = (opts.width || 1024) / (opts.height || 768);
@@ -16,6 +18,11 @@ export function mountCloudLiveFrame(screenEl, framePath, opts = {}) {
   frame.setAttribute("allow", "autoplay");
   frame.style.cssText = "border:0;background:#111;flex:0 0 auto;";
   const fit = () => {
+    if (opts.browserChrome) {
+      frame.style.width = "100%";
+      frame.style.height = "100%";
+      return;
+    }
     const box = screenEl.getBoundingClientRect();
     if (box.width < 40 || box.height < 40) return;
     let height = box.height;
@@ -38,6 +45,7 @@ export function mountCloudLiveFrame(screenEl, framePath, opts = {}) {
     // Resolve like fetch() would (document base, e.g. /joshu/) — resolving
     // against the origin dropped the /joshu/ prefix and 404'd every handoff poll.
     const url = new URL(framePath, document.baseURI);
+    if (opts.browserChrome) url.searchParams.set("chrome", "1");
     if (visibilityAware && document.visibilityState === "visible") {
       url.searchParams.set("viewer", "active");
     } else if (opts.interactive) {

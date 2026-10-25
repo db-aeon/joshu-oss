@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# LEGACY: only for boxes that still have a host checkout (before change image-owned-box-runtime).
+# On a box with the host bundle, compose mounts no host code; upgrade with scripts/upgrade-fleet-box-image.sh.
 # Sync host bind-mounted dist/ from a Joshu sandbox image (same logic as instance-agent).
 # Usage: JOSHU_IMAGE_REF=ghcr.io/.../joshu-sandbox:0.1.17 bash scripts/sync-dist-from-image.sh
 set -euo pipefail

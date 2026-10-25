@@ -1,13 +1,12 @@
 #!/usr/bin/env npx tsx
 /**
  * Local proof against the shared Chromium container (not system Chrome):
- * health, CDP, noVNC websocket, overlay fill, handoff lock, then complete.
+ * health, CDP, overlay fill, handoff lock, then complete.
  *
  * Expects scripts/ensure-camofox-container.sh to have started camofox-hitl.
  */
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { chromium } from "playwright-core";
@@ -21,7 +20,6 @@ import {
 
 const controlUrl = process.env.CAMOFOX_URL || "http://127.0.0.1:9377";
 const cdpUrl = process.env.BROWSER_CDP_URL || "http://127.0.0.1:9222";
-const vncPort = Number(process.env.BROWSER_VNC_PORT || "6080");
 
 const health = await fetch(new URL("/health", controlUrl));
 const body = await health.json();
@@ -35,42 +33,6 @@ assert.equal(version.status, 200);
 const versionBody = await version.json();
 assert.ok(versionBody.webSocketDebuggerUrl, JSON.stringify(versionBody));
 console.log("cdp version: ok", versionBody.Browser || versionBody.browser);
-
-await new Promise((resolve, reject) => {
-  const socket = net.connect(vncPort, "127.0.0.1");
-  const timer = setTimeout(() => {
-    socket.destroy();
-    reject(new Error("websockify handshake timed out"));
-  }, 5000);
-  let buf = "";
-  socket.on("data", (chunk) => {
-    buf += chunk.toString("latin1");
-    if (buf.includes("101") && buf.includes("RFB")) {
-      clearTimeout(timer);
-      socket.destroy();
-      resolve();
-    }
-  });
-  socket.on("error", (err) => {
-    clearTimeout(timer);
-    reject(err);
-  });
-  socket.on("connect", () => {
-    socket.write(
-      [
-        "GET /websockify HTTP/1.1",
-        "Host: 127.0.0.1:6080",
-        "Upgrade: websocket",
-        "Connection: Upgrade",
-        "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==",
-        "Sec-WebSocket-Version: 13",
-        "",
-        "",
-      ].join("\r\n"),
-    );
-  });
-});
-console.log("novnc websockify: ok");
 
 const session = new ChromiumCdpSession({
   cdpUrl,

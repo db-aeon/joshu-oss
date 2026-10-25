@@ -1,3 +1,4 @@
+import { tryScheduleReleaseFactsCheck } from "./releaseFacts.js";
 import { spawn, type ChildProcessByStdio } from "node:child_process";
 import { execFile as execFileCb } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -9,6 +10,7 @@ import { homedir } from "node:os";
 import path from "node:path";
 import type { Readable } from "node:stream";
 import { resolveBoxSecret } from "./boxSecrets/resolve.js";
+import { pidRunsCommand } from "./pidFile.js";
 import { provisionEnvTrim } from "./provisionInstanceEnv.js";
 import { promisify } from "node:util";
 import YAML from "yaml";
@@ -19,6 +21,7 @@ import { syncHermesContextFile } from "./hermesContextFile.js";
 import { syncBundledAppSkillsToHermes } from "./appSkillsSync.js";
 import type { RunEvent, RunRecord, RunStatus } from "./types.js";
 import {
+  HERMES_SCRATCH_DIR,
   joshuFilesPathEnv,
   resolveJoshuFilesPaths,
   resolveJoshuHermesWorkspaceScope,
@@ -29,6 +32,11 @@ import {
   writeMergedHermesConfig,
 } from "./hermesConfigSplit.js";
 import { cloudBrowserEnabled, usesBrowserAgentSidecar } from "./browserBackend.js";
+import {
+  INGRESS_SWEEP_INTERVAL_SECONDS,
+  ingressSweepAgeHours,
+  runIngressSweepOnce,
+} from "./ea/ingressSweep.js";
 import { toolsetsWithComposio } from "./composioHermesMcpPolicy.js";
 import {
   falMcpEnabled,
@@ -41,6 +49,7 @@ import {
 import { isActionGuardEnabled, loadActionGuardPolicy, resolveComposioMcpGuardProxyUrl } from "./actionGuard/index.js";
 import { resolveEnvWithLocalFallback } from "./safetySettings/localEnv.js";
 import { buildHermesMessagingDotenvEntries } from "./hermesMessagingEnv.js";
+import { syncJoshuSlackSuggestedPrompts } from "./hermesSlackSetup.js";
 import {
   mergeHermesGatewayJsonMessagingReset,
   syncJoshuMessagingSessionReset,
@@ -54,9 +63,12 @@ import { buildOwnerTimeSystemMessage } from "./ownerLocalTime.js";
 import { readAgentProfile } from "./nylas/profile.js";
 import { isValidIanaTimezone, normalizeIanaTimezone } from "./ianaTimezone.js";
 import { sanitizeHermesMcpServers } from "./hermesMcpAllowlist.js";
+import { syncTeamMcpServers, teamSlugsSync } from "./teams/hermesConfig.js";
 
 const execFile = promisify(execFileCb);
 const HERMES_GATEWAY_PID_FILE = path.join(homedir(), ".hermes", "gateway.pid");
+/** The command line of the Hermes gateway that startGateway spawns. */
+const HERMES_GATEWAY_COMMAND = /hermes.*gateway run/;
 const APPLY_HERMES_HITL_PATCH_SCRIPT = path.resolve(process.cwd(), "scripts/apply-hermes-hitl-patch.sh");
 const APPLY_HERMES_CONTENT_FILTER_PATCH_SCRIPT = path.resolve(
   process.cwd(),
@@ -91,6 +103,7 @@ async function trySyncHermesLearningGitCron(): Promise<void> {
 import {
   JOSHU_OPENROUTER_DEFAULT_MODEL,
   JOSHU_OPENROUTER_SESSION_SEARCH_MODEL,
+  syncJoshuOpenRouterDataPolicy,
 } from "./joshuOpenRouterDefaults.js";
 
 const DEFAULT_JOSHU_HERMES_MODEL = JOSHU_OPENROUTER_DEFAULT_MODEL;
@@ -151,16 +164,14 @@ export async function applyComposioMcpToHermesConfig(endpoint: ComposioMcpEndpoi
       changed = true;
     }
   } else {
-    const guardActive = isActionGuardEnabled();
-    const hermesUrl = guardActive ? resolveComposioMcpGuardProxyUrl() : sessionUrl;
-    const connectTimeout = guardActive ? 1800 : 120;
+    // Always the Composio MCP guard: it applies the hard blocks also when the action guard is off.
+    // The long timeout covers the owner approval wait, which happens only with the action guard on.
     const desired: ConfigRecord = {
-      url: hermesUrl,
+      url: resolveComposioMcpGuardProxyUrl(),
       enabled: true,
-      connect_timeout: connectTimeout,
-      headers: guardActive ? {} : endpoint!.headers,
+      connect_timeout: isActionGuardEnabled() ? 1800 : 120,
+      headers: {},
     };
-    if (!guardActive && endpoint!.type) desired.type = endpoint!.type;
     const headersMatch =
       JSON.stringify(asRecord(composioServer.headers)) === JSON.stringify(desired.headers ?? {});
     if (
@@ -196,7 +207,7 @@ export async function applyComposioMcpToHermesConfig(endpoint: ComposioMcpEndpoi
   return true;
 }
 
-/** Hermes checkout that owns tools/browser_camofox.py (HERMES_DIR or parent of venv/bin/hermes). */
+/** Hermes checkout that owns tools/ (HERMES_DIR or parent of venv/bin/hermes). */
 function resolveHermesCheckoutDir(hermesBinary: string): string | undefined {
   const fromEnv = process.env.HERMES_DIR?.trim();
   if (fromEnv) return path.resolve(fromEnv);
@@ -248,6 +259,23 @@ function formatHermesDotenvValue(value: string): string {
 }
 
 /** Keep ~/.hermes/.env aligned so Hermes and its tool workers use current Joshu credentials. */
+/**
+ * Environment keys that Hermes must not see: the Camofox settings. Hermes picks
+ * its Camofox mode from CAMOFOX_URL, and the shared browser is never Camofox
+ * (change remove-camofox).
+ */
+export const HERMES_FORBIDDEN_ENV_PREFIXES = ["CAMOFOX_", "HITL_CAMOFOX_"] as const;
+
+function isHermesForbiddenEnvKey(key: string): boolean {
+  return HERMES_FORBIDDEN_ENV_PREFIXES.some((prefix) => key.startsWith(prefix));
+}
+
+/** Copy of `env` without the keys in HERMES_FORBIDDEN_ENV_PREFIXES. */
+export function hermesProcessEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  return Object.fromEntries(Object.entries(env).filter(([key]) => !isHermesForbiddenEnvKey(key)));
+}
+
+/** Upsert `entries` into ~/.hermes/.env and drop the keys in HERMES_FORBIDDEN_ENV_PREFIXES. */
 export async function syncHermesDotenv(entries: Record<string, string>): Promise<boolean> {
   const envPath = path.join(getHermesHome(), ".env");
   let lines: string[] = [];
@@ -261,8 +289,13 @@ export async function syncHermesDotenv(entries: Record<string, string>): Promise
   }
 
   let changed = false;
+  const kept = lines.filter((line) => !isHermesForbiddenEnvKey(line.split("=", 1)[0]?.trim() ?? ""));
+  if (kept.length !== lines.length) {
+    lines = kept;
+    changed = true;
+  }
   for (const [key, value] of Object.entries(entries)) {
-    if (!value.trim()) continue;
+    if (!value.trim() || isHermesForbiddenEnvKey(key)) continue;
     const next = `${key}=${formatHermesDotenvValue(value)}`;
     const idx = lines.findIndex((line) => line === next || line.startsWith(`${key}=`));
     if (idx >= 0) {
@@ -311,7 +344,7 @@ export async function syncHermesLlmEnv(projectRoot = process.cwd()): Promise<boo
   return syncHermesDotenv(buildHermesLlmDotenvEntries(projectRoot));
 }
 
-function getJoshuHermesModel(): string {
+export function getJoshuHermesModel(): string {
   return envString("JOSHU_HERMES_MODEL", DEFAULT_JOSHU_HERMES_MODEL);
 }
 
@@ -614,7 +647,7 @@ export interface StreamHermesChatCallbacks {
 
 export type BrowserSyncMessageLevel = "light" | "full";
 
-/** Inject before Hermes Chat turns so the model sees the live noVNC page, not stale tool history. */
+/** Inject before Hermes Chat turns so the model sees the live page of the shared browser, not stale tool history. */
 export function buildBrowserSyncSystemMessage(params: {
   level: BrowserSyncMessageLevel;
   currentUrl?: string;
@@ -627,7 +660,7 @@ export function buildBrowserSyncSystemMessage(params: {
 
   if (params.level === "light") {
     const lines = [
-      "Shared Camofox tab (human may have changed it in noVNC since your last turn):",
+      "Shared browser tab (the human may have changed it in jWeb since your last turn):",
       title ? `${currentPage} — ${title}` : currentPage,
       "Browser tool output in chat history may be stale. Call browser snapshot/observe before acting on page content.",
     ];
@@ -638,10 +671,10 @@ export function buildBrowserSyncSystemMessage(params: {
   }
 
   const lines = [
-    "IMPORTANT: The human may have changed the shared Camofox browser through noVNC since your previous turn.",
+    "IMPORTANT: The human may have changed the shared browser through jWeb since your previous turn.",
     "Treat the live browser observation below as authoritative. Older browser tool outputs in chat history may be stale.",
     "Before browser actions, snapshot/observe the shared tab again — do not rely on prior-turn browser tool output.",
-    title ? `Current shared Camofox tab: ${currentPage} — ${title}` : `Current shared Camofox tab URL: ${currentPage}`,
+    title ? `Current shared browser tab: ${currentPage} — ${title}` : `Current shared browser tab URL: ${currentPage}`,
   ];
   if (params.priorUrl && params.priorUrl !== currentPage) {
     lines.push(`Note: URL changed since the last Joshu sync (was ${params.priorUrl}).`);
@@ -676,10 +709,10 @@ function composePrompt(params: StartRunParams): string {
   const currentPage = params.currentUrl || params.initialUrl || "unknown";
   const observation = params.browserObservation?.trim();
   const lines = [
-    "IMPORTANT: The human may have changed the browser through VNC since your previous turn.",
+    "IMPORTANT: The human may have changed the browser through jWeb since your previous turn.",
     "Treat the live browser observation below as authoritative. Older browser snapshots or tool outputs in chat history may be stale.",
     "If you need to verify page content, call a browser snapshot/observe tool on the shared tab before answering — do not rely on prior-turn browser tool output.",
-    `Current shared Camofox tab URL reported by the host: ${currentPage}`,
+    `Current shared browser tab URL reported by the host: ${currentPage}`,
     "",
   ];
 
@@ -700,7 +733,7 @@ function composePrompt(params: StartRunParams): string {
       "",
     );
   } else {
-    lines.push("No host snapshot was available. Inspect the current shared Camofox tab before relying on browser state.", "");
+    lines.push("No host snapshot was available. Inspect the current shared browser tab before relying on browser state.", "");
   }
 
   lines.push("User request:", params.prompt);
@@ -726,10 +759,13 @@ export class HermesApiRunner extends EventEmitter {
   private mcpGatewayWatchdogTimer: ReturnType<typeof setInterval> | null = null;
   private kanbanOrphanReaperTimer: ReturnType<typeof setInterval> | null = null;
   private kanbanOrphanReapInFlight = false;
+  private ingressSweepTimer: ReturnType<typeof setInterval> | null = null;
   private lastConnectorsMcpHealthy = true;
   private gatewayMcpReloadPending = false;
   private mcpGatewayReloadInFlight = false;
   private gatewayReviveInFlight = false;
+  /** Number of `hermes gateway run` processes this Joshu API started. */
+  private gatewayStartCount = 0;
   /** Hermes turns this process has in flight (chat, SMS, jobs, Responses runs). */
   private inFlightTurns = 0;
   /** Other reasons not to restart the gateway now (e.g. the owner is on a live call). */
@@ -742,13 +778,10 @@ export class HermesApiRunner extends EventEmitter {
   constructor(
     private readonly opts: {
       binary: string;
-      camofoxUrl: string;
       cdpUrl?: string;
       apiBaseUrl: string;
       apiKey: string;
       autoStartGateway: boolean;
-      hitlCamofoxUserId: string;
-      hitlCamofoxSessionKey: string;
     },
   ) {
     super();
@@ -952,9 +985,9 @@ export class HermesApiRunner extends EventEmitter {
     this.activeControllers.clear();
     this.histories.clear();
     this.lastSessionId = undefined;
-    // Drop in-flight Hermes sessions, then bring :8642 back. jWeb Camofox restart
+    // Drop in-flight Hermes sessions, then bring :8642 back. jWeb browser restart
     // and "forget session" both POST /api/hermes/reset; leaving the daemon down
-    // made patrick chat/Slack/phone-dead for hours (2026-08-22). Instance health
+    // made a fleet box's chat/Slack/phone dead for hours (2026-08-22). Instance health
     // only probes — it will not respawn the gateway.
     this.gatewayReviveInFlight = true;
     try {
@@ -972,6 +1005,40 @@ export class HermesApiRunner extends EventEmitter {
   async applyConfigAndReloadGatewayInBackground(reason: string): Promise<void> {
     await this.ensureJoshuHermesConfig();
     this.scheduleGatewayMcpReload(reason);
+  }
+
+  /**
+   * Like applyConfigAndReloadGatewayInBackground, but resolves when a new
+   * Hermes gateway process answers /health, so the gateway has the new env
+   * (for example new Slack tokens). The restart keeps the busy wait: it waits
+   * while cron runs, Hermes turns, or live calls are in flight
+   * (GATEWAY_RESTART_MAX_DEFER_MS). `onWaiting` gets the busy reason once.
+   * Resolves `{ restarted: false }` when gateway auto-start is off or at the timeout.
+   */
+  async applyConfigAndAwaitGatewayRestart(
+    reason: string,
+    opts: { timeoutMs?: number; pollMs?: number; onWaiting?: (busyReason: string) => void } = {},
+  ): Promise<{ restarted: boolean }> {
+    const since = this.gatewayStartCount;
+    await this.applyConfigAndReloadGatewayInBackground(reason);
+    const deadline = Date.now() + (opts.timeoutMs ?? GATEWAY_RESTART_MAX_DEFER_MS + 5 * 60_000);
+    let toldWaiting = false;
+    while (Date.now() < deadline) {
+      if (!this.gatewayAutoStart) return { restarted: false };
+      if (this.gatewayStartCount > since && (await this.health())) return { restarted: true };
+      if (!toldWaiting && opts.onWaiting) {
+        const busy = (await hasActiveCronExecutions(getHermesHome()))
+          ? "a Hermes cron job is running"
+          : await this.gatewayBusyReason();
+        if (busy) {
+          toldWaiting = true;
+          opts.onWaiting(busy);
+        }
+      }
+      await new Promise((resolve) => setTimeout(resolve, opts.pollMs ?? 2_000));
+    }
+    console.warn(`[hermes-api] gateway restart (${reason}) did not finish before the wait timeout`);
+    return { restarted: false };
   }
 
   /** Fire-and-forget gateway restart after config is already on disk. */
@@ -1001,7 +1068,7 @@ export class HermesApiRunner extends EventEmitter {
         this.gatewayMcpReloadPending = false;
         return;
       }
-      console.log(`[hermes-api] ${reason}; restarting Hermes gateway for MCP catalog`);
+      console.log(`[hermes-api] ${reason}; restarting Hermes gateway to apply config`);
       await this.stopGatewayDaemon();
       this.gateway = undefined;
       this.gatewayMcpReloadPending = false;
@@ -1049,7 +1116,7 @@ export class HermesApiRunner extends EventEmitter {
           conversation_history: conversationHistory,
           store: false,
           stream: true,
-          instructions: "You are driving a human-in-the-loop Camofox browser. The human may also interact via VNC. Use browser tools when useful.",
+          instructions: "You are driving a human-in-the-loop shared browser. The human may also interact through jWeb. Use browser tools when useful.",
         }),
         signal: controller.signal,
       });
@@ -1521,6 +1588,16 @@ export class HermesApiRunner extends EventEmitter {
       void this.syncGatewayWithMcpHealth();
     }, 30_000);
     this.startKanbanOrphanReaper();
+    this.startIngressSweep();
+  }
+
+  /** Archive stale ingress tasks: once now, then every hour (change stale-ingress-sweep). */
+  private startIngressSweep(): void {
+    if (this.ingressSweepTimer || ingressSweepAgeHours() === 0) return;
+    void runIngressSweepOnce();
+    this.ingressSweepTimer = setInterval(() => {
+      void runIngressSweepOnce();
+    }, INGRESS_SWEEP_INTERVAL_SECONDS * 1000);
   }
 
   /** Kill Hermes Kanban CLI workers when DB says task is no longer running. */
@@ -1641,7 +1718,7 @@ export class HermesApiRunner extends EventEmitter {
     const langfuseUserId = resolveLangfuseUserId();
     const gateway = spawn(this.opts.binary, ["gateway", "run", "--replace", "--quiet", "--accept-hooks"], {
       env: {
-        ...process.env,
+        ...hermesProcessEnv(process.env),
         API_SERVER_ENABLED: "true",
         API_SERVER_KEY: this.opts.apiKey,
         ANTHROPIC_API_KEY: anthropicKey,
@@ -1651,25 +1728,29 @@ export class HermesApiRunner extends EventEmitter {
         API_SERVER_HOST: "127.0.0.1",
         API_SERVER_PORT: "8642",
         ...(langfuseUserId ? { HERMES_LANGFUSE_USER_ID: langfuseUserId } : {}),
-        CAMOFOX_URL: this.opts.camofoxUrl,
         ...(this.opts.cdpUrl ? { BROWSER_CDP_URL: this.opts.cdpUrl } : {}),
         // Project plugins live under <repo>/.hermes/plugins. This repo is trusted
         // by the Joshu host, so enable Hermes's opt-in project plugin scanner.
         HERMES_ENABLE_PROJECT_PLUGINS: process.env.HERMES_ENABLE_PROJECT_PLUGINS || "true",
-        CAMOFOX_USER_ID: process.env.CAMOFOX_USER_ID || this.opts.hitlCamofoxUserId,
-        CAMOFOX_SESSION_KEY: process.env.CAMOFOX_SESSION_KEY || this.opts.hitlCamofoxSessionKey,
-        CAMOFOX_ADOPT_EXISTING_TAB: process.env.CAMOFOX_ADOPT_EXISTING_TAB || "true",
-        HITL_CAMOFOX_USER_ID: this.opts.hitlCamofoxUserId,
-        HITL_CAMOFOX_SESSION_KEY: this.opts.hitlCamofoxSessionKey,
+        // The terminal tool inherits this env and runs in the owner's Desktop.
+        // Stop Python from leaving __pycache__ folders there.
+        PYTHONDONTWRITEBYTECODE: "1",
       },
       stdio: ["ignore", "pipe", "pipe"],
     });
     this.gateway = gateway;
+    this.gatewayStartCount += 1;
+    // Read both output pipes. A pipe without a reader holds approximately 87 KB.
+    // When the stdout pipe is full, the next print() in the Hermes gateway blocks,
+    // and every later turn stops at "starting API call #N" until a restart.
+    // Spec: openspec hermes-gateway (change gateway-stdout-drain).
+    gateway.stdout.setEncoding("utf8");
+    gateway.stdout.on("data", (chunk) => console.log(`[hermes-api] ${String(chunk).trim()}`));
     gateway.stderr.setEncoding("utf8");
     gateway.stderr.on("data", (chunk) => console.warn(`[hermes-api] ${String(chunk).trim()}`));
   }
 
-  /** Idempotent: apply HITL Camofox patches to the external Hermes checkout before gateway/tools run. */
+  /** Idempotent: apply the Joshu browser and terminal guard patches to the external Hermes checkout. */
   private async ensureHermesHitlBrowserPatch(): Promise<boolean> {
     if (this.hitlBrowserPatchEnsured) return false;
     this.hitlBrowserPatchEnsured = true;
@@ -1677,7 +1758,7 @@ export class HermesApiRunner extends EventEmitter {
     const hermesDir = resolveHermesCheckoutDir(this.opts.binary);
     if (!hermesDir) return false;
 
-    const target = path.join(hermesDir, "tools/browser_camofox.py");
+    const target = path.join(hermesDir, "tools/browser_tool.py");
     try {
       await execFile("test", ["-f", target]);
     } catch {
@@ -1694,10 +1775,10 @@ export class HermesApiRunner extends EventEmitter {
       const execErr = err as NodeJS.ErrnoException & { code?: string | number; status?: number };
       const exitCode = typeof execErr.status === "number" ? execErr.status : Number(execErr.code);
       if (exitCode === 2) {
-        console.log("[hermes-api] Camofox tab resync patch applied; Hermes gateway will restart");
+        console.log("[hermes-api] Hermes guard patches applied; Hermes gateway will restart");
         return true;
       }
-      console.warn(`[hermes-api] HITL Camofox patch skipped: ${(err as Error).message}`);
+      console.warn(`[hermes-api] Hermes guard patches skipped: ${(err as Error).message}`);
       return false;
     }
   }
@@ -2023,14 +2104,19 @@ export class HermesApiRunner extends EventEmitter {
       changed = true;
     }
 
-    // Shared browser. CDP Chromium (BROWSER_CDP_URL) uses Hermes built-in tools
-    // on that endpoint. Without it, keep the Camofox tab identity pin.
+    // Shared browser. Hermes built-in browser tools use the CDP endpoint of local
+    // Chromium (BROWSER_CDP_URL) or the CDP relay of Browser Use Cloud. Hermes never
+    // uses Camofox: drop old Camofox keys (change remove-camofox).
     const browser = asRecord(config.browser);
     const cdpUrl = (this.opts.cdpUrl || envString("BROWSER_CDP_URL") || "").trim();
-    const hitlUserId =
-      envString("CAMOFOX_USER_ID") || envString("HITL_CAMOFOX_USER_ID") || this.opts.hitlCamofoxUserId;
-    const hitlSessionKey =
-      envString("CAMOFOX_SESSION_KEY") || envString("HITL_CAMOFOX_SESSION_KEY") || this.opts.hitlCamofoxSessionKey;
+    if (browser.cloud_provider === "camofox") {
+      delete browser.cloud_provider;
+      changed = true;
+    }
+    if (browser.camofox != null) {
+      delete browser.camofox;
+      changed = true;
+    }
     if (cdpUrl) {
       if (browser.backend !== "off") {
         browser.backend = "off";
@@ -2040,33 +2126,8 @@ export class HermesApiRunner extends EventEmitter {
         browser.cdp_url = cdpUrl;
         changed = true;
       }
-      if (browser.cloud_provider === "camofox") {
-        delete browser.cloud_provider;
-        changed = true;
-      }
-      // Drop the Camofox tab pin so Hermes does not also try to adopt a Camofox session.
-      if (browser.camofox != null) {
-        delete browser.camofox;
-        changed = true;
-      }
-      config.browser = browser;
-    } else {
-      const camofox = asRecord(browser.camofox);
-      if (camofox.user_id !== hitlUserId) {
-        camofox.user_id = hitlUserId;
-        changed = true;
-      }
-      if (camofox.session_key !== hitlSessionKey) {
-        camofox.session_key = hitlSessionKey;
-        changed = true;
-      }
-      if (camofox.adopt_existing_tab !== true) {
-        camofox.adopt_existing_tab = true;
-        changed = true;
-      }
-      browser.camofox = camofox;
-      config.browser = browser;
     }
+    config.browser = browser;
 
     // Pin Exa when fleet provisioned EXA_API_KEY is present (Hermes auto-detect
     // also prefers Tavily/Firecrawl if those keys exist — explicit backend wins).
@@ -2139,6 +2200,9 @@ export class HermesApiRunner extends EventEmitter {
       mcpServers.joshu_connectors = desiredConnectors;
       changed = true;
     }
+
+    // Multiplayer: one team MCP server for each team of this box.
+    if (syncTeamMcpServers(mcpServers, teamSlugsSync(process.cwd()), desiredConnectors.url)) changed = true;
 
     if (falRelayConfigured()) {
       await refreshFalMcpEnabled(process.cwd());
@@ -2255,6 +2319,18 @@ export class HermesApiRunner extends EventEmitter {
       cron.max_parallel_jobs = desiredCronMaxParallel;
       changed = true;
     }
+    // Route unpinned cron jobs through cron.model so a fleet model switch is not "drift":
+    // Hermes skips unpinned jobs whose creation-time model differs from model.default (#44585).
+    const desiredCronModel = getJoshuHermesModel();
+    const desiredCronProvider = getJoshuHermesProvider();
+    if (cron.model !== desiredCronModel) {
+      cron.model = desiredCronModel;
+      changed = true;
+    }
+    if (cron.model_provider !== desiredCronProvider) {
+      cron.model_provider = desiredCronProvider;
+      changed = true;
+    }
     config.cron = cron;
 
     if (syncInteractivePlatformKanbanToolsets(config)) {
@@ -2266,6 +2342,9 @@ export class HermesApiRunner extends EventEmitter {
     }
 
     if (syncJoshuDisableHermesNativeSmsPlatform(config)) {
+      changed = true;
+    }
+    if (syncJoshuSlackSuggestedPrompts(config)) {
       changed = true;
     }
 
@@ -2289,6 +2368,10 @@ export class HermesApiRunner extends EventEmitter {
     }
     auxiliary.session_search = sessionSearch;
     config.auxiliary = auxiliary;
+
+    // No-training routing for main turns, Hermes cron jobs, workers, and subagents.
+    // scripts/patch-hermes-openrouter-data-collection.py applies the same value to auxiliary tasks.
+    if (syncJoshuOpenRouterDataPolicy(config)) changed = true;
 
     // Slack + Telegram: idle-reset after 30m (override with JOSHU_HERMES_MESSAGING_IDLE_MINUTES).
     // jChat stays on session_reset.mode none. Per-platform policy is also merged into
@@ -2339,11 +2422,6 @@ export class HermesApiRunner extends EventEmitter {
         `[hermes-api] browser CDP ${where} (backend off). ` +
           "Restart the Hermes gateway so navigate/click use the shared Chromium.",
       );
-    } else if (changed && browser.camofox) {
-      console.log(
-        `[hermes-api] Camofox identity ${hitlUserId} / ${hitlSessionKey} (adopt_existing_tab=true). ` +
-          "Restart the Hermes gateway if browser tools still open a second tab.",
-      );
     }
 
     // Learning bootstrap runs once per Joshu process (vps-start also runs at container boot).
@@ -2352,6 +2430,8 @@ export class HermesApiRunner extends EventEmitter {
       this.learningBootstrapPromise = (async () => {
         await bootstrapHermesLearning();
         await trySyncHermesLearningGitCron();
+        // After the skills seed: a new release may have made box notes untrue.
+        await tryScheduleReleaseFactsCheck();
       })();
     }
     await this.learningBootstrapPromise;
@@ -2368,12 +2448,6 @@ export class HermesApiRunner extends EventEmitter {
     }
 
     const dotenvSync: Record<string, string> = {
-      CAMOFOX_URL: this.opts.camofoxUrl,
-      CAMOFOX_USER_ID: hitlUserId,
-      CAMOFOX_SESSION_KEY: hitlSessionKey,
-      CAMOFOX_ADOPT_EXISTING_TAB: "true",
-      HITL_CAMOFOX_USER_ID: hitlUserId,
-      HITL_CAMOFOX_SESSION_KEY: hitlSessionKey,
       ...(cdpUrl ? { BROWSER_CDP_URL: cdpUrl } : {}),
     };
     const anthropicKey = resolveAnthropicApiKey();
@@ -2387,6 +2461,8 @@ export class HermesApiRunner extends EventEmitter {
       Object.assign(dotenvSync, joshuFilesPathEnv(filesPaths));
       dotenvSync.JOSHU_REPO_ROOT = process.cwd();
       dotenvSync.HERMES_WRITE_SAFE_ROOT = workspaceScope.writeSafeRoot;
+      // HERMES.md tells the companion and workers to write scratch scripts here.
+      await mkdir(HERMES_SCRATCH_DIR, { recursive: true });
     }
     const gatewayKey = envString("HERMES_API_KEY") || this.opts.apiKey;
     if (gatewayKey) {
@@ -2578,7 +2654,13 @@ export class HermesApiRunner extends EventEmitter {
     try {
       const raw = await readFile(HERMES_GATEWAY_PID_FILE, "utf8");
       const { pid } = JSON.parse(raw) as { pid?: number };
-      if (pid) process.kill(pid, "SIGTERM");
+      if (!pid) return;
+      // gateway.pid is on a persistent volume, so the PID can belong to a different process.
+      if (await pidRunsCommand(pid, HERMES_GATEWAY_COMMAND)) {
+        process.kill(pid, "SIGTERM");
+      } else {
+        console.warn(`[hermes-api] gateway.pid names pid ${pid}, which does not run the Hermes gateway; not stopping it`);
+      }
     } catch {
       // Best-effort only.
     }

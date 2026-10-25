@@ -1,7 +1,11 @@
-# Joshu per-customer VPS stack. Requires prebuilt image: see deploy/README.md
+# Joshu per-customer VPS stack. Requires prebuilt images: see deploy/README.md
+# On a box, the release writes this file (host bundle, deploy/scripts/install-host-bundle.sh).
 # Usage:
 #   Standalone (no control plane): docker compose -f deploy/docker-compose.yml up -d
-# Fleet (+ instance agent):       docker compose -f deploy/docker-compose.yml -f proprietary/deploy/docker-compose.fleet.yml --profile fleet up -d
+# Fleet (+ instance agent):       docker compose -f deploy/docker-compose.yml --profile fleet up -d
+
+# Fixed project name: the data volumes are deploy_joshu_* and deploy_caddy_*.
+name: deploy
 
 services:
   caddy:
@@ -46,35 +50,11 @@ services:
           exec bash /opt/joshu/scripts/vps-start.sh
         fi
     volumes:
-      # Image owns boot. Do not bind-mount host scripts/ over the image.
-      # Optional overlay: files in hotfix/scripts win at boot (empty dir is safe).
+      # The image is the only source of code (change image-owned-box-runtime).
+      # Do not mount host code at or below /opt/joshu. A fix of code or content
+      # needs a new release image. The one exception is the hotfix overlay:
+      # files in hotfix/scripts replace image scripts at boot (empty dir is safe).
       - ../hotfix/scripts:/opt/joshu/hotfix/scripts:ro
-      - ../templates/ea:/opt/joshu/templates/ea:ro
-      - ../dist:/opt/joshu/dist:ro
-      # dist/ is synced from pulled image by instance-agent (syncDistFromImage) — not updated by git pull.
-      # jWeb/noVNC static assets (vendor/novnc, vnc-*.js). Git pull + rsync public/ on host;
-      # image bake is the long-term source of truth after 0.1.45+.
-      - ../public:/opt/joshu/public:ro
-      - ../packages/app-sdk/dist:/opt/joshu/packages/app-sdk/dist:ro
-      - ../packages/box-state/dist:/opt/joshu/packages/box-state/dist:ro
-      - ../packages/email-signature/dist:/opt/joshu/packages/email-signature/dist:ro
-      - ../integrations/hermes/skills-enabled.yaml:/opt/joshu/integrations/hermes/skills-enabled.yaml:ro
-      - ../integrations/hermes/skills:/opt/joshu/integrations/hermes/skills:ro
-      # last30days-skill is gitignored — do NOT bind-mount it. An empty host dir
-      # shadows the image-baked engine (Research 400 / Caddy 502 on first boot).
-      # Source of truth: image COPY + /opt/joshu/.image/last30days-skill fallback.
-      # Operator hotpatch: docker cp into the container (or next image).
-      - ../factory/manifest.yaml:/opt/joshu/factory/manifest.yaml:ro
-      # Onboarding registry — operator hotfix without image rebuild (same lane as manifest).
-      - ../factory/onboarding-prompts.yaml:/opt/joshu/factory/onboarding-prompts.yaml:ro
-      - ../arozos/system-setting:/opt/joshu/arozos/system-setting:ro
-      - ../arozos/locale:/opt/joshu/arozos/locale:ro
-      # Vanilla shell overlays — git pull updates chrome without image rebuild (OSS default theme).
-      - ../arozos/web-overlays-vanilla:/opt/joshu/arozos/web-overlays-vanilla:ro
-      # Public Chat-with-files HTML (git pull without image rebuild). Also in dist/shareChat/ui/.
-      - ../apps/share-chat:/opt/joshu/apps/share-chat:ro
-      # Fleet Langfuse relay plugin (no pk/sk on box). Copied into image on rebuild; bind for live boxes.
-      - ../.hermes/plugins/joshu-langfuse-relay:/opt/joshu/.hermes/plugins/joshu-langfuse-relay:ro
       # Product skills are seeded to $HERMES_HOME/skills/joshu/ (writable learning loop).
       # Directory bind so host rewrites of instance.env are visible without recreate.
       - /etc/joshu:/etc/joshu:ro
@@ -84,18 +64,24 @@ services:
       - joshu_hindsight_cache:/home/hindsight/.cache/huggingface
       - joshu_postgres:/var/lib/postgresql/hindsight
       - joshu_gbrain:/root/.gbrain
+    # The first start of a release can run the skills seed with LLM merges before the Joshu
+    # API starts (several minutes). The start period covers the skills seed, so compose does
+    # not mark the stack unhealthy and stop instance-agent (depends_on service_healthy).
+    # The stack becomes healthy at the first good check, also within the start period.
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8788/joshu/api/instance/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 180s
+      start_period: 600s
 
   instance-agent:
+    # Agent image of the release (JOSHU_INSTANCE_AGENT_IMAGE_REF). build: is for standalone use.
+    image: ${JOSHU_INSTANCE_AGENT_IMAGE_REF:-ghcr.io/your-org/joshu-oss-instance-agent:latest}
     build:
       context: ..
       dockerfile: deploy/Dockerfile.instance-agent
-    command: ["node", "/opt/joshu/scripts/run-instance-agent.mjs"]
+    command: ["node", "/app/dist/index.js"]
     restart: unless-stopped
     network_mode: host
     profiles:
@@ -110,6 +96,8 @@ services:
       # Directory bind: host `sed -i` of instance.env must not leave the agent
       # writing Twilio rotates onto a stale inode while SSH sees a different file.
       - /etc/joshu:/etc/joshu
+      # Host bundle, hotfix overlay, and backups. The agent writes the host bundle
+      # on a release update and reports runtime drift. It runs no code from here.
       - /opt/joshu:/opt/joshu
     depends_on:
       joshu-stack:

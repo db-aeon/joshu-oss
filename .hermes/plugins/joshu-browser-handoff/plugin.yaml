@@ -1,6 +1,6 @@
 name: joshu-browser-handoff
-version: 1.0.1
-description: Live browser HITL — hand shared Camofox tab to owner on mobile; mint signed URL and poll completion.
+version: 1.0.2
+description: Live browser HITL — hand the shared browser to the owner on mobile; mint signed URL and poll completion.
 provides_tools:
   - browser_handoff_request
   - browser_handoff_status

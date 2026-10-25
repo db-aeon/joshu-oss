@@ -3,7 +3,7 @@ export {
   type AfterMirrorThreadInput,
   type TriageProvider,
 } from "./triageStub.js";
-export { gmailIngestSkipLabel, isGmailJunk, isGmailJunkThread } from "./gmailJunk.js";
+export { gmailIngestSkipLabel, gmailThreadIngestKind, isGmailJunk } from "./gmailJunk.js";
 export {
   classifySchedulingEmail,
   classifyInboundMail,

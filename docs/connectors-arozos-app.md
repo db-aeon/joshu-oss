@@ -79,14 +79,14 @@ OAuth tokens live in **Composio cloud**, scoped by **`(COMPOSIO_API_KEY project,
 | Env | Typical value | Effect |
 |-----|---------------|--------|
 | `COMPOSIO_API_KEY` | Laptop `.env` vs VPS `/etc/joshu/instance.env` | **Different keys = different Composio projects.** Same `COMPOSIO_USER_ID` does **not** share connections across projects. |
-| `COMPOSIO_USER_ID` | Customer slug (e.g. `patrick`) | Isolates connections **within** one Composio project (per-box on fleet). |
+| `COMPOSIO_USER_ID` | Customer slug (e.g. `acme`) | Isolates connections **within** one Composio project (per-box on fleet). |
 
-**Validated (2026-08):** Local `dev:arozos` with a laptop Composio key showed no ACTIVE Gmail/Calendar, while `patrick.box.joshu.me` (per-box key from `issue-composio-box-keys`) correctly showed ACTIVE accounts — both used `COMPOSIO_USER_ID=patrick`.
+**Validated (2026-08):** Local `dev:arozos` with a laptop Composio key showed no ACTIVE Gmail/Calendar, while `<slug>.box.joshu.me` (per-box key from `issue-composio-box-keys`) correctly showed ACTIVE accounts — both used `COMPOSIO_USER_ID=<slug>`.
 
 Implications:
 
-- Setting `COMPOSIO_USER_ID=patrick` in local `.local/instance.env` for fleet relay parity does **not** import the VPS’s Gmail/Calendar unless the laptop also uses that box’s `COMPOSIO_API_KEY`.
-- Connect / Disconnect on a shared key+userId mutates **that** Composio project (including the live box if keys match). Prefer a laptop-only key, or `COMPOSIO_USER_ID=patrick-local`, for day-to-day local work.
+- Setting `COMPOSIO_USER_ID=<slug>` in local `.local/instance.env` for fleet relay parity does **not** import the VPS’s Gmail/Calendar unless the laptop also uses that box’s `COMPOSIO_API_KEY`.
+- Connect / Disconnect on a shared key+userId mutates **that** Composio project (including the live box if keys match). Prefer a laptop-only key, or `COMPOSIO_USER_ID=<slug>-local`, for day-to-day local work.
 
 ### Toolkit list cache (stale “Connected”)
 
@@ -108,7 +108,7 @@ Self-host: set `JOSHU_FAL_MODE=direct` (or leave unset when no CP relay) and pas
 | `COMPOSIO_USER_ID` | Stable user/slug | Composio OAuth isolation within that project; ArozOS login unchanged |
 | `NYLAS_API_KEY` | Your Nylas key (or managed relay) | Agent mailbox (jMail Setup / Welcome) |
 | `JOSHU_FAL_MODE` | `direct` (self-host) / `relay` (managed) / `off` | See [`metered-providers.md`](metered-providers.md) |
-| `FAL_KEY` | Connectors setup (direct mode only) | Stored in `.joshu/connectors-providers.env` (gitignored) |
+| `FAL_KEY` | Connectors setup (direct mode only) | Stored in `connectors-providers.env` in the Joshu state folder (`JOSHU_STATE_DIR`; `.joshu/` of the repository in local development, gitignored) |
 
 If Connectors shows **NYLAS_API_KEY not configured** or Gmail accounts from another box, set keys in `/etc/joshu/instance.env` (or local `.env`) and recreate the stack — see [connectors.md](connectors.md).
 
@@ -144,13 +144,13 @@ Legacy jChat paths under `/joshu/api/hermes-chat/composio/*` still work (same ha
 2. Use **Connect another account** on the same provider row for additional inboxes or Google identities.
 3. Each Gmail account mirrors to `connectors/mail/gmail/{account_key}/threads/`.
 4. **jMail** shows one inbox tab per connected Gmail address.
-5. **Day 0 setup** — after at least one Gmail account is connected, use **Analyze mail for setup (Day 0)** at the bottom of **Connect apps** to sync 30 days of mail + calendar and pre-fill the Welcome onboarding draft. See [`docs/day0-cold-start.md`](day0-cold-start.md).
+5. **Day 0 setup** — after at least one Gmail account is connected, use **Analyze mail for setup (Day 0)** at the bottom of **Connect apps** to sync 30 days of mail + calendar and pre-fill the Welcome onboarding draft. See `docs/day0-cold-start.md`.
 
 ## Owner SMS approval
 
 Action-guard HITL is **owner SMS** (Telephone owner mobile or `TWILIO_OWNER_CALLER`) — not Connectors. Connect Slack for agent **tools** via **Connect apps** if needed.
 
-**Hermes Slack chat** (full agent DM/@mention) is separate — configure in **Safety → Hermes Slack chat**. See [hermes-integration — Slack chat](hermes-integration.md#slack-chat-hermes-messaging-gateway).
+**Hermes Slack chat** (full agent DM/@mention) is separate — connect it in **Safety → Slack chat with the companion** (**Connect Slack**). See [hermes-integration — Slack chat](hermes-integration.md#slack-chat-hermes-messaging-gateway).
 
 For policy tiers, bypass rules, browser gate, and the **Safety** desktop app, see [`agent-safety.md`](agent-safety.md).
 
@@ -160,5 +160,5 @@ For policy tiers, bypass rules, browser gate, and the **Safety** desktop app, se
 - [`docs/agent-safety.md`](agent-safety.md) — write policy, HITL, hard blocks
 - [`docs/safety-settings-arozos-app.md`](safety-settings-arozos-app.md) — Safety desktop app
 - [`docs/connectors.md`](connectors.md) — mirror layout and REST API
-- [`docs/day0-cold-start.md`](day0-cold-start.md) — Day 0 cold-start pipeline
+- `docs/day0-cold-start.md` — Day 0 cold-start pipeline
 - [`docs/arozos-desktop-shortcuts.md`](arozos-desktop-shortcuts.md) — shortcut format

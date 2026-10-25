@@ -44,12 +44,12 @@ assert(heading.includes("Morning brief"), "heading text");
 assert(!heading.includes("# Morning"), "heading hash stripped");
 
 const signed = buildJoshuSignedEmailHtml("Hi there — https://joshu.me", {
-  name: "Patrick",
-  ownerDisplayName: "Dan Benyamin",
+  name: "Ava",
+  ownerDisplayName: "Sam Owner",
   portraitImageUrl: "https://example.com/p.jpg",
 });
-assert(signed.includes("Patrick"), "signature includes name");
-assert(signed.includes("Dan Benyamin&#39;s Joshu"), "signature includes owner role line");
+assert(signed.includes("Ava"), "signature includes name");
+assert(signed.includes("Sam Owner&#39;s Joshu"), "signature includes owner role line");
 assert(signed.includes("Get your Joshu: https://joshu.me"), "signature includes signup CTA");
 assert(signed.includes("Hi there"), "body preserved");
 assert(signed.includes('href="https://joshu.me"'), "signed body linkifies URL");

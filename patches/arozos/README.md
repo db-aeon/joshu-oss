@@ -5,7 +5,7 @@ Applied at build time by [`scripts/apply-arozos-patches.sh`](../../scripts/apply
 
 | Patch | Upstream base | Description |
 |-------|---------------|-------------|
-| `joshu-core.patch` | `8894ffe` | System settings hook, desktop splash/overlay recovery, float-window drag/resize stability, media player, stock-module denylist (`HiddenModules`) |
+| `joshu-core.patch` | `8894ffe` | System settings hook, desktop splash/overlay recovery, float-window drag/resize stability, media player, stock-module denylist (`HiddenModules`), admin desktop login page `/system/auth/joshu-login` (`src/auth_joshu.go`) |
 
 **License:** These patches are **GPLv3** (derivative of ArozOS). They must ship
 with source when you distribute a combined image containing modified ArozOS.

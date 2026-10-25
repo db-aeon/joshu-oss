@@ -12,13 +12,15 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LOCAL_DIR="${ROOT_DIR}/.local"
 PID_FILE="${LOCAL_DIR}/dev-arozos.pid"
+# shellcheck source=lib/pid-file.sh
+source "${ROOT_DIR}/scripts/lib/pid-file.sh"
 LOG_FILE="${LOCAL_DIR}/dev-arozos.log"
 
 mkdir -p "${LOCAL_DIR}"
 
 if [[ -f "${PID_FILE}" ]]; then
   read -r existing_pid < "${PID_FILE}" || true
-  if [[ -n "${existing_pid:-}" ]] && kill -0 "${existing_pid}" >/dev/null 2>&1; then
+  if pid_runs_command "${existing_pid:-}" "dev-arozos.sh"; then
     echo "[dev-arozos-daemon] already running (pid ${existing_pid})"
     echo "[dev-arozos-daemon] log: ${LOG_FILE}"
     echo "[dev-arozos-daemon] open http://127.0.0.1:8787"

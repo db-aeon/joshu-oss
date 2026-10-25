@@ -6,7 +6,7 @@ import { normalizeProjectSlug } from "../ea/mailTypes.js";
 import { completeKanbanTask } from "./kanbanComplete.js";
 import { projectSlugFromBoard } from "./prioritize.js";
 import { wakeLinkedSchedulingTasks } from "./schedulingHandoff.js";
-import { readProactiveState, writeProactiveState } from "./state.js";
+import { boardForTaskRef, readProactiveState, writeProactiveState } from "./state.js";
 import { parseProactiveTaskRef } from "./blockReason.js";
 import type { TaskActionKeyword } from "./feedback.js";
 
@@ -28,7 +28,7 @@ function resolveProactiveTaskRef(opts: {
   const state = readProactiveState(opts.projectRoot);
   const ref = parseProactiveTaskRef(opts.body);
   const taskId = (opts.taskId ?? ref?.taskId ?? state.lastNudge?.taskId)?.trim();
-  const board = (opts.board ?? state.lastNudge?.board)?.trim();
+  const board = (opts.board ?? boardForTaskRef(state, taskId))?.trim();
   if (!taskId || !board) return null;
   return { taskId, board };
 }

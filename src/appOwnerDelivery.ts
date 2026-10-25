@@ -2,7 +2,12 @@
  * Notify box owner via SMS when Twilio owner gateway is configured.
  */
 
-import { ownerSmsPhone, sendSms, twilioSmsGatewayEnabled } from "./twilioSmsSend.js";
+import {
+  ownerSmsPhone,
+  SMS_RECEIPT_WAIT_MS,
+  sendSmsWithReceipt,
+  twilioSmsGatewayEnabled,
+} from "./twilioSmsSend.js";
 
 export type AppOwnerDeliveryInput = {
   appId: string;
@@ -11,7 +16,7 @@ export type AppOwnerDeliveryInput = {
   link?: string;
 };
 
-/** Send a short app event summary to the owner by SMS when configured. */
+/** Send a short app event summary to the owner by SMS when configured. An undelivered SMS is not delivered. */
 export async function notifyOwnerAppEvent(
   input: AppOwnerDeliveryInput,
   projectRoot: string,
@@ -24,6 +29,7 @@ export async function notifyOwnerAppEvent(
   const body = input.link
     ? `${input.title}\n${input.summary}\n\n${input.link}`
     : `${input.title}\n${input.summary}`;
-  await sendSms(phone, body);
+  const receipt = await sendSmsWithReceipt(phone, body, SMS_RECEIPT_WAIT_MS);
+  if (receipt.outcome === "undelivered") return { delivered: false, channels: [] };
   return { delivered: true, channels: ["sms"] };
 }

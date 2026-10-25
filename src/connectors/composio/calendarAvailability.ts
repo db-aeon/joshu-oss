@@ -28,7 +28,7 @@ function addCalendarId(items: string[], id: string): void {
 
 /**
  * Default FreeBusy calendars: primary, profile personalEmail, and selected/reader
- * Gmail calendars on the connected Google account (e.g. dbenyamin@gmail.com).
+ * Gmail calendars on the connected Google account (e.g. owner@gmail.com).
  */
 export async function resolveOwnerCalendarFreeBusyItems(
   projectRoot: string,

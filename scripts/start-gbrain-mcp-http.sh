@@ -7,6 +7,8 @@ SCRIPTS_DIR="${JOSHU_SCRIPTS_ROOT:-${APP_DIR}/scripts}"
 # shellcheck source=lib/gbrain-env.sh
 source "${SCRIPTS_DIR}/lib/gbrain-env.sh"
 gbrain_env_init "${BASH_SOURCE[0]}"
+# shellcheck source=lib/pid-file.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/pid-file.sh"
 
 AROZ_DATA="${AROZ_DATA:-/var/lib/arozos}"
 # shellcheck source=lib/joshu-files-paths.sh
@@ -20,6 +22,8 @@ export OPENAI_API_KEY="${OPENAI_API_KEY:-${HINDSIGHT_API_EMBEDDINGS_OPENAI_API_K
 
 gbrain_require_pglite_brain
 GBRAIN_BIN="${GBRAIN_BIN:-gbrain}"
+# Joshu gbrain fixes (idempotent; also baked into the image).
+node "${SCRIPTS_DIR}/patch-gbrain.mjs" || true
 
 # One PGLite holder: stop stale serve/sync before MCP HTTP spawns gbrain serve.
 bash "${SCRIPTS_DIR}/stop-gbrain.sh"
@@ -70,17 +74,7 @@ export PATH="${HOME}/.bun/bin:/usr/local/bin:${PATH}"
 echo "[gbrain-mcp-http] starting on ${GBRAIN_MCP_HTTP_URL} (GBRAIN_HOME=${GBRAIN_HOME}, log: ${GBRAIN_LOG_FILE})"
 
 start_server_once() {
-  if [[ -f "${GBRAIN_MCP_HTTP_PID_FILE}" ]]; then
-    local old_pid
-    old_pid="$(cat "${GBRAIN_MCP_HTTP_PID_FILE}" 2>/dev/null || true)"
-    if [[ -n "${old_pid}" ]] && kill -0 "${old_pid}" 2>/dev/null; then
-      echo "[gbrain-mcp-http] stopping stale server (pid ${old_pid})"
-      kill "${old_pid}" 2>/dev/null || true
-      sleep 0.5
-      kill -9 "${old_pid}" 2>/dev/null || true
-    fi
-    rm -f "${GBRAIN_MCP_HTTP_PID_FILE}"
-  fi
+  stop_pid_file_process "${GBRAIN_MCP_HTTP_PID_FILE}" "gbrain-mcp-http-server" "[gbrain-mcp-http]"
 
   nohup node "${SCRIPTS_DIR}/gbrain-mcp-http-server.mjs" >>"${GBRAIN_LOG_FILE}" 2>&1 &
   server_pid=$!

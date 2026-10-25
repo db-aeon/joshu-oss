@@ -1,0 +1,48 @@
+name: unit-tests
+
+# Runs `npm test` (scripts/run-unit-tests.mjs): each `test:*` script that passes offline,
+# with no secrets and no box, on Node 22 as in deploy/Dockerfile. The Hermes tests run
+# against a checkout at the pinned Hermes ref, with a venv in the checkout as on a box.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: unit-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: npm ci
+      - name: Check out Hermes at the pinned ref
+        run: |
+          ref="$(node scripts/sync-vps-hermes-pin.mjs --print)"
+          dir="$RUNNER_TEMP/hermes-agent"
+          git init -q "$dir"
+          git -C "$dir" fetch -q --depth 1 https://github.com/NousResearch/hermes-agent.git "$ref"
+          git -C "$dir" checkout -q FETCH_HEAD
+          # The venv is in the checkout, as on a box (test-kanban-bridge-onboarding.mjs looks there).
+          python -m venv "$dir/venv"
+          PIP_DISABLE_PIP_VERSION_CHECK=1 "$dir/venv/bin/pip" install -q -e "$dir"
+          {
+            echo "HERMES_DIR=$dir"
+            echo "HERMES_AGENT_ROOT=$dir"
+            echo "HERMES_PYTHON=$dir/venv/bin/python"
+          } >> "$GITHUB_ENV"
+      - run: npm test

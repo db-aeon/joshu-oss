@@ -5,21 +5,30 @@
  * Usage: npm run test:proactive
  */
 import assert from "node:assert/strict";
+import { Temporal } from "@js-temporal/polyfill";
 
-import { blockReasonNeedsOwnerInput, parseProactiveTaskRef } from "../src/proactive/blockReason.js";
+import { parseProactiveTaskRef } from "../src/proactive/blockReason.js";
 import {
   applyProactiveFeedbackKeyword,
   parseFeedbackKeyword,
   parseTaskActionKeyword,
 } from "../src/proactive/feedback.js";
-import { ensureCadenceHintLine, PROACTIVE_CADENCE_HINT } from "../src/proactive/composeMessage.js";
+import {
+  buildComposeUserPrompt,
+  ensureCadenceHintLine,
+  PROACTIVE_CADENCE_HINT,
+  proactiveComposeSessionKey,
+  setProactiveHermesRunner,
+} from "../src/proactive/composeMessage.js";
+import { deliverProactiveNudge } from "../src/proactive/delivery.js";
+import { ownerTextChannelFor } from "../src/ownerTextChannel.js";
 import { isWithinProactiveWindow, parseMinutesSinceMidnight } from "../src/proactive/workingHours.js";
 import {
   canSendNudge,
   factoryProactiveState,
   rolloverProactiveState,
 } from "../src/proactive/state.js";
-import { applySentNudge } from "../src/proactive/tick.js";
+import { applySentNudge, runProactiveTick } from "../src/proactive/tick.js";
 import { extractHardDates, isDateStaleForNudge } from "../src/proactive/stale.js";
 import { rankCandidate, isProjectActiveForNudge } from "../src/proactive/prioritize.js";
 import { extractSchedulingTaskIdsFromText } from "../src/proactive/schedulingHandoff.js";
@@ -30,14 +39,9 @@ import {
 } from "../src/proactive/ownerReplyRouting.js";
 import { resolveSmsHermesTimeoutMs, SMS_HERMES_TIMEOUT_MS_DEFAULT } from "../src/twilioSmsConfig.js";
 import { normalizeKanbanCreatedAtMs } from "../src/proactive/crossBoardKanban.js";
+import { isOwnerQuestion, toProactiveCandidate } from "../src/proactive/sweep.js";
 import { sortHygieneCandidates } from "../src/proactive/hygienePrepare.js";
 import { pickTopStaleReviewCandidate, recordHygieneRun } from "../src/proactive/hygieneRecord.js";
-import {
-  enqueueClarifyCandidate,
-  pickTopClarifyCandidate,
-  clarifyToCandidate,
-} from "../src/proactive/clarifyQueue.js";
-import { shouldDeferSweepForHandoff } from "../src/ea/trackSignalEvaluate.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -49,15 +53,6 @@ const defaultPrefs = {
   offHoursAskedAt: null,
   notes: [],
 };
-
-// block_reason filter
-{
-  assert.equal(blockReasonNeedsOwnerInput("awaiting owner approval"), true);
-  assert.equal(blockReasonNeedsOwnerInput("awaiting owner or external party"), true);
-  assert.equal(blockReasonNeedsOwnerInput("owner review: scheduling judgment"), true);
-  assert.equal(blockReasonNeedsOwnerInput("awaiting reply: counterparty"), false);
-  assert.equal(blockReasonNeedsOwnerInput("connectors-mcp-down: x"), false);
-}
 
 // task ref parse
 {
@@ -79,8 +74,10 @@ const defaultPrefs = {
   const weekdayMid = isWithinProactiveWindow(
     { timezone: "America/Los_Angeles", workingHoursStart: "09:00", workingHoursEnd: "17:00" },
     prefs,
+    // Tuesday 2026-10-06 12:00 in Los Angeles. A fixed time keeps the test independent of the clock.
+    Temporal.Instant.from("2026-10-06T19:00:00Z"),
   );
-  assert.equal(weekdayMid.ok, true, "weekday midday should be ok when evaluated at current time if in window");
+  assert.equal(weekdayMid.ok, true, "weekday midday should be ok");
 }
 
 // daily cap
@@ -143,7 +140,8 @@ const defaultPrefs = {
     {
       taskId: "t_soon",
       board: "project-foo",
-      title: "Deadline 2026-09-10",
+      // rankCandidate uses the real clock, so the deadline is 3 days after today.
+      title: `Deadline ${new Date(Date.now() + 3 * 86_400_000).toISOString().slice(0, 10)}`,
       blockReason: "awaiting owner",
       projectSlug: "foo",
     },
@@ -223,7 +221,7 @@ const defaultPrefs = {
 
 // cadence hint appended to nudges
 {
-  const withRef = ensureCadenceHintLine("Hey Dan — quick one.\nRef: pj/t_abc", "nudge");
+  const withRef = ensureCadenceHintLine("Hey Sam — quick one.\nRef: pj/t_abc", "nudge");
   assert.ok(withRef.includes(PROACTIVE_CADENCE_HINT));
   assert.ok(withRef.indexOf(PROACTIVE_CADENCE_HINT) < withRef.indexOf("Ref:"));
 }
@@ -293,65 +291,103 @@ const defaultPrefs = {
   if (prev !== undefined) process.env.JOSHU_SMS_HERMES_TIMEOUT_MS = prev;
 }
 
-// clarify queue priority over generic sweep candidates
+// Requirement "No clarify questions" (change proactive-clarify-hardening, spec owner-nudge):
+// a proactive state file from an earlier version has a clarify queue entry.
 {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "proactive-clarify-"));
-  enqueueClarifyCandidate(root, {
-    taskId: "t_clarify",
-    board: "project-st-mary",
-    title: "Owner decision: Grade 5 RE",
-    blockReason: "awaiting owner or external party",
-    conflict: "New mail filed but card still open — close it?",
-    handoffAt: "2026-08-27T17:51:43.042Z",
-  });
-  const state = factoryProactiveState("2026-09-14");
-  state.clarifyQueue = [
-    {
-      taskId: "t_clarify",
-      board: "project-st-mary",
-      title: "Owner decision: Grade 5 RE",
-      blockReason: "awaiting owner or external party",
-      conflict: "New mail filed but card still open — close it?",
-      handoffAt: "2026-08-27T17:51:43.042Z",
-      queuedAt: new Date().toISOString(),
-    },
-  ];
-  const clarify = pickTopClarifyCandidate(state);
-  assert.equal(clarify?.taskId, "t_clarify");
-  const candidate = clarifyToCandidate(clarify);
-  assert.equal(candidate.body?.includes("still open"), true);
-  state.nudgedTaskIds = ["t_clarify"];
-  assert.equal(pickTopClarifyCandidate(state), null);
-  fs.rmSync(root, { recursive: true, force: true });
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "proactive-no-clarify-"));
+  const user = "owner@example.com";
+  const userDir = path.join(root, ".local", "arozos-data", "files", "users", user);
+  fs.mkdirSync(path.join(userDir, "Desktop", "joshu's files"), { recursive: true });
+  fs.mkdirSync(path.join(userDir, ".joshu", "nylas"), { recursive: true });
+  // Working hours cover the whole day, so the test does not depend on the clock.
+  fs.writeFileSync(
+    path.join(userDir, ".joshu", "nylas", "profile.json"),
+    JSON.stringify({ timezone: "America/Los_Angeles", workingHoursStart: "00:00", workingHoursEnd: "23:59" }),
+  );
+  const stateFile = path.join(root, ".joshu", "proactive", "state.json");
+  fs.mkdirSync(path.dirname(stateFile), { recursive: true });
+  const oldState = {
+    ...factoryProactiveState("2026-10-05"),
+    preferences: { allowMorePerDay: false, allowEvenings: true, allowWeekends: true, offHoursAskedAt: null, notes: [] },
+    clarifyQueue: [
+      {
+        taskId: "t_x",
+        board: "project-st-mary",
+        title: "Owner decision: Grade 5 RE",
+        blockReason: "awaiting owner or external party",
+        conflict: "New mail filed but card still open — close it?",
+        handoffAt: "2026-08-27T17:51:43.042Z",
+        queuedAt: "2026-08-27T17:51:44.000Z",
+      },
+    ],
+  };
+  fs.writeFileSync(stateFile, JSON.stringify(oldState));
+  const env = { AROZ_DATA: process.env.AROZ_DATA, HERMES_HOME: process.env.HERMES_HOME, JOSHU_AROZ_USER: process.env.JOSHU_AROZ_USER };
+  delete process.env.AROZ_DATA;
+  delete process.env.JOSHU_AROZ_USER;
+  process.env.HERMES_HOME = path.join(root, "hermes-empty");
+  try {
+    const result = await runProactiveTick({ projectRoot: root });
+    assert.equal(result.action, "skipped", JSON.stringify(result));
+    assert.equal(result.reason, "no_candidates", JSON.stringify(result));
+    const written = JSON.parse(fs.readFileSync(stateFile, "utf8"));
+    assert.equal("clarifyQueue" in written, false);
+  } finally {
+    for (const [k, v] of Object.entries(env)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 }
 
-// sweep defer for resolve-tier handoff (Finn-shaped body)
+// Requirement "Block kind decides an owner question" (change proactive-clarify-hardening, spec owner-nudge).
 {
-  const finnBody = `
-Owner decision: Grade 5 RE
-
-mail_handoff:
-  message_id: m1
-  source_path: connectors/mail/gmail/x/threads/m1.md
-  at: 2026-08-27T17:51:43.042Z
-  summary: "If you are receiving this email, I have you down to teach Grade 5 RE."
-`;
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "proactive-sweep-defer-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "proactive-owner-question-"));
   const filesRoot = path.join(root, "files");
-  fs.mkdirSync(path.join(filesRoot, "connectors/mail/gmail/x/threads"), { recursive: true });
-  fs.writeFileSync(
-    path.join(filesRoot, "connectors/mail/gmail/x/threads/m1.md"),
-    "I have you down to teach or co-teach Grade 5 RE.",
-  );
+  fs.mkdirSync(filesRoot, { recursive: true });
+  const contactBody = `kind: mail_track
+project_slug: acme-partnerships
+mail_handoff:
+  message_id: eb6a9b0e
+  source_path: connectors/mail/nylas/threads/0e70.md
+  summary: "Confirms he wants the referral link Ava followed up about."`;
+  const contactTrack = {
+    task_id: "t_0c0ffee1",
+    title: "Riley Contact — billing card + referral interest",
+    status: "blocked",
+    body: contactBody,
+    block_reason: "awaiting owner — send Riley Contact the referral link and code",
+    block_kind: "needs_input",
+    created_at_ms: Date.now() - 3_600_000,
+  };
+
+  // Scenario "Block kind is needs_input", and requirement "Proactive sweep ignores the content of emails":
+  // the handoff summary contains "Confirms", and the mail mirror contains "confirmed".
+  fs.mkdirSync(path.join(filesRoot, "connectors/mail/nylas/threads"), { recursive: true });
+  fs.writeFileSync(path.join(filesRoot, "connectors/mail/nylas/threads/0e70.md"), "You are confirmed.\n");
+  const selected = await toProactiveCandidate(contactTrack, "project-acme-partnerships", filesRoot, root);
+  assert.equal(selected?.taskId, "t_0c0ffee1");
+
+  // Scenario "Generic block reason without a block kind".
+  const generic = { ...contactTrack, task_id: "t_generic", block_reason: "awaiting owner or external party", block_kind: null };
+  assert.equal(isOwnerQuestion(generic), false);
+  assert.equal(await toProactiveCandidate(generic, "project-other", filesRoot, root), null);
+
+  // Requirement "Realtime-goal broker owns its questions" — scenario "Owner question on board realtime-goals".
+  assert.equal(await toProactiveCandidate(contactTrack, "realtime-goals", filesRoot, root), null);
+
+  // Scenario "Block reason text does not match an owner pattern".
   assert.equal(
-    shouldDeferSweepForHandoff({
-      filesRoot,
-      title: "Owner decision: Grade 5 RE",
-      body: finnBody,
-      blockReason: "awaiting owner or external party",
-    }),
+    isOwnerQuestion({ status: "blocked", block_kind: "needs_input", block_reason: "Chase drafted but cannot be sent from this worker" }),
     true,
   );
+
+  // Scenario "Other block kinds".
+  for (const kind of ["transient", "capability", "dependency"]) {
+    assert.equal(isOwnerQuestion({ status: "blocked", block_kind: kind }), false, kind);
+  }
+  assert.equal(isOwnerQuestion({ status: "ready", block_kind: "needs_input" }), false);
   fs.rmSync(root, { recursive: true, force: true });
 }
 
@@ -368,6 +404,93 @@ mail_handoff:
     "ok send it",
   );
   assert.equal(sched.content.includes("Project reconcile"), false);
+}
+
+// Change proactive-nudge-channel, spec owner-nudge: no compose without a route,
+// the compose names the channel, and each compose gets its own Hermes session.
+{
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "proactive-channel-"));
+  const user = "owner@example.com";
+  const userDir = path.join(root, ".local", "arozos-data", "files", "users", user);
+  fs.mkdirSync(path.join(userDir, "Desktop", "joshu's files"), { recursive: true });
+  const nylasDir = path.join(userDir, ".joshu", "nylas");
+  fs.mkdirSync(nylasDir, { recursive: true });
+  fs.writeFileSync(path.join(nylasDir, "profile.json"), JSON.stringify({ timezone: "Asia/Taipei" }));
+  const envKeys = [
+    "AROZ_DATA",
+    "JOSHU_AROZ_USER",
+    "JOSHU_OWNER_EMAIL",
+    "TWILIO_AUTH_TOKEN",
+    "TWILIO_ACCOUNT_SID",
+    "TWILIO_PHONE_NUMBER",
+    "TWILIO_OWNER_CALLER",
+  ];
+  const env = Object.fromEntries(envKeys.map((k) => [k, process.env[k]]));
+  for (const k of envKeys) delete process.env[k];
+  let hermesCalls = 0;
+  setProactiveHermesRunner({
+    ensureGatewayReady: async () => {},
+    streamHermesChat: async () => {
+      hermesCalls += 1;
+      return { finalText: "unused" };
+    },
+  });
+  const candidate = {
+    taskId: "t_dade00f1",
+    board: "ea-onboarding",
+    title: "Connect your work calendar",
+    status: "blocked",
+    blockReason: "awaiting owner",
+    rankScore: 1,
+    rankSignals: {},
+  };
+  try {
+    // Scenario "Box without an owner mobile and without an email route".
+    assert.equal(ownerTextChannelFor(root), null);
+    const none = await deliverProactiveNudge({ candidate, projectRoot: root });
+    assert.deepEqual(none, { delivered: false, error: "no_delivery_channel" });
+    assert.equal(hermesCalls, 0);
+
+    // With a primary work email and a companion mailbox, the channel is email.
+    fs.writeFileSync(
+      path.join(nylasDir, "profile.json"),
+      JSON.stringify({ timezone: "Asia/Taipei", primaryWorkEmail: user }),
+    );
+    fs.writeFileSync(
+      path.join(nylasDir, "agent.json"),
+      JSON.stringify({ grantId: "g_1", email: "companion@example.com" }),
+    );
+    assert.equal(ownerTextChannelFor(root), "email");
+
+    // Scenario "Nudge by email".
+    const emailPrompt = buildComposeUserPrompt({ kind: "nudge", projectRoot: root, candidate, channel: "email" });
+    assert.match(emailPrompt, /^Compose an outbound email to the box owner/);
+    assert.match(emailPrompt, /Output ONLY the email body text\.$/);
+    assert.doesNotMatch(emailPrompt, /SMS body/);
+    assert.equal(
+      ensureCadenceHintLine("Hi.\nRef: pj/t_dade00f1", "nudge", "email"),
+      "Hi.\nRef: pj/t_dade00f1",
+    );
+
+    // Scenario "Nudge by SMS" keeps the SMS wording and the cadence hint.
+    const smsPrompt = buildComposeUserPrompt({ kind: "nudge", projectRoot: root, candidate, channel: "sms" });
+    assert.match(smsPrompt, /^Compose an outbound SMS to the box owner/);
+    assert.match(smsPrompt, /MORE\/LESS\/USEFUL/);
+    assert.ok(ensureCadenceHintLine("Hi.", "nudge", "sms").includes(PROACTIVE_CADENCE_HINT));
+
+    // Scenario "Two composes on the same day".
+    const first = proactiveComposeSessionKey({ kind: "nudge", candidate }, new Date("2026-10-14T01:00:00Z"));
+    const second = proactiveComposeSessionKey({ kind: "nudge", candidate }, new Date("2026-10-14T02:00:00Z"));
+    assert.notEqual(first, second);
+    assert.ok(first.includes("t_dade00f1"));
+  } finally {
+    setProactiveHermesRunner(null);
+    for (const [k, v] of Object.entries(env)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 }
 
 console.log("proactive: all tests passed");

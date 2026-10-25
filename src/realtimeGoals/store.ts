@@ -75,26 +75,40 @@ export class RealtimeGoalStore {
     this.file = path.join(this.dir, "state.json");
   }
 
-  private async readUnlocked(): Promise<RealtimeGoalState> {
+  /** The parsed state and the file text it came from (undefined when the file is missing). */
+  private async readUnlocked(): Promise<{ state: RealtimeGoalState; text?: string }> {
+    let text: string;
     try {
-      return normalizeState(JSON.parse(await readFile(this.file, "utf8")));
+      text = await readFile(this.file, "utf8");
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
-      if (code === "ENOENT") return { ...EMPTY_STATE, goals: [] };
+      if (code === "ENOENT") return { state: { ...EMPTY_STATE, goals: [] } };
+      throw new Error(`realtime goal state read failed: ${(error as Error).message}`);
+    }
+    try {
+      return { state: normalizeState(JSON.parse(text)), text };
+    } catch (error) {
       throw new Error(`realtime goal state read failed: ${(error as Error).message}`);
     }
   }
 
-  private async writeUnlocked(state: RealtimeGoalState): Promise<void> {
+  /**
+   * Write the state unless it serializes to the text already on disk. The
+   * broker ticks every few seconds, and each rewrite is a rename under the
+   * owner's Desktop that file watchers see (File Brain reindexed nonstop).
+   */
+  private async writeUnlocked(state: RealtimeGoalState, previousText?: string): Promise<void> {
     const inboxCutoff = Date.now() - 7 * 24 * 60 * 60_000;
     state.inbox = (state.inbox ?? []).filter(
       (item) =>
         (!item.processedAt && !item.recoveryNotifiedAt) ||
         Date.parse(item.receivedAt) >= inboxCutoff,
     );
+    const text = `${JSON.stringify(state, null, 2)}\n`;
+    if (text === previousText) return;
     await mkdir(this.dir, { recursive: true });
     const temp = `${this.file}.${process.pid}.${Date.now()}.tmp`;
-    await writeFile(temp, `${JSON.stringify(state, null, 2)}\n`, { mode: 0o600 });
+    await writeFile(temp, text, { mode: 0o600 });
     await rename(temp, this.file);
   }
 
@@ -137,9 +151,9 @@ export class RealtimeGoalStore {
       .catch(() => undefined)
       .then(async () => {
         try {
-          const state = await this.readUnlocked();
+          const { state, text } = await this.readUnlocked();
           const next = await mutate(state);
-          if (next.changed) await this.writeUnlocked(state);
+          if (next.changed) await this.writeUnlocked(state, text);
           resolveResult(next.result);
         } catch (error) {
           rejectResult(error);

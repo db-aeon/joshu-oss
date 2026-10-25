@@ -8,6 +8,7 @@ export const COMPOSIO_WRITE_HEURISTICS = [
   /_SEND_/i,
   /_CREATE_/i,
   /_UPDATE_/i,
+  /_PATCH_/i,
   /_POST_/i,
   /_REPLY_/i,
 ];
@@ -56,6 +57,15 @@ export function isComposioWriteTool(toolName: string): boolean {
   if (!name) return false;
   if (COMPOSIO_READ_EXCLUSIONS.some((re) => re.test(name))) return false;
   return COMPOSIO_WRITE_HEURISTICS.some((re) => re.test(name));
+}
+
+/**
+ * True when the tool name reads as a read: a Composio meta tool, or a _SEARCH_, _LIST_, _FETCH_,
+ * _FIND_, _READ_, or _GET_ tool. The Composio MCP guard uses this only to choose the session.
+ */
+export function isComposioReadTool(toolName: string): boolean {
+  const name = toolName.trim();
+  return Boolean(name) && COMPOSIO_READ_EXCLUSIONS.some((re) => re.test(name));
 }
 
 export function isComposioToolGuarded(toolName: string, guardedActions: string[]): boolean {
@@ -111,7 +121,7 @@ export function resolveActionExposure(
   if (id.startsWith("composio:")) {
     const tool = id.slice("composio:".length);
     if (!isComposioWriteTool(tool)) return "owner_only";
-    if (/_UPDATE_/i.test(tool) && !summary.to && !summary.attendees && !summary.channel) {
+    if (/_(UPDATE|PATCH)_/i.test(tool) && !summary.to && !summary.attendees && !summary.channel) {
       return "ambiguous";
     }
     return "external";

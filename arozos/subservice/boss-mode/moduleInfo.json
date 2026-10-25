@@ -1,0 +1,15 @@
+{
+  "Name": "Multiplayer",
+  "Desc": "Teams of Joshus: the group chat of each team and the board of its work",
+  "Group": "Joshu Apps",
+  "IconPath": "img/joshu/boss-mode.png",
+  "Version": "0.1.0",
+  "StartDir": "boss-mode/index.html",
+  "SupportFW": true,
+  "LaunchFWDir": "boss-mode/index.html",
+  "SupportEmb": false,
+  "LaunchEmb": "",
+  "InitFWSize": [1240, 820],
+  "InitEmbSize": [960, 720],
+  "SupportedExt": []
+}

@@ -8,6 +8,7 @@
  */
 import { HERMES_API_KEY } from "./config.js";
 import type { GateMode } from "./gate/unlockToken.js";
+import { ownerMobileOfferContext, type OwnerMobileOffer } from "./ownerMobileOffer.js";
 import { voiceWarn } from "./voiceLog.js";
 
 const JOSHU_API_BASE = (process.env.JOSHU_API_BASE_URL ?? "http://127.0.0.1:8788/joshu").replace(/\/+$/, "");
@@ -56,7 +57,11 @@ export async function fetchOpener(
 }
 
 /** Standing context for the model, added to its system instruction at setup. */
-export function buildOpenerContext(mode: GateMode, payload: OpenerPayload | undefined): string {
+export function buildOpenerContext(
+  mode: GateMode,
+  payload: OpenerPayload | undefined,
+  ownerMobileOffer?: OwnerMobileOffer,
+): string {
   const parts = [
     mode === "callback"
       ? "[This call] Joshu placed this OUTBOUND call to the owner to report on background work they asked for earlier — they did not call you. The owner already passed the passphrase check before you joined. Joshu hands you the update as the first turn: open by saying why you called, then relay it."
@@ -73,6 +78,7 @@ export function buildOpenerContext(mode: GateMode, payload: OpenerPayload | unde
       `[Background work context — for your awareness; read it only if the owner asks]\n${payload.context}`,
     );
   }
+  if (ownerMobileOffer) parts.push(ownerMobileOfferContext(ownerMobileOffer));
   return parts.join("\n\n");
 }
 

@@ -3,6 +3,7 @@
  */
 import { getOrCreateComposioSession, resolveComposioUserId } from "../../composioApi.js";
 import { composioToolsExecute } from "../../composio/executeWithModifiers.js";
+import { COMPOSIO_GOOGLECALENDAR_TOOLKIT_VERSION } from "./googleCalendarConfig.js";
 
 export type CalendarExecuteContext = {
   connectedAccountId: string;
@@ -55,18 +56,13 @@ export type GoogleCalendarFreeSlotsResult = {
   >;
 };
 
-function toolkitVersion(): string | undefined {
-  return process.env.JOSHU_COMPOSIO_GOOGLECALENDAR_VERSION?.trim() || undefined;
-}
-
-async function executeCalendar(
+export async function executeCalendar(
   projectRoot: string,
   toolSlug: string,
   args: Record<string, unknown>,
   ctx: CalendarExecuteContext,
 ): Promise<{ successful: boolean; data?: unknown; error?: string }> {
   const userId = resolveComposioUserId(projectRoot);
-  const version = toolkitVersion();
 
   try {
     const result = await composioToolsExecute(
@@ -75,7 +71,7 @@ async function executeCalendar(
         userId,
         connectedAccountId: ctx.connectedAccountId,
         arguments: args,
-        ...(version ? { version } : { dangerouslySkipVersionCheck: true }),
+        version: COMPOSIO_GOOGLECALENDAR_TOOLKIT_VERSION,
       },
       projectRoot,
     );
@@ -267,12 +263,30 @@ export async function fetchGoogleCalendarList(
   return out;
 }
 
+/**
+ * Arguments for GOOGLECALENDAR_EVENTS_LIST_ALL_CALENDARS. Since version 20261009_00 (the pin in
+ * googleCalendarConfig.ts) the input schema rejects unknown keys ("Extra inputs are not
+ * permitted"). The tool has no total limit:
+ * only `max_results_per_calendar`, and the Google API default (250 per calendar) applies
+ * when it is not set. We do not set it, because Google returns events in no fixed order,
+ * and a per-calendar cap can drop events in the window.
+ */
+export function buildEventsListAllCalendarsArgs(
+  timeMin: string,
+  timeMax: string,
+): Record<string, unknown> {
+  return {
+    time_min: timeMin,
+    time_max: timeMax,
+    response_detail: "full",
+  };
+}
+
 /** Events across all calendars for one connected Google Calendar OAuth account. */
 export async function fetchGoogleCalendarEventsForAccount(
   projectRoot: string,
   ctx: CalendarExecuteContext,
   opts: {
-    maxResults?: number;
     daysBack?: number;
     daysForward?: number;
     /** ISO8601 — overrides daysBack when set with timeMax. */
@@ -295,12 +309,7 @@ export async function fetchGoogleCalendarEventsForAccount(
   const result = await executeCalendar(
     projectRoot,
     "GOOGLECALENDAR_EVENTS_LIST_ALL_CALENDARS",
-    {
-      time_min: timeMin,
-      time_max: timeMax,
-      max_results: opts.maxResults ?? 120,
-      response_detail: "full",
-    },
+    buildEventsListAllCalendarsArgs(timeMin, timeMax),
     ctx,
   );
 

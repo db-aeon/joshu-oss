@@ -31,8 +31,9 @@ def main() -> None:
 
     sys.path.insert(0, root)
 
-    # Fleet boxes set HERMES_WRITE_SAFE_ROOT (ArozOS Desktop). TTS must write inside it.
-    safe_root = os.environ.get("HERMES_WRITE_SAFE_ROOT", "").strip()
+    # Fleet boxes set HERMES_WRITE_SAFE_ROOT (ArozOS Desktop first, then the scratch
+    # folder, joined with os.pathsep). TTS must write inside the Desktop.
+    safe_root = os.environ.get("HERMES_WRITE_SAFE_ROOT", "").strip().split(os.pathsep)[0].strip()
     if safe_root and os.path.isdir(safe_root):
         tts_dir = os.path.join(safe_root, ".joshu-tts")
     else:

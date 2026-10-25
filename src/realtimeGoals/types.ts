@@ -204,6 +204,8 @@ export type OwnerOutboxItemState = "ready" | "offered" | "heard" | "superseded" 
 export type OwnerOutboxAttemptOutcome =
   | "delivered"
   | "pending"
+  /** The carrier rejected the SMS (Twilio `undelivered` / `failed`); detail has the error code. */
+  | "undelivered"
   | "no_answer"
   | "busy"
   | "voicemail_left"
@@ -214,6 +216,8 @@ export type OwnerOutboxAttemptOutcome =
 
 export type OwnerHeardEvidence =
   | "channel_delivered"
+  /** SMS stayed `sent` (carrier took it, no delivery receipt) for the receipt timeout. */
+  | "sms_sent"
   | "transcript_coverage"
   | "owner_reply"
   | "playback_complete"
@@ -256,6 +260,19 @@ export type OwnerOutboxItem = {
   lease?: { route: OwnerRoute; until: string; batchId?: string; providerId?: string };
   offered?: { at: string; via: OwnerRoute; callSid?: string };
   heard?: { at: string; via: OwnerRoute; evidence: OwnerHeardEvidence; callSid?: string };
+  /** SMS accepted by Twilio, waiting for the delivery receipt (no other send meanwhile). */
+  smsPending?: OwnerOutboxSmsPending;
+};
+
+export type OwnerOutboxSmsPending = {
+  /** Twilio message SID of each SMS part. */
+  sids: string[];
+  sentAt: string;
+  /** Next Twilio status read. */
+  checkAt: string;
+  /** Where and what was texted (for the thread record once the SMS is heard). */
+  address: RealtimeGoalOrigin;
+  text: string;
 };
 
 /** Channel origin the owner last used, kept so a reply can go back to the same place. */

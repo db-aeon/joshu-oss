@@ -198,3 +198,41 @@ header h1 {
   resize: vertical;
   min-height: 12rem;
 }
+
+.run-steps {
+  margin: 0 0 12px;
+  padding-left: 1.4rem;
+  font-size: 0.9rem;
+  color: var(--text-secondary, #6b6b6b);
+}
+
+.run-steps li {
+  margin: 4px 0;
+}
+
+.run-steps li.done {
+  text-decoration: line-through;
+}
+
+.run-steps li.current {
+  color: inherit;
+  font-weight: 600;
+}
+
+.run-hint {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle, #e0ddd8);
+  background: var(--surface-canvas, #f4f2ef);
+}
+
+.pairing-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.pairing-row input {
+  max-width: 12rem;
+}

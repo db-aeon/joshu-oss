@@ -97,6 +97,15 @@ Valid examples for the **Schedule** field:
 
 Agent jobs require a **prompt** and/or **skills**. Script-only jobs set **no-agent** and require a **script** path under `~/.hermes/scripts/`.
 
+## Timezone
+
+Hermes reads the hour and minute of a cron expression in the owner's local time. The owner timezone is in `timezone` of `~/.hermes/config.yaml` and in `HERMES_TIMEZONE` of `~/.hermes/.env`. Welcome onboarding writes both values ([`src/hermesOwnerTimezone.ts`](../src/hermesOwnerTimezone.ts)). A box without an owner timezone uses the server clock, which is UTC on a VPS.
+
+The Hermes gateway reads the timezone one time, when the gateway process starts. Hermes also stores `next_run_at` of each job as a time with a UTC offset. Thus, when the owner timezone changes, Joshu does two things:
+
+1. The bridge action `realign_timezone` calculates `next_run_at` again for each enabled recurring cron job that Hermes stored with the offset of a different timezone. Without this step, a job stored at 09:00 UTC for an owner at UTC+8 runs one more time at 17:00 local time.
+2. Joshu restarts the gateway, so that the scheduler uses the new timezone. When a cron job or a Hermes turn is active, Joshu waits and tries again every 30 seconds.
+
 ## Gateway requirement
 
 Cron jobs fire only when the **Hermes gateway** is running. The Schedules UI shows gateway status at the top.
@@ -119,6 +128,9 @@ Hermes retains full control — the UI is additive:
 | **CLI** | `hermes cron create "0 8 * * 1-5" "Morning triage" --skill ea-playbook` |
 | **Chat** | `/cron add 0 8 * * 1-5 "Morning triage" --skill ea-playbook` |
 | **Agent tool** | `cronjob(action="create", …)` during a session |
+| **Owner reminder** | MCP `owner_reminder_create` — Joshu creates a job `Owner reminder: <title>` with `no_agent: true` and script `owner-reminder-<id>.sh` ([executive-assistant.md — Owner reminders](executive-assistant.md#owner-reminders-2026-10)) |
+
+On a box, the Hermes gateway pushes cron output only to Telegram and Slack. The SMS platform of Hermes is off, and an api_server session (SMS, jChat, proactive reply) cannot receive cron output. The Hermes plugin `joshu-realtime-goals` therefore blocks an agent `cronjob` call whose `deliver` cannot reach anyone (for example `deliver` omitted in an SMS turn). A job that sends its own email uses `deliver: local`. A reminder to the owner uses `owner_reminder_create`. Do not delete an `Owner reminder: …` job in this app: stop the owner reminder with `owner_reminder_stop`, so Joshu also deletes its script and record.
 
 Changes from any channel appear in `~/.hermes/cron/jobs.json` immediately. Refresh the Schedules app to see CLI/chat edits.
 
@@ -148,7 +160,7 @@ See [`executive-assistant.md`](executive-assistant.md) and [`time-block-planning
 
 Joshu syncs **`HERMES_CRON_MAX_PARALLEL=2`** into `~/.hermes/.env` and **`cron.max_parallel_jobs: 2`** in `config.yaml` on gateway start ([`src/hermesApi.ts`](../src/hermesApi.ts)). Override with `JOSHU_HERMES_CRON_MAX_PARALLEL` in Joshu `.env` / VPS `instance.env` (when writable). This caps **cron-vs-cron** concurrency only — jChat and Kanban workers still share the same gateway process.
 
-Unset / unbounded parallel crons plus a wedged gateway contributed to **600s inactivity timeouts** on joshua.box (2026-08-19); see [Duplicate EA cron jobs](#duplicate-ea-cron-jobs) and [`troubleshooting-and-lessons.md`](vps-sandbox/troubleshooting-and-lessons.md#hermes-cron-inactivity-timeout-600s-and-duplicate-ea-jobs).
+Unset / unbounded parallel crons plus a wedged gateway contributed to **600s inactivity timeouts** on joshua.box (2026-08-19); see [Duplicate EA cron jobs](#duplicate-ea-cron-jobs) and `troubleshooting-and-lessons.md`.
 
 ### Duplicate EA cron jobs
 
@@ -196,8 +208,9 @@ Included in `npm run build:deploy` and Docker image build (`deploy/Dockerfile` r
 | Invalid duration / cron error | Bad schedule string — use `every Nm`, `every Nh`, or `0 9 * * *` |
 | Job missing after CLI create | Refresh UI; confirm `~/.hermes/cron/jobs.json` |
 | Bridge import error | `HERMES_BIN` / venv must resolve; bridge needs `HERMES_AGENT_ROOT` for `cron/jobs.py` |
-| `TimeoutError: idle for 601s (limit 600s)` | Hermes **inactivity** watchdog — agent thread stuck (not “job needs 10 min”). Restart gateway; set `HERMES_CRON_MAX_PARALLEL=2`; dedupe duplicate EA jobs — [troubleshooting](vps-sandbox/troubleshooting-and-lessons.md#hermes-cron-inactivity-timeout-600s-and-duplicate-ea-jobs) |
+| `TimeoutError: idle for 601s (limit 600s)` | Hermes **inactivity** watchdog — agent thread stuck (not “job needs 10 min”). Restart gateway; set `HERMES_CRON_MAX_PARALLEL=2`; dedupe duplicate EA jobs — troubleshooting |
 | Duplicate `EA evening` / `EA weekly` | Double Welcome **Finish setup** — [Duplicate EA cron jobs](#duplicate-ea-cron-jobs) |
+| EA jobs run at UTC wall clock, not owner local time | The gateway started before the owner timezone was set and did not restart. Joshu up to release 0.1.49 did not restart it. See [Timezone](#timezone); repair a box with `bash scripts/repair-box-ea-cron-timezone-remote.sh <slug>` |
 
 Quick API check (Joshu on loopback):
 

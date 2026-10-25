@@ -115,6 +115,7 @@ copy_icon_small "system_icon/shared.png" "status/network-transmit-receive.png"
 
 # --- img/joshu module + wallpaper folder glyphs (800×800) ---
 copy_joshu_module_icon "browser.png" "apps/internet-web-browser.png"
+copy_joshu_module_icon "boss-mode.png" "apps/system-users.png"
 copy_joshu_module_icon "chat.png" "apps/internet-group-chat.png"
 copy_joshu_module_icon "whiteboard.png" "mimetypes/x-office-drawing.png"
 copy_joshu_module_icon "notes.png" "apps/accessories-text-editor.png"

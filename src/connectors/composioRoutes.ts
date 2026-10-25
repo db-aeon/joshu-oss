@@ -61,7 +61,7 @@ function mountComposioHandlers(
     });
   });
 
-  /** Localhost-only: Composio MCP guard proxy reads upstream URL + headers. */
+  /** Localhost-only: Composio MCP guard proxy reads upstream URL + headers (main and read session). */
   router.get(`${basePath}/mcp-upstream`, async (req: Request, res: Response) => {
     const host = readString(req.socket.remoteAddress);
     if (host !== "127.0.0.1" && host !== "::1" && host !== "::ffff:127.0.0.1") {
@@ -69,12 +69,12 @@ function mountComposioHandlers(
       return;
     }
     try {
-      const mcp = await readComposioUpstreamMcp(projectRoot);
-      if (!mcp?.url) {
+      const upstream = await readComposioUpstreamMcp(projectRoot);
+      if (!upstream) {
         res.status(404).json({ error: "No Composio MCP session" });
         return;
       }
-      res.json({ ok: true, mcp });
+      res.json({ ok: true, mcp: upstream.mcp, readMcp: upstream.readMcp });
     } catch (error) {
       res.status(502).json({ error: error instanceof Error ? error.message : String(error) });
     }

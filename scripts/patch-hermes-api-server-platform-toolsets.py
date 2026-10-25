@@ -134,7 +134,7 @@ def main() -> int:
             print("[api-server-platform-toolsets] error: chat completions header patch failed", file=sys.stderr)
             return 1
 
-    # Streaming chat completion _run_agent(...) call (Patrick uses **agent_overrides).
+    # Streaming chat completion _run_agent(...) call (fleet boxes use **agent_overrides).
     stream_old = "                **agent_overrides,\n                route=route,\n            ))"
     stream_new = (
         "                **agent_overrides,\n"

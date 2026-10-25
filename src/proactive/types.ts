@@ -36,18 +36,6 @@ export type HygieneAmbiguousItem = {
   queuedAt: string;
 };
 
-/** Card queued after mail handoff when model conflict needs owner disambiguation. */
-export type ClarifyQueueItem = {
-  taskId: string;
-  board: string;
-  title: string;
-  blockReason: string | null;
-  /** Human-readable conflict description for compose. */
-  conflict: string;
-  handoffAt: string | null;
-  queuedAt: string;
-};
-
 export type HygieneCandidateHints = {
   createdAtMs: number | null;
   isDateStale: boolean;
@@ -87,12 +75,16 @@ export type ProactiveState = {
   lastHygieneSummary?: ProactiveHygieneSummary | null;
   /** Ambiguous hygiene cards — hourly tick may send stale_review nudges. */
   hygieneAmbiguousQueue?: HygieneAmbiguousItem[];
-  /** Model-conflict cards — hourly tick sends clarify nudges (priority over generic sweep). */
-  clarifyQueue?: ClarifyQueueItem[];
   /** Owner-local date YYYY-MM-DD when last ea-onboarding nudge was sent. */
   lastOnboardingNudgeDate?: string | null;
   /** Last owner reply routed to `lastNudge` — enables follow-up SMS within the follow-up window. */
   lastOwnerReplyAt?: string | null;
+  /**
+   * Board of each Kanban task that a recent owner text named in its `Ref: pj/<task id>` line
+   * (nudges and Multiplayer team texts), newest last, at most REF_BOARDS_MAX. A reply that quotes
+   * an older Ref line still finds the board of its task.
+   */
+  refBoards?: Record<string, string>;
 };
 
 export type ProactiveCandidate = {

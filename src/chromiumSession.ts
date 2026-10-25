@@ -7,18 +7,75 @@ import type { Browser, BrowserContext, Frame, Page } from "playwright-core";
 import { chromium } from "playwright-core";
 import type { CatalogButton, CatalogField } from "./browserHandoff/formCatalog.js";
 
-function isOauthPopupUrl(url: string | undefined): boolean {
+/**
+ * URL parts of the identity-provider pages that open as sign-in popups
+ * (Google, Microsoft, GitHub, Apple). A sign-in popup must stay a separate page
+ * from its opener: the identity provider sends the result to `window.opener`.
+ */
+export const OAUTH_POPUP_URL_MARKERS: readonly string[] = [
+  "accounts.google.com",
+  "accounts.youtube.com",
+  "login.microsoftonline.com",
+  "login.live.com",
+  "github.com/login",
+  "github.com/session",
+  "appleid.apple.com",
+];
+
+export function isOauthPopupUrl(url: string | undefined): boolean {
   const value = (url ?? "").toLowerCase();
   if (!value) return false;
-  return (
-    value.includes("accounts.google.com") ||
-    value.includes("accounts.youtube.com") ||
-    value.includes("login.microsoftonline.com") ||
-    value.includes("login.live.com") ||
-    value.includes("github.com/login") ||
-    value.includes("github.com/session") ||
-    value.includes("appleid.apple.com")
-  );
+  return OAUTH_POPUP_URL_MARKERS.some((marker) => value.includes(marker));
+}
+
+/** Minimal part of a Playwright dialog that the dialog guard uses. */
+export interface GuardedDialog {
+  type(): string;
+  accept(): Promise<void>;
+  dismiss(): Promise<void>;
+}
+
+/**
+ * Close a page dialog the way Playwright does when no listener is set:
+ * accept a beforeunload prompt, dismiss each other dialog. Never rejects.
+ *
+ * Hermes workers drive the same Chrome over their own CDP connection. When a
+ * worker closes the dialog first, Chrome answers "No dialog is showing".
+ * Without a listener, Playwright closes the dialog itself and does not catch
+ * that error, so the rejection is unhandled and Node exits (seen on a box, 2026-10-20).
+ */
+export async function closeDialogQuietly(dialog: GuardedDialog): Promise<void> {
+  const type = dialog.type();
+  try {
+    if (type === "beforeunload") await dialog.accept();
+    else await dialog.dismiss();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (message.includes("No dialog is showing")) {
+      console.log(`[chromium] ${type} dialog was already closed by another CDP client`);
+      return;
+    }
+    console.warn(`[chromium] could not close ${type} dialog:`, message);
+  }
+}
+
+/** Minimal part of a Playwright browser context that the dialog guard uses. */
+export interface DialogSource {
+  on(event: "dialog", listener: (dialog: GuardedDialog) => void): unknown;
+}
+
+const guardedContexts = new WeakSet<object>();
+
+/**
+ * Listen for dialogs on the context. With a listener, Playwright leaves the
+ * dialog to us and does not run its own close that can crash the server.
+ */
+export function guardDialogs(context: DialogSource): void {
+  if (guardedContexts.has(context)) return;
+  guardedContexts.add(context);
+  context.on("dialog", (dialog) => {
+    void closeDialogQuietly(dialog);
+  });
 }
 
 export interface ChromiumTab {
@@ -53,10 +110,18 @@ function explainInsertFailure(reason?: string): string {
   return reason ? `Paste failed: ${reason}` : "Click a text field in the page first, then paste.";
 }
 
-/** Same-tab shim. Passed to Playwright as a function so it runs in the page. */
-function installHitlShim(): string {
-  const version = 2;
-  const w = window as unknown as { __hitlShimVersion?: number };
+/**
+ * Same-tab shim. Passed to Playwright as a function so it runs in the page.
+ * `oauthMarkers` is OAUTH_POPUP_URL_MARKERS: `window.open` of a sign-in popup
+ * opens a real popup, because the identity provider needs `window.opener`.
+ * Exported for scripts/test-hitl-tab-shim.mjs.
+ */
+export function installHitlShim(oauthMarkers: readonly string[]): string {
+  const version = 3;
+  const w = window as unknown as {
+    __hitlShimVersion?: number;
+    __hitlNativeOpen?: typeof window.open;
+  };
   if (w.__hitlShimVersion === version) return "already";
   w.__hitlShimVersion = version;
   const fix = (root: ParentNode | null) => {
@@ -103,13 +168,21 @@ function installHitlShim(): string {
     },
     true,
   );
-  const origOpen = window.open;
+  // Keep the browser's own window.open. A shim of an older version on the same
+  // page already replaced window.open; that page keeps the older behavior until
+  // it navigates.
+  const nativeOpen = w.__hitlNativeOpen ?? (w.__hitlNativeOpen = window.open);
   window.open = function (url?: string | URL, name?: string, features?: string) {
+    const href = url ? String(url) : "";
+    const lower = href.toLowerCase();
+    if (oauthMarkers.some((marker) => lower.includes(marker))) {
+      return nativeOpen.call(window, url, name, features);
+    }
     try {
-      if (url) location.href = String(url);
+      if (href) location.href = href;
     } catch {
       try {
-        return origOpen.call(window, url, name, features);
+        return nativeOpen.call(window, url, name, features);
       } catch {
         /* ignore */
       }
@@ -485,7 +558,7 @@ export class ChromiumCdpSession {
   constructor(
     private readonly opts: {
       cdpUrl: string;
-      /** Health/rotate server (same host as the old Camofox control port). */
+      /** Health/rotate server of the Chromium supervisor (CAMOFOX_URL, port 9377). */
       controlUrl: string;
       sessionKey: string;
       singleTab: boolean;
@@ -546,6 +619,7 @@ export class ChromiumCdpSession {
           height: this.opts.viewportHeight ?? 768,
         },
       }));
+    guardDialogs(context);
     // esbuild names functions with a __name helper. Page scripts need it or
     // evaluate throws " __name is not defined".
     await context.addInitScript({ content: "globalThis.__name = (fn) => fn;" }).catch(() => undefined);
@@ -624,6 +698,39 @@ export class ChromiumCdpSession {
     if (shouldNavigate && url) await this.goto(page, url);
     await this.installShim(this.idFor(page));
     return this.tabFor(page);
+  }
+
+  /** Run `fn` on the primary page of the shared browser. Opens a page when none is open. */
+  async withPage<T>(fn: (page: Page) => Promise<T>): Promise<T> {
+    let page = await this.primaryPage();
+    if (!page) {
+      await this.ensureTab();
+      page = await this.primaryPage();
+    }
+    if (!page) throw new Error("shared browser has no page");
+    return fn(page);
+  }
+
+  /** Run `fn` on each open page, in tab order. Slack connect reads every tab with it. */
+  async eachPage<T>(fn: (page: Page) => Promise<T>): Promise<T[]> {
+    return Promise.all((await this.pages()).map(fn));
+  }
+
+  /**
+   * Keep the primary page, close each other page, and load `url` in the
+   * primary page. Slack connect calls this when the sign-in is done: a sign-in
+   * can leave several tabs open. On Browser Use Cloud, the live view follows
+   * to the kept page when its page closes (cloudBrowserActivePage.ts).
+   */
+  async useOneTab(url: string): Promise<ChromiumTab> {
+    const keep = await this.primaryPage();
+    if (!keep) return this.ensureTab(url);
+    const open = await this.pages();
+    await Promise.allSettled(open.filter((page) => page !== keep).map((page) => page.close()));
+    await this.fitViewport(this.idFor(keep));
+    await this.goto(keep, url);
+    await this.installShim(this.idFor(keep));
+    return this.tabFor(keep);
   }
 
   async enforceSingleTab(): Promise<ChromiumTab | undefined> {
@@ -775,7 +882,7 @@ export class ChromiumCdpSession {
   async installShim(tabId: string): Promise<void> {
     const page = await this.pageById(tabId);
     if (!page) return;
-    await page.evaluate(installHitlShim).catch(() => undefined);
+    await page.evaluate(installHitlShim, OAUTH_POPUP_URL_MARKERS).catch(() => undefined);
   }
 
   private async closeOtherTabs(keepTabId: string): Promise<void> {

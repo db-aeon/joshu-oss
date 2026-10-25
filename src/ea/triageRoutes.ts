@@ -736,7 +736,7 @@ export function registerEaTriageRoutes(router: Router, opts: { projectRoot: stri
     }
   });
 
-  /** Open mail track tasks on project-<slug> board. */
+  /** Track list of project-<slug> (compact; threadId or taskId for one full body). */
   router.get("/api/ea/mail/tracks", async (req: Request, res: Response) => {
     const filesRoot = filesRootFromProject(opts.projectRoot);
     if (!filesRoot) {
@@ -748,14 +748,23 @@ export function registerEaTriageRoutes(router: Router, opts: { projectRoot: stri
       readString(req.query.project_slug) ||
       readString(req.query.slug) ||
       "other";
+    const threadId =
+      readString(req.query.threadId) || readString(req.query.thread_id) || undefined;
+    const taskId = readString(req.query.taskId) || readString(req.query.task_id) || undefined;
     try {
-      const tasks = await listMailTrackTasks({ filesRoot, projectSlug });
+      const { tasks, done_match } = await listMailTrackTasks({
+        filesRoot,
+        projectSlug,
+        threadId,
+        taskId,
+      });
       res.json({
         ok: true,
         board: projectBoardSlug(projectSlug),
         project_slug: projectFolderSlug(projectSlug),
         count: tasks.length,
         tasks,
+        ...(done_match ? { done_match } : {}),
       });
     } catch (err) {
       res.status(500).json({ error: (err as Error).message });

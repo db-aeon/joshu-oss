@@ -2,6 +2,12 @@
 # Shared helpers for stopping/restarting the Hermes gateway on VPS boxes.
 # gateway.pid is JSON ({"pid": N, ...}) in current Hermes builds — not a bare integer.
 
+# shellcheck source=pid-file.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/pid-file.sh"
+
+# The command line of the Hermes gateway (startGateway in src/hermesApi.ts).
+HERMES_GATEWAY_COMMAND="hermes*gateway run"
+
 read_hermes_gateway_pid() {
   local pid_file="${1:-${HERMES_HOME:-/root/.hermes}/gateway.pid}"
   [[ -f "${pid_file}" ]] || return 0
@@ -51,7 +57,8 @@ restart_hermes_gateway_if_running() {
 
   local pid=""
   pid="$(read_hermes_gateway_pid)"
-  if [[ -n "${pid}" ]] && kill -0 "${pid}" 2>/dev/null; then
+  # gateway.pid is on the persistent volume /root/.hermes, so its PID can belong to another process.
+  if pid_runs_command "${pid}" "${HERMES_GATEWAY_COMMAND}"; then
     kill "${pid}" 2>/dev/null || true
     rm -f "${HERMES_HOME:-/root/.hermes}/gateway.pid" "${HERMES_HOME:-/root/.hermes}/gateway.lock" 2>/dev/null || true
     echo "[hermes-gateway] stopped Hermes gateway pid=${pid} so it reloads config/env"

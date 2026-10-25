@@ -41,6 +41,7 @@ import {
 import type { FunctionCallPayload, ResponseSpeechReason } from "./voiceS2sTypes.js";
 import type { VoiceS2sClient } from "./voiceS2sTypes.js";
 import { voiceLog, voiceWarn } from "./voiceLog.js";
+import { sendWorkClaimNudge, WorkClaimGuard } from "./workClaimGuard.js";
 import {
   fetchAgUiAppInfo,
   surfaceTargetsCurrentApp,
@@ -104,6 +105,8 @@ export class BrowserRealtimeSession {
   private transcript: TranscriptTurn[] = [];
   private assistantPartial = "";
   private brainJob: BrainJob | null = null;
+  /** Native: work claims that no tool call backs (workClaimGuard). */
+  private readonly workClaims = new WorkClaimGuard();
   /** User quote for the in-flight S2S turn — brain starts once per turn, not on every event. */
   private pendingUserQuote: string | null = null;
   private realtimeTurnSettled = false;
@@ -263,6 +266,7 @@ export class BrowserRealtimeSession {
         onUserTranscript: (text) => {
           voiceLog(this.sessionId, "user", `said: ${JSON.stringify(text)}`);
           this.pushTranscript("user", text);
+          this.workClaims.noteOwnerSpoke();
           this.send({ event: "user_transcript", text, partial: false });
           this.onDictationUserTranscript(text);
           this.beginUserTurn(text);
@@ -295,11 +299,20 @@ export class BrowserRealtimeSession {
           if (!this.nativeTools) this.reconcileThinkAfterResponseDone(info);
           this.finalizeOrganicSurfaceTurn(info);
           this.handleResponseDone(info);
+          if (info.status !== "cancelled") this.noteWorkClaim(false);
           this.discardAssistantPartial();
           this.organicSurfaceSync = false;
           this.activeSpeechReason = null;
         },
         onFunctionCall: (call) => void this.handleFunctionCall(call),
+        onInteractionIdle: ({ functionCalls }) => {
+          if (!this.nativeTools) return;
+          const nudge = this.workClaims.onInteractionEnd({
+            functionCalls,
+            toolRunning: Boolean(this.brainJob?.nativeCallIds.length),
+          });
+          sendWorkClaimNudge(this.s2s, this.sessionId, nudge);
+        },
         onSessionResumed: ({ reason }) => {
           voiceLog(this.sessionId, provider, "upstream session resumed", { reason });
         },
@@ -443,10 +456,17 @@ export class BrowserRealtimeSession {
     this.pcmOutAcc = Buffer.alloc(0);
     this.send({ event: "clear_audio" });
     this.send({ event: "barge_in" });
+    this.noteWorkClaim(true);
     this.discardAssistantPartial();
     this.organicSurfaceSync = false;
     this.activeSpeechReason = null;
     this.setState("listening");
+  }
+
+  /** Native: hand what the voice agent chose to say to the work claim guard. */
+  private noteWorkClaim(interrupted: boolean): void {
+    if (!this.nativeTools || this.activeSpeechReason !== "organic") return;
+    this.workClaims.noteReply(this.assistantPartial, interrupted);
   }
 
   private discardAssistantPartial(): void {

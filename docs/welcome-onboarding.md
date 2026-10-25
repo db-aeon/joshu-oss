@@ -9,7 +9,7 @@ Human SOP: [`executive-assistant.md`](executive-assistant.md). Welcome seeds pro
 1. On first login, **Welcome** auto-opens once per browser session when onboarding is incomplete (see [`arozos/web-overlays-vanilla/aroz-onboarding-launch.js`](../arozos/web-overlays-vanilla/aroz-onboarding-launch.js)).
 2. **Step 1 (Welcome):** intro plus **Open Connectors** — link Gmail/calendar/apps in the Connectors desktop app (same `openModule("Connectors")` path as jMail). Optional anytime; also offered again on Review.
 3. **Standalone self-host only:** if no OpenRouter key is configured, Welcome shows **Connect AI** to save API keys to `.joshu/box-secrets/local-env.json`. On the same step you can optionally add a **Gemini** key for the jChat microphone (Gemini Live). **Control-plane managed boxes skip this** — keys are already in `/etc/joshu/instance.env` at provision time.
-4. **Optional Day 0:** After Gmail is connected, run **Analyze mail for setup (Day 0)** in **Connectors → Connect apps** to pre-fill the draft from 30 days of mail + calendar. See [`day0-cold-start.md`](day0-cold-start.md).
+4. **Optional Day 0:** After Gmail is connected, run **Analyze mail for setup (Day 0)** in **Connectors → Connect apps** to pre-fill the draft from 30 days of mail + calendar. See `day0-cold-start.md`.
 5. Essentials wizard: big-picture priorities, work/personal email, **owner mobile**, timezone + working hours. Owner/assistant display names come from box identity / `profile.json` (not a Welcome step).
 6. Progress auto-saves on each **Continue** via `PUT /joshu/api/onboarding/draft`.
 7. **Finish setup** writes workspace markdown + `.joshu` profile JSON, creates **Projects/** folders, installs **EA morning / evening / weekly** Hermes crons (awaits cron sync before HTTP returns), and bootstraps the EA scheduling Kanban board. Optional **agent mailbox** can be created on Review via `POST /joshu/api/nylas/agent`.
@@ -22,7 +22,7 @@ Human SOP: [`executive-assistant.md`](executive-assistant.md). Welcome seeds pro
 | Step | What happens |
 |------|----------------|
 | Sync | Profile, identity, project folders, EA layout files |
-| Hermes | Owner timezone → `config.yaml` + `HERMES_TIMEZONE` |
+| Hermes | Owner timezone → `config.yaml` + `HERMES_TIMEZONE`. On a change, Joshu realigns the stored cron run times and restarts the gateway ([Schedules — Timezone](schedules-arozos-app.md#timezone)) |
 | Crons | Upsert **EA morning**, **EA evening**, **EA weekly** from working hours ([`syncEaCronJobs`](../src/onboarding/eaCronJobs.ts)) |
 | Kanban | Bootstrap **`ea-scheduling`** board + reconcile **`ea-onboarding`** setup cards |
 | Setup crons | Install **Joshu onboarding reconcile** (daily) + proactive tick/hygiene |
@@ -35,20 +35,15 @@ On first success the UI shows a **You're set up** summary (projects, cron times,
 
 ## Setup checklist (`ea-onboarding`)
 
-Welcome is the **front door**; incomplete setup after **Finish setup** surfaces on Hermes board **`ea-onboarding`** as blocked Kanban cards (toast-like registry in [`factory/onboarding-prompts.yaml`](../factory/onboarding-prompts.yaml)).
+Welcome is the **front door**; incomplete setup after **Finish setup** surfaces on Hermes board **`ea-onboarding`** as blocked Kanban cards, one for each setup step in [`factory/onboarding-prompts.yaml`](../factory/onboarding-prompts.yaml). The required setup steps are `owner-profile`, `owner-mobile-sms`, `connect-work-gmail`, and `connect-calendar`; the board also has optional setup tips. Each step lists its check (`completeWhen`, in [`src/onboarding/promptPredicates.ts`](../src/onboarding/promptPredicates.ts)) and the how-to that the reconcile writes into the card body.
 
-| v1 prompt | Auto-complete when |
-|-----------|-------------------|
-| Connect work Gmail + calendar | Composio Gmail connected (Connectors) |
-| `owner-mobile-sms` | `resolveOwnerCaller` — Telephone settings, Welcome, or `TWILIO_OWNER_CALLER` |
-
-Welcome can finish without a mobile. **Reconcile** ([`reconcileOnboardingBoard`](../src/onboarding/reconcileOnboardingBoard.ts)) runs on Finish setup, connector changes, and daily cron; cards auto-close when predicates pass. If any required registry prompt is still open (including `owner-mobile-sms` or prompts added in a later release), the hourly proactive tick keeps **ranking `ea-onboarding` above mail tracks** until complete — **by email** when no SMS number is on file ([`delivery.ts`](../src/proactive/delivery.ts) SMS → email fallback), asking them to add mobile in **Telephone** or Welcome. Setup-debt priority does **not** expire after Welcome.
+Welcome can finish without a mobile. **Reconcile** ([`reconcileOnboardingBoard`](../src/onboarding/reconcileOnboardingBoard.ts)) runs on Finish setup, connector changes, and daily cron; cards auto-close when predicates pass. If any required setup step is still open (including steps added in a later release), the hourly proactive tick keeps **ranking `ea-onboarding` above mail tracks** until complete — **by email** when no SMS number is on file ([`delivery.ts`](../src/proactive/delivery.ts) SMS → email fallback, also after an undelivered SMS). A box with no mobile and no work email gets no nudge, and the tick skips with reason `no_delivery_channel` without a Hermes call. The companion also adds the setup mention to one reply each day on each channel. Setup tips get neither. Setup priority does **not** expire after Welcome.
 
 Setup status for desktop UI: `GET /joshu/api/onboarding/setup-status` (same-origin browser session or localhost only).
 
-**Reconcile triggers:** Finish setup, Connectors refresh, Telephone `ownerCaller` save, and daily Hermes cron **`Joshu onboarding reconcile`** (`scripts/onboarding-reconcile.sh` → `node scripts/run-onboarding-reconcile.mjs`). There is **no** public HTTP reconcile endpoint — ops run in-process inside the container.
+**Reconcile triggers:** Finish setup, Connectors refresh, Telephone `ownerCaller` save (also a save from a phone call, the owner mobile offer), and daily Hermes cron **`Joshu onboarding reconcile`** (`scripts/onboarding-reconcile.sh` → `node scripts/run-onboarding-reconcile.mjs`). There is **no** public HTTP reconcile endpoint — ops run in-process inside the container.
 
-**VPS ship lane:** [`factory/onboarding-prompts.yaml`](../factory/onboarding-prompts.yaml) is compose bind-mounted (same lane as `factory/manifest.yaml`); `git pull` + recreate. Compiled reconcile code lives in host `dist/onboarding/` ([`hotpatch-running-box.md`](vps-sandbox/hotpatch-running-box.md)).
+**VPS ship lane:** [`factory/onboarding-prompts.yaml`](../factory/onboarding-prompts.yaml) is compose bind-mounted (same lane as `factory/manifest.yaml`); `git pull` + recreate. Compiled reconcile code lives in host `dist/onboarding/` (`hotpatch-running-box.md`).
 
 ## Wizard steps
 
@@ -80,7 +75,7 @@ Options are defined in `BIG_PICTURE_PRIORITIES` in [`src/onboarding/options.ts`]
 |-------|---------|
 | Work email | Daily Brief / pointer destination → `profile.json` `primaryWorkEmail` |
 | Personal email | Optional → `personalEmail` (calendar free/busy union) |
-| Your mobile | Optional at Welcome → `communicationContacts.sms` and `.joshu/telephone/settings.json` `ownerCaller`. If skipped, **`ea-onboarding`** + proactive SMS/email nudge until set (Telephone or Welcome). |
+| Your mobile | Optional at Welcome → `communicationContacts.sms` and `.joshu/telephone/settings.json` `ownerCaller`. If skipped, **`ea-onboarding`** + proactive SMS/email nudge until set (Telephone, Welcome, or a yes to the owner mobile offer on a phone call). |
 | Timezone | Required on complete — IANA dropdown (`Intl.supportedValuesOf('timeZone')`) |
 | Working hours | Drive **EA morning / evening / weekly** cron times |
 
@@ -132,22 +127,19 @@ Mounted under `PUBLIC_BASE_PATH` (default `/joshu`). JSON body routes require `e
 
 ### Fleet backfill (proactive)
 
-Proactive is **three install surfaces** — image pull alone does not enable all of them on existing boxes. See [troubleshooting — Proactive fleet rollout](../vps-sandbox/troubleshooting-and-lessons.md#proactive-fleet-rollout--lessons-learned-2026-09).
+Proactive is **three install surfaces** — image pull alone does not enable all of them on existing boxes. See troubleshooting — Proactive fleet rollout.
 
 | Surface | Install |
 |---------|---------|
-| Nudge API (`dist/`) | `sync-dist-from-image.sh` (in `upgrade-fleet-box-image.sh`) |
-| Hermes crons (`Joshu proactive tick` + hygiene) | **`POST /joshu/api/onboarding/resync-ea-crons`** — not boot or image pull |
-| `joshu-proactive` skill (hygiene + resolve) | `sync-skills-from-image.sh` → bootstrap merge into `~/.hermes/skills/joshu/` |
+| Nudge API (`dist/`) | New sandbox image → `upgrade-fleet-box-image.sh` |
+| Hermes crons (`Joshu proactive tick` + hygiene) | Each start of the Joshu API on a box where setup is finished (release after 0.1.56, see [Hermes cron jobs of a box](hermes-integration.md#hermes-cron-jobs-of-a-box)). On an older release, **`POST /joshu/api/onboarding/resync-ea-crons`** |
+| `joshu-proactive` skill (hygiene + resolve) | New sandbox image → upgrade → bootstrap merge into `~/.hermes/skills/joshu/` |
 
 **After shipping proactive (or any new factory skill) to existing fleet boxes:**
 
 ```bash
-# Preferred: full upgrade path (dist + skills + recreate)
-bash scripts/upgrade-fleet-box-image.sh root@<slug>.box.joshu.me
-
-# Or fleet-wide skills + recreate only:
-bash scripts/sync-fleet-skills-from-image.sh
+# Upgrade path (images + host bundle + recreate + skills merge)
+bash scripts/upgrade-fleet-box-image.sh root@<slug>.box.joshu.me <version>
 
 # Crons (first proactive rollout — not in upgrade script):
 bash scripts/repair-fleet-ea-cron-timezone.sh
@@ -157,9 +149,8 @@ bash scripts/repair-fleet-ea-cron-timezone.sh
 
 ```bash
 ssh root@<slug>.box.joshu.me bash -s <<'EOF'
-echo -n "host proactive skill: "
-test -f /opt/joshu/integrations/hermes/skills/proactive/joshu-proactive/SKILL.md && echo yes || echo no
 docker exec deploy-joshu-stack-1 bash -lc '
+  test -f /opt/joshu/integrations/hermes/skills/proactive/joshu-proactive/SKILL.md && echo "image proactive skill: yes" || echo "image proactive skill: no"
   test -f /root/.hermes/skills/joshu/proactive/joshu-proactive/SKILL.md && echo "seeded proactive skill: yes" || echo "seeded proactive skill: no"
   python3 -c "import json; d=json.load(open(\"/root/.hermes/cron/jobs.json\")); print(\"crons:\", [j[\"name\"] for j in d[\"jobs\"] if \"proactive\" in j.get(\"name\",\"\").lower()])"
 '

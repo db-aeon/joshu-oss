@@ -18,12 +18,9 @@ const { HermesApiRunner } = await import("../src/hermesApi.ts");
 try {
   const runner = new HermesApiRunner({
     binary: "hermes",
-    camofoxUrl: "http://127.0.0.1:1",
     apiBaseUrl: "http://127.0.0.1:1",
     apiKey: "test",
     autoStartGateway: false,
-    hitlCamofoxUserId: "u",
-    hitlCamofoxSessionKey: "k",
   });
   const defer = (reason) => runner["deferGatewayRestartIfBusy"](reason);
 
@@ -45,6 +42,35 @@ try {
   onCall = false;
   assert.equal(await defer("MCP catalog refresh"), false, "idle again");
   mock.timers.reset();
+
+  // applyConfigAndAwaitGatewayRestart (change slack-connect): resolves only when a
+  // new gateway process answers, tells the caller once while a busy gateway waits,
+  // and keeps the busy wait (it never restarts by itself).
+  runner["applyConfigAndReloadGatewayInBackground"] = async () => undefined;
+  runner["health"] = async () => true;
+  assert.deepEqual(
+    await runner.applyConfigAndAwaitGatewayRestart("test", { pollMs: 1 }),
+    { restarted: false },
+    "auto-start off: nothing to wait for",
+  );
+  runner["gatewayAutoStart"] = true;
+  runner["inFlightTurns"] = 1;
+  const waiting = [];
+  const restart = runner.applyConfigAndAwaitGatewayRestart("Slack settings", {
+    pollMs: 2,
+    onWaiting: (busy) => waiting.push(busy),
+  });
+  await new Promise((r) => setTimeout(r, 20));
+  assert.deepEqual(waiting, ["1 Hermes turn(s) in flight"], "onWaiting gets the busy reason once");
+  runner["inFlightTurns"] = 0;
+  runner["gatewayStartCount"] += 1;
+  assert.deepEqual(await restart, { restarted: true }, "resolves after a new gateway process answers");
+  assert.deepEqual(
+    await runner.applyConfigAndAwaitGatewayRestart("no start", { pollMs: 1, timeoutMs: 15 }),
+    { restarted: false },
+    "times out when no new gateway process starts",
+  );
+  runner["gatewayAutoStart"] = false;
 
   console.log("test-gateway-restart-guard: ok");
 } finally {

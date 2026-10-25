@@ -4,16 +4,16 @@
  * honor Joshu's handoff lock and browser write gate, and self-heal the shared
  * cloud browser.
  *
- * - Handoff lock + action guard: inserted after the Camofox early-return, so
- *   Camofox mode keeps using the browser_camofox.py patches and is not checked
- *   twice.
+ * - Handoff lock + action guard: inserted after the upstream Camofox early-return.
+ *   Joshu never runs Hermes in Camofox mode; the early-return is only an anchor.
  * - Cloud ensure (`joshu_cloud_browser_ensure`): at the start of every
  *   browser_* entrypoint, POST /api/browser/ensure. Joshu wakes/recreates the
  *   Browser Use session and returns its live CDP URL; the helper adopts it
  *   (BROWSER_CDP_URL beats config.yaml in Hermes) and drops cached sessions
  *   bound to the dead browser. When the browser cannot start, the tool returns
  *   `browser_unavailable` instead of a raw CDP 502, so workers block the task
- *   rather than debugging the box.
+ *   rather than debugging the box. After an idle stop the first call returns
+ *   `browser_restarted` once with Joshu's notice; the next call works.
  *
  * Idempotent. Upgrades files patched by older versions (lock only, or lock +
  * the old fire-and-forget `/api/browser/touch` helper).
@@ -27,8 +27,12 @@ if (!target) {
 }
 
 const MARKER = "hitl_browser_cdp_guards";
-/** v2: follows the relay `generation` (the endpoint no longer changes when the browser does). */
-const ENSURE_MARKER = "joshu_cloud_browser_ensure_v2";
+/**
+ * v2: follows the relay `generation` (the endpoint no longer changes when the browser does).
+ * v3: returns `browser_restarted` once after an idle stop, so the companion learns that
+ * Joshu (not the website) dropped its open pages.
+ */
+const ENSURE_MARKER = "joshu_cloud_browser_ensure_v3";
 /** v1 drop helper, removed on upgrade. */
 const LEGACY_DROP_FN = "_joshu_drop_stale_cdp_sessions";
 const DROP_FN = "_joshu_drop_cdp_sessions";
@@ -196,6 +200,18 @@ def ${ENSURE_FN}() -> Optional[str]:
         os.environ["BROWSER_CDP_URL"] = cdp_url
         ${DROP_FN}(cdp_url)
         logger.info("Joshu cloud browser rotated; adopted new CDP endpoint")
+    restarted = payload.get("restarted")
+    if isinstance(restarted, dict) and restarted.get("message"):
+        # Joshu idle-stopped the browser since the last call: open pages are gone.
+        # Say so once, after adopting the new browser, so a retry just works.
+        return json.dumps(
+            {
+                "success": False,
+                "error": "browser_restarted",
+                "message": str(restarted.get("message")),
+                "stoppedAt": restarted.get("stoppedAt"),
+            }
+        )
     return None
 
 

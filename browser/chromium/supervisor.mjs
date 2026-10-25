@@ -256,7 +256,6 @@ const server = http.createServer(async (req, res) => {
       activeTabs: await activeTabCount(),
       proxyPort: currentPort(),
       localProxyPort: localProxy ? LOCAL_PROXY_PORT : null,
-      vncPort: 5900,
     };
     res.writeHead(running ? 200 : 503, { "content-type": "application/json" });
     res.end(JSON.stringify(body));

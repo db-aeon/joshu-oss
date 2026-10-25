@@ -112,7 +112,8 @@ export function registerRealtimeGoalRoutes(
       res.status(400).json({ error: "origin is required" });
       return;
     }
-    res.json({ context: (await broker.buildHermesContextSnapshot(origin)) ?? null });
+    const setupMention = req.body?.setupMention === true;
+    res.json({ context: (await broker.buildHermesContextSnapshot(origin, { setupMention })) ?? null });
   });
 
   router.post("/api/realtime-goals/thread/box", async (req: Request, res: Response) => {

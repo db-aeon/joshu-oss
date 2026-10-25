@@ -1,6 +1,8 @@
-import { composioToolBlockReason } from "../../mcpToolPolicy.js";
+import { composioCallBlockReason } from "../../mcpToolPolicy.js";
 import { isActionGuarded, loadActionGuardPolicy } from "../../actionGuard/policy.js";
 import { awaitOwnerApproval, buildComposioToolSummary } from "../../actionGuard/gate.js";
+
+const OWNER_CHANNEL_DENIED_PREFIX = "Owner denied or timed out";
 
 export class McpToolPolicyBlockedError extends Error {
   readonly reason: string;
@@ -14,10 +16,15 @@ export class McpToolPolicyBlockedError extends Error {
 export class OwnerChannelDeniedError extends Error {
   readonly toolSlug: string;
   constructor(toolSlug: string) {
-    super(`Owner denied or timed out: ${toolSlug}`);
+    super(`${OWNER_CHANNEL_DENIED_PREFIX}: ${toolSlug}`);
     this.name = "OwnerChannelDeniedError";
     this.toolSlug = toolSlug;
   }
+}
+
+/** True when an error message comes from OwnerChannelDeniedError (also after a wrapper rethrows it). */
+export function isOwnerChannelDeniedMessage(message: string | undefined): boolean {
+  return Boolean(message?.includes(OWNER_CHANNEL_DENIED_PREFIX));
 }
 
 type BeforeExecuteParams = {
@@ -40,7 +47,7 @@ function shouldGateComposioTool(toolSlug: string, projectRoot: string): boolean 
 
 export function createOwnerChannelBeforeExecute(projectRoot = process.cwd()) {
   return async ({ toolSlug, params }: BeforeExecuteContext): Promise<BeforeExecuteParams> => {
-    const hardBlock = composioToolBlockReason(toolSlug);
+    const hardBlock = composioCallBlockReason(toolSlug, params.arguments);
     if (hardBlock) throw new McpToolPolicyBlockedError(hardBlock);
 
     if (!shouldGateComposioTool(toolSlug, projectRoot)) return params;

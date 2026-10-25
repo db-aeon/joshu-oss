@@ -111,4 +111,4 @@ provided you comply with AGPL-3.0.
 
 - [deploy/README.md](../deploy/README.md) — image build and env reference
 - [THIRD_PARTY.md](THIRD_PARTY.md) — ArozOS GPL, Hermes patches
-- [Control plane (proprietary)](vps-sandbox/control-plane.md)
+- Control plane (proprietary)

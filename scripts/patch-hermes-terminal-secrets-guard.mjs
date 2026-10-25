@@ -9,13 +9,21 @@
  *   /opt/joshu/ any .env files
  *   HERMES_HOME .env (typically /root/.hermes/.env)
  *   Hermes config writes: `hermes config set|edit|…` and write ops on
- *   ~/.hermes/config.yaml (reads allowed) — the file is Joshu-managed.
+ *   ~/.hermes/config.yaml and config.user.yaml (reads allowed) — Joshu-managed.
+ *   Runtime file writes (change companion-runtime-guard): pip installs into
+ *   /opt/hermes-agent, file writes under /opt/hermes-agent and the code folders
+ *   of /opt/joshu, the Telephone settings file, and Telephone settings changes
+ *   through the Joshu API. Reads and runs of the programs stay allowed.
+ *
+ * The same script patches tools/code_execution_tool.py next to the target, so
+ * execute_code checks each script with the same function before it runs.
  *
  * IMPORTANT: helper regexes must not embed unescaped " inside Python "..." strings —
  * that yields `unterminated string literal` and breaks ALL Hermes tools (jChat dies).
  */
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
+import path from "node:path";
 
 const target = process.argv[2];
 if (!target) {
@@ -35,6 +43,42 @@ def _joshu_terminal_secrets_guard_enabled() -> bool:
     return raw not in {"0", "false", "no", "off"}
 
 
+# Runtime files of the box (change companion-runtime-guard): Hermes, the code of
+# Joshu, the Hermes config, and the Telephone settings. Joshu manages them, so the
+# companion reports a box problem instead of changing them (box finn, 2026-10-10).
+_JOSHU_RUNTIME_PATH = r"/opt/hermes-agent(?:/|\\b)|/opt/joshu/(?:dist|scripts|packages)(?:/|\\b)|(?:\\.hermes/|\\$\\{?hermes_home\\}?/)config(?:\\.user)?\\.ya?ml|telephone/settings\\.json"
+_JOSHU_WRITE_PROGRAM = r"^\\s*(?:sudo\\s+)?(?:cp|mv|rm|ln|install|tee|truncate|dd|patch|rsync|chmod|chown|touch)\\b|^\\s*(?:sudo\\s+)?sed\\b.*\\s-i"
+_JOSHU_PYTHON_WRITE = r"open\\([^)]*[\\x22\\x27][wax+]|\\.write_(?:text|bytes)\\(|\\bshutil\\.(?:copy|move)|\\bos\\.(?:replace|rename|remove|unlink)\\("
+
+
+def _joshu_runtime_write(normalized: str) -> bool:
+    """True when the text changes a runtime file. Text checks, not a shell parser."""
+    if not re.search(_JOSHU_RUNTIME_PATH, normalized):
+        return False
+    if "/opt/hermes-agent" in normalized and re.search(
+        r"\\bpip3?\\b[^|;&\\n]*\\b(?:install|uninstall)\\b|\\buv\\b[^|;&\\n]*\\bpip\\s+(?:install|uninstall|sync)\\b",
+        normalized,
+    ):
+        return True
+    # A simple command that starts with a write program names the file. Workers run
+    # /opt/hermes-agent/venv/bin/hermes many times a day, also piped into tee.
+    for part in re.split(r"[|;&\\n]", normalized):
+        if re.search(_JOSHU_RUNTIME_PATH, part) and re.search(_JOSHU_WRITE_PROGRAM, part):
+            return True
+    for target in re.findall(r">>?\\s*([^\\s;&|]+)", normalized):
+        if re.search(_JOSHU_RUNTIME_PATH, target):
+            return True
+    return bool(re.search(_JOSHU_PYTHON_WRITE, normalized))
+
+
+def _joshu_telephone_write(normalized: str) -> bool:
+    """True for a request that changes the Telephone settings or reads the passphrase."""
+    return bool(
+        re.search(r"/api/telephone", normalized)
+        and re.search(r"\\b(?:put|post|patch|delete)\\b|\\s(?:-d|--data\\S*|--json|--form)\\b", normalized)
+    )
+
+
 def _joshu_terminal_secrets_blocked(command: str) -> Optional[str]:
     """Hard block reads of instance.env / secrets dirs via agent terminal (${MARKER})."""
     if not _joshu_terminal_secrets_guard_enabled():
@@ -43,7 +87,7 @@ def _joshu_terminal_secrets_blocked(command: str) -> Optional[str]:
     # Hermes config is Joshu-managed (hermesApi syncs it): agents must not rewrite it.
     # A kanban worker once repointed browser.cdp_url itself instead of reporting a
     # broken browser. Reads (grep/cat) stay allowed.
-    hermes_config_path = r"(?:\\.hermes/|\\$hermes_home/)config\\.ya?ml"
+    hermes_config_path = r"(?:\\.hermes/|\\$hermes_home/)config(?:\\.user)?\\.ya?ml"
     config_write = re.search(
         r"\\bhermes\\b[^|;&\\n]*\\bconfig\\s+(?:set|unset|edit|reset|migrate|import)\\b",
         normalized,
@@ -54,10 +98,13 @@ def _joshu_terminal_secrets_blocked(command: str) -> Optional[str]:
             normalized,
         )
     )
-    if config_write:
+    if config_write or _joshu_runtime_write(normalized) or _joshu_telephone_write(normalized):
         return (
-            "Blocked: Hermes config is managed by Joshu — agents must not change it. "
-            "If a tool is broken, report it and kanban_block the task with a 'system:' reason."
+            "Blocked: this changes a runtime file of the box (Hermes, Joshu, the Hermes config, "
+            "or the Telephone settings). Joshu manages these files, so do not change them and "
+            "do not look for a way around this block. Tell the owner what you found and that "
+            "the Joshu team fixes box problems. In a Kanban task, kanban_block with a 'system:' "
+            "reason. Do not save a memory entry or a skill about a way around this block."
         )
     # Match common read/print tools against secret paths (not an exhaustive shell parser).
     # Patterns avoid embedding " inside r"..." so this file stays valid Python.
@@ -68,6 +115,8 @@ def _joshu_terminal_secrets_blocked(command: str) -> Optional[str]:
         (r"/(?:root|home/[^/]+)/\\.hermes/\\.env", "Hermes .env"),
         (r"\\$hermes_home/\\.env", "Hermes .env"),
         (r"~/.hermes/\\.env", "Hermes .env"),
+        # The Telephone settings file holds the passphrase and the PIN of the call gate.
+        (r"telephone/settings\\.json", "the Telephone settings file"),
     ]
     readish = bool(
         re.search(
@@ -75,6 +124,7 @@ def _joshu_terminal_secrets_blocked(command: str) -> Optional[str]:
             normalized,
         )
         or re.search(r"\\bpython3?\\b.*open\\(", normalized)
+        or "open(" in normalized
         or "base64" in normalized
     )
     if not readish and "/etc/joshu/" not in normalized and ".hermes/.env" not in normalized:
@@ -179,11 +229,7 @@ if (!hasCall) {
   }
 }
 
-if (!changed && hasMarker && hasHelper && hasCall) {
-  if (pythonSyntaxOk(target)) {
-    console.log("[hermes-patch] terminal secrets-guard patch already applied.");
-    process.exit(0);
-  }
+if (!changed && hasMarker && hasHelper && hasCall && !pythonSyntaxOk(target)) {
   console.error("[hermes-patch] secrets-guard present but Python syntax invalid — forcing helper replace");
   const repaired = replaceHelperBlock(readFileSync(target, "utf8"));
   if (!repaired) {
@@ -203,4 +249,45 @@ if (changed) {
   console.log("[hermes-patch] applied terminal secrets-guard patch — restart Hermes gateway");
 } else {
   console.log("[hermes-patch] terminal secrets-guard patch already applied.");
+}
+
+// execute_code runs a whole Python script that never passes through terminal_tool.py.
+// On box finn, the companion saved a memory entry to change config.yaml with an
+// execute_code string replace. Check the script with the same function, before the
+// approval of execute_code.
+const codeExecTarget = path.join(path.dirname(target), "code_execution_tool.py");
+const CODE_EXEC_ANCHOR = "    # Dispatch: remote backends use file-based RPC, local uses UDS";
+const codeExecCall = `    # Joshu: the terminal secrets guard also checks the whole script (${MARKER})
+    try:
+        from tools.terminal_tool import _joshu_terminal_secrets_blocked
+        _joshu_block = _joshu_terminal_secrets_blocked(code)
+    except ImportError:
+        _joshu_block = None
+    if _joshu_block:
+        logger.warning("Blocked execute_code script: Joshu terminal secrets guard")
+        return json.dumps({
+            "status": "error",
+            "error": _joshu_block,
+            "tool_calls_made": 0,
+            "duration_seconds": 0,
+        }, ensure_ascii=False)
+
+`;
+
+if (existsSync(codeExecTarget)) {
+  const codeExec = readFileSync(codeExecTarget, "utf8");
+  if (codeExec.includes(MARKER)) {
+    console.log("[hermes-patch] execute_code secrets-guard patch already applied.");
+  } else if (!codeExec.includes(CODE_EXEC_ANCHOR)) {
+    console.error("[hermes-patch] execute_code dispatch anchor not found in code_execution_tool.py");
+    process.exit(1);
+  } else {
+    writeFileSync(codeExecTarget, codeExec.replace(CODE_EXEC_ANCHOR, `${codeExecCall}${CODE_EXEC_ANCHOR}`));
+    if (!pythonSyntaxOk(codeExecTarget)) {
+      writeFileSync(codeExecTarget, codeExec);
+      console.error("[hermes-patch] execute_code secrets-guard patch failed py_compile — file restored");
+      process.exit(1);
+    }
+    console.log("[hermes-patch] applied execute_code secrets-guard patch — restart Hermes gateway");
+  }
 }

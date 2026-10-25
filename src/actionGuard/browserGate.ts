@@ -44,7 +44,7 @@ export async function gateBrowserWriteRequest(
   return { allowed: true };
 }
 
-/** Handler for Hermes browser_camofox.py action-guard patch. */
+/** Handler for the action guard in the Hermes CDP browser guards patch (scripts/patch-hermes-browser-cdp-guards.mjs). */
 export async function handleBrowserGateRoute(
   body: Record<string, unknown>,
   projectRoot: string,

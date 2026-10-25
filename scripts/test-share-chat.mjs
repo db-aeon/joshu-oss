@@ -460,24 +460,24 @@ function makeScope(partial) {
     publicEmailBindingStatus,
   } = await import("../src/shareChat/emailBindings.ts");
 
-  assert(normalizeAllowedSender("@TheJoint.com") === "@thejoint.com", "domain normalize");
-  assert(normalizeAllowedSender("Adam Hua <adam@four8.co>") === "adam@four8.co", "email normalize");
+  assert(normalizeAllowedSender("@Acme.Example") === "@acme.example", "domain normalize");
+  assert(normalizeAllowedSender("Riley Vendor <riley@vendorco.example>") === "riley@vendorco.example", "email normalize");
   const list = parseAllowedSendersList("@a.com, b@c.com\n@c.com");
   assert(list.includes("@a.com") && list.includes("b@c.com") && list.includes("@c.com") && list.length === 3, "parse list");
   assert(parseCcList("x@y.com, @skip.com").join(",") === "x@y.com", "cc skips domains");
-  assert(senderMatchesAllowed("adam@four8.co", ["@four8.co"]), "domain match");
-  assert(!senderMatchesAllowed("vendor@gmail.com", ["@four8.co"]), "no match");
+  assert(senderMatchesAllowed("riley@vendorco.example", ["@vendorco.example"]), "domain match");
+  assert(!senderMatchesAllowed("vendor@gmail.com", ["@vendorco.example"]), "no match");
 
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "joshu-share-email-"));
   const uuid = "22222222-2222-4222-8222-222222222222";
   upsertShareEmailBinding(
-    { shareUuid: uuid, allowedSenders: ["@four8.co", "boss@thejoint.com"], cc: ["allen@thejoint.com"] },
+    { shareUuid: uuid, allowedSenders: ["@vendorco.example", "boss@acme.example"], cc: ["lee@acme.example"] },
     tmp,
   );
   const row = getShareEmailBinding(uuid, tmp);
-  assert(row?.allowedSenders.includes("@four8.co"), "stored domain");
-  assert(findShareForEmailSender("adam@four8.co", tmp)?.shareUuid === uuid, "find by domain");
-  assert(findShareForEmailSender("boss@thejoint.com", tmp)?.shareUuid === uuid, "find by exact");
+  assert(row?.allowedSenders.includes("@vendorco.example"), "stored domain");
+  assert(findShareForEmailSender("riley@vendorco.example", tmp)?.shareUuid === uuid, "find by domain");
+  assert(findShareForEmailSender("boss@acme.example", tmp)?.shareUuid === uuid, "find by exact");
   assert(publicEmailBindingStatus(uuid, tmp).configured === true, "public status on");
   markEmailMessageProcessed(uuid, "msg-1", tmp);
   assert(isEmailMessageProcessed(uuid, "msg-1", tmp), "processed id");

@@ -18,6 +18,11 @@ import {
 import { autoRecoveryKanbanAppend, classifyBlockCause } from "./blockCause.js";
 import { isContinuableGoal } from "./branchBinding.js";
 import { collectHandoffUrls, formatOwnerCompletion } from "./ownerDelivery.js";
+import {
+  isSetupMentionChannel,
+  setupMentionInstruction,
+  takeSetupMention,
+} from "../onboarding/setupMention.js";
 import { buildHermesBrokerContextMessage, type GoalDeliveryNote } from "./brokerContext.js";
 import { isDeferCapableChannel, isQueueCapableChannel, usesSessionThread } from "./channelPolicy.js";
 import { OwnerOutbox } from "./outbox.js";
@@ -282,9 +287,23 @@ export class RealtimeGoalBroker {
   }
 
   /** Compact broker snapshot for Hermes pass turns on queue-capable channels. */
-  async buildHermesContextSnapshot(origin: RealtimeGoalOrigin): Promise<string | undefined> {
+  /**
+   * Owner-scoped context for a Hermes turn. `setupMention`: the turn answers the owner, so the
+   * context can carry the setup mention of this channel (at most once a day; change owner-setup-board).
+   */
+  async buildHermesContextSnapshot(
+    origin: RealtimeGoalOrigin,
+    opts: { setupMention?: boolean } = {},
+  ): Promise<string | undefined> {
     if (!isQueueCapableChannel(origin.channel)) return undefined;
-    return this.buildOwnerContextSnapshot(origin);
+    const snapshot = await this.buildOwnerContextSnapshot(origin);
+    if (!opts.setupMention || !isSetupMentionChannel(origin.channel)) return snapshot;
+    const mention = await takeSetupMention(this.projectRoot, origin.channel).catch((error) => {
+      console.warn(`[onboarding] setup mention failed: ${(error as Error).message}`);
+      return null;
+    });
+    if (!mention) return snapshot;
+    return [snapshot, setupMentionInstruction(mention)].filter(Boolean).join("\n\n");
   }
 
   start(): void {
@@ -579,8 +598,15 @@ export class RealtimeGoalBroker {
     await this.store.completeInbound(id);
   }
 
-  /** Agent-callable fallback when a normal Hermes turn discovers the work is long. */
-  async defer(input: RealtimeGoalRouteInput, title?: string): Promise<RealtimeGoalRecord> {
+  /**
+   * Agent-callable fallback when a normal Hermes turn discovers the work is long.
+   * The SMS gateway also defers an SMS turn that it stopped, with its own `intakeReply`.
+   */
+  async defer(
+    input: RealtimeGoalRouteInput,
+    title?: string,
+    opts: { intakeReply?: string } = {},
+  ): Promise<RealtimeGoalRecord> {
     if (!isDeferCapableChannel(input.origin.channel)) {
       throw new Error(`realtime_goal_defer is unavailable on channel ${input.origin.channel}`);
     }
@@ -594,7 +620,7 @@ export class RealtimeGoalBroker {
       text: input.text,
       title,
       status: "queued",
-      intakeReply: queuedReply(input.origin.channel),
+      intakeReply: opts.intakeReply ?? queuedReply(input.origin.channel),
       explicit: true,
     });
     await this.recordBoxTurn(input.origin, goal.intakeReply, "broker", goal.id);

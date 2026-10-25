@@ -1,10 +1,11 @@
 # Joshu sandbox stack image (VPS / self-host)
-# Hermes / Camofox pins: deploy/RELEASE.json — run `npm run vps:sync-hermes-pin` / `vps:sync-camofox-pin`.
+# Hermes pin: deploy/RELEASE.json — run `npm run vps:sync-hermes-pin`.
 # Build: npm run vps:predeploy && npm run vps:build-image (or JOSHU_IMAGE_PUSH=1 JOSHU_IMAGE_TAG=0.1.4 …)
 
-ARG CAMOFOX_BASE=ghcr.io/jo-inc/camofox-browser@sha256:3cc29763d3c784ae71a7d56853a12c43e100ff2f13da1e2eb88322b08e12d6a0
+# Debian 13 (trixie), the same release as the sandbox image before change remove-camofox.
+ARG BASE_IMAGE=debian:trixie-slim
 
-FROM ${CAMOFOX_BASE} AS builder
+FROM ${BASE_IMAGE} AS builder
 
 ARG HERMES_AGENT_REPO=https://github.com/NousResearch/hermes-agent.git
 # v2026.8.3 → Hermes Agent v0.20.0 (synced from deploy/RELEASE.json)
@@ -42,6 +43,21 @@ RUN rm -rf /usr/local/go \
 # streamablehttp_client, and Hermes then silently disables every HTTP MCP server
 # (joshu_connectors email/SMS tools, composio, gbrain). The import check fails the
 # build instead of shipping that regression.
+# Security overrides of exact Hermes pins: Pillow 13.0.0 fixes 39 advisories of
+# 2026-10 in the image decoders (the companion opens images that anyone can send it),
+# and PyJWT 2.15.1 fixes GHSA-pxh4-856f-4h89 and older ones. Drop each override when
+# the Hermes pin reaches it (Hermes v0.22.5 has Pillow 13).
+# cryptography: Hermes pins 48.0.1, and hindsight-api-slim 0.7.2 asks for <47 and
+# downgrades it, so the image installs it again. 50.0.2 fixes GHSA-g6cj-pr64-35w5 and
+# GHSA-jwv3-5hgf-82ww. Hindsight does not import cryptography, and Hindsight 1.1.0
+# asks for >=50.
+# More overrides of exact Hermes pins (security bulletins log of 2026-10-24): mcp 1.30.0
+# (GHSA-84m7-p3x7-pcfv, Hermes pins 1.28.1; it is installed before the pins are frozen,
+# so Hindsight is constrained to it), brotlicffi 1.2.1.0 (GHSA-9v8h-qqgm-4m35, a
+# critical write out of bounds in the Brotli decoder, Hermes pins 1.2.0.1), PyNaCl
+# 1.6.2 (discord.py 2.7.1 caps it at <1.6, and Hermes overrides that cap in uv, which
+# pip ignores). filelock stays on 3.x: its fix (4.2.1) is outside the <4.0 cap of
+# litellm, and its advisories need another local account on the box.
 RUN git init "${HERMES_DIR}" \
     && cd "${HERMES_DIR}" \
     && git remote add origin "${HERMES_AGENT_REPO}" \
@@ -50,9 +66,14 @@ RUN git init "${HERMES_DIR}" \
     && python3 -m venv venv \
     && venv/bin/pip install --upgrade pip setuptools wheel \
     && venv/bin/pip install --no-cache-dir -e '.[cli,pty,mcp,acp,google,bedrock,web,youtube,voice,messaging]' 'aiohttp>=3.13.3,<4' \
+    && venv/bin/pip install --no-cache-dir 'mcp==1.30.0' \
     && venv/bin/pip freeze | grep -iE '^(mcp|starlette)==' > /tmp/hermes-core-pins.txt \
     && venv/bin/pip install --no-cache-dir -c /tmp/hermes-core-pins.txt 'hindsight-api-slim[embedded-db]==0.7.2' 'hindsight-client==0.7.2' langfuse \
-    && venv/bin/pip install --no-cache-dir -c /tmp/hermes-core-pins.txt 'cryptography==48.0.1' \
+    && venv/bin/pip install --no-cache-dir -c /tmp/hermes-core-pins.txt 'cryptography==50.0.2' 'Pillow==13.0.0' 'PyJWT[crypto]==2.15.1' \
+       'brotlicffi==1.2.1.0' 'PyNaCl==1.6.2' \
+    && venv/bin/python -c 'import PIL, jwt, cryptography; assert (PIL.__version__, jwt.__version__, cryptography.__version__) == ("13.0.0", "2.15.1", "50.0.2")' \
+    && venv/bin/python -c 'import importlib.metadata as m; v = {p: m.version(p) for p in ("mcp", "brotlicffi", "PyNaCl")}; print(v); assert v == {"mcp": "1.30.0", "brotlicffi": "1.2.1.0", "PyNaCl": "1.6.2"}' \
+    && venv/bin/python -c 'import brotlicffi, nacl.secret; assert brotlicffi.decompress(brotlicffi.compress(b"joshu")) == b"joshu"' \
     && venv/bin/python -c 'from mcp.client.streamable_http import streamablehttp_client' \
     && rm -f /tmp/hermes-core-pins.txt \
     && cd web \
@@ -72,6 +93,8 @@ COPY scripts/hermes-langfuse-system-prompt.patch \
      scripts/patch-hermes-ea-kanban-no-autodecompose.py \
      scripts/patch-hermes-kanban-worker-terminate-on-complete.py \
      scripts/patch-hermes-dsml-stream-scrub.py \
+     scripts/patch-hermes-openrouter-data-collection.py \
+     scripts/patch-hindsight-openrouter-rerank.py \
      scripts/apply-hermes-langfuse-patches.sh \
      scripts/apply-hermes-kanban-ws-base-path-patch.sh \
      scripts/apply-hermes-content-filter-patch.sh \
@@ -79,6 +102,11 @@ COPY scripts/hermes-langfuse-system-prompt.patch \
      scripts/apply-hermes-ea-kanban-no-autodecompose.sh \
      scripts/apply-hermes-kanban-worker-terminate-on-complete.sh \
      scripts/apply-hermes-dsml-stream-scrub.sh \
+     scripts/apply-hermes-openrouter-data-collection.sh \
+     scripts/patch-hermes-pairing-reply.py \
+     scripts/apply-hermes-pairing-reply.sh \
+     scripts/patch-hermes-approval-no-permanent.py \
+     scripts/apply-hermes-approval-no-permanent.sh \
      /tmp/joshu-hermes-patches/
 RUN HERMES_DIR="${HERMES_DIR}" bash /tmp/joshu-hermes-patches/apply-hermes-langfuse-patches.sh \
     && HERMES_DIR="${HERMES_DIR}" bash /tmp/joshu-hermes-patches/apply-hermes-kanban-ws-base-path-patch.sh \
@@ -87,6 +115,10 @@ RUN HERMES_DIR="${HERMES_DIR}" bash /tmp/joshu-hermes-patches/apply-hermes-langf
     && HERMES_DIR="${HERMES_DIR}" bash /tmp/joshu-hermes-patches/apply-hermes-ea-kanban-no-autodecompose.sh \
     && HERMES_DIR="${HERMES_DIR}" bash /tmp/joshu-hermes-patches/apply-hermes-kanban-worker-terminate-on-complete.sh \
     && HERMES_DIR="${HERMES_DIR}" bash /tmp/joshu-hermes-patches/apply-hermes-dsml-stream-scrub.sh \
+    && HERMES_DIR="${HERMES_DIR}" bash /tmp/joshu-hermes-patches/apply-hermes-openrouter-data-collection.sh \
+    && HERMES_DIR="${HERMES_DIR}" bash /tmp/joshu-hermes-patches/apply-hermes-pairing-reply.sh \
+    && HERMES_DIR="${HERMES_DIR}" bash /tmp/joshu-hermes-patches/apply-hermes-approval-no-permanent.sh \
+    && "${HERMES_DIR}/venv/bin/python" /tmp/joshu-hermes-patches/patch-hindsight-openrouter-rerank.py \
     && rm -rf "${HERMES_DIR}/.git" /root/.cache/pip /tmp/joshu-hermes-patches
 
 # Hindsight uses local PostgreSQL on VPS. Build pgvector with portable flags so
@@ -151,6 +183,7 @@ RUN bash ${APP_DIR}/scripts/apply-arozos-patches.sh \
     && rsync -a ${APP_DIR}/arozos-subservice-staging/welcome/ ${AROZ_TEMPLATE}/subservice/welcome/ \
     && rsync -a ${APP_DIR}/arozos-subservice-staging/jterm/ ${AROZ_TEMPLATE}/subservice/jterm/ \
     && rsync -a ${APP_DIR}/arozos-subservice-staging/telephone/ ${AROZ_TEMPLATE}/subservice/telephone/ \
+    && rsync -a ${APP_DIR}/arozos-subservice-staging/boss-mode/ ${AROZ_TEMPLATE}/subservice/boss-mode/ \
     && rsync -a ${APP_DIR}/arozos-subservice-staging/last30days/ ${AROZ_TEMPLATE}/subservice/last30days/ \
     && rsync -a ${APP_DIR}/dist/excalidraw/ ${AROZ_TEMPLATE}/subservice/excalidraw/app/ \
     && rsync -a ${APP_DIR}/dist/md-editor/ ${AROZ_TEMPLATE}/subservice/md-editor/app/ \
@@ -165,12 +198,13 @@ RUN bash ${APP_DIR}/scripts/apply-arozos-patches.sh \
     && rsync -a ${APP_DIR}/dist/welcome/ ${AROZ_TEMPLATE}/subservice/welcome/app/ \
     && rsync -a ${APP_DIR}/dist/jterm/ ${AROZ_TEMPLATE}/subservice/jterm/app/ \
     && rsync -a ${APP_DIR}/dist/telephone/ ${AROZ_TEMPLATE}/subservice/telephone/app/ \
+    && rsync -a ${APP_DIR}/dist/boss-mode/ ${AROZ_TEMPLATE}/subservice/boss-mode/app/ \
     && rsync -a ${APP_DIR}/dist/last30days-app/ ${AROZ_TEMPLATE}/subservice/last30days/app/ \
     && bash ${APP_DIR}/scripts/install-proprietary-apps.sh ${AROZ_TEMPLATE}/subservice \
     && chmod +x ${AROZ_TEMPLATE}/subservice/*/start.sh \
     && (python3 ${APP_DIR}/scripts/apply_arozos_joshu_theme.py ${AROZ_TEMPLATE}/web || true)
 
-FROM ${CAMOFOX_BASE} AS runtime
+FROM ${BASE_IMAGE} AS runtime
 
 ARG HERMES_AGENT_REF=3c27eb6234bf91b8ceee9e9071591b31e9b148cb
 ARG GBRAIN_REF=fa2c7a6990a7a57b251979ef6e1988ff09529021
@@ -181,12 +215,17 @@ ENV APP_DIR=/opt/joshu \
     AROZ_TEMPLATE=/opt/arozos-template \
     DEBIAN_FRONTEND=noninteractive
 
-# x11vnc/novnc/websockify: Camofox VNC plugin apt.txt deps (not installed by base image).
+# chromium + xvfb: local Chromium (headed, on Xvfb :99). apt installs chromium without
+# recommended fonts, so fontconfig and the fonts are explicit.
+# python3-requests: the companion runs its own scripts with the system python3 (the
+# Hermes gateway PATH has no venv), and these scripts often import requests. Before
+# 0.1.50 requests came in only as a dependency of websockify (noVNC).
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    bash ca-certificates curl ffmpeg git libopus0 libportaudio2 openssh-client patch poppler-utils postgresql-${POSTGRES_VERSION} procps python3 python3-pip python3-venv ripgrep rsync unzip util-linux \
-    x11vnc novnc python3-websockify net-tools \
-    chromium xvfb \
+    bash ca-certificates curl ffmpeg git libopus0 libportaudio2 openssh-client patch poppler-utils postgresql-${POSTGRES_VERSION} procps python3 python3-pip python3-requests python3-venv ripgrep rsync unzip util-linux \
+    net-tools \
+    chromium xvfb fontconfig fonts-liberation fonts-noto-color-emoji \
     && rm -rf /var/lib/apt/lists/* \
+    && python3 -c "import requests" \
     && python3 -m pip install --no-cache-dir --break-system-packages pypdf \
     && curl -fsSL https://bun.sh/install | bash \
     && /root/.bun/bin/bun install -g "github:garrytan/gbrain#${GBRAIN_REF}" \
@@ -196,18 +235,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && ln -sf /root/.local/share/uv/python/cpython-3.12-*/bin/python3.12 /opt/joshu/.local/python312/bin/python3.12 \
     && /opt/joshu/.local/python312/bin/python3.12 --version
 
-# Node 22 for Hermes dashboard rebuild + Camofox native modules (see builder stage note).
+# Node 22 for the Joshu API, Hermes dashboard rebuild, and the Chromium supervisor (see builder stage note).
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
-    && rm -f /usr/local/bin/node /usr/local/bin/npm /usr/local/bin/npx \
     && node -v | grep -E '^v22\.' \
     && npm -v \
-    && apt-get update \
-    && apt-get install -y --no-install-recommends build-essential \
-    && cd /app && npm rebuild better-sqlite3 --foreground-scripts \
-    && node --input-type=module -e 'import Database from "better-sqlite3"; const db=new Database(":memory:"); db.exec("select 1"); db.close(); console.log("better-sqlite3 ok", process.version)' \
-    && apt-get purge -y build-essential \
-    && apt-get autoremove -y \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /opt/hermes-agent /opt/hermes-agent
@@ -243,15 +275,22 @@ COPY scripts ./scripts
 COPY deploy/scripts/vps-start.sh ${APP_DIR}/scripts/vps-start.sh
 COPY deploy/RELEASE.json ${APP_DIR}/RELEASE.json
 COPY browser/chromium/package.json browser/chromium/supervisor.mjs browser/chromium/localProxy.mjs browser/chromium/entrypoint.sh browser/chromium/agent-service.py browser/chromium/requirements.txt /opt/browser/
+# browser-use pins old versions exactly, so install the security fixes after it:
+# Pillow (image decoders), aiohttp (8 advisories of 2026-10), pypdf (denial of service
+# in PDF parsing), anyio (TLS host name encoding), and mcp 2.2.0 (GHSA-84m7-p3x7-pcfv).
+# Drop each override when browser-use reaches it. pip itself is updated first, because
+# the venv copy (25.1.1) has advisories that are fixed in 26.
 RUN python3 -m venv /opt/browser/venv \
-    && /opt/browser/venv/bin/pip install --no-cache-dir -r /opt/browser/requirements.txt
+    && /opt/browser/venv/bin/pip install --no-cache-dir --upgrade 'pip>=26.2' \
+    && /opt/browser/venv/bin/pip install --no-cache-dir -r /opt/browser/requirements.txt \
+    && /opt/browser/venv/bin/pip install --no-cache-dir 'pillow==13.0.0' 'aiohttp==3.14.5' 'pypdf==6.21.2' 'anyio==4.14.2' 'mcp==2.2.0' \
+    && /opt/browser/venv/bin/python -c 'import PIL, aiohttp, pypdf, anyio, mcp, browser_use; import importlib.metadata as m; assert m.version("mcp") == "2.2.0"; print("browser venv ok", PIL.__version__, aiohttp.__version__, pypdf.__version__, m.version("mcp"))'
 
 RUN cd /opt/browser && npm install --omit=dev --no-audit --no-fund \
     && chmod +x /opt/browser/entrypoint.sh \
     && cd ${APP_DIR} && npm ci --omit=dev --ignore-scripts --no-audit --no-fund \
     && (patch --batch --forward -p1 -i patches/http-proxy+1.18.1.patch || true) \
-    && node scripts/patch-camofox-single-tab.mjs /app/server.js \
-    && bash scripts/patch-camofox-vnc-watcher.sh /app/plugins/vnc/vnc-watcher.sh \
+    && node scripts/patch-gbrain.mjs /root/.bun/install/global/node_modules/gbrain \
     && chmod +x ${APP_DIR}/scripts/vps-start.sh \
     && chmod +x ${APP_DIR}/scripts/bootstrap-joshu-files.sh \
     && chmod +x ${APP_DIR}/scripts/bootstrap-executive-assistant.sh \
@@ -270,8 +309,6 @@ RUN cd /opt/browser && npm install --omit=dev --no-audit --no-fund \
     && chmod +x ${APP_DIR}/scripts/ensure-hermes-gbrain-mcp.mjs \
     && npm cache clean --force \
     && rm -rf /root/.cache/pip /tmp/* ${APP_DIR}/patches \
-    && test -f /root/.cache/camoufox/version.json \
-    || (echo "ERROR: Camoufox browser cache missing after image build; /app postinstall cache was wiped" >&2; exit 1) \
     && test -f node_modules/@joshu/app-sdk/dist/index.js \
     || (echo "ERROR: @joshu/app-sdk dist missing after npm ci" >&2; exit 1) \
     && test -f node_modules/@joshu/box-state/dist/index.js \
@@ -287,8 +324,10 @@ RUN node scripts/copy-runtime-assets.mjs --check \
 
 # last30days engine is gitignored; CI must run sync-last30days-skill.sh before docker build.
 # Bake a second copy outside integrations/ so a future bind-mount cannot shadow it.
+# The no-training routing patch is idempotent; it also covers a local engine copy synced before the patch existed.
 RUN test -f integrations/last30days-skill/skills/last30days/scripts/last30days.py \
-    || (echo "ERROR: last30days engine missing; run scripts/sync-last30days-skill.sh before docker build" >&2; exit 1)
+    || (echo "ERROR: last30days engine missing; run scripts/sync-last30days-skill.sh before docker build" >&2; exit 1) \
+    && python3 scripts/patch-last30days-openrouter-data-collection.py
 # Boot scripts: unshadowable copy. Compose used to bind-mount host /opt/joshu/scripts over
 # the image, so a stale clone skipped jNotes/md-editor even on a current GHCR tag.
 # CMD uses .image/vps-start.sh; optional host hotfix/scripts overlays at boot.
@@ -300,20 +339,34 @@ RUN mkdir -p /opt/joshu/.image \
     && test -f /opt/joshu/.image/scripts/vps-start.sh \
     && test -f /opt/joshu/.image/scripts/lib/arozos-desktop-shortcuts.sh
 
-# Camofox 1.6+ ships plugins.vnc.enabled=false; ENABLE_VNC alone never loads the plugin.
-RUN python3 - <<'PY'
-import json
-from pathlib import Path
-path = Path("/app/camofox.config.json")
-config = json.loads(path.read_text(encoding="utf-8"))
-plugins = config.setdefault("plugins", {})
-vnc = plugins.get("vnc") if isinstance(plugins.get("vnc"), dict) else {}
-vnc["enabled"] = True
-vnc["resolution"] = "1024x768"
-plugins["vnc"] = vnc
-path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
-print("enabled Camofox VNC plugin in", path)
-PY
+# Host bundle (change image-owned-box-runtime): the files that the host needs to start
+# a box. deploy/scripts/install-host-bundle.sh writes them to /opt/joshu/deploy/ on the host.
+COPY deploy/docker-compose.yml deploy/.env.vps.example /opt/joshu/.image/host/deploy/
+COPY deploy/scripts/render-caddyfile.sh deploy/scripts/caddy-entrypoint.sh deploy/scripts/install-host-bundle.sh \
+    deploy/scripts/ensure-instance-env-secrets.sh deploy/scripts/carry-over-joshu-state.sh \
+    deploy/scripts/prune-release-images.sh \
+    /opt/joshu/.image/host/deploy/scripts/
+# The instance agent runs set_aroz_password from the host (the script mounts its Go source into a container).
+COPY scripts/arozos-reset-password.sh /opt/joshu/.image/host/scripts/
+COPY scripts/arozos-reset-password /opt/joshu/.image/host/scripts/arozos-reset-password
+RUN chmod +x /opt/joshu/.image/host/deploy/scripts/*.sh \
+    && test -f /opt/joshu/.image/host/deploy/docker-compose.yml \
+    && test -f /opt/joshu/.image/host/deploy/.env.vps.example \
+    && test -x /opt/joshu/.image/host/deploy/scripts/render-caddyfile.sh \
+    && test -x /opt/joshu/.image/host/deploy/scripts/caddy-entrypoint.sh \
+    && test -x /opt/joshu/.image/host/deploy/scripts/install-host-bundle.sh \
+    && test -x /opt/joshu/.image/host/deploy/scripts/ensure-instance-env-secrets.sh \
+    && test -x /opt/joshu/.image/host/deploy/scripts/carry-over-joshu-state.sh \
+    && test -x /opt/joshu/.image/host/deploy/scripts/prune-release-images.sh \
+    && test -f /opt/joshu/.image/host/scripts/arozos-reset-password.sh
+
+# Release provenance of dist/ comes from the image. No host sync writes it any more.
+RUN node -e 'const fs = require("fs"); \
+  const r = JSON.parse(fs.readFileSync(process.env.APP_DIR + "/RELEASE.json", "utf8")); \
+  fs.writeFileSync(process.env.APP_DIR + "/dist/.release-provenance.json", JSON.stringify({ \
+    version: r.version, imageRef: r.imageRef, distSource: "image", syncedAt: new Date().toISOString() \
+  }, null, 2) + "\n");' \
+    && grep -q '"distSource": "image"' ${APP_DIR}/dist/.release-provenance.json
 
 RUN id -u hindsight >/dev/null 2>&1 || useradd --create-home --home-dir /home/hindsight --shell /usr/sbin/nologin hindsight
 
@@ -323,15 +376,13 @@ ENV PATH="/root/.bun/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin
     HOST=127.0.0.1 \
     PUBLIC_AROZ_PORT=8787 \
     AROZ_DATA=/var/lib/arozos \
+    JOSHU_STATE_DIR=/var/lib/arozos/joshu-state \
     HINDSIGHT_POSTGRES_DATA_DIR=/var/lib/postgresql/hindsight/data \
     HERMES_BIN=${HERMES_DIR}/venv/bin/hermes \
     HERMES_AGENT_REF=${HERMES_AGENT_REF} \
     LAST30DAYS_PYTHON=/opt/joshu/.local/python312/bin/python3.12 \
     LAST30DAYS_IMAGE_ENGINE_ROOT=/opt/joshu/.image/last30days-skill \
-    ENABLE_VNC=1 \
-    NOVNC_URL=/novnc \
-    NOVNC_PROXY_TARGET=http://127.0.0.1:6080 \
-    NOVNC_CLIENT_PATH=/novnc
+    NODE_ENV=production
 
 EXPOSE 8787 8788
 

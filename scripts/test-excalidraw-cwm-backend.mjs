@@ -97,13 +97,19 @@ try {
   });
 
   assert.equal(
-    isLocalhostRequest({ ip: "127.0.0.1", hostname: "127.0.0.1", socket: {} }),
+    isLocalhostRequest({
+      ip: "127.0.0.1",
+      hostname: "127.0.0.1",
+      headers: { host: "127.0.0.1:8788" },
+      socket: { remoteAddress: "127.0.0.1" },
+    }),
     true,
   );
   assert.equal(
     isLocalhostRequest({
       ip: "203.0.113.10",
       hostname: "example.test",
+      headers: { host: "example.test" },
       socket: { remoteAddress: "203.0.113.10" },
     }),
     false,

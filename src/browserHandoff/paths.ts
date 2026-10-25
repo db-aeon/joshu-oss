@@ -1,9 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
 
-/** Persist browser handoff records under .joshu/browser-handoff/ */
+import { joshuStateDir } from "../joshuStateDir.js";
+
+/** Persist browser handoff records under `browser-handoff/` in the Joshu state folder (src/joshuStateDir.ts). */
 export function browserHandoffDir(projectRoot = process.cwd()): string {
-  return path.join(projectRoot, ".joshu", "browser-handoff");
+  return path.join(joshuStateDir(projectRoot), "browser-handoff");
 }
 
 export function ensureBrowserHandoffDir(projectRoot = process.cwd()): string {

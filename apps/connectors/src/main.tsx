@@ -1519,7 +1519,7 @@ function App() {
                     type="text"
                     value={day0AssistantName}
                     onChange={(e) => setDay0AssistantName(e.target.value)}
-                    placeholder="e.g. Patrick"
+                    placeholder="e.g. Ava"
                   />
                 </label>
                 <div className="day0-actions">

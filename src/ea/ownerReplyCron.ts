@@ -7,6 +7,7 @@ import {
   ensureEaOwnerReplyBoard,
   eaSchedulingKanbanAssignee,
 } from "../hermesKanbanBridge.js";
+import { peekSetupMention, recordSetupMention } from "../onboarding/setupMention.js";
 import { parseEmailAddress } from "./schedulingTypes.js";
 import { parseThreadIdFromTaskBody, threadIdInTaskSourcePaths } from "./schedulingCron.js";
 import {
@@ -52,6 +53,8 @@ export function buildOwnerReplyTaskBody(opts: {
   messageId?: string;
   threadId?: string;
   provider?: string;
+  /** Setup mention for this reply (change owner-setup-board). */
+  setupMention?: string | null;
 }): string {
   const lines = [
     "kind: owner_reply",
@@ -68,7 +71,12 @@ export function buildOwnerReplyTaskBody(opts: {
     "Never delete/trash. Never send scheduling slots (hand off to ea-scheduling).",
     "kanban_complete if delivered; kanban_block(awaiting owner) only if the reply asked a real question.",
   ];
-  return lines.join("\n");
+  return withSetupMention(lines.join("\n"), opts.setupMention);
+}
+
+/** Add the `setup_mention:` line. Skill ea-owner-reply puts that sentence at the end of the reply. */
+function withSetupMention(body: string, mention: string | null | undefined): string {
+  return mention?.trim() ? `${body}\nsetup_mention: ${JSON.stringify(mention.trim())}` : body;
 }
 
 export function findOpenOwnerReplyByThread(
@@ -158,16 +166,19 @@ export async function queueOwnerReplyTask(opts: {
   const { filesRoot } = opts;
   const threadId = opts.threadId?.trim();
   const fromEmail = parseEmailAddress(opts.from);
-  const body =
-    opts.body?.trim() ||
-    buildOwnerReplyTaskBody({
-      subject: opts.subject,
-      fromEmail,
-      sourcePath: opts.sourcePath,
-      messageId,
-      threadId,
-      provider: opts.provider,
-    });
+  // Setup mention for email: recorded only when the task is created (change owner-setup-board).
+  const setupMention = await peekSetupMention(process.cwd(), "email").catch(() => null);
+  const body = opts.body?.trim()
+    ? withSetupMention(opts.body.trim(), setupMention)
+    : buildOwnerReplyTaskBody({
+        subject: opts.subject,
+        fromEmail,
+        sourcePath: opts.sourcePath,
+        messageId,
+        threadId,
+        provider: opts.provider,
+        setupMention,
+      });
   const title = opts.title?.trim() || ownerReplyTaskTitle(opts.subject, opts.from);
   const idempotencyKey = ownerReplyTaskIdempotencyKeyFromMessage(messageId);
 
@@ -244,6 +255,7 @@ export async function queueOwnerReplyTask(opts: {
   }
 
   const actionTaken = result.action_taken ?? "created";
+  if (setupMention && actionTaken === "created") recordSetupMention(process.cwd(), "email");
   console.info(
     `[ea-owner-reply] action=${actionTaken} board=${EA_OWNER_REPLY_BOARD} task=${result.task_id ?? "?"} message=${messageId}`,
   );

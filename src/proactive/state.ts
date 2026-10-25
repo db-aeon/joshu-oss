@@ -3,7 +3,7 @@ import fs from "node:fs";
 import { Temporal } from "@js-temporal/polyfill";
 
 import { normalizeIanaTimezone } from "../ianaTimezone.js";
-import type { ProactivePreferences, ProactiveState } from "./types.js";
+import type { ProactiveLastNudge, ProactivePreferences, ProactiveState } from "./types.js";
 import { ensureProactiveConfigDir, proactiveStatePath } from "./paths.js";
 
 export const PROACTIVE_FACTORY_PREFERENCES: ProactivePreferences = {
@@ -27,7 +27,6 @@ export function factoryProactiveState(localDate: string): ProactiveState {
     hygieneClosedTaskIds: [],
     lastHygieneSummary: null,
     hygieneAmbiguousQueue: [],
-    clarifyQueue: [],
     lastOnboardingNudgeDate: null,
     lastOwnerReplyAt: null,
   };
@@ -122,38 +121,6 @@ export function readProactiveState(projectRoot = process.cwd(), timezone?: strin
                   : new Date().toISOString(),
             }))
         : [],
-      clarifyQueue: Array.isArray(parsed.clarifyQueue)
-        ? parsed.clarifyQueue
-            .filter(
-              (q): q is NonNullable<ProactiveState["clarifyQueue"]>[number] =>
-                q &&
-                typeof q === "object" &&
-                typeof (q as { taskId?: unknown }).taskId === "string" &&
-                typeof (q as { board?: unknown }).board === "string" &&
-                typeof (q as { conflict?: unknown }).conflict === "string",
-            )
-            .map((q) => ({
-              taskId: q.taskId.trim(),
-              board: q.board.trim(),
-              title:
-                typeof q.title === "string" && q.title.trim() ? q.title.trim() : "(untitled)",
-              blockReason:
-                typeof q.blockReason === "string"
-                  ? q.blockReason
-                  : q.blockReason === null
-                    ? null
-                    : null,
-              conflict: q.conflict.trim(),
-              handoffAt:
-                typeof q.handoffAt === "string" && q.handoffAt.trim()
-                  ? q.handoffAt.trim()
-                  : null,
-              queuedAt:
-                typeof q.queuedAt === "string" && q.queuedAt.trim()
-                  ? q.queuedAt.trim()
-                  : new Date().toISOString(),
-            }))
-        : [],
       lastOnboardingNudgeDate:
         typeof parsed.lastOnboardingNudgeDate === "string"
           ? parsed.lastOnboardingNudgeDate.trim()
@@ -162,6 +129,14 @@ export function readProactiveState(projectRoot = process.cwd(), timezone?: strin
         typeof parsed.lastOwnerReplyAt === "string" && parsed.lastOwnerReplyAt.trim()
           ? parsed.lastOwnerReplyAt.trim()
           : null,
+      refBoards:
+        parsed.refBoards && typeof parsed.refBoards === "object"
+          ? Object.fromEntries(
+              Object.entries(parsed.refBoards).filter(
+                (e): e is [string, string] => typeof e[1] === "string" && e[1].trim().length > 0,
+              ),
+            )
+          : {},
     };
 
     return rolloverProactiveState(state, today);
@@ -187,6 +162,38 @@ export function writeProactiveState(state: ProactiveState, projectRoot = process
   fs.writeFileSync(proactiveStatePath(projectRoot), JSON.stringify(state, null, 2), {
     mode: 0o600,
   });
+}
+
+export const REF_BOARDS_MAX = 20;
+
+/** Remember the board of a task id that an owner text named in its Ref line. */
+export function rememberRefBoard(state: ProactiveState, taskId: string, board: string): ProactiveState {
+  const refBoards = { ...(state.refBoards ?? {}) };
+  delete refBoards[taskId];
+  refBoards[taskId] = board;
+  const keys = Object.keys(refBoards);
+  for (const old of keys.slice(0, Math.max(0, keys.length - REF_BOARDS_MAX))) delete refBoards[old];
+  return { ...state, refBoards };
+}
+
+/**
+ * Board of the task that an owner reply is about: the remembered board of the task id,
+ * else the board of `lastNudge`.
+ */
+export function boardForTaskRef(state: ProactiveState, taskId: string | undefined): string | undefined {
+  const id = taskId?.trim();
+  if (id && state.refBoards?.[id]) return state.refBoards[id];
+  return state.lastNudge?.board;
+}
+
+/**
+ * A Multiplayer team text that needs an answer (spec team-standup): the owner reply goes to
+ * the task through the nudge reply path. The text does not count against the daily nudge cap,
+ * and the hourly sweep does not nudge the same task again on the same day.
+ */
+export function recordOwnerQuestionText(state: ProactiveState, nudge: ProactiveLastNudge): ProactiveState {
+  const nudgedTaskIds = state.nudgedTaskIds.includes(nudge.taskId) ? state.nudgedTaskIds : [...state.nudgedTaskIds, nudge.taskId];
+  return rememberRefBoard({ ...state, lastNudge: nudge, lastOwnerReplyAt: null, nudgedTaskIds }, nudge.taskId, nudge.board);
 }
 
 export function canSendNudge(state: ProactiveState): { ok: boolean; reason?: string } {

@@ -18,6 +18,59 @@ assert SPEC and SPEC.loader
 MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)
 
+GUARD_PATH = ROOT / ".hermes/plugins/joshu-realtime-goals/cron_guard.py"
+GUARD_SPEC = importlib.util.spec_from_file_location("joshu_realtime_goals_cron_guard", GUARD_PATH)
+assert GUARD_SPEC and GUARD_SPEC.loader
+GUARD = importlib.util.module_from_spec(GUARD_SPEC)
+GUARD_SPEC.loader.exec_module(GUARD)
+
+
+def check_cron_guard() -> None:
+    """Spec owner-reminders: Hermes cronjob calls with an undeliverable target are blocked."""
+
+    def call(platform: str, args: dict):
+        os.environ["HERMES_SESSION_PLATFORM"] = platform
+        try:
+            return GUARD.pre_tool_call(tool_name="cronjob", args=args)
+        finally:
+            del os.environ["HERMES_SESSION_PLATFORM"]
+
+    # Reminder from an SMS turn without deliver (box joe, 2026-09-11).
+    blocked = call("api_server", {"action": "create", "schedule": "0 9 * * *", "prompt": "Remind the owner"})
+    assert blocked["action"] == "block"
+    assert "owner_reminder_create" in blocked["message"]
+    assert call("api_server", {"action": "create", "deliver": "origin"})["action"] == "block"
+    # Platforms that the Hermes gateway does not run on a box.
+    assert call("telegram", {"action": "create", "deliver": "sms:+15551234567"})["action"] == "block"
+    assert call("", {"action": "create", "deliver": "email:owner@example.com"})["action"] == "block"
+    assert call("api_server", {"action": "create", "deliver": "origin,telegram"})["action"] == "block"
+    # Not blocked: Telegram/Slack sessions, local, all, explicit telegram, other actions.
+    assert call("telegram", {"action": "create"}) is None
+    assert call("slack", {"action": "create", "deliver": "origin"}) is None
+    assert call("api_server", {"action": "create", "deliver": "local"}) is None
+    assert call("api_server", {"action": "create", "deliver": "all"}) is None
+    assert call("api_server", {"action": "create", "deliver": "telegram:-1001:17"}) is None
+    assert call("", {"action": "create"}) is None  # unknown session: Hermes home-channel fallback
+    assert call("api_server", {"action": "update", "job_id": "j1", "prompt": "x"}) is None
+    assert call("api_server", {"action": "update", "job_id": "j1", "deliver": "origin"})["action"] == "block"
+    assert call("api_server", {"action": "list"}) is None
+    assert GUARD.pre_tool_call(tool_name="terminal", args={"action": "create"}) is None
+    # Same examples as scanCronFailures in scripts/test-instance-failures.mjs.
+    assert GUARD.undeliverable_reason("origin", "api_server")
+    assert GUARD.undeliverable_reason("sms:+15551234567", "")
+    assert GUARD.undeliverable_reason("local", "api_server") is None
+    assert GUARD.undeliverable_reason("telegram", "telegram") is None
+
+    class Ctx:
+        hooks: list[str] = []
+
+        def register_hook(self, name, _callback):
+            self.hooks.append(name)
+
+    ctx = Ctx()
+    GUARD.register(ctx)
+    assert ctx.hooks == ["pre_tool_call"]
+
 
 class Adapter:
     def __init__(self) -> None:
@@ -32,6 +85,7 @@ class Platform:
 
 
 async def main() -> None:
+    check_cron_guard()
     assert MODULE._origin_from_session("agent:main:email:dm:owner") is None
     assert MODULE._origin_from_session("share-chat:public") is None
     assert MODULE._origin_from_session("agent:main:slack:dm:D1")["channel"] == "slack"

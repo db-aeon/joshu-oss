@@ -1,5 +1,6 @@
 /**
- * Host bind-mounted dist/ provenance — written by instance-agent after image sync.
+ * dist/ provenance. The image build writes it with distSource "image"
+ * (change image-owned-box-runtime). Older boxes have a host copy from the image sync.
  */
 
 import { access, readFile } from "node:fs/promises";
@@ -7,7 +8,7 @@ import path from "node:path";
 
 export const DIST_PROVENANCE_FILENAME = ".release-provenance.json";
 
-export type DistProvenanceSource = "image-sync" | "artifact" | "manual";
+export type DistProvenanceSource = "image" | "image-sync" | "artifact" | "manual";
 
 export interface DistProvenance {
   version: string;

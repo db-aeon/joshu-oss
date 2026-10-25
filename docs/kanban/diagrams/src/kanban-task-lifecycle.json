@@ -1,0 +1,314 @@
+{
+  "schema_version": 2,
+  "diagram_type": "lifecycle",
+  "meta": {
+    "title": "Kanban task status lifecycle (Hermes v0.20 + Joshu patches)",
+    "output": ".archify/lifecycle-kanban-task-lifecycle-20261006-223058/kanban-task-lifecycle.html",
+    "quality_profile": "showcase",
+    "locale": "en",
+    "repository": {
+      "url": "https://github.com/db-aeon/joshu.git",
+      "revision": "56143b5c8bd394b1046988d5196fad6701f11448",
+      "provider": "github",
+      "link_mode": "local-only"
+    }
+  },
+  "lanes": [
+    {
+      "id": "main",
+      "label": "Main path"
+    },
+    {
+      "id": "waiting",
+      "label": "Waiting"
+    },
+    {
+      "id": "intake",
+      "label": "Intake (triage)"
+    },
+    {
+      "id": "terminal",
+      "label": "Terminal"
+    }
+  ],
+  "states": [
+    {
+      "id": "todo",
+      "type": "waiting",
+      "label": "todo",
+      "sublabel": "a parent not done",
+      "lane": "main",
+      "col": 0,
+      "step": "01",
+      "sources": [
+        {
+          "path": "src/hermesKanbanBridge.ts",
+          "line": 143,
+          "end_line": 144,
+          "label": "parents on create"
+        }
+      ]
+    },
+    {
+      "id": "ready",
+      "type": "start",
+      "label": "ready",
+      "sublabel": "assignee set, parents done",
+      "lane": "main",
+      "col": 1,
+      "step": "02",
+      "sources": [
+        {
+          "path": "scripts/hermes-kanban-bridge.py",
+          "line": 330,
+          "end_line": 340,
+          "label": "EA boards need assignee"
+        },
+        {
+          "path": "src/ea/mailCron.ts",
+          "line": 302,
+          "end_line": 313,
+          "label": "ingress create"
+        }
+      ]
+    },
+    {
+      "id": "running",
+      "type": "active",
+      "label": "running",
+      "sublabel": "one worker process",
+      "lane": "main",
+      "col": 2,
+      "step": "03",
+      "sources": [
+        {
+          "path": "src/hermesApi.ts",
+          "line": 2246,
+          "end_line": 2253,
+          "label": "dispatch every 60 s"
+        },
+        {
+          "path": "src/hermesKanbanBridge.ts",
+          "line": 149,
+          "end_line": 158,
+          "label": "EA max runtime 28800 s"
+        }
+      ]
+    },
+    {
+      "id": "done",
+      "type": "success",
+      "label": "done",
+      "sublabel": "summary and comment kept",
+      "lane": "main",
+      "col": 3,
+      "step": "04",
+      "sources": [
+        {
+          "path": "scripts/hermes-kanban-bridge.py",
+          "line": 685,
+          "end_line": 720,
+          "label": "bridge complete"
+        }
+      ]
+    },
+    {
+      "id": "blocked",
+      "type": "waiting",
+      "label": "blocked",
+      "sublabel": "waits for unblock",
+      "tag": "block kind",
+      "lane": "waiting",
+      "col": 1,
+      "sources": [
+        {
+          "path": "scripts/hermes-kanban-bridge.py",
+          "line": 482,
+          "end_line": 510,
+          "label": "bridge block"
+        },
+        {
+          "path": "src/hermesKanbanBridge.ts",
+          "line": 20,
+          "end_line": 24,
+          "label": "block kinds"
+        },
+        {
+          "path": "scripts/hermes-kanban-bridge.py",
+          "line": 453,
+          "end_line": 480,
+          "label": "bridge unblock"
+        }
+      ]
+    },
+    {
+      "id": "triage",
+      "type": "decision",
+      "label": "triage",
+      "sublabel": "created with triage: true",
+      "lane": "intake",
+      "col": 0,
+      "sources": [
+        {
+          "path": "src/ea/triageRoutes.ts",
+          "line": 711,
+          "end_line": 721,
+          "label": "project triage root"
+        },
+        {
+          "path": "scripts/patch-hermes-ea-kanban-no-autodecompose.py",
+          "line": 9,
+          "end_line": 19,
+          "label": "EA boards skip decompose"
+        }
+      ]
+    },
+    {
+      "id": "archived",
+      "type": "neutral",
+      "label": "archived",
+      "sublabel": "never dispatched again",
+      "lane": "terminal",
+      "col": 3,
+      "sources": [
+        {
+          "path": "scripts/hermes-kanban-bridge.py",
+          "line": 722,
+          "end_line": 735,
+          "label": "bridge cancel"
+        }
+      ]
+    }
+  ],
+  "transitions": [
+    {
+      "id": "todo-ready",
+      "from": "todo",
+      "to": "ready",
+      "label": "parents done"
+    },
+    {
+      "id": "ready-running",
+      "from": "ready",
+      "to": "running",
+      "label": "dispatcher claims",
+      "variant": "emphasis"
+    },
+    {
+      "id": "running-done",
+      "from": "running",
+      "to": "done",
+      "label": "kanban_complete",
+      "variant": "emphasis"
+    },
+    {
+      "id": "running-blocked",
+      "from": "running",
+      "to": "blocked",
+      "label": "kanban_block · gave_up"
+    },
+    {
+      "id": "running-ready",
+      "from": "running",
+      "to": "ready",
+      "label": "crash · timeout · stale",
+      "variant": "dashed",
+      "fromSide": "left",
+      "toSide": "right"
+    },
+    {
+      "id": "ready-blocked",
+      "from": "ready",
+      "to": "blocked",
+      "label": "Joshu blocks at create"
+    },
+    {
+      "id": "blocked-ready",
+      "from": "blocked",
+      "to": "ready",
+      "label": "unblock"
+    },
+    {
+      "id": "blocked-triage",
+      "from": "blocked",
+      "to": "triage",
+      "label": "loop breaker (other boards)",
+      "variant": "dashed"
+    },
+    {
+      "id": "triage-todo",
+      "from": "triage",
+      "to": "todo",
+      "label": "auto-decompose"
+    },
+    {
+      "id": "done-ready",
+      "from": "done",
+      "to": "ready",
+      "label": "reopen (Joshu)",
+      "route": "top-channel"
+    },
+    {
+      "id": "done-archived",
+      "from": "done",
+      "to": "archived",
+      "label": "archive"
+    },
+    {
+      "id": "blocked-archived",
+      "from": "blocked",
+      "to": "archived",
+      "label": "cancel",
+      "variant": "security"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "How a task starts",
+      "items": [
+        "Assignee set and all parents done: ready",
+        "A parent not done: todo",
+        "triage: true: triage (only project triage roots)",
+        "Joshu creates mail tracks and onboarding tasks ready, then blocks them at once through the bridge",
+        "Status scheduled exists in Hermes; Joshu does not use it"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Running ends",
+      "items": [
+        "kanban_complete: done (bridge complete also needs a comment)",
+        "kanban_block with reason and kind: blocked",
+        "kanban_block with kind dependency: todo, not blocked",
+        "Crash, timeout (max_runtime_seconds, 28800 s on EA boards) or stale claim: back to ready and counted as a failure",
+        "After 2 failures in a row (kanban.failure_limit): blocked, event gave_up"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Blocked",
+      "items": [
+        "Block kinds: needs_input (owner question), capability, transient, dependency, or none",
+        "Unblock comes from an email handoff, an owner reply, the broker after an owner answer, or auto-recovery"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Joshu patches",
+      "items": [
+        "Loop breaker: the same block kind twice in a row (BLOCK_RECURRENCE_LIMIT = 2) moves a task to triage",
+        "The patch keeps tasks on the 6 EA boards and on every project-* board in blocked (event flag joshu_ea_keep_blocked)",
+        "Auto-decompose (triage to todo) is skipped on EA boards; project boards keep it"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Bridge actions",
+      "items": [
+        "reopen: done to ready (realtime-goal follow-up within 48 h)",
+        "cancel: stops the worker, comments, archives; works from any status that is not archived"
+      ]
+    }
+  ]
+}

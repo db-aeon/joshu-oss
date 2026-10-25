@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Patch /etc/joshu/instance.env — drops duplicate keys, appends canonical rows.
- * Invoked from the instance-agent container via /opt/joshu mount (fresh after git pull).
+ * The agent image (/app/scripts) and the sandbox image (/opt/joshu/scripts) carry this file.
  *
  * Uses write-in-place (same inode). Never `sed -i` this file from the host while
  * containers bind-mount the *file* — GNU sed replaces the inode and the agent

@@ -8,6 +8,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Readable } from "node:stream";
 
+import { resolveScriptPath } from "./scriptsRoot.js";
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 function envOr(name: string, fallback: string): string {
@@ -40,6 +42,11 @@ export function hermesScriptsDir(): string {
   return path.resolve(__dirname, "..", "scripts");
 }
 
+/** Bridge script path: the scripts root of the image first, then `scripts/` next to `dist/`. */
+export function hermesScriptPath(scriptName: string): string {
+  return resolveScriptPath(hermesScriptsDir(), scriptName);
+}
+
 export function audioMimeForPath(filePath: string): string {
   const lower = filePath.toLowerCase();
   if (lower.endsWith(".ogg")) return "audio/ogg";
@@ -53,7 +60,7 @@ export async function spawnHermesPython(
   stdinUtf8?: string,
 ): Promise<{ stdout: string; stderr: string; code: number | null }> {
   const python = getHermesPythonExecutable();
-  const scriptPath = path.join(hermesScriptsDir(), scriptName);
+  const scriptPath = hermesScriptPath(scriptName);
   const hermesRoot = getHermesAgentRoot();
   const hermesHome = getHermesHomeDir();
 

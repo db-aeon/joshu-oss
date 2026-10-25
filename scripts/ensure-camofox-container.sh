@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Create or start the local shared Chromium container (CDP + noVNC + Decodo).
+# Create or start the local shared Chromium container (CDP + Decodo).
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -88,7 +88,6 @@ else
     --restart unless-stopped \
     --shm-size=1g \
     -p 127.0.0.1:9377:9377 \
-    -p 127.0.0.1:6080:6080 \
     -p 127.0.0.1:9222:9222 \
     -e VNC_RESOLUTION="${VNC_RESOLUTION:-1024x768}" \
     -e CAMOFOX_VIEWPORT_WIDTH="${CAMOFOX_VIEWPORT_WIDTH:-1024}" \

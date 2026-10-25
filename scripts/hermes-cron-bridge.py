@@ -60,7 +60,7 @@ def _normalize_repeat(raw: Any) -> Optional[int]:
     return None
 
 
-def _parse_skills(raw: Any) -> Optional[List[str]]:
+def _parse_string_list(raw: Any) -> Optional[List[str]]:
     if raw is None:
         return None
     if isinstance(raw, str):
@@ -103,6 +103,7 @@ def _job_detail(job: Dict[str, Any]) -> Dict[str, Any]:
         "no_agent": bool(job.get("no_agent")),
         "workdir": job.get("workdir"),
         "profile": job.get("profile"),
+        "enabled_toolsets": job.get("enabled_toolsets"),
         "paused_at": job.get("paused_at"),
         "paused_reason": job.get("paused_reason"),
         "created_at": job.get("created_at"),
@@ -136,6 +137,54 @@ def _get(job_id: str) -> Dict[str, Any]:
     return {"success": True, "job": _job_detail(job)}
 
 
+def _realign_timezone() -> Dict[str, Any]:
+    """Recompute cron next_run_at after the configured Hermes timezone changed.
+
+    Hermes stores next_run_at as an absolute time with the UTC offset of the
+    timezone that was active when Hermes computed it. A job stored as 09:00 UTC
+    for a UTC+8 owner fires at 17:00 local after the gateway restarts, and only
+    then moves to 09:00 local. The gateway repairs this case only when the old
+    wall clock is still in the future (owners west of UTC). Recompute each
+    recurring cron job whose stored offset differs from the offset of the
+    current timezone at the same time. A job that is already correct, also
+    across a DST change, keeps its value.
+    """
+    from datetime import datetime
+
+    import hermes_time
+    from cron.jobs import compute_next_run, load_jobs, update_job
+
+    hermes_time.reset_cache()
+    tz = hermes_time.get_timezone()
+    if tz is None:
+        return {"success": True, "timezone": None, "realigned": []}
+
+    realigned: List[Dict[str, Any]] = []
+    for job in load_jobs():
+        schedule = job.get("schedule") or {}
+        if not isinstance(schedule, dict) or schedule.get("kind") != "cron":
+            continue
+        if not job.get("enabled", True) or job.get("state") == "paused":
+            continue
+        stored_raw = job.get("next_run_at")
+        if not isinstance(stored_raw, str) or not stored_raw:
+            continue
+        try:
+            stored = datetime.fromisoformat(stored_raw)
+        except ValueError:
+            continue
+        if stored.tzinfo is None or stored.utcoffset() == stored.astimezone(tz).utcoffset():
+            continue
+        next_run = compute_next_run(schedule)
+        if not next_run or next_run == stored_raw:
+            continue
+        update_job(job["id"], {"next_run_at": next_run})
+        realigned.append(
+            {"job_id": job["id"], "name": job.get("name"), "from": stored_raw, "to": next_run}
+        )
+    return {"success": True, "timezone": str(tz), "realigned": realigned}
+
+
 def _dispatch(payload: Dict[str, Any]) -> Dict[str, Any]:
     action = str(payload.get("action") or "").strip().lower()
     if not action:
@@ -143,6 +192,9 @@ def _dispatch(payload: Dict[str, Any]) -> Dict[str, Any]:
 
     if action == "status":
         return _status()
+
+    if action == "realign_timezone":
+        return _realign_timezone()
 
     if action == "get":
         job_id = str(payload.get("job_id") or "").strip()
@@ -157,7 +209,7 @@ def _dispatch(payload: Dict[str, Any]) -> Dict[str, Any]:
         return json.loads(raw)
 
     if action == "create":
-        skills = _parse_skills(payload.get("skills"))
+        skills = _parse_string_list(payload.get("skills"))
         raw = cronjob(
             action="create",
             **_omit_none(
@@ -171,6 +223,8 @@ def _dispatch(payload: Dict[str, Any]) -> Dict[str, Any]:
                 no_agent=payload.get("no_agent"),
                 workdir=payload.get("workdir"),
                 profile=payload.get("profile"),
+                model=payload.get("model"),
+                enabled_toolsets=_parse_string_list(payload.get("enabled_toolsets")),
             ),
         )
         result = json.loads(raw)
@@ -185,7 +239,7 @@ def _dispatch(payload: Dict[str, Any]) -> Dict[str, Any]:
         return {"success": False, "error": "job_id is required"}
 
     if action == "update":
-        skills = _parse_skills(payload.get("skills")) if "skills" in payload else None
+        skills = _parse_string_list(payload.get("skills")) if "skills" in payload else None
         raw = cronjob(
             action="update",
             job_id=job_id,
@@ -200,6 +254,11 @@ def _dispatch(payload: Dict[str, Any]) -> Dict[str, Any]:
                 no_agent=payload.get("no_agent"),
                 workdir=payload.get("workdir"),
                 profile=payload.get("profile"),
+                enabled_toolsets=(
+                    _parse_string_list(payload.get("enabled_toolsets"))
+                    if "enabled_toolsets" in payload
+                    else None
+                ),
             ),
         )
         result = json.loads(raw)

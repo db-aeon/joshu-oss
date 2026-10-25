@@ -14,6 +14,7 @@ import {
   parseSubject,
 } from "./gmailBodies.js";
 import { normalizeRfcMessageId } from "../rfcMessageId.js";
+import { parseGmailAttachments, type GmailAttachment } from "./gmailAttachments.js";
 
 export type GmailExecuteContext = {
   connectedAccountId: string;
@@ -35,6 +36,8 @@ export type GmailMessageSummary = {
   messageTimestamp?: number;
   labelIds?: string[];
   unread?: boolean;
+  /** Mail attachments (attachment metadata); absent when the message has none. */
+  attachments?: GmailAttachment[];
 };
 
 export type GmailProfile = {
@@ -45,6 +48,13 @@ export type GmailProfile = {
   historyId?: string;
 };
 
+let gmailToolsExecute: typeof composioToolsExecute = composioToolsExecute;
+
+/** Tests only: replace the Composio tool call of the Gmail helpers. Call with no argument to restore it. */
+export function setGmailToolsExecuteForTests(fn?: typeof composioToolsExecute): void {
+  gmailToolsExecute = fn ?? composioToolsExecute;
+}
+
 async function executeGmail(
   projectRoot: string,
   toolSlug: string,
@@ -53,7 +63,7 @@ async function executeGmail(
 ): Promise<{ successful: boolean; data?: unknown; error?: string }> {
   const userId = resolveComposioUserId(projectRoot);
   try {
-    const result = await composioToolsExecute(
+    const result = await gmailToolsExecute(
       toolSlug,
       {
         userId,
@@ -97,6 +107,7 @@ function rowToSummary(row: Record<string, unknown>): GmailMessageSummary | null 
   const body = extractMessageBody(row);
   const rfcRaw = parseRfcMessageId(row);
   const rfcMessageId = normalizeRfcMessageId(rfcRaw) ?? undefined;
+  const attachments = parseGmailAttachments(row, id);
   return {
     id,
     threadId,
@@ -111,6 +122,7 @@ function rowToSummary(row: Record<string, unknown>): GmailMessageSummary | null 
     messageTimestamp: parseInternalDate(row),
     labelIds,
     unread: labelIds?.includes("UNREAD"),
+    ...(attachments.length > 0 ? { attachments } : {}),
   };
 }
 
@@ -246,6 +258,12 @@ export async function fetchGmailAllMailMessages(
     .slice(0, maxResults);
 }
 
+/** True when Gmail answered 404 "Requested entity was not found", for example for a deleted thread. */
+export function isGmailNotFoundError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return /requested entity was not found/i.test(message);
+}
+
 /** Full thread messages with bodies (for mirror sync). Paginates and dedupes by message id. */
 export async function fetchGmailThreadMessages(
   projectRoot: string,
@@ -312,6 +330,27 @@ export async function fetchGmailMessageById(
     unknown
   >;
   return rowToSummary(row);
+}
+
+/** Raw GMAIL_GET_ATTACHMENT response data for one mail attachment (decode with decodeGmailAttachmentResponse). */
+export async function fetchGmailAttachmentData(
+  projectRoot: string,
+  ctx: GmailExecuteContext,
+  att: Pick<GmailAttachment, "messageId" | "attachmentId" | "filename">,
+): Promise<unknown> {
+  const result = await executeGmail(
+    projectRoot,
+    "GMAIL_GET_ATTACHMENT",
+    {
+      user_id: "me",
+      message_id: att.messageId,
+      attachment_id: att.attachmentId,
+      file_name: att.filename,
+    },
+    ctx,
+  );
+  if (!result.successful) throw new Error(result.error || "GMAIL_GET_ATTACHMENT failed");
+  return result.data;
 }
 
 export async function fetchGmailProfile(

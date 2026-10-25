@@ -3,7 +3,7 @@
 BROWSER_HANDOFF_REQUEST_SCHEMA = {
     "name": "browser_handoff_request",
     "description": (
-        "Hand the shared Camofox tab to the owner on mobile for live HITL — payment, login, 2FA, "
+        "Hand the shared browser tab to the owner on mobile for live HITL — payment, login, 2FA, "
         "irreversible confirms, or any sensitive owner-only browser step. Snapshots current page URL/title, "
         "returns a signed handoff URL for email/chat. Agent navigate/click/type is blocked until the owner "
         "taps I'm done or the handoff expires. Call after staging the page the owner should see."
@@ -20,7 +20,7 @@ BROWSER_HANDOFF_REQUEST_SCHEMA = {
             },
             "kanban_task_id": {
                 "type": "string",
-                "description": "Optional Kanban task id for correlation while awaiting owner completion.",
+                "description": "Optional Kanban task id. A Kanban worker can leave it out, because the plugin then sends HERMES_KANBAN_TASK.",
             },
         },
         "required": ["instructions"],

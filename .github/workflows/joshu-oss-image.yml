@@ -26,6 +26,15 @@ jobs:
       contents: write
       packages: write
     steps:
+      # The sandbox image is large (Hermes + ArozOS + Chromium). Free runner disk first.
+      - name: Free runner disk
+        if: inputs.images != 'voice-only'
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          docker system prune -af >/dev/null 2>&1 || true
+          df -h /
+
       - uses: actions/checkout@v4
         with:
           submodules: recursive
@@ -54,8 +63,6 @@ jobs:
         if: inputs.images != 'voice-only'
       - run: npm run vps:sync-hermes-pin
         if: inputs.images != 'voice-only'
-      - run: npm run vps:sync-camofox-pin
-        if: inputs.images != 'voice-only'
       # Empty design-pack marker for vanilla OSS images (Dockerfile COPY requires the path).
       - run: bash scripts/stage-docker-design-pack.sh
         if: inputs.images != 'voice-only'
@@ -66,11 +73,6 @@ jobs:
         id: hermes
         if: inputs.images != 'voice-only'
         run: echo "ref=$(node scripts/sync-vps-hermes-pin.mjs --print)" >> "$GITHUB_OUTPUT"
-
-      - name: Resolve Camofox pin
-        id: camofox
-        if: inputs.images != 'voice-only'
-        run: echo "ref=$(node scripts/sync-vps-camofox-pin.mjs --print)" >> "$GITHUB_OUTPUT"
 
       - name: Resolve gbrain pin
         id: gbrain
@@ -100,7 +102,6 @@ jobs:
           push: true
           build-args: |
             HERMES_AGENT_REF=${{ steps.hermes.outputs.ref }}
-            CAMOFOX_BASE=${{ steps.camofox.outputs.ref }}
             GBRAIN_REF=${{ steps.gbrain.outputs.ref }}
           tags: |
             ghcr.io/${{ github.repository_owner }}/joshu-oss:${{ github.ref_name }}
@@ -122,11 +123,26 @@ jobs:
             ghcr.io/${{ github.repository_owner }}/joshu-oss-voice-realtime:${{ steps.release.outputs.version }}
             ghcr.io/${{ github.repository_owner }}/joshu-oss-voice-realtime:latest
 
+      # Agent image (change image-owned-box-runtime) for boxes that run profile fleet.
+      - name: Build and push joshu-oss-instance-agent
+        if: inputs.images != 'voice-only'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/Dockerfile.instance-agent
+          push: true
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/joshu-oss-instance-agent:${{ github.ref_name }}
+            ghcr.io/${{ github.repository_owner }}/joshu-oss-instance-agent:${{ steps.release.outputs.version }}
+            ghcr.io/${{ github.repository_owner }}/joshu-oss-instance-agent:latest
+
       - name: Make GHCR packages public (self-host pull without login)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          for pkg in joshu-oss joshu-oss-voice-realtime; do
+          for pkg in joshu-oss joshu-oss-voice-realtime joshu-oss-instance-agent; do
             gh api --method PATCH "/users/${{ github.repository_owner }}/packages/container/${pkg}" \
               -f visibility=public \
               || echo "[ghcr] visibility unchanged for ${pkg} (may need manual publish settings)"
@@ -173,7 +189,6 @@ jobs:
               `|-----------|-----|`,
               `| Hermes | \`${r.hermesRef}\` |`,
               `| gbrain | \`${r.gbrainRef}\` |`,
-              `| Camofox base | \`${r.camofoxBase}\` |`,
               "",
             ].join("\n");
             require("fs").writeFileSync("release-notes.md", body);

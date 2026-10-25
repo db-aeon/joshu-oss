@@ -3,6 +3,8 @@
  */
 
 import { execFile } from "node:child_process";
+import { existsSync } from "node:fs";
+import path from "node:path";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
@@ -10,6 +12,13 @@ const execFileAsync = promisify(execFile);
 export interface RestartGbrainResult {
   ok: boolean;
   error?: string;
+}
+
+/** Prefer image boot scripts (JOSHU_SCRIPTS_ROOT) over a possibly stale ${projectRoot}/scripts. */
+function gbrainScript(projectRoot: string, name: string): string {
+  const bootRoot = process.env.JOSHU_SCRIPTS_ROOT?.trim();
+  if (bootRoot && existsSync(path.join(bootRoot, name))) return path.join(bootRoot, name);
+  return path.join(projectRoot, "scripts", name);
 }
 
 function bashScript(projectRoot: string, script: string, gbrainHome?: string, timeoutMs = 180_000) {
@@ -29,7 +38,7 @@ export async function stopGbrainStack(
   gbrainHome?: string,
 ): Promise<RestartGbrainResult> {
   try {
-    await bashScript(projectRoot, `${projectRoot}/scripts/stop-gbrain.sh`, gbrainHome, 60_000);
+    await bashScript(projectRoot, gbrainScript(projectRoot, "stop-gbrain.sh"), gbrainHome, 60_000);
     return { ok: true };
   } catch (err) {
     const message =
@@ -48,9 +57,9 @@ export async function restartGbrainStack(
   gbrainHome?: string,
 ): Promise<RestartGbrainResult> {
   try {
-    await bashScript(projectRoot, `${projectRoot}/scripts/stop-gbrain.sh`, gbrainHome);
-    await bashScript(projectRoot, `${projectRoot}/scripts/start-gbrain.sh`, gbrainHome);
-    await bashScript(projectRoot, `${projectRoot}/scripts/start-gbrain-mcp-http.sh`, gbrainHome);
+    await bashScript(projectRoot, gbrainScript(projectRoot, "stop-gbrain.sh"), gbrainHome);
+    await bashScript(projectRoot, gbrainScript(projectRoot, "start-gbrain.sh"), gbrainHome);
+    await bashScript(projectRoot, gbrainScript(projectRoot, "start-gbrain-mcp-http.sh"), gbrainHome);
     return { ok: true };
   } catch (err) {
     const message =

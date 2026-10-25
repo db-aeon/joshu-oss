@@ -20,7 +20,10 @@ else
   mkdir -p "${OUT_DIR}"
 fi
 
-rsync -a "${RSYNC_DELETE[@]}" \
+# docs/releases in joshu-oss holds the OSS release notes, which are written there. Its exclude
+# keeps them, because rsync --delete does not remove excluded paths.
+# ${arr[@]+"${arr[@]}"}: an empty array is an error under set -u in bash 3.2 (macOS).
+rsync -a ${RSYNC_DELETE[@]+"${RSYNC_DELETE[@]}"} \
   --exclude .git \
   --exclude node_modules \
   --exclude __pycache__ \
@@ -51,54 +54,74 @@ rsync -a "${RSYNC_DELETE[@]}" \
   --exclude 'arozos/subservice/telephone/app' \
   --exclude aeon-page-to-speech-config.json \
   --exclude proprietary \
+  --exclude /marketing/ \
   --exclude /vendor/ \
   --exclude .cursor \
+  --exclude .claude \
+  --exclude /openspec/ \
+  --exclude AGENTS.md \
+  --exclude CLAUDE.md \
+  --exclude .impeccable \
   --exclude 'arozos/web-overlays' \
   --exclude .git \
   --exclude 'docs/Joshu-SOP' \
+  --exclude 'docs/reports' \
   --exclude 'docs/design/brand-guidelines.md' \
   --exclude 'docs/design/joshu-style-guide-v1.png' \
   --exclude 'docs/vps-sandbox/first-provisioning-notes.md' \
   --exclude 'docs/vps-sandbox/troubleshooting-and-lessons.md' \
-  --exclude 'docs/vps-sandbox/session-2026-06-11-learning-browser-sync.md' \
-  --exclude 'docs/vps-sandbox/session-2026-06-30-fleet-image-0.1.30-patrick.md' \
   --exclude 'docs/vps-sandbox/hotpatch-running-box.md' \
   --exclude 'docs/vps-sandbox/existing-box-image-vs-host.md' \
   --exclude 'docs/vps-sandbox/box-skill-reconcile-on-upgrade.md' \
   --exclude 'scripts/upgrade-fleet-box-image.sh' \
+  --exclude 'scripts/fleet-deep-smoke-remote.sh' \
+  --exclude 'scripts/migrate-fleet-hindsight-pg17.sh' \
+  --exclude 'scripts/repair-fleet-cloud-browser-boot.sh' \
   --exclude 'deploy/Dockerfile.fleet-overlay' \
   --exclude 'scripts/vps-build-fleet-overlay.sh' \
   --exclude 'deploy/Dockerfile.oss-overlay' \
   --exclude 'scripts/vps-build-oss-overlay.sh' \
   --exclude 'docs/vps-sandbox/credential-isolation-langfuse-relay.md' \
-  --exclude 'docs/vps-sandbox/update-hardening-todo.md' \
   --exclude 'docs/vps-sandbox/control-plane.md' \
   --exclude 'docs/vps-sandbox/twilio-a2p-sms.md' \
   --exclude 'docs/vps-sandbox/provider-choices.md' \
-  --exclude 'docs/vps-sandbox/voice-think-speak.md' \
-  --exclude 'docs/vps-sandbox/voice-realtime.md' \
-  --exclude 'docs/vps-sandbox/web-voice.md' \
   --exclude 'docs/vps-sandbox/phone-voice-local-test.md' \
   --exclude 'docs/releases' \
   --exclude 'docs/joshu-identity.md' \
   --exclude 'docs/day0-cold-start.md' \
-  --exclude 'docs/box-state.md' \
-  --exclude 'docs/box-state.oss.md' \
   --exclude 'docs/hermes-customizations.md' \
-  --exclude 'docs/README.oss.md' \
-  --exclude 'docs/vps-sandbox/README.oss.md' \
-  --exclude 'docs/design/README.oss.md' \
   --exclude 'scripts/sync-from-oss.sh' \
+  --exclude 'scripts/hotpatch-twilio-sms.sh' \
+  --exclude 'scripts/hotpatch-sms-canonical-reply-mutex.sh' \
+  --exclude 'scripts/hotpatch-last30days-multimodal.sh' \
+  --exclude 'scripts/hotpatch-owner-voice.sh' \
+  --exclude 'scripts/hotpatch-action-guard-sms.sh' \
+  --exclude 'scripts/hotpatch-sms-platform-isolation.sh' \
+  --exclude 'scripts/hotpatch-chromium-proxy.sh' \
   --exclude 'scripts/repair-fleet-ea-cron-timezone.sh' \
   --exclude 'scripts/check-fleet-box-vitals.sh' \
-  --exclude 'scripts/hotpatch-browser-handoff.sh' \
+  --exclude 'scripts/owner-engagement-audit.py' \
+  --exclude 'scripts/lib/owner_engagement_probe.py' \
+  --exclude 'scripts/openspec-change-status.mjs' \
+  --exclude 'scripts/fleet-boxes.mjs' \
+  --exclude 'scripts/lib/box-release.mjs' \
+  --exclude 'scripts/release-pr-checks.mjs' \
+  --exclude 'scripts/record-pr-verification.sh' \
+  --exclude 'scripts/deploy-release.mjs' \
+  --exclude 'scripts/box-diagnostics.mjs' \
+  --exclude 'scripts/run-scripted-checks.mjs' \
+  --exclude 'scripts/outcome-checks-due.mjs' \
+  --exclude 'scripts/lib/control-plane.mjs' \
+  --exclude 'scripts/test-release-deploy.mjs' \
+  --exclude '.github/workflows/deploy.yml' \
+  --exclude '.github/workflows/outcome-checks.yml' \
+  --exclude '.github/pull_request_template.md' \
   --exclude 'scripts/canary-voice-gemini38.sh' \
   --exclude 'scripts/patrick-travel-booking-owner-selection.md' \
   --exclude 'scripts/sync-fleet-skills-from-image.sh' \
   --exclude 'scripts/hotfix-box-to-0.1.26.sh' \
   --exclude 'scripts/sync-hermes-to-vps.sh' \
   --exclude 'scripts/sync-hindsight-to-vps.sh' \
-  --exclude 'scripts/sync-camofox-proxy-to-vps.sh' \
   --exclude 'scripts/repair-vps-admin-update.sh' \
   --exclude 'scripts/repair-instance-env-drift.sh' \
   --exclude 'scripts/refresh-vps-ghcr-login.sh' \
@@ -106,16 +129,28 @@ rsync -a "${RSYNC_DELETE[@]}" \
   --exclude 'scripts/lib/ensure-hermes-learning-git.sh' \
   --exclude '.github/workflows/fleet-sync-check.yml' \
   --exclude '.github/workflows/joshu-sandbox-image.yml' \
+  --exclude '.github/workflows/release.yml' \
+  --exclude '.github/release-notes-prompt.md' \
+  --exclude '.github/workflows/pr-process-checks.yml' \
+  --exclude '.github/workflows/claude-pr-review.yml' \
+  --exclude '.github/workflows/security-bulletins.yml' \
+  --exclude 'scripts/check-pr-process.mjs' \
+  --exclude 'docs/ci-checks.md' \
+  --exclude 'docs/development-flow.md' \
   --exclude 'deploy/.env.vps.example.oss' \
+  --exclude '/README.oss.md' \
+  --exclude '/CONTRIBUTING.oss.md' \
   "${ROOT_DIR}/" "${OUT_DIR}/"
 
 # Public doc indexes (curated for joshu-oss).
 cp "${ROOT_DIR}/README.oss.md" "${OUT_DIR}/README.md"
 cp "${ROOT_DIR}/CONTRIBUTING.oss.md" "${OUT_DIR}/CONTRIBUTING.md"
-cp "${ROOT_DIR}/docs/README.oss.md" "${OUT_DIR}/docs/README.md"
-cp "${ROOT_DIR}/docs/vps-sandbox/README.oss.md" "${OUT_DIR}/docs/vps-sandbox/README.md"
-cp "${ROOT_DIR}/docs/design/README.oss.md" "${OUT_DIR}/docs/design/README.md"
-cp "${ROOT_DIR}/docs/box-state.oss.md" "${OUT_DIR}/docs/box-state.md"
+# In docs/, a file <name>.oss.md is the public copy of <name>.md (for example the self-host
+# chapters of the user manual). It replaces <name>.md in the OSS tree.
+find "${OUT_DIR}/docs" -type f -name '*.oss.md' -print0 |
+  while IFS= read -r -d '' oss_doc; do
+    mv "${oss_doc}" "${oss_doc%.oss.md}.md"
+  done
 
 # Keys-only self-host env template (no CP relay URLs).
 if [[ -f "${ROOT_DIR}/deploy/.env.vps.example.oss" ]]; then
@@ -133,11 +168,13 @@ ver = data.get("version", "")
 if ver:
     data["imageRef"] = f"ghcr.io/db-aeon/joshu-oss:{ver}"
     data["voiceImageRef"] = f"ghcr.io/db-aeon/joshu-oss-voice-realtime:{ver}"
+    if "instanceAgentImageRef" in data:
+        data["instanceAgentImageRef"] = f"ghcr.io/db-aeon/joshu-oss-instance-agent:{ver}"
     notes = (data.get("notes") or "").strip()
     if notes.startswith("Fleet "):
         data["notes"] = notes.removeprefix("Fleet ").strip()
     with open(path, "w") as f:
-        json.dump(data, f, indent=2)
+        json.dump(data, f, indent=2, ensure_ascii=False)
         f.write("\n")
 PY
 fi
@@ -154,6 +191,7 @@ rm -rf \
   "${OUT_DIR}/deploy/Dockerfile.fleet-overlay" \
   "${OUT_DIR}/scripts/vps-build-fleet-overlay.sh" \
   "${OUT_DIR}/docs/Joshu-SOP" \
+  "${OUT_DIR}/docs/reports" \
   "${OUT_DIR}/docs/hermes-customizations.md" \
   "${OUT_DIR}/docs/joshu-identity.md" \
   "${OUT_DIR}/docs/day0-cold-start.md" \
@@ -161,33 +199,46 @@ rm -rf \
   "${OUT_DIR}/docs/design/joshu-style-guide-v1.png" \
   "${OUT_DIR}/docs/vps-sandbox/first-provisioning-notes.md" \
   "${OUT_DIR}/docs/vps-sandbox/troubleshooting-and-lessons.md" \
-  "${OUT_DIR}/docs/vps-sandbox/session-2026-06-11-learning-browser-sync.md" \
-  "${OUT_DIR}/docs/vps-sandbox/session-2026-06-30-fleet-image-0.1.30-patrick.md" \
   "${OUT_DIR}/docs/vps-sandbox/hotpatch-running-box.md" \
   "${OUT_DIR}/docs/vps-sandbox/credential-isolation-langfuse-relay.md" \
-  "${OUT_DIR}/docs/vps-sandbox/update-hardening-todo.md" \
   "${OUT_DIR}/docs/vps-sandbox/control-plane.md" \
   "${OUT_DIR}/docs/vps-sandbox/twilio-a2p-sms.md" \
   "${OUT_DIR}/docs/vps-sandbox/provider-choices.md" \
   "${OUT_DIR}/.joshu/connectors-providers.env" \
-  "${OUT_DIR}/docs/vps-sandbox/voice-think-speak.md" \
-  "${OUT_DIR}/docs/vps-sandbox/voice-realtime.md" \
-  "${OUT_DIR}/docs/vps-sandbox/web-voice.md" \
   "${OUT_DIR}/docs/vps-sandbox/phone-voice-local-test.md" \
-  "${OUT_DIR}/docs/releases" \
   "${OUT_DIR}/arozos/web-overlays" \
   "${OUT_DIR}/.cursor" \
+  "${OUT_DIR}/openspec" \
   "${OUT_DIR}/scripts/sync-from-oss.sh" \
+  "${OUT_DIR}/scripts/hotpatch-twilio-sms.sh" \
+  "${OUT_DIR}/scripts/hotpatch-sms-canonical-reply-mutex.sh" \
+  "${OUT_DIR}/scripts/hotpatch-last30days-multimodal.sh" \
+  "${OUT_DIR}/scripts/hotpatch-owner-voice.sh" \
+  "${OUT_DIR}/scripts/hotpatch-action-guard-sms.sh" \
+  "${OUT_DIR}/scripts/hotpatch-sms-platform-isolation.sh" \
+  "${OUT_DIR}/scripts/hotpatch-chromium-proxy.sh" \
   "${OUT_DIR}/scripts/repair-fleet-ea-cron-timezone.sh" \
   "${OUT_DIR}/scripts/check-fleet-box-vitals.sh" \
-  "${OUT_DIR}/scripts/hotpatch-browser-handoff.sh" \
+  "${OUT_DIR}/scripts/openspec-change-status.mjs" \
+  "${OUT_DIR}/scripts/fleet-boxes.mjs" \
+  "${OUT_DIR}/scripts/lib/box-release.mjs" \
+  "${OUT_DIR}/scripts/release-pr-checks.mjs" \
+  "${OUT_DIR}/scripts/record-pr-verification.sh" \
+  "${OUT_DIR}/scripts/deploy-release.mjs" \
+  "${OUT_DIR}/scripts/box-diagnostics.mjs" \
+  "${OUT_DIR}/scripts/run-scripted-checks.mjs" \
+  "${OUT_DIR}/scripts/outcome-checks-due.mjs" \
+  "${OUT_DIR}/scripts/lib/control-plane.mjs" \
+  "${OUT_DIR}/scripts/test-release-deploy.mjs" \
+  "${OUT_DIR}/.github/workflows/deploy.yml" \
+  "${OUT_DIR}/.github/workflows/outcome-checks.yml" \
+  "${OUT_DIR}/.github/pull_request_template.md" \
   "${OUT_DIR}/scripts/canary-voice-gemini38.sh" \
   "${OUT_DIR}/scripts/patrick-travel-booking-owner-selection.md" \
   "${OUT_DIR}/scripts/sync-fleet-skills-from-image.sh" \
   "${OUT_DIR}/scripts/hotfix-box-to-0.1.26.sh" \
   "${OUT_DIR}/scripts/sync-hermes-to-vps.sh" \
   "${OUT_DIR}/scripts/sync-hindsight-to-vps.sh" \
-  "${OUT_DIR}/scripts/sync-camofox-proxy-to-vps.sh" \
   "${OUT_DIR}/scripts/repair-vps-admin-update.sh" \
   "${OUT_DIR}/scripts/repair-instance-env-drift.sh" \
   "${OUT_DIR}/scripts/refresh-vps-ghcr-login.sh" \
@@ -195,8 +246,25 @@ rm -rf \
   "${OUT_DIR}/scripts/lib/ensure-hermes-learning-git.sh" \
   "${OUT_DIR}/.github/workflows/fleet-sync-check.yml" \
   "${OUT_DIR}/.github/workflows/joshu-sandbox-image.yml" \
+  "${OUT_DIR}/.github/workflows/release.yml" \
+  "${OUT_DIR}/.github/release-notes-prompt.md" \
+  "${OUT_DIR}/.github/workflows/pr-process-checks.yml" \
+  "${OUT_DIR}/.github/workflows/claude-pr-review.yml" \
+  "${OUT_DIR}/.github/workflows/security-bulletins.yml" \
+  "${OUT_DIR}/scripts/check-pr-process.mjs" \
+  "${OUT_DIR}/docs/ci-checks.md" \
+  "${OUT_DIR}/docs/development-flow.md" \
   "${OUT_DIR}/deploy/.env.vps.example.oss" \
+  "${OUT_DIR}/README.oss.md" \
+  "${OUT_DIR}/CONTRIBUTING.oss.md" \
   2>/dev/null || true
+
+# openspec/ holds evidence from production boxes (owner and contact names, task ids).
+# It must not ship in the OSS tree.
+if [[ -e "${OUT_DIR}/openspec" ]]; then
+  echo "[prepare-oss-snapshot] error: openspec/ is in the OSS tree" >&2
+  exit 1
+fi
 
 # Drop accidental build artifacts that should never ship publicly.
 find "${OUT_DIR}/src" -type f \( -name '*.js' -o -name '*.js.map' -o -name '*.d.ts' \) \

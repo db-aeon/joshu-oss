@@ -4,7 +4,7 @@ description: Meeting-mail scheduling. Kanban ea-sched-*; Calendly fallback.
 metadata:
   hermes:
     category: executive-assistant
-    version: "4.26.0"
+    version: "4.29.0"
 ---
 
 # EA Scheduling
@@ -63,7 +63,7 @@ Call from **`ea-mail-ingress`** worker — Hermes `kanban_create` cannot cross t
 ### Why MCP, not `kanban_create`
 
 Hermes pins ingress workers to **`ea-sched-ingress`**. Worker tools (`kanban_create`, `kanban_list`, `kanban_comment` on other ids) **cannot create or list on `ea-scheduling`**.  
-CLI `--board ea-scheduling` from an ingress worker **still creates on ingress** (verified on patrick).
+CLI `--board ea-scheduling` from an ingress worker **still creates on ingress** (verified on a fleet box).
 
 Use **`mcp_joshu_connectors_scheduling_*`** tools — Joshu writes to **`ea-scheduling`** via `hermes-kanban-bridge.py`.
 
@@ -131,6 +131,7 @@ Response includes `task_id` on board **`ea-scheduling`**.
 |-----|------|-------|
 | **Owner busy/free** | **`google_calendar_find_free_slots`** (Joshu connectors MCP) | **Live FreeBusy API** — omit `items` (default: `primary` + owner personal Gmail) or pass explicit calendar ids. Use **`calendars.combined.free`** for slot picking (union of busy across all queried calendars). Respects Google **Show as free** (transparent) events. |
 | **Event details (conflict explanation)** | `google_calendar_list_events` | Titles + `blocksAvailability` / `transparency` only — **never** treat every event title as busy. |
+| **One event: guests, Meet link** | `google_calendar_get_event` | `attendees` with `responseStatus`, `organizer`, `location`, `meetLink`. Not the Composio Tool Router (`GOOGLECALENDAR_EVENTS_GET` there uses the wrong calendar account). |
 | **Agent ledger (read-only)** | `nylas_list_events` | Historical holds only — **do not create** on Nylas (hard-blocked) |
 | **Stale fallback** | gbrain / `connectors/calendar/google/` mirrors | Only if live Composio fails — mirrors lag; owner may have edited calendar since sync |
 
@@ -138,7 +139,7 @@ Owner can delete or move events on their real Google calendar. **Never** infer o
 
 **Wrong calendar scope:** `items: ["primary"]` alone checks only the work calendar (`owner work email`). Owner meetings often live on a personal Gmail calendar — FreeBusy returns `busy: []` on primary while the personal calendar is blocked. **Omit `items`** or include personal Gmail; always schedule from **`calendars.combined.free`**, not `primary.free` alone.
 
-**Transparent events:** Google events marked **Show as free** (`transparency: transparent`, `blocksAvailability: false`) — e.g. some recurring **Asteme** blocks — do **not** appear in FreeBusy `busy[]`. A visible calendar title does **not** mean the owner is unavailable. Only `google_calendar_find_free_slots` (or Composio `GOOGLECALENDAR_FIND_FREE_SLOTS` with the same args) determines bookable time.
+**Transparent events:** Google events marked **Show as free** (`transparency: transparent`, `blocksAvailability: false`) — e.g. some recurring **Asteme** blocks — do **not** appear in FreeBusy `busy[]`. A visible calendar title does **not** mean the owner is unavailable. Only `google_calendar_find_free_slots` determines bookable time (Composio `GOOGLECALENDAR_FIND_FREE_SLOTS` alone sees only one calendar account).
 
 External attendees (not connected on this box): no calendar read — email + `kanban_block`.
 
@@ -198,8 +199,36 @@ Responses include **`timeAnchor`** (owner-local now) and per-event **`localDate`
    - **Still waiting** — "let me find a time", vague deferral → **`kanban_block`** (no book)
    - **Need outreach** — study the thread ([above](#study-the-thread-before-sending)), then `nylas_send_message`, then **`kanban_block`**
    - **Unsure / duplicate risk** — see [HITL defer on meeting tasks](#hitl-defer-on-meeting-tasks) (no book, no send)
-5. **Book** (slot confirmed + owner free on live Google): **`mcp_composio_GOOGLECALENDAR_CREATE_EVENT`** on the owner's connected Google account — include owner `primaryWorkEmail` + attendees, local `start_datetime` + `timezone` + duration fields. Then `nylas_send_message` confirmation → `kanban_comment` → `kanban_complete`.
+5. **Book** (slot confirmed + owner free on live Google): **`google_calendar_create_event`** (Joshu connectors MCP) — `calendarId` = the target calendar (usually the owner `primaryWorkEmail`; for an existing event use its `calendarId` from `google_calendar_list_events`), `summary`, local `start` + `end` + `timezone` (+ `endTimezone` when the event ends in another time zone, see [Flights](#flights-and-other-events-that-end-in-another-time-zone)), attendees. Then `nylas_send_message` confirmation → `kanban_comment` → `kanban_complete`.
+
+   **Video link:** a remote meeting needs a video link. When you omit `createMeetingRoom`, Joshu adds Google Meet to an event with guests and no `location`. For an in-person meeting, put the address in `location`. When the counterparty sent their own link (Zoom, Teams), put that link in `location`. For a phone call, set `createMeetingRoom: false` and put the number in `description`. Check `event.meetLink` in the response and put the link in the confirmation. To add Meet to an event that has none, call `google_calendar_update_event` with `createMeetingRoom: true` and `sendUpdates: "all"`.
+
+   **Calendar writes never go through the browser.** This holds for every booking, also when the request came from SMS, X, LinkedIn, or Slack DMs and runs as a realtime goal or a Kanban card. Do not open calendar.google.com, and do not use a `calendar/render?action=TEMPLATE` link: such an event has no Meet link, and the guests get no invite from Joshu. Use `google_calendar_create_event`, `google_calendar_update_event`, and `google_calendar_get_event`. If a box note or a box-made skill says a calendar account cannot be written through these tools, try the tool first: the tools write every connected calendar account. If the tool fails, tell the owner the exact error; do not switch to the browser.
+
+   **Owners can have several calendar accounts** (personal Gmail, work, …). `google_calendar_find_free_slots` and `google_calendar_list_events` cover all of them when you omit `connectedAccountId`; `incomplete: true` means one calendar account failed — tell the owner before you book. `google_calendar_create_event` / `google_calendar_update_event` pick the calendar account that can write `calendarId`. Do **not** book through the Composio Tool Router (`GOOGLECALENDAR_CREATE_EVENT` in `COMPOSIO_MULTI_EXECUTE_TOOL`): it ignores the account and writes with the newest connection. Do **not** use the browser for calendar writes. If the tool answers that no calendar account can write the calendar, pick one from the listed writable calendars or ask the owner.
 6. **Negotiate** when vague/conflict: study the thread, email proposal, `kanban_block`.
+
+### Flights and other events that end in another time zone
+
+A flight starts in the time zone of the departure airport and ends in the time zone of the arrival airport. Airline times (in the confirmation mail, the boarding pass, or the airline app) are always local times at each airport. Give `timezone` for the departure airport and `endTimezone` for the arrival airport, and copy the airline times unchanged. Joshu turns the end into the correct instant. Do not put both ends in the owner timezone, because the calendar then shows the arrival or the departure hours off.
+
+Before you write a flight, check that the flight time is plausible: convert both ends to one time zone and compare the flight time with the route (for example about 3 to 4 hours from LAX to XNA). After the write, check `event.start` and `event.end` in the response. If the flight time is wrong, fix the event before you tell the owner.
+
+Gmail adds some flights to the calendar by itself, and Google rejects a change to such an event. Make a new event with `google_calendar_create_event` instead, and tell the owner that the Gmail event is still there.
+
+Example (AA 6330, XNA 5:20 PM to LAX 7:11 PM, a flight time of 3 hours and 51 minutes):
+
+```json
+{
+  "calendarId": "owner@example.com",
+  "summary": "AA 6330 XNA to LAX",
+  "start": "2026-10-20T17:20:00",
+  "timezone": "America/Chicago",
+  "end": "2026-10-20T19:11:00",
+  "endTimezone": "America/Los_Angeles",
+  "location": "XNA Northwest Arkansas National Airport"
+}
+```
 
 ### Action guard + `nylas_send_message`
 
@@ -211,7 +240,7 @@ Joshu **auto-CCs** the owner's primary work email on external sends (API-enforce
 
 | Outcome | What it means | Your action |
 |---------|---------------|-------------|
-| **Timeout / `TimeoutError` on `nylas_send_message`** while guard is on | **Approval still pending** — not MCP down | **`kanban_block(reason="awaiting owner approval")`** — do **not** retry send from another task or board. Joshu will rewrite the reason after the owner decides. |
+| **Timeout / `TimeoutError` on `nylas_send_message`** while guard is on | **Approval still pending** — not MCP down | **`kanban_block(reason="awaiting owner approval", kind="needs_input")`** — do **not** retry send from another task or board. Joshu will rewrite the reason after the owner decides. |
 | **`503`** / `action_guard_unavailable` | Owner channel delivery failed or guard broken | **`kanban_block(reason="action-guard-unavailable: …")`** — not MCP down |
 | **`ok: true`** with `messageId` starting **`blocked-`** | Owner denied or approval timed out at Joshu | **No mail sent** — do not treat as success; block or complete without re-send |
 | **`ok: true`** with real UUID `messageId` | Mail sent | **`kanban_block`** waiting on reply (or book if confirmed). Prefer reason like `awaiting reply: …` — Joshu may already have rewritten it. |
@@ -236,23 +265,39 @@ When working a **`kind: meeting`** card, **do not** book or send if you have **a
 |--------|--------|
 | Thread shows meeting **already booked** (Calendly, confirmations, event on owner calendar) | **`kanban_comment`** + update project journal → **`kanban_complete`** with `scheduling_closed: true` — no outreach |
 | Counterparty sent **status-only** mail ("confirmed", "see you then") | Same — close meeting task; do not re-offer slots |
-| Ambiguous who to address, or sensitive thread where wrong mail would hurt | **`kanban_block(reason="owner review: scheduling judgment")`** — append project `journal_*` section **`## Scheduling — owner review needed`** (what you read, why you stopped, suggested owner action) |
+| Ambiguous who to address, or sensitive thread where wrong mail would hurt | **`kanban_block(reason="owner review: scheduling judgment — <what to decide>", kind="needs_input")`** — append project `journal_*` section **`## Scheduling — owner review needed`** (what you read, why you stopped, suggested owner action) |
 | Calendar check inconclusive | Block for owner review — **never** guess with `find_free_slots` + send |
 
 Owner clears blocked meeting tasks in jChat or morning review. **`ea-morning-review`** surfaces `owner_decisions_pending` projects and todo rows **Waiting on: owner review**.
 
 **Never** `nylas_create_event` — Joshu MCP policy blocks Nylas calendar writes.
 
-Example (`GOOGLECALENDAR_CREATE_EVENT` via Composio MCP):
+Example (`google_calendar_create_event`):
 
 ```json
 {
+  "calendarId": "owner@example.com",
   "summary": "Change tires",
-  "start_datetime": "2026-06-09T09:00:00",
+  "start": "2026-06-09T09:00:00",
+  "end": "2026-06-09T10:00:00",
   "timezone": "America/Los_Angeles",
-  "event_duration_hour": 1,
-  "event_duration_minutes": 0,
-  "attendees": ["owner@example.com", "shop@example.com"]
+  "attendees": ["shop@example.com"],
+  "location": "Main Street Tires, 1 Main St, Palo Alto",
+  "sendUpdates": "all"
+}
+```
+
+A remote meeting: omit `location`, and Joshu adds Google Meet.
+
+```json
+{
+  "calendarId": "owner@example.com",
+  "summary": "Demo with Acme",
+  "start": "2026-06-11T11:00:00",
+  "end": "2026-06-11T11:30:00",
+  "timezone": "America/Los_Angeles",
+  "attendees": ["buyer@example.com"],
+  "sendUpdates": "all"
 }
 ```
 
@@ -262,9 +307,11 @@ Example (`GOOGLECALENDAR_CREATE_EVENT` via Composio MCP):
 |--------|------|
 | **Owner availability (live)** | **`google_calendar_find_free_slots`** (Joshu connectors MCP) |
 | Event titles / transparency | `google_calendar_list_events` |
+| One event with guests and Meet link | `google_calendar_get_event` with `eventId` + `calendarId` |
 | Agent ledger (read) | `nylas_list_events` / `nylas_get_event` |
-| **Create on owner calendar** | **`mcp_composio_GOOGLECALENDAR_CREATE_EVENT`** |
-| Reschedule | `mcp_composio_GOOGLECALENDAR_PATCH_EVENT` (no deletes — policy blocks `*_DELETE_*`) |
+| **Create on owner calendar** | **`google_calendar_create_event`** (picks the calendar account that can write `calendarId`) |
+| Reschedule, add Meet, show as busy or free | **`google_calendar_update_event`** with `eventId` + `calendarId` from `google_calendar_list_events`; `createMeetingRoom: true` adds Meet, `transparency` sets busy (`opaque`) or free (`transparent`) |
+| Delete or cancel an event | No tool: the MCP policy blocks deletes. Read the event with `google_calendar_get_event` and send the owner its title, time, and `htmlLink`, so the owner deletes it in Google Calendar. Never delete in the browser. |
 | Mail | `nylas_send_message` — always pass **`sourcePath`** from meeting `source_paths`, `replyToMessageId` on the message you are continuing, and the **exact parent `subject`** (no decorations) |
 | Profile | `nylas_get_profile` / `nylas_update_profile` |
 
@@ -284,7 +331,7 @@ The **owner** sometimes sends batch emails to multiple people (investors, partne
 
 3. **Check live owner calendar** — `google_calendar_find_free_slots` (omit `items` or include personal Gmail; multi-day window, owner timezone). Schedule from **`calendars.combined.free`**. Filter free intervals to at least 30 min within working hours. Offer 2-3 specific time windows across different days.
 
-4. **Reply to the thread** — `nylas_send_message` with **`sourcePath`** from the meeting task `source_paths`, **`kanbanTaskId`** = this task id, optional **`threadId`**, `replyToMessageId` on the message you are continuing, and the **exact parent subject** from the thread mirror (no decorations). **To:** whoever the owner addressed; **CC:** owner (so they see the thread) plus anyone they CC'd. Introduce yourself as the owner's companion and offer the slots you found. Agent sends hit **action guard** (owner SMS Y/N) when enabled — `kanban_block` until send succeeds; Joshu rewrites `block_reason` after approve/deny when `kanbanTaskId` was passed.
+4. **Reply to the thread** — `nylas_send_message` with **`sourcePath`** from the meeting task `source_paths`, **`kanbanTaskId`** = this task id, optional **`threadId`**, `replyToMessageId` on the message you are continuing, and the **exact parent subject** from the thread mirror (no decorations). **To:** whoever the owner addressed; **CC:** owner (so they see the thread) plus anyone they CC'd. Introduce yourself as the owner's companion and offer the slots you found. Agent sends hit **action guard** (owner SMS Y/N) when enabled — `kanban_block(reason="awaiting owner approval", kind="needs_input")` until send succeeds; Joshu rewrites `block_reason` after approve/deny when `kanbanTaskId` was passed.
 
 No kanban task is needed for this pattern — the owner's instruction is in the email body, not in a scheduling ingress workflow. Reply, wait for the counterparty, then proceed with standard meeting booking.
 
@@ -329,7 +376,7 @@ Calendly has a **REST API** for programmatic booking — no browser needed.
 
 When the counterparty sent their Calendly link and you don't have API access to their account:
 
-**Drive the page with Hermes browser tools** (`browser_navigate`, `browser_snapshot`, …) on fleet cloud boxes, or `browser_task` on local Chromium — see [`joshu-browser-handoff`](../../browser/joshu-browser-handoff/SKILL.md#browser-backend-read-this-first). Do **not** curl Camofox `:9377` or mix backends.
+**Drive the page with Hermes browser tools** (`browser_navigate`, `browser_snapshot`, …) on fleet cloud boxes, or `browser_task` on local Chromium — see [`joshu-browser-handoff`](../../browser/joshu-browser-handoff/SKILL.md#browser-backend-read-this-first). Do **not** curl the browser supervisor (`:9377`) or CDP (`:9222`) directly, and do not mix backends.
 
 **Local Chromium only — cold browser:** before the first heavy navigation, warm the shared browser:
 
@@ -363,4 +410,4 @@ Best,
 [Companion name]
 ```
 
-3. The meeting is **confirmed via email** — no further browser retries. Optional: `GOOGLECALENDAR_CREATE_EVENT` placeholder on owner calendar ("Awaiting [name]'s invite").
+3. The meeting is **confirmed via email** — no further browser retries. Optional: `google_calendar_create_event` placeholder on owner calendar ("Awaiting [name]'s invite").

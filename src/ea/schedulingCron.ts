@@ -5,6 +5,7 @@ import {
   ensureEaSchedIngressBoard,
   ensureEaSchedulingBoard,
   eaSchedulingKanbanAssignee,
+  type KanbanBlockKind,
 } from "../hermesKanbanBridge.js";
 import { readAgentProfile, type NylasAgentProfile } from "../nylas/profile.js";
 import { readAgentGrant } from "../nylas/store.js";
@@ -338,6 +339,8 @@ export async function updateSchedulingMeetingBlockReason(opts: {
   reason: string;
   comment?: string;
   author?: string;
+  /** Block kind to set with the block reason. `null` clears it; `undefined` leaves it unchanged. */
+  kind?: KanbanBlockKind | null;
 }): Promise<UpdateBlockReasonResult> {
   const taskId = opts.taskId.trim();
   const reason = opts.reason.trim();
@@ -350,6 +353,7 @@ export async function updateSchedulingMeetingBlockReason(opts: {
     reason,
     ...(opts.comment?.trim() ? { comment: opts.comment.trim() } : {}),
     author: opts.author?.trim() || "joshu",
+    ...(opts.kind !== undefined ? { kind: opts.kind } : {}),
   });
   if (!result.success) {
     return { ok: false, error: result.error ?? "update_block_reason_failed" };

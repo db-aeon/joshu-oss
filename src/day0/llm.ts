@@ -2,6 +2,7 @@
  * Cheap OpenRouter chat for Day 0 inference (separate from Hermes main model).
  */
 
+import { withOpenRouterDataPolicy } from "../joshuOpenRouterDefaults.js";
 import {
   type JoshuLangfuseGenerationDetails,
   type JoshuLlmTraceOpts,
@@ -174,7 +175,7 @@ async function day0ChatCompletionCore(
       "HTTP-Referer": "https://joshu.local",
       "X-Title": "Joshu Day 0",
     },
-    body: JSON.stringify(body),
+    body: JSON.stringify(withOpenRouterDataPolicy(body)),
   });
 
   if (!res.ok) {

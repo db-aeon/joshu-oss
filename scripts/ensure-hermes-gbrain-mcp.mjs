@@ -84,11 +84,17 @@ function resolveGbrainBin() {
   return fromEnv || "gbrain";
 }
 
+/** Same folder as HERMES_SCRATCH_DIR in src/joshuFilesPaths.ts. */
+const HERMES_SCRATCH_DIR = "/tmp/joshu-scratch";
+
 function resolveWorkspaceScope(filesPaths) {
   if (!filesPaths) return null;
   return {
     terminalCwd: env("JOSHU_HERMES_TERMINAL_CWD") || filesPaths.desktopRoot,
-    writeSafeRoot: env("JOSHU_HERMES_WRITE_SAFE_ROOT") || filesPaths.desktopRoot,
+    // Same default as src/joshuFilesPaths.ts: the Desktop and the scratch folder.
+    writeSafeRoot:
+      env("JOSHU_HERMES_WRITE_SAFE_ROOT") ||
+      [filesPaths.desktopRoot, HERMES_SCRATCH_DIR].join(path.delimiter),
   };
 }
 

@@ -29,18 +29,34 @@ import {
 import { readMirrorThreadByMessageId } from "./mirrorRead.js";
 import { isGmailConnected, runMailSync } from "./syncHelpers.js";
 import {
+  fetchGmailAttachmentData,
   fetchGmailMessageById,
   fetchGmailThreadMessages,
   replyGmailThread,
   sendGmailEmail,
 } from "./composio/gmail.js";
 import { epochMsToIso } from "./composio/gmailBodies.js";
+import { fetchGmailAttachmentToProject, GmailAttachmentError } from "./composio/gmailAttachments.js";
 import {
   listGmailRegistryAccounts,
   resolveGmailAccount,
   getDefaultGmailAccount,
 } from "./composio/gmailAccounts.js";
-import { fetchGoogleCalendarEventsForAccount, fetchGoogleCalendarFreeSlots } from "./composio/calendar.js";
+import {
+  fetchGoogleCalendarEventsForAccount,
+  fetchGoogleCalendarFreeSlots,
+  type GoogleCalendarFreeSlotsResult,
+} from "./composio/calendar.js";
+import {
+  createOwnerCalendarEvent,
+  getOwnerCalendarEvent,
+  fetchOwnerCalendarEvents,
+  fetchOwnerFreeSlots,
+  updateOwnerCalendarEvent,
+  type OwnerCalendarEventInput,
+  type OwnerCalendarEventReadResult,
+  type OwnerCalendarWriteResult,
+} from "./composio/calendarOwner.js";
 import { combineCalendarFreeBusy } from "./composio/calendarAvailability.js";
 import {
   getDefaultCalendarAccount,
@@ -58,6 +74,7 @@ import {
 } from "./composio/onenote.js";
 import { parseOneNoteUrl, requirePageId } from "../onenote/parseUrl.js";
 import { COMPOSIO_ONENOTE_TOOLKIT_VERSION } from "./composio/onenoteConfig.js";
+import { COMPOSIO_GOOGLECALENDAR_TOOLKIT_VERSION } from "./composio/googleCalendarConfig.js";
 import { localDateDayBounds } from "../nylas/localSlot.js";
 import {
   buildOwnerTimeAnchorPayload,
@@ -244,6 +261,7 @@ export function registerConnectorRoutes(
         enabled: isComposioEnabled(),
         connected: googleCalendarAccounts.length > 0,
         email: googleCalendarAccounts.find((a) => a.isDefault)?.email ?? googleCalendarAccounts[0]?.email,
+        toolkitVersion: COMPOSIO_GOOGLECALENDAR_TOOLKIT_VERSION,
         accounts: googleCalendarAccounts,
         mirror: googleCalendarMirror,
       },
@@ -552,6 +570,73 @@ export function registerConnectorRoutes(
     });
   });
 
+  // Read-only for the mailbox; writes only under <files>/Projects/<slug>/attachments/ (no agentRestWriteBlocked).
+  router.post("/api/connectors/mail/gmail/attachments/fetch", async (req: Request, res: Response) => {
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const messageId = readString(body.messageId ?? body.message_id);
+    if (!messageId) {
+      res.status(400).json({ error: "messageId required" });
+      return;
+    }
+    if (!isComposioEnabled()) {
+      res.status(503).json({ error: "Composio is not configured" });
+      return;
+    }
+    const paths = resolveConnectorPaths(projectRoot);
+    if (!paths) {
+      res.status(503).json({ error: "JOSHU_FILES_ROOT unavailable" });
+      return;
+    }
+    const requestedAccountId = readConnectedAccountId(req, body);
+    const mirror = requestedAccountId
+      ? null
+      : await readMirrorThreadByMessageId(projectRoot, "gmail", messageId).catch(() => null);
+    const account = requestedAccountId
+      ? await resolveGmailAccount(projectRoot, requestedAccountId)
+      : ((await resolveGmailAccount(projectRoot, mirror?.connectedAccountId)) ??
+        (await getDefaultGmailAccount(projectRoot)));
+    if (!account) {
+      res.status(404).json({
+        error: requestedAccountId
+          ? `Gmail account ${requestedAccountId} is not connected`
+          : "No Gmail account connected — open Connectors app",
+      });
+      return;
+    }
+    const ctx = { connectedAccountId: account.connectedAccountId };
+
+    try {
+      const result = await fetchGmailAttachmentToProject(
+        {
+          filesRoot: paths.filesRoot,
+          desktopRoot: paths.desktopRoot,
+          messageId,
+          attachmentId: readString(body.attachmentId ?? body.attachment_id) || undefined,
+          filename: readString(body.filename ?? body.fileName) || undefined,
+          projectSlug: readString(body.projectSlug ?? body.project_slug) || undefined,
+        },
+        {
+          listAttachments: async (id) => {
+            const live = await fetchGmailMessageById(projectRoot, id, ctx);
+            if (!live) throw new GmailAttachmentError(`message ${id} not found in Gmail`, 404);
+            return live.attachments ?? [];
+          },
+          getAttachment: (att) => fetchGmailAttachmentData(projectRoot, ctx, att),
+        },
+      );
+      res.json({ ok: true, accountEmail: account.email, ...result });
+    } catch (err) {
+      if (err instanceof GmailAttachmentError) {
+        res.status(err.status).json({
+          error: err.message,
+          ...(err.attachments ? { attachments: err.attachments } : {}),
+        });
+        return;
+      }
+      res.status(502).json({ error: (err as Error).message });
+    }
+  });
+
   router.post("/api/connectors/mail/gmail/send", async (req: Request, res: Response) => {
     if (agentRestWriteBlocked(req)) {
       res.status(403).json({
@@ -688,17 +773,6 @@ export function registerConnectorRoutes(
     }
 
     const connectedAccountId = readString(req.query.connectedAccountId);
-    const accounts = await listCalendarRegistryAccounts(projectRoot);
-    const account =
-      (connectedAccountId
-        ? accounts.find((a) => a.connectedAccountId === connectedAccountId)
-        : null) ??
-      (await getDefaultCalendarAccount(projectRoot));
-    if (!account) {
-      res.status(404).json({ error: "No Google Calendar account" });
-      return;
-    }
-
     const date = readString(req.query.date);
     const timezone = readString(req.query.timezone) || readString(req.query.timeZone);
     let timeMin: string | undefined;
@@ -708,20 +782,56 @@ export function registerConnectorRoutes(
       timeMin = new Date(bounds.start * 1000).toISOString();
       timeMax = new Date(bounds.end * 1000).toISOString();
     }
+    // Optional cap on the merged event list. Composio gets no limit (GOOGLECALENDAR_EVENTS_LIST_ALL_CALENDARS
+    // has no max_results), so without `limit` the list has all events in the window.
+    const limit = req.query.limit != null ? readLimit(req.query.limit, 120) : undefined;
+    const fetchOpts = {
+      daysBack: readDays(req.query.daysBack) ?? 1,
+      daysForward: readDays(req.query.daysForward) ?? 14,
+      ...(timeMin && timeMax ? { timeMin, timeMax } : {}),
+    };
+    const timeAnchor = getOwnerTimeAnchor(projectRoot);
+    const eventTimezone = timezone || timeAnchor.timezone;
+    const availabilityNote =
+      "Event titles do NOT determine busy/free. Use GET /api/connectors/calendar/google/free-slots (or google_calendar_find_free_slots MCP). events[].blocksAvailability=false means Google 'Show as free' (transparent) — does not occupy FreeBusy.";
+
+    // No connectedAccountId: merge the events of all calendar accounts.
+    if (!connectedAccountId) {
+      try {
+        const owner = await fetchOwnerCalendarEvents(projectRoot, fetchOpts, limit);
+        res.json({
+          ok: true,
+          source: "live_composio",
+          accounts: owner.accounts,
+          incomplete: owner.incomplete,
+          count: owner.events.length,
+          timeAnchor: buildOwnerTimeAnchorPayload(timeAnchor),
+          events: enrichCalendarEventsWithTimeContext(owner.events, eventTimezone, timeAnchor),
+          availabilityNote: owner.incomplete
+            ? `${availabilityNote} INCOMPLETE: a calendar account failed (see accounts[]); its events are missing.`
+            : availabilityNote,
+        });
+      } catch (err) {
+        res.status(502).json({ error: (err as Error).message });
+      }
+      return;
+    }
+
+    const accounts = await listCalendarRegistryAccounts(projectRoot);
+    const account =
+      accounts.find((a) => a.connectedAccountId === connectedAccountId) ??
+      (await getDefaultCalendarAccount(projectRoot));
+    if (!account) {
+      res.status(404).json({ error: "No Google Calendar account" });
+      return;
+    }
 
     try {
       const events = await fetchGoogleCalendarEventsForAccount(
         projectRoot,
         { connectedAccountId: account.connectedAccountId },
-        {
-          maxResults: readLimit(req.query.limit, 120),
-          daysBack: readDays(req.query.daysBack) ?? 1,
-          daysForward: readDays(req.query.daysForward) ?? 14,
-          ...(timeMin && timeMax ? { timeMin, timeMax } : {}),
-        },
+        fetchOpts,
       );
-      const timeAnchor = getOwnerTimeAnchor(projectRoot);
-      const eventTimezone = timezone || timeAnchor.timezone;
       res.json({
         ok: true,
         source: "live_composio",
@@ -730,8 +840,7 @@ export function registerConnectorRoutes(
         count: events.length,
         timeAnchor: buildOwnerTimeAnchorPayload(timeAnchor),
         events: enrichCalendarEventsWithTimeContext(events, eventTimezone, timeAnchor),
-        availabilityNote:
-          "Event titles do NOT determine busy/free. Use GET /api/connectors/calendar/google/free-slots (or google_calendar_find_free_slots MCP). events[].blocksAvailability=false means Google 'Show as free' (transparent) — does not occupy FreeBusy.",
+        availabilityNote,
       });
     } catch (err) {
       res.status(502).json({ error: (err as Error).message });
@@ -750,17 +859,6 @@ export function registerConnectorRoutes(
     }
 
     const connectedAccountId = readString(req.query.connectedAccountId);
-    const accounts = await listCalendarRegistryAccounts(projectRoot);
-    const account =
-      (connectedAccountId
-        ? accounts.find((a) => a.connectedAccountId === connectedAccountId)
-        : null) ??
-      (await getDefaultCalendarAccount(projectRoot));
-    if (!account) {
-      res.status(404).json({ error: "No Google Calendar account" });
-      return;
-    }
-
     const date = readString(req.query.date);
     const timezone =
       readString(req.query.timezone) ||
@@ -783,40 +881,114 @@ export function registerConnectorRoutes(
       return;
     }
 
+    // No connectedAccountId: owner availability across all calendar accounts.
+    let source: Record<string, unknown>;
+    let slots: GoogleCalendarFreeSlotsResult;
+    let incomplete = false;
     try {
-      const slots = await fetchGoogleCalendarFreeSlots(
-        projectRoot,
-        { connectedAccountId: account.connectedAccountId },
-        { items, timeMin, timeMax, timezone },
+      if (!connectedAccountId) {
+        const owner = await fetchOwnerFreeSlots(projectRoot, { items, timeMin, timeMax, timezone });
+        const { accounts, incomplete: ownerIncomplete, ...rest } = owner;
+        slots = rest;
+        incomplete = ownerIncomplete;
+        source = { accounts, incomplete };
+      } else {
+        const accounts = await listCalendarRegistryAccounts(projectRoot);
+        const account =
+          accounts.find((a) => a.connectedAccountId === connectedAccountId) ??
+          (await getDefaultCalendarAccount(projectRoot));
+        if (!account) {
+          res.status(404).json({ error: "No Google Calendar account" });
+          return;
+        }
+        slots = await fetchGoogleCalendarFreeSlots(
+          projectRoot,
+          { connectedAccountId: account.connectedAccountId },
+          { items, timeMin, timeMax, timezone },
+        );
+        source = { accountKey: account.accountKey, email: account.email };
+      }
+    } catch (err) {
+      res.status(502).json({ error: (err as Error).message });
+      return;
+    }
+
+    const timeAnchor = getOwnerTimeAnchor(projectRoot);
+    const combined = combineCalendarFreeBusy(slots.calendars, slots.timeMin, slots.timeMax);
+    const calendars = Object.fromEntries(
+      Object.entries(slots.calendars).map(([id, cal]) => [
+        id,
+        {
+          ...cal,
+          free: filterIntervalsByMinDuration(cal.free, minDurationMinutes),
+        },
+      ]),
+    );
+    calendars.combined = {
+      busy: combined.busy,
+      free: filterIntervalsByMinDuration(combined.free, minDurationMinutes),
+    };
+    const availabilityNote = connectedAccountId
+      ? "busy/free from Google FreeBusy API across queried calendars of ONE calendar account. Use calendars.combined for scheduling (union of busy on all items). Transparent events (Show as free) are NOT in busy[]."
+      : "busy/free from Google FreeBusy API across all calendar accounts (accounts[]). Use calendars.combined for scheduling (union of busy on all calendars). Transparent events (Show as free) are NOT in busy[]. Default items per calendar account: primary + owner personalEmail + selected Gmail calendars.";
+    res.json({
+      ok: true,
+      source: "live_composio",
+      tool: "GOOGLECALENDAR_FIND_FREE_SLOTS",
+      ...source,
+      timeAnchor: buildOwnerTimeAnchorPayload(timeAnchor),
+      minDurationMinutes,
+      ...slots,
+      calendars,
+      availabilityNote: incomplete
+        ? `${availabilityNote} INCOMPLETE: a calendar account failed (see accounts[]); its busy time is missing. Tell the owner before you book.`
+        : availabilityNote,
+    });
+  });
+
+  /** Create an owner calendar event with the calendar account that can write the target calendar. */
+  router.post("/api/connectors/calendar/google/events", async (req: Request, res: Response) => {
+    if (!isComposioEnabled()) {
+      res.status(503).json({ error: "Composio is not configured" });
+      return;
+    }
+    try {
+      sendCalendarResult(res, await createOwnerCalendarEvent(projectRoot, readCalendarEventInput(req.body)));
+    } catch (err) {
+      res.status(502).json({ error: (err as Error).message });
+    }
+  });
+
+  /** Update (patch) an owner calendar event. Only the given fields change. */
+  router.patch("/api/connectors/calendar/google/events/:eventId", async (req: Request, res: Response) => {
+    if (!isComposioEnabled()) {
+      res.status(503).json({ error: "Composio is not configured" });
+      return;
+    }
+    try {
+      const eventId = String(req.params.eventId ?? "");
+      sendCalendarResult(
+        res,
+        await updateOwnerCalendarEvent(projectRoot, eventId, readCalendarEventInput(req.body)),
       );
-      const timeAnchor = getOwnerTimeAnchor(projectRoot);
-      const combined = combineCalendarFreeBusy(slots.calendars, slots.timeMin, slots.timeMax);
-      const calendars = Object.fromEntries(
-        Object.entries(slots.calendars).map(([id, cal]) => [
-          id,
-          {
-            ...cal,
-            free: filterIntervalsByMinDuration(cal.free, minDurationMinutes),
-          },
-        ]),
-      );
-      calendars.combined = {
-        busy: combined.busy,
-        free: filterIntervalsByMinDuration(combined.free, minDurationMinutes),
-      };
-      res.json({
-        ok: true,
-        source: "live_composio",
-        tool: "GOOGLECALENDAR_FIND_FREE_SLOTS",
-        accountKey: account.accountKey,
-        email: account.email,
-        timeAnchor: buildOwnerTimeAnchorPayload(timeAnchor),
-        minDurationMinutes,
-        ...slots,
-        calendars,
-        availabilityNote:
-          "busy/free from Google FreeBusy API across queried calendars. Use calendars.combined for scheduling (union of busy on all items). Transparent events (Show as free) are NOT in busy[]. Default items: primary + owner personalEmail + selected Gmail calendars when omitted.",
+    } catch (err) {
+      res.status(502).json({ error: (err as Error).message });
+    }
+  });
+
+  /** Read one owner calendar event with its guests and meeting link. */
+  router.get("/api/connectors/calendar/google/events/:eventId", async (req: Request, res: Response) => {
+    if (!isComposioEnabled()) {
+      res.status(503).json({ error: "Composio is not configured" });
+      return;
+    }
+    try {
+      const result = await getOwnerCalendarEvent(projectRoot, String(req.params.eventId ?? ""), {
+        calendarId: readString(req.query.calendarId),
+        connectedAccountId: readString(req.query.connectedAccountId) || undefined,
+        timezone: readString(req.query.timezone) || undefined,
       });
+      sendCalendarResult(res, result);
     } catch (err) {
       res.status(502).json({ error: (err as Error).message });
     }
@@ -982,4 +1154,66 @@ export function registerConnectorRoutes(
   });
 
   registerMeteredProviderRoutes(router, projectRoot, opts.runner);
+}
+
+function readCalendarEventInput(raw: unknown): OwnerCalendarEventInput {
+  const body = (raw ?? {}) as Record<string, unknown>;
+  const str = (value: unknown): string | undefined =>
+    typeof value === "string" && value.trim() ? value.trim() : undefined;
+  const attendees = Array.isArray(body.attendees)
+    ? body.attendees.filter((a): a is string => typeof a === "string" && a.trim() !== "").map((a) => a.trim())
+    : undefined;
+  const transparency = body.transparency === "transparent" || body.transparency === "opaque" ? body.transparency : undefined;
+  return {
+    calendarId: str(body.calendarId) ?? "",
+    summary: str(body.summary),
+    start: str(body.start),
+    end: str(body.end),
+    timezone: str(body.timezone) ?? str(body.timeZone),
+    endTimezone: str(body.endTimezone) ?? str(body.endTimeZone),
+    attendees,
+    description: str(body.description),
+    location: str(body.location),
+    sendUpdates: str(body.sendUpdates),
+    // Omitted: the Joshu API decides (wantsMeetingRoom).
+    createMeetingRoom: typeof body.createMeetingRoom === "boolean" ? body.createMeetingRoom : undefined,
+    transparency,
+    connectedAccountId: str(body.connectedAccountId),
+  };
+}
+
+type CalendarResult = OwnerCalendarWriteResult | OwnerCalendarEventReadResult;
+
+const CALENDAR_ERROR_STATUS: Record<Exclude<CalendarResult, { ok: true }>["kind"], number> = {
+  invalid: 400,
+  unknown_account: 400,
+  primary_ambiguous: 400,
+  no_writer: 409,
+  no_reader: 409,
+  not_found: 404,
+  // Success-shaped stub, as for other denied actions: the companion must not retry.
+  denied: 200,
+  error: 502,
+};
+
+function sendCalendarResult(res: Response, result: CalendarResult): void {
+  if (result.ok) {
+    res.json(result);
+    return;
+  }
+  if (result.kind === "denied") {
+    res.json({ ok: false, denied: true, message: result.message });
+    return;
+  }
+  const hint = result.writableCalendars?.length
+    ? `${result.kind === "no_reader" ? "Readable" : "Writable"} calendars: ${result.writableCalendars
+        .map((w) => `${w.email ?? w.accountKey}: ${w.calendars.join(", ") || "(none)"}`)
+        .join("; ")}`
+    : undefined;
+  res.status(CALENDAR_ERROR_STATUS[result.kind]).json({
+    error: result.message,
+    reason: result.kind,
+    ...(hint ? { hint } : {}),
+    ...(result.writableCalendars ? { writableCalendars: result.writableCalendars } : {}),
+  });
 }

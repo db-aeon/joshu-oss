@@ -16,6 +16,8 @@ import {
   getHandoffRecord,
   getPendingHandoff,
   handoffMaxTtlMs,
+  handoffStatusMessage,
+  markHandoffsBrowserStopped,
   handoffOwnerActivityMs,
   handoffUrlForRecord,
   isBrowserHandoffLocked,
@@ -38,6 +40,10 @@ import {
   tryCompletePendingHandoffForOwnerSession,
   tryCompletePendingHandoffFromOwnerConfirm,
 } from "../src/browserHandoff/ownerHandoffConfirm.ts";
+import {
+  buildSmsHandoffContinuationMessages,
+  loadHandoffTaskContext,
+} from "../src/browserHandoff/smsContinue.ts";
 
 function tempProjectRoot() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "joshu-handoff-test-"));
@@ -176,6 +182,97 @@ try {
   rmRoot(rootIdle);
 }
 
+// --- unopened handoff holds the cloud browser until the link expires ---
+const rootUnopened = tempProjectRoot();
+try {
+  const unopened = createHandoff(rootUnopened, {
+    pageUrl: "https://www.aa.com/booking/passengers",
+    pageTitle: "Passengers",
+    instructions: "pay",
+  });
+  assert.equal(unopened.ownerOpenedAt, undefined);
+  assert.match(handoffStatusMessage(unopened), /has not opened the browser handoff link yet/);
+  // 20 minutes later, the owner still has not opened the link (old rule: released after 10).
+  const recordFile = path.join(rootUnopened, ".joshu", "browser-handoff", `${unopened.id}.json`);
+  const twentyMinAgo = new Date(Date.now() - 20 * 60_000).toISOString();
+  const aged = {
+    ...unopened,
+    createdAt: twentyMinAgo,
+    lastOwnerActivityAt: twentyMinAgo,
+    expiresAt: new Date(Date.now() + 25 * 60_000).toISOString(),
+  };
+  fs.writeFileSync(recordFile, `${JSON.stringify(aged, null, 2)}\n`, { mode: 0o600 });
+  assert.equal(pendingHandoffBlocksCloudBrowser(rootUnopened), true, "unopened handoff holds the browser");
+
+  // The owner opens the page: the 10 minute owner-activity rule applies from now on.
+  const opened = touchHandoffOwnerActivity(rootUnopened, unopened.id);
+  assert.ok(opened?.ownerOpenedAt);
+  assert.equal(touchHandoffOwnerActivity(rootUnopened, unopened.id)?.ownerOpenedAt, opened.ownerOpenedAt, "first open is kept");
+  assert.match(handoffStatusMessage(opened), /opened the browser handoff page and has not finished/);
+  fs.writeFileSync(
+    recordFile,
+    `${JSON.stringify({ ...opened, lastOwnerActivityAt: twentyMinAgo }, null, 2)}\n`,
+    { mode: 0o600 },
+  );
+  assert.equal(pendingHandoffBlocksCloudBrowser(rootUnopened), false, "opened, then idle: released");
+
+  // Idle stop while pending: the stamp and the message tell the companion why the page is gone.
+  const [stamped] = markHandoffsBrowserStopped(rootUnopened, "idle");
+  assert.equal(stamped?.id, unopened.id);
+  assert.equal(stamped.browserStopReason, "idle");
+  assert.equal(markHandoffsBrowserStopped(rootUnopened, "idle").length, 0, "stamped once");
+  const pendingMsg = handoffStatusMessage(stamped);
+  assert.match(pendingMsg, /Joshu stopped the shared browser at .* because nothing used it/);
+  assert.match(pendingMsg, /The website did not cause this/);
+  assert.match(pendingMsg, /Cancel this browser handoff/);
+} finally {
+  rmRoot(rootUnopened);
+}
+
+// --- expired handoff: never opened, then the idle stop ---
+const rootExpired = tempProjectRoot();
+try {
+  const handoff = createHandoff(rootExpired, {
+    pageUrl: "https://www.aa.com/booking/payment",
+    pageTitle: "Payment",
+    instructions: "pay",
+  });
+  const recordFile = path.join(rootExpired, ".joshu", "browser-handoff", `${handoff.id}.json`);
+  const expiredAt = new Date(Date.now() - 5 * 60_000).toISOString();
+  fs.writeFileSync(
+    recordFile,
+    `${JSON.stringify({ ...handoff, expiresAt: expiredAt }, null, 2)}\n`,
+    { mode: 0o600 },
+  );
+  assert.equal(pendingHandoffBlocksCloudBrowser(rootExpired), false, "expired link releases the browser");
+  const expired = getHandoffRecord(rootExpired, handoff.id);
+  assert.equal(expired?.status, "expired");
+  assert.match(handoffStatusMessage(expired), /may be gone/);
+
+  const [stamped] = markHandoffsBrowserStopped(rootExpired, "idle");
+  assert.equal(stamped?.status, "expired");
+  const msg = handoffStatusMessage(stamped);
+  assert.match(msg, /link expired at .* before the owner finished/);
+  assert.match(msg, /staged page \(for example a cart or a half-filled form\) is gone/);
+  assert.match(msg, /The website did not cause this/);
+  assert.match(msg, /offer to stage the page again/);
+
+  // A handoff that ended more than an hour before the stop is not stamped.
+  const old = createHandoff(rootExpired, { pageUrl: "https://x.test/", pageTitle: "", instructions: "x" });
+  fs.writeFileSync(
+    path.join(rootExpired, ".joshu", "browser-handoff", `${old.id}.json`),
+    `${JSON.stringify({ ...old, status: "cancelled", cancelledAt: new Date(Date.now() - 2 * 3600_000).toISOString() }, null, 2)}\n`,
+    { mode: 0o600 },
+  );
+  assert.equal(markHandoffsBrowserStopped(rootExpired, "shutdown").length, 0);
+  assert.match(
+    handoffStatusMessage({ ...stamped, browserStopReason: "shutdown" }),
+    /because the Joshu service restarted/,
+  );
+} finally {
+  rmRoot(rootExpired);
+}
+
 // --- owner confirm (SMS / chat "done") ---
 assert.equal(looksLikeOwnerHandoffComplete("Yeah I'm done with rapidapi"), true);
 assert.equal(looksLikeOwnerHandoffComplete("done with the login"), true);
@@ -226,34 +323,18 @@ try {
 }
 
 // --- Hermes patch script smoke ---
-const patchScript = fs.readFileSync(
-  path.join(process.cwd(), "scripts/patch-hermes-camofox-handoff-lock.mjs"),
-  "utf8",
-);
-assert.match(patchScript, /hitl_browser_handoff_lock/);
-assert.match(patchScript, /camofox_navigate/);
-
 const cdpPatch = fs.readFileSync(
   path.join(process.cwd(), "scripts/patch-hermes-browser-cdp-guards.mjs"),
   "utf8",
 );
 assert.match(cdpPatch, /hitl_browser_cdp_guards/);
 assert.match(cdpPatch, /joshu_cloud_browser_touch/);
-assert.match(cdpPatch, /joshu_cloud_browser_ensure/);
+assert.match(cdpPatch, /joshu_cloud_browser_ensure_v3/);
+assert.match(cdpPatch, /browser_restarted/);
 assert.match(cdpPatch, /\/api\/browser\/ensure/);
 assert.match(cdpPatch, /browser_navigate/);
 assert.match(cdpPatch, /"browser_snapshot"/);
 assert.doesNotMatch(cdpPatch, /camofox_snapshot/);
-
-const camofoxPatch = fs.readFileSync(
-  path.join(process.cwd(), "scripts/patch-camofox-single-tab.mjs"),
-  "utf8",
-);
-assert.match(camofoxPatch, /HITL_FORM_FIELDS_ROUTE/);
-assert.match(camofoxPatch, /HITL_FORM_PAGE_KEY_ROUTE/);
-assert.match(camofoxPatch, /__hitlPopupCoerceV5/);
-assert.match(camofoxPatch, /hitl oauth popup waiting for callback/);
-assert.match(camofoxPatch, /data-joshu-handoff/);
 
 const routesSrc = fs.readFileSync(path.join(process.cwd(), "src/browserHandoff/routes.ts"), "utf8");
 assert.match(routesSrc, /\/page-key/);
@@ -346,5 +427,86 @@ assert.match(loginJs, /invalid_credentials/);
 
 assert.equal(isOauthPopupUrl("https://accounts.google.com/gsi/transform"), true);
 assert.equal(isOauthPopupUrl("https://rapidapi.com/auth/login"), false);
+
+// --- SMS continuation: the handoff brief and the request go in a system message (issue #71) ---
+{
+  const root = tempProjectRoot();
+  const goalsDir = path.join(root, "goals");
+  fs.mkdirSync(goalsDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(goalsDir, "state.json"),
+    JSON.stringify({
+      version: 1,
+      goals: [{ id: "6f993e82", objective: "check X for new direct messages", kanbanTaskId: "t_5273f623" }],
+    }),
+  );
+  const previousDir = process.env.JOSHU_REALTIME_GOALS_STATE_DIR;
+  process.env.JOSHU_REALTIME_GOALS_STATE_DIR = goalsDir;
+  try {
+    const brief = "X is asking for your 4-digit DM passcode. Type your 4-digit passcode in the boxes, then tap I'm done.";
+    const record = {
+      id: "f24cd860-0000-4000-8000-000000000001",
+      status: "completed",
+      pageUrl: "https://x.com/i/chat/pin/recovery",
+      pageTitle: "X passcode",
+      instructions: brief,
+      kanbanTaskId: "t_5273f623",
+      createdAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    };
+    const calls = [];
+    const bridge = async (payload) => {
+      calls.push(payload);
+      return { success: true, task: { title: "Check X for new direct messages", body: "Owner texted: check X for new DMs." } };
+    };
+    const context = await loadHandoffTaskContext(root, record, bridge);
+    assert.equal(context.objective, "check X for new direct messages");
+    assert.equal(context.taskTitle, "Check X for new direct messages");
+    assert.deepEqual(calls[0], { action: "show", board: "realtime-goals", task_id: "t_5273f623" });
+
+    const messages = buildSmsHandoffContinuationMessages(record, context);
+    const system = messages.filter((m) => m.role === "system").map((m) => m.content).join("\n");
+    const user = messages.filter((m) => m.role === "user").map((m) => m.content).join("\n");
+    assert.match(system, /check X for new direct messages/);
+    assert.match(system, /Kanban task t_5273f623: Check X for new direct messages/);
+    assert.ok(system.includes(brief), "handoff brief is in the system message");
+    assert.match(system, /you wrote it for the owner/);
+    assert.ok(!user.includes(brief), "handoff brief is not in a user message");
+    assert.doesNotMatch(user, /passcode/);
+
+    // A bridge error leaves the Kanban task out; the objective stays.
+    const failing = await loadHandoffTaskContext(root, record, async () => {
+      throw new Error("bridge down");
+    });
+    assert.deepEqual(failing, { objective: "check X for new direct messages" });
+
+    // No Kanban task id: no lookups, and the brief still goes in the system message.
+    const bare = { ...record, kanbanTaskId: undefined };
+    assert.deepEqual(await loadHandoffTaskContext(root, bare, bridge), {});
+    assert.equal(calls.length, 1, "no bridge call without a Kanban task id");
+    const bareMessages = buildSmsHandoffContinuationMessages(bare, {});
+    assert.ok(bareMessages[0].content.includes(brief));
+    assert.doesNotMatch(bareMessages[0].content, /request:|Kanban task/);
+  } finally {
+    if (previousDir === undefined) delete process.env.JOSHU_REALTIME_GOALS_STATE_DIR;
+    else process.env.JOSHU_REALTIME_GOALS_STATE_DIR = previousDir;
+    rmRoot(root);
+  }
+}
+
+// Plugin joshu-browser-handoff sends the worker's Kanban task id when the model gives none.
+const handoffPluginSrc = fs.readFileSync(
+  path.join(process.cwd(), ".hermes/plugins/joshu-browser-handoff/tools.py"),
+  "utf8",
+);
+assert.match(handoffPluginSrc, /args\.get\("kanban_task_id"\) or os\.environ\.get\("HERMES_KANBAN_TASK"\)/);
+
+// Skill joshu-browser-handoff forbids asking the owner to send a secret (issue #72).
+const handoffSkill = fs.readFileSync(
+  path.join(process.cwd(), "integrations/hermes/skills/browser/joshu-browser-handoff/SKILL.md"),
+  "utf8",
+);
+assert.match(handoffSkill, /### Never ask the owner to send a secret/);
+assert.match(handoffSkill, /password, passcode, PIN, recovery code, or one-time code/);
 
 console.log("browser-handoff fixtures: ok");

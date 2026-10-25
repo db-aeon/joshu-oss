@@ -1,5 +1,5 @@
 name: joshu-langfuse-relay
-version: 1.1.4
+version: 1.1.5
 description: Relay full Hermes turn/LLM/tool traces to Joshu control plane (no Langfuse secrets on the box).
 provides_hooks:
   - pre_api_request

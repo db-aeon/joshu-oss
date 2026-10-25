@@ -16,16 +16,16 @@ import {
 } from "../src/ea/ownerReplyTypes.js";
 import { buildMailIngressTaskBody } from "../src/ea/mailCron.js";
 
-const owner = "goodrich@graymediagroup.com";
-const owners = [owner, "ag@andrewgoodrich.com"];
-const agentEmail = "finn@joshu.me";
+const owner = "sam@work.example";
+const owners = [owner, "sam@owner.example"];
+const agentEmail = "ava@joshu.me";
 
 process.env.JOSHU_AROZ_USER = owner;
 
 {
   const ok = isOwnerReplyEligible({
     provider: "nylas",
-    from: `Andrew <${owner}>`,
+    from: `Sam <${owner}>`,
     to: [agentEmail],
     agentEmails: [agentEmail],
     ownerEmails: owners,
@@ -40,7 +40,7 @@ process.env.JOSHU_AROZ_USER = owner;
 {
   const no = isOwnerReplyEligible({
     provider: "gmail",
-    from: `Andrew <${owner}>`,
+    from: `Sam <${owner}>`,
     ownerEmails: owners,
     disposition: "track",
   });
@@ -119,6 +119,18 @@ const taskBody = buildOwnerReplyTaskBody({
 assert.match(taskBody, /^kind: owner_reply$/m);
 assert.match(taskBody, /^thread_id: thread-abc$/m);
 assert.doesNotMatch(taskBody, /awaiting owner or external party/);
+assert.doesNotMatch(taskBody, /^setup_mention:/m);
+
+// Setup mention for email (change owner-setup-board, task 5.3).
+{
+  const withMention = buildOwnerReplyTaskBody({
+    subject: "MCP report",
+    fromEmail: owner,
+    sourcePath: "connectors/mail/nylas/threads/abc.md",
+    setupMention: "One setup step is still open: add your mobile in the Telephone app.",
+  });
+  assert.match(withMention, /^setup_mention: "One setup step is still open: add your mobile in the Telephone app\."$/m);
+}
 
 const meetKey = ownerReplyTaskIdempotencyKeyFromMessage("msg-1");
 assert.match(meetKey, /^ea-owner-reply-msg-/);
@@ -150,7 +162,7 @@ async function runIngressTests() {
       provider: "nylas",
       threadId: "thread-abc",
       sourcePath: "connectors/mail/nylas/threads/thread-abc.md",
-      from: `Andrew <${owner}>`,
+      from: `Sam <${owner}>`,
       to: [agentEmail],
       messageId: "msg-1",
     classification: {
@@ -167,7 +179,7 @@ async function runIngressTests() {
     },
   },
   null,
-  "finn@joshu.me",
+  "ava@joshu.me",
   );
   assert.match(ingressBody, /owner_reply_eligible: true/);
   assert.match(ingressBody, /allowed_actions: file,reply/);
@@ -182,7 +194,7 @@ async function runIngressTests() {
       provider: "nylas",
       threadId: "thread-self-reminder",
       sourcePath: "connectors/mail/nylas/threads/thread-self-reminder.md",
-      from: `Andrew <${owner}>`,
+      from: `Sam <${owner}>`,
       to: [agentEmail],
       messageId: "msg-self-reminder",
       classification: {
@@ -216,7 +228,7 @@ async function runIngressTests() {
       provider: "gmail",
       threadId: "g1",
       sourcePath: "connectors/mail/gmail/work/threads/g1.md",
-      from: `Andrew <${owner}>`,
+      from: `Sam <${owner}>`,
       accountEmail: owner,
       messageId: "g-msg",
       classification: {

@@ -30,3 +30,6 @@ npm-debug.log*
 vendor/arozos/.git
 vendor/arozos/.github
 
+
+# Host bundle (deploy/Dockerfile copies it into the image).
+!deploy/.env.vps.example

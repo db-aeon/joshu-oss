@@ -447,7 +447,7 @@ export function registerNylasRoutes(router: Router, opts: { projectRoot: string 
     if (agentRestWriteBlocked(req)) {
       res.status(403).json({
         error:
-          "Nylas calendar writes are disabled for agents. Book on owner Google Calendar via Composio GOOGLECALENDAR_CREATE_EVENT.",
+          "Nylas calendar writes are disabled for agents. Book on the owner Google calendar with connectors MCP google_calendar_create_event.",
       });
       return;
     }
@@ -498,7 +498,7 @@ export function registerNylasRoutes(router: Router, opts: { projectRoot: string 
     if (agentRestWriteBlocked(req)) {
       res.status(403).json({
         error:
-          "Nylas calendar writes are disabled for agents. Update owner Google Calendar via Composio GOOGLECALENDAR_PATCH_EVENT.",
+          "Nylas calendar writes are disabled for agents. Update the owner Google calendar with connectors MCP google_calendar_update_event.",
       });
       return;
     }

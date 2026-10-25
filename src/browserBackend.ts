@@ -1,5 +1,5 @@
 /**
- * Shared browser backend: local headed Chromium (CDP + optional noVNC) vs Browser Use Cloud.
+ * Shared browser backend: local headed Chromium (CDP) vs Browser Use Cloud.
  *
  * Precedence (user toggle wins over fleet provision):
  * 1. `.joshu/safety-settings/local-env.json` — Safety Settings UI

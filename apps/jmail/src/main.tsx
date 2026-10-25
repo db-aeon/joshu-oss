@@ -185,8 +185,8 @@ function App() {
     replyThreadId: "",
   });
   const [profile, setProfile] = useState({
-    ownerName: "Dan",
-    assistantName: "Patrick",
+    ownerName: "Owner",
+    assistantName: "Joshu",
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     primaryWorkEmail: "",
   });

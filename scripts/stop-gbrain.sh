@@ -6,39 +6,23 @@ APP_DIR="${APP_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 # shellcheck source=lib/gbrain-env.sh
 source "${APP_DIR}/scripts/lib/gbrain-env.sh"
 gbrain_env_init "${BASH_SOURCE[0]}"
+# shellcheck source=lib/pid-file.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/pid-file.sh"
 GBRAIN_BIN="${GBRAIN_BIN:-gbrain}"
 GBRAIN_PID_FILE="${GBRAIN_PID_FILE:-${GBRAIN_HOME}/gbrain-sync.pid}"
 GBRAIN_EMBED_PID_FILE="${GBRAIN_EMBED_PID_FILE:-${GBRAIN_HOME}/gbrain-embed.pid}"
 GBRAIN_DB="${GBRAIN_HOME}/.gbrain/brain.pglite"
 GBRAIN_LOCK_DIR="${GBRAIN_DB}/.gbrain-lock"
 
+# Each PID file can be stale (GBRAIN_HOME is a persistent volume on a box), so
+# stop_pid_file_process checks the command line before it sends a signal.
 stop_sync_watch_pidfile() {
-  if [[ ! -f "${GBRAIN_PID_FILE}" ]]; then
-    return 0
-  fi
-  local old_pid
-  old_pid="$(cat "${GBRAIN_PID_FILE}" 2>/dev/null || true)"
-  if [[ -n "${old_pid}" ]] && kill -0 "${old_pid}" 2>/dev/null; then
-    echo "[gbrain] stopping sync --watch (pid ${old_pid})"
-    kill "${old_pid}" 2>/dev/null || true
-    sleep 0.5
-    kill -9 "${old_pid}" 2>/dev/null || true
-  fi
-  rm -f "${GBRAIN_PID_FILE}"
+  stop_pid_file_process "${GBRAIN_PID_FILE}" "sync --watch" "[gbrain]"
 }
 
+# No script writes the embed loop PID file now. The PID in an old file can belong to any
+# process, so remove the file and stop nothing.
 stop_embed_loop_pidfile() {
-  if [[ ! -f "${GBRAIN_EMBED_PID_FILE}" ]]; then
-    return 0
-  fi
-  local old_pid
-  old_pid="$(cat "${GBRAIN_EMBED_PID_FILE}" 2>/dev/null || true)"
-  if [[ -n "${old_pid}" ]] && kill -0 "${old_pid}" 2>/dev/null; then
-    echo "[gbrain] stopping embed loop (pid ${old_pid})"
-    kill "${old_pid}" 2>/dev/null || true
-    sleep 0.5
-    kill -9 "${old_pid}" 2>/dev/null || true
-  fi
   rm -f "${GBRAIN_EMBED_PID_FILE}"
 }
 
@@ -53,18 +37,9 @@ stop_gbrain_mcp_proxies() {
 }
 
 stop_gbrain_mcp_http() {
-  local pid_file="${GBRAIN_MCP_HTTP_PID_FILE:-${GBRAIN_HOME}/gbrain-mcp-http.pid}"
-  if [[ -f "${pid_file}" ]]; then
-    local old_pid
-    old_pid="$(cat "${pid_file}" 2>/dev/null || true)"
-    if [[ -n "${old_pid}" ]] && kill -0 "${old_pid}" 2>/dev/null; then
-      echo "[gbrain] stopping gbrain MCP HTTP server (pid ${old_pid})"
-      kill "${old_pid}" 2>/dev/null || true
-      sleep 0.5
-      kill -9 "${old_pid}" 2>/dev/null || true
-    fi
-    rm -f "${pid_file}"
-  fi
+  local pid
+  stop_pid_file_process "${GBRAIN_MCP_HTTP_PID_FILE:-${GBRAIN_HOME}/gbrain-mcp-http.pid}" \
+    "gbrain-mcp-http-server" "[gbrain]"
   while IFS= read -r pid; do
     [[ -n "${pid}" ]] || continue
     echo "[gbrain] stopping gbrain MCP HTTP server (pid ${pid})"

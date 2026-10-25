@@ -9,13 +9,23 @@ export type KanbanBridgeAction =
   | "update_block_reason"
   | "find_by_idempotency"
   | "list"
+  | "list_blocked"
   | "show"
   | "comment"
   | "append_body"
+  | "set_body"
   | "cancel"
-  | "reopen";
+  | "archive_stale_blocked"
+  | "reopen"
+  | "find_open_by_text";
 
 export type KanbanBridgePayload = Record<string, unknown> & { action: KanbanBridgeAction };
+
+/** Values of the block kind (Hermes `VALID_BLOCK_KINDS`). */
+export type KanbanBlockKind = "dependency" | "needs_input" | "capability" | "transient";
+
+/** Block kind of an owner question (openspec/glossary.md). */
+export const OWNER_QUESTION_BLOCK_KIND: KanbanBlockKind = "needs_input";
 
 export type KanbanTaskSummary = {
   task_id?: string;
@@ -25,6 +35,8 @@ export type KanbanTaskSummary = {
   idempotency_key?: string;
   body?: string;
   block_reason?: string | null;
+  /** Block kind (openspec/glossary.md). `needs_input` marks an owner question. */
+  block_kind?: KanbanBlockKind | null;
   /**
    * Current cause of a blocked status. `worker` = kanban_block with a reason
    * (an owner question); `system` = Hermes circuit breaker (`gave_up`) or a
@@ -39,6 +51,7 @@ export type KanbanTaskSummary = {
     protocol_violations?: number | null;
   } | null;
   created_at?: number | string;
+  completed_at?: number | string;
   recent_comments?: Array<{
     author?: string;
     body?: string;
@@ -62,9 +75,18 @@ export type KanbanBridgeResult = {
   action_taken?: string;
   found?: boolean;
   task?: KanbanTaskSummary;
-  tasks?: KanbanTaskSummary[];
+  /** Actions `find_open_by_text` and `list_blocked` add `board` to each task. */
+  tasks?: Array<KanbanTaskSummary & { board?: string }>;
+  /** Action `list_blocked`: true when the limit cut the list. */
+  truncated?: boolean;
   board?: Record<string, unknown>;
+  /** Action `archive_stale_blocked`: ids of the archived tasks, and the number of stale tasks left. */
+  archived?: string[];
+  remaining?: number;
 };
+
+/** Kanban bridge call. A test can pass a fake one. */
+export type KanbanBridgeCall = (payload: KanbanBridgePayload) => Promise<KanbanBridgeResult>;
 
 export async function callKanbanBridge(payload: KanbanBridgePayload): Promise<KanbanBridgeResult> {
   const { stdout, stderr, code } = await spawnHermesPython(

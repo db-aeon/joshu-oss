@@ -34,17 +34,17 @@ delete process.env.JOSHU_IMAGE_URL;
 delete process.env.JOSHU_AVATAR_URL;
 delete process.env.JOSHU_VOICE_ID;
 delete process.env.JOSHU_OWNER_NAME;
-process.env.JOSHU_NAME = "Patrick";
+process.env.JOSHU_NAME = "Ava";
 process.env.JOSHU_OWNER_EMAIL = "owner@example.com";
 
 // Seed a good identity as if previously synced
 writeJoshuIdentity(
   {
-    name: "Patrick",
+    name: "Ava",
     imageUrl: "https://example.com/portrait.jpg",
     avatarUrl: "https://example.com/avatar.jpg",
     voiceId: "Sadachbia",
-    owner: { displayName: "Dan Benyamin", email: "owner@example.com" },
+    owner: { displayName: "Sam Owner", email: "owner@example.com" },
     source: "control-plane",
   },
   tmp,
@@ -54,8 +54,8 @@ syncCompanionIdentityFromEnv(tmp, { forceSoul: false });
 const after = readJoshuIdentity(tmp);
 assert(after?.imageUrl === "https://example.com/portrait.jpg", "portrait preserved when env lacks JOSHU_IMAGE_URL");
 assert(after?.avatarUrl === "https://example.com/avatar.jpg", "avatar preserved");
-assert(after?.owner.displayName === "Dan Benyamin", "owner displayName preserved when only email in env");
-assert(after?.name === "Patrick", "name still Patrick");
+assert(after?.owner.displayName === "Sam Owner", "owner displayName preserved when only email in env");
+assert(after?.name === "Ava", "name still Ava");
 
 // Explicit env update still applies
 process.env.JOSHU_OWNER_NAME = "Dan";

@@ -1,11 +1,11 @@
 {
-  "version": "0.1.47",
+  "version": "0.1.59",
   "channel": "stable",
-  "imageRef": "ghcr.io/db-aeon/joshu-oss:0.1.47",
-  "voiceImageRef": "ghcr.io/db-aeon/joshu-oss-voice-realtime:0.1.47",
+  "imageRef": "ghcr.io/db-aeon/joshu-oss:0.1.59",
+  "voiceImageRef": "ghcr.io/db-aeon/joshu-oss-voice-realtime:0.1.59",
+  "instanceAgentImageRef": "ghcr.io/db-aeon/joshu-oss-instance-agent:0.1.59",
   "hermesRef": "3c27eb6234bf91b8ceee9e9071591b31e9b148cb",
   "gbrainRef": "fa2c7a6990a7a57b251979ef6e1988ff09529021",
-  "camofoxBase": "ghcr.io/jo-inc/camofox-browser@sha256:3cc29763d3c784ae71a7d56853a12c43e100ff2f13da1e2eb88322b08e12d6a0",
-  "builtAt": "2026-09-28T02:25:00.000Z",
-  "notes": "0.1.47 — Voice gate clips aligned to Gemini Live (verbatim-checked TTS). Realtime goals call gate + owner outbox. Voice think budget + CDP relay. Remove dead Joshu Twilio media-stream pipeline."
+  "builtAt": "2026-10-25T04:18:28.742Z",
+  "notes": "0.1.59 — Boss Mode renamed Multiplayer, with a group chat and team cards inside the messages; File Brain no longer reindexes every 5 seconds; security updates: brotlicffi 1.2.1.0, mcp 1.30.0, and PyNaCl 1.6.2 in Hermes, the MCP SDK 1.32.2 and body-parser 1.20.9 in the runtime, CopilotKit 1.79.1 and DOMPurify 3.4.17 in the desktop apps."
 }

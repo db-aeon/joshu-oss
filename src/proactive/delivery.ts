@@ -1,7 +1,4 @@
-import { readAgentProfile } from "../nylas/profile.js";
-import { readAgentGrant } from "../nylas/store.js";
-import { sendMessage } from "../nylas/client.js";
-import { ownerSmsPhone, sendSms, twilioSmsGatewayEnabled } from "../twilioSmsSend.js";
+import { ownerTextChannelFor, sendOwnerText } from "../ownerTextChannel.js";
 import { composeProactiveMessage, proactiveEmailSubject } from "./composeMessage.js";
 import type { ProactiveCandidate } from "./types.js";
 
@@ -15,10 +12,13 @@ export type ProactiveDeliveryResult = {
 export type DeliverProactiveNudgeOpts = {
   candidate: ProactiveCandidate;
   projectRoot?: string;
-  nudgeKind?: "nudge" | "stale_review" | "clarify";
+  nudgeKind?: "nudge" | "stale_review";
 };
 
-/** SMS → email fallback; composed in SOUL.md voice via Hermes. */
+/**
+ * Composed in SOUL.md voice via Hermes; sent on the owner text channel (SMS, then email).
+ * When the box has no route to the owner, returns `no_delivery_channel` without a Hermes call.
+ */
 export async function deliverProactiveNudge(
   opts: DeliverProactiveNudgeOpts | ProactiveCandidate,
   projectRootArg = process.cwd(),
@@ -28,41 +28,22 @@ export async function deliverProactiveNudge(
   const candidate = opts && "candidate" in opts ? opts.candidate : opts;
   const nudgeKind = opts && "candidate" in opts ? (opts.nudgeKind ?? "nudge") : "nudge";
 
+  const channel = ownerTextChannelFor(projectRoot);
+  if (!channel) return { delivered: false, error: "no_delivery_channel" };
+
   const body = await composeProactiveMessage({
     kind: nudgeKind,
     projectRoot,
     candidate,
+    channel,
   });
 
-  if (twilioSmsGatewayEnabled(projectRoot)) {
-    const phone = ownerSmsPhone(projectRoot);
-    if (phone) {
-      try {
-        await sendSms(phone, body);
-        return { delivered: true, channel: "sms", body };
-      } catch (err) {
-        console.warn("[proactive] SMS send failed:", err);
-      }
-    }
-  }
-
-  const profile = readAgentProfile(projectRoot);
-  const email = profile?.primaryWorkEmail?.trim();
-  const grant = readAgentGrant(projectRoot);
-  if (email && grant?.grantId && grant.email) {
-    try {
-      await sendMessage(grant.grantId, {
-        to: [{ email, name: profile?.ownerName?.trim() || undefined }],
-        subject: proactiveEmailSubject(candidate, body),
-        body,
-        from: grant.email,
-      });
-      return { delivered: true, channel: "email", body };
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      return { delivered: false, error: `email_failed:${msg}`, body };
-    }
-  }
-
-  return { delivered: false, error: "no_delivery_channel", body };
+  const sent = await sendOwnerText(projectRoot, {
+    sms: body,
+    emailSubject: proactiveEmailSubject(candidate, body),
+    emailBody: body,
+  });
+  return sent.delivered
+    ? { delivered: true, channel: sent.channel, body }
+    : { delivered: false, error: sent.error, body };
 }

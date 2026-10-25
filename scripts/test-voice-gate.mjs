@@ -106,7 +106,11 @@ try {
   const app = express();
   app.use(express.json());
   const router = express.Router();
-  registerTelephoneRoutes(router, { projectRoot: process.cwd() });
+  const reconciles = [];
+  registerTelephoneRoutes(router, {
+    projectRoot: process.cwd(),
+    reconcileOnboarding: (_root, reason) => reconciles.push(reason),
+  });
   registerTwilioVoiceRoutes(router, {}, "");
   registerRealtimeGoalVoiceRoutes(router, broker);
   app.use(router);
@@ -136,6 +140,46 @@ try {
   assert.equal(JSON.stringify(stored).includes("482913"), false, "only a hash is stored");
   assert.equal(verifyPin("482913", stored.pinHash), true, "voice-realtime verifies Joshu's hash");
   assert.equal(verifyPin("482914", stored.pinHash), false);
+
+  // ---- Owner mobile offer: save the caller ID of an unlocked call ----
+  const fromCall = async (body, auth = "Bearer svc-key") => {
+    const response = await fetch(`${base}/api/telephone/owner-mobile/from-call`, {
+      method: "POST",
+      headers: { Authorization: auth, "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    return { status: response.status, json: await response.json() };
+  };
+  assert.equal((await fromCall({ callSid: "CA-m1", caller: "+13105550199" }, "Bearer nope")).status, 403);
+  const envOwner = await fromCall({ callSid: "CA-m1", caller: "+13105550199" });
+  assert.equal(envOwner.status, 409, "TWILIO_OWNER_CALLER is an owner mobile");
+  assert.equal(envOwner.json.status, "already_set");
+  assert.equal(readTelephoneSettingsFile().ownerCaller, undefined);
+  const savedOwnerEnv = process.env.TWILIO_OWNER_CALLER;
+  delete process.env.TWILIO_OWNER_CALLER;
+  process.env.TWILIO_PHONE_NUMBER = "+17625839074";
+  assert.equal((await fromCall({ callSid: "CA-m1", caller: "+17625839074" })).json.status, "invalid", "the box number");
+  assert.equal((await fromCall({ callSid: "CA-m1", caller: "55501" })).status, 400, "not a mobile");
+  assert.equal((await fromCall({ callSid: "", caller: "+13105550199" })).status, 400);
+  assert.equal(reconciles.length, 0);
+  const before = readTelephoneSettingsFile();
+  const savedMobile = await fromCall({ callSid: "CA-m1", caller: "3105550199" });
+  assert.equal(savedMobile.status, 200);
+  assert.equal(savedMobile.json.status, "saved");
+  assert.equal(savedMobile.json.ownerCallerDisplay, "+1 (310) 555-0199");
+  const after = readTelephoneSettingsFile();
+  assert.equal(after.ownerCaller, "+13105550199");
+  assert.deepEqual({ ...after, ownerCaller: undefined }, { ...before, ownerCaller: undefined }, "only ownerCaller changes");
+  assert.equal(after.trustVerifiedCallerId, true, "trusted caller ID stays as the owner set it");
+  assert.deepEqual(reconciles, ["owner mobile saved from call"], "onboarding reconcile runs once");
+  const replaced = await fromCall({ callSid: "CA-m2", caller: "+13105550142" });
+  assert.equal(replaced.status, 409, "never replaces an owner mobile");
+  assert.equal(readTelephoneSettingsFile().ownerCaller, "+13105550199");
+  // Restore: the gate cases below expect the owner mobile from the environment.
+  await put({ ownerCaller: "" });
+  delete process.env.TWILIO_PHONE_NUMBER;
+  process.env.TWILIO_OWNER_CALLER = savedOwnerEnv;
+  reconciles.length = 0;
 
   const inbound = async (params) => {
     const body = { AccountSid: "AC-test", CallSid: "CA-in-1", From: "+13105550100", To: "+15550009999", ...params };
