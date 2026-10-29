@@ -14,7 +14,7 @@
   [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
   [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
-  [Website](https://joshu.me) | [Self-host guide](docs/vps-sandbox/hetzner-quickstart.md) | [User manual](docs/user-manual/README.md) | [Documentation](docs/README.md)
+  [Website](https://www.joshu.me) | [Self-host guide](docs/vps-sandbox/hetzner-quickstart.md) | [User manual](docs/user-manual/README.md) | [Documentation](docs/README.md)
 
   <br>
 
@@ -22,7 +22,7 @@
 </div>
 
 > [!NOTE]
-> Joshu is early. The self-hosted stack runs, but expect rough edges and breaking changes. The code is provided as is, with no warranty. If you would rather not run a server, [joshu.me](https://joshu.me) hosts a box for you with a 14-day free trial.
+> Joshu is early. The self-hosted stack runs, but expect rough edges and breaking changes. The code is provided as is, with no warranty. If you would rather not run a server, [joshu.me](https://www.joshu.me) hosts a box for you with a 14-day free trial.
 
 ## Why Joshu
 
