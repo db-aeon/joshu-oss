@@ -284,13 +284,15 @@ export class RealtimeGoalStore {
     });
   }
 
-  async listStaleInbound(minAgeMs: number): Promise<RealtimeGoalInboxRecord[]> {
+  /** Unfinished texts older than `minAgeMs` that a run other than `currentRunId` reserved. */
+  async listStaleInbound(minAgeMs: number, currentRunId?: string): Promise<RealtimeGoalInboxRecord[]> {
     const state = await this.read();
     const cutoff = Date.now() - minAgeMs;
     return (state.inbox ?? []).filter(
       (item) =>
         !item.processedAt &&
         !item.recoveryNotifiedAt &&
+        (!currentRunId || item.runId !== currentRunId) &&
         Date.parse(item.receivedAt) <= cutoff,
     );
   }

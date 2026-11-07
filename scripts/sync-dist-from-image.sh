@@ -66,17 +66,6 @@ else
   echo "[sync-dist-from-image] whiteboard-cwm dist not in image (skipped)"
 fi
 
-# Gitignored engine snapshot — compose bind-mounts host path over the image copy.
-# Fresh git clone leaves an empty dir and last30days research 400s "engine missing".
-SKILL_DIR="${INSTALL_DIR}/integrations/last30days-skill"
-mkdir -p "$SKILL_DIR"
-if docker cp "${CID}:/opt/joshu/integrations/last30days-skill/." "$SKILL_DIR/" 2>/dev/null \
-  && [[ -f "${SKILL_DIR}/skills/last30days/scripts/last30days.py" ]]; then
-  echo "[sync-dist-from-image] last30days-skill synced"
-else
-  echo "[sync-dist-from-image] last30days-skill not in image (skipped)"
-fi
-
 GIT_REF=""
 if command -v git >/dev/null 2>&1 && [ -d "${INSTALL_DIR}/.git" ]; then
   GIT_REF="$(git -C "$INSTALL_DIR" rev-parse HEAD 2>/dev/null || true)"

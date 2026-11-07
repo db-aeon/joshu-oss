@@ -31,6 +31,7 @@ Rules:
 - Integrate new factory procedures, tool names, and safety gates from the FACTORY version.
 - Keep YAML frontmatter valid; bump metadata.hermes.version to the higher semantic version when factory is newer.
 - When FACTORY defines Browser Use Cloud vs local Chromium rules, DROP box sections that contradict them (Camofox :9377 curl workarounds, "staging the tab in Camofox", browser_task on cloud fleet, hitl-camofox fallbacks after no_active_browser_tab).
+- When the FACTORY version says that sections moved to other skills, DROP those sections from the BOX version. Leave out a box pitfall of a moved section and list it as dropped with the reason "moved to <skill>"; the skills seed already moved it to that skill.
 - Do not preserve skill_manage patches that were written during a failed browser/handoff run — treat those as noise unless they document owner-specific preferences unrelated to browser infrastructure.
 - Output the complete merged SKILL.md markdown. No preamble or commentary.
 - After the merged SKILL.md, write the line ${DROPPED_MARKER} and then one line for each box pitfall that you left out: "- <bold title of the box pitfall> :: <why the FACTORY version makes it wrong>". Write "- none" when you kept every box pitfall.`;

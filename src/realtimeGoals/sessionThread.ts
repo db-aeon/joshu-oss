@@ -14,6 +14,12 @@ const DEFAULT_TTL_MS = 48 * 60 * 60_000;
 
 const EMPTY_STATE: SessionThreadState = { version: 1, threads: {} };
 
+/**
+ * One write chain per threads.json file, shared by every store instance in the
+ * process (the broker and the owner text channel each make one).
+ */
+const transactionTails = new Map<string, Promise<unknown>>();
+
 function stateDirectory(projectRoot: string): string {
   const explicit = process.env.JOSHU_REALTIME_GOALS_STATE_DIR?.trim();
   if (explicit) return path.resolve(explicit);
@@ -78,7 +84,6 @@ export function formatSessionThreadForPrompt(
  */
 export class SessionThreadStore {
   private readonly file: string;
-  private transactionTail: Promise<unknown> = Promise.resolve();
 
   constructor(projectRoot: string) {
     const dir = stateDirectory(projectRoot);
@@ -114,7 +119,7 @@ export class SessionThreadStore {
       rejectResult = reject;
     });
 
-    this.transactionTail = this.transactionTail
+    const tail = (transactionTails.get(this.file) ?? Promise.resolve())
       .catch(() => undefined)
       .then(async () => {
         try {
@@ -126,6 +131,7 @@ export class SessionThreadStore {
           rejectResult(error);
         }
       });
+    transactionTails.set(this.file, tail);
     return result;
   }
 

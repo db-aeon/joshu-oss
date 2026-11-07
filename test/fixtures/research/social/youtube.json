@@ -1,0 +1,69 @@
+{
+ "ok": true,
+ "status": 200,
+ "json": {
+  "success": true,
+  "videos": [
+   {
+    "type": "video",
+    "id": "qjRriXk9i7U",
+    "url": "https://www.youtube.com/watch?v=qjRriXk9i7U",
+    "title": "Humanoid robot spotted in NYC sparks curiosity, concern",
+    "publishedTime": "2026-10-27T02:53:28.309Z",
+    "publishedTimeText": "3 days ago",
+    "viewCountInt": 15629,
+    "viewCountText": "15,629 views",
+    "lengthText": "1:48",
+    "channel": {
+     "title": "CBS New York",
+     "handle": "CBSNewYork"
+    }
+   },
+   {
+    "type": "video",
+    "id": "DlSX7TIIApY",
+    "url": "https://www.youtube.com/watch?v=DlSX7TIIApY",
+    "title": "110 humanoid robots set dance world record",
+    "publishedTime": "2026-10-29T07:53:28.309Z",
+    "publishedTimeText": "19 hours ago",
+    "viewCountInt": 3335,
+    "viewCountText": "3,335 views",
+    "lengthText": "0:30",
+    "channel": {
+     "title": "New China TV",
+     "handle": "ChinaViewTV"
+    }
+   },
+   {
+    "type": "video",
+    "id": "F1SBjbXrYlQ",
+    "url": "https://www.youtube.com/watch?v=F1SBjbXrYlQ",
+    "title": "Tesla begins production of \"Optimus\" humanoid robot",
+    "publishedTime": "2026-10-24T02:53:28.309Z",
+    "publishedTimeText": "6 days ago",
+    "viewCountInt": 8894,
+    "viewCountText": "8,894 views",
+    "lengthText": "0:24",
+    "channel": {
+     "title": "ABC7",
+     "handle": "ABC7"
+    }
+   },
+   {
+    "type": "video",
+    "id": "K0bF5o_3Qq8",
+    "url": "https://www.youtube.com/watch?v=K0bF5o_3Qq8",
+    "title": "Tesla Just Started Building Optimus Humanoid Robots For Real",
+    "publishedTime": "2026-10-28T02:53:28.309Z",
+    "publishedTimeText": "2 days ago",
+    "viewCountInt": 63487,
+    "viewCountText": "63,487 views",
+    "lengthText": "4:39",
+    "channel": {
+     "title": "The Electric Viking",
+     "handle": "electricviking"
+    }
+   }
+  ]
+ }
+}

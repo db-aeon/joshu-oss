@@ -20,8 +20,8 @@ See [`templates/ea/FILING.md`](../templates/ea/FILING.md) for filing rules the c
 
 | GTD bucket | Joshu path | Hermes skill |
 |------------|------------|--------------|
-| Inbox | `Triage/` + mail mirrors | `ea-playbook` |
-| Next actions | `Projects/<slug>/todo.md` | `ea-playbook` |
+| Inbox | `Triage/` + mail mirrors | `ea-mail-ingress` |
+| Next actions | `Projects/<slug>/todo.md` | `ea-mail-track`, `ea-playbook` |
 | Multi-step / HITL | Kanban + project board | `ea-project-kanban` |
 | Calendar / meetings | Live Google/Nylas + scheduling tasks | `ea-scheduling` |
 | Owner→agent asks | Ready Kanban on `ea-owner-reply` | `ea-owner-reply` |
@@ -32,7 +32,7 @@ See [`templates/ea/FILING.md`](../templates/ea/FILING.md) for filing rules the c
 
 **Rule:** one canonical file per artifact; link elsewhere. Mail bodies stay in `connectors/mail/` mirrors — do not duplicate into project files.
 
-**Project lifecycle:** `Projects/<slug>/` (`about.md` `status`) is the unit that can be “over.” `mail_track` cards are waiting-on attachments. After mail file/handoff, or when the owner reports an outcome on SMS/jChat/voice, **Project reconcile** (ea-playbook) gets the compact track list of that slug (title, status, thread ids, and latest handoff summary of each open track, without the task bodies) and completes the tracks that the signal supersedes. After a handoff wakes the worker of a track, that worker runs Project reconcile, and the ingress worker skips it. Hourly nudges skip projects whose `about.md` status is not `active`.
+**Project lifecycle:** `Projects/<slug>/` (`about.md` `status`) is the unit that can be “over.” `mail_track` cards are waiting-on attachments. After mail file/handoff, or when the owner reports an outcome on SMS/jChat/voice, **Project reconcile** (ea-mail-track) gets the compact track list of that slug (title, status, thread ids, and latest handoff summary of each open track, without the task bodies) and completes the tracks that the signal supersedes. After a handoff wakes the worker of a track, that worker runs Project reconcile, and the ingress worker skips it. Hourly nudges skip projects whose `about.md` status is not `active`.
 
 ## Identity at runtime
 
@@ -102,7 +102,7 @@ Owner replies route through [`resolveOwnerReply.ts`](../src/proactive/resolveOwn
 | SMS idle | Owner chat uses `sms:<e164>:<epoch>` rotated after `JOSHU_HERMES_MESSAGING_IDLE_MINUTES` ([`twilioSmsSession.ts`](../src/twilioSmsSession.ts)) |
 | Project → scheduling | Fallback + resolve prompt: wake linked `ea-scheduling` tasks via [`schedulingHandoff.ts`](../src/proactive/schedulingHandoff.ts) when owner approves on a project track |
 | Ops unblock | `POST /joshu/api/ea/scheduling/meetings/:taskId/unblock` (localhost) |
-| **Project reconcile** | ea-playbook: after mail or owner outcome, close sibling tracks on the same slug; `about.md` `status: done` when nothing is left waiting |
+| **Project reconcile** | ea-mail-track: after mail or owner outcome, close sibling tracks on the same slug; `about.md` `status: done` when nothing is left waiting |
 | **Daily hygiene** | MCP `proactive_hygiene_prepare` → per-card agent review → `proactive_hygiene_record`; ambiguous cards → hourly `stale_review` nudges |
 | **Cross-board Kanban** | [`crossBoardKanban.ts`](../src/proactive/crossBoardKanban.ts) — all boards on this box (not multi-box) |
 | **Meeting blackout** | Hourly tick skips nudges when Google Calendar FreeBusy shows owner in a busy block (+ 5 min pre-buffer) |
@@ -141,5 +141,5 @@ API (all localhost-only): `GET /api/owner-reminders`, `POST /api/owner-reminders
 
 Enabled in [`integrations/hermes/skills-enabled.yaml`](../integrations/hermes/skills-enabled.yaml):
 
-- `ea-playbook`, `ea-scheduling`, `ea-owner-reply`, `ea-time-block`, `ea-morning-review`, `ea-shutdown`, `ea-project-kanban`
+- `ea-playbook`, `ea-mail-ingress`, `ea-mail-track`, `ea-scheduling`, `ea-owner-reply`, `ea-time-block`, `ea-morning-review`, `ea-shutdown`, `ea-project-kanban`
 - `joshu-brain`, `joshu-mail`, `excalidraw`, kanban tools

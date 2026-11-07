@@ -125,6 +125,41 @@ async def main() -> None:
         ("C1", "Queued. Anything else?", {"thread_id": "123.456"})
     ]
 
+    # Issue #171: files and chat context go to the broker with the text.
+    posted: list[tuple[str, dict]] = []
+
+    def record_post(path, payload, timeout=10.0):
+        posted.append((path, payload))
+        return {"action": "reply", "text": "Queued. Anything else?"}
+
+    MODULE._post = record_post
+    media_event = SimpleNamespace(
+        source=source,
+        text="please book this meeting",
+        message_id="M2",
+        media_urls=["/home/joshu/.hermes/cache/img_invite.png", "relative/skip.png"],
+        media_types=["image/png", "image/png"],
+        channel_context="[Group DM context — recent messages in this group DM]\nJT: Mina, book Tuesday 3 PM",
+        reply_to_text="Can you find a slot with Sam?",
+    )
+    assert MODULE.pre_gateway_dispatch(media_event, gateway)["action"] == "skip"
+    _path, payload = posted[-1]
+    assert payload["text"] == "please book this meeting"
+    assert payload["attachments"] == [
+        {"path": "/home/joshu/.hermes/cache/img_invite.png", "mediaType": "image/png"}
+    ]
+    assert payload["context"].startswith('[The owner replied to: "Can you find a slot with Sam?"]')
+    assert "JT: Mina, book Tuesday 3 PM" in payload["context"]
+    # A plain text message sends neither field.
+    MODULE.pre_gateway_dispatch(event, gateway)
+    assert "attachments" not in posted[-1][1] and "context" not in posted[-1][1]
+    # A photo without a caption or a voice note before transcription takes the normal Hermes turn.
+    count = len(posted)
+    empty = SimpleNamespace(source=source, text="", message_id="M3", media_urls=["/tmp/voice.ogg"], media_types=["audio/ogg"])
+    assert MODULE.pre_gateway_dispatch(empty, gateway)["action"] == "allow"
+    assert len(posted) == count
+    await asyncio.sleep(0)
+
     gateway._is_user_authorized = lambda _source: False
     assert MODULE.pre_gateway_dispatch(event, gateway)["action"] == "allow"
 

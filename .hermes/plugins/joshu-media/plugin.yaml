@@ -1,0 +1,5 @@
+name: joshu-media
+version: 1.0.0
+description: Image and video provider "joshu" for the Hermes tools image_generate and video_generate. Each picture or video goes through the Joshu content router, which takes the cost from the usage wallet, and the file is saved on the Desktop of the owner.
+author: Joshu
+kind: standalone

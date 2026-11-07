@@ -1,7 +1,7 @@
 #!/usr/bin/env npx tsx
 /**
- * Unit test: Joshu pins the Composio toolkit versions of Gmail, OneNote, Google Calendar, and
- * Slackbot, and each JOSHU_COMPOSIO_*_VERSION environment variable overrides its pin. The test
+ * Unit test: Joshu pins the Composio toolkit versions of Gmail, OneNote, Google Calendar,
+ * Slackbot, and Composio Search, and each JOSHU_COMPOSIO_*_VERSION environment variable overrides its pin. The test
  * also fails when a file in src/ skips the version check of Composio (dangerouslySkipVersionCheck).
  * A pin keeps a schema change on the Composio side from reaching the boxes without a release.
  *
@@ -22,6 +22,7 @@ const PINS = [
     "20261009_00",
   ],
   ["slackbotConfig.ts", "COMPOSIO_SLACKBOT_TOOLKIT_VERSION", "JOSHU_COMPOSIO_SLACKBOT_TOOLKIT_VERSION", "20261008_00"],
+  ["composioSearchConfig.ts", "COMPOSIO_SEARCH_TOOLKIT_VERSION", "JOSHU_COMPOSIO_SEARCH_TOOLKIT_VERSION", "20260903_00"],
 ];
 
 const configDir = fileURLToPath(new URL("../src/connectors/composio/", import.meta.url));

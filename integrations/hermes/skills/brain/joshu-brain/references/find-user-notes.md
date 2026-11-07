@@ -11,8 +11,8 @@ When they ask about finding notes, use this pattern.
    → Already has mirrored email content. Catches body text via semantic search
    → Source slugs like: joshus-files/connectors/mail/gmail/{account_key}/threads/<thread_id>
 
-2. For anything gbrain missed, use Gmail API:
-   COMPOSIO_SEARCH_TOOLS → GMAIL_FETCH_EMAILS(from:owner work email, after:YYYY/MM/DD)
+2. For anything gbrain missed, run a live Gmail search (each owner Gmail account):
+   mcp_joshu_connectors_gmail_search_live(q="from:<owner work email> after:YYYY/MM/DD")
    → Owner's "notes to self" come FROM owner work email
 ```
 

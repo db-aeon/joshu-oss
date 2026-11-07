@@ -35,6 +35,8 @@ import {
   parseAppAgentState,
   requiresExcalidrawBoardMutation,
   resolveAppIdFromRequest,
+  describeRunError,
+  toHermesSessionId,
 } from "./agUiAppContext.js";
 import type { RealtimeGoalBroker } from "./realtimeGoals/broker.js";
 import {
@@ -283,6 +285,7 @@ export function registerAgUiRoutes(
     const input = (req.body ?? {}) as RunAgentInput;
     const threadId = readString(input.threadId) || readString(input.runId) || `agui-${Date.now()}`;
     const runId = readString(input.runId) || threadId;
+    const hermesSessionId = toHermesSessionId(threadId);
     const rawInputMessages = Array.isArray(input.messages) ? input.messages : [];
     const lastInputMessage = rawInputMessages.at(-1) as
       | { id?: unknown; messageId?: unknown }
@@ -324,14 +327,14 @@ export function registerAgUiRoutes(
     const messageId = `msg_${runId}`;
     agUiSseSend(res, { type: EVENT.TEXT_MESSAGE_START, messageId, role: "assistant" });
 
-    let activeSessionId = threadId;
+    let activeSessionId = hermesSessionId;
     const emittedClientToolStarts = new Set<string>();
     let boardMutationsThisRun = 0;
     let assistantText = "";
     const aguiOrigin = {
       channel: "agui" as const,
       sessionKey: sessionKey ?? `joshu-hermes-chat:${threadId}`,
-      sessionId: threadId,
+      sessionId: hermesSessionId,
       messageId: sourceMessageId,
       appId: appId || undefined,
     };
@@ -449,7 +452,7 @@ export function registerAgUiRoutes(
 
       const firstTurn = await runner.streamHermesChat(
         {
-          sessionId: threadId,
+          sessionId: hermesSessionId,
           sessionKey,
           messages: baseHermesMessages,
           signal: controller.signal,
@@ -481,7 +484,7 @@ export function registerAgUiRoutes(
         );
         const retryTurn = await runner.streamHermesChat(
           {
-            sessionId: threadId,
+            sessionId: hermesSessionId,
             sessionKey,
             messages: [
               ...baseHermesMessages,
@@ -528,7 +531,8 @@ export function registerAgUiRoutes(
       agUiSseSend(res, { type: EVENT.RUN_FINISHED, threadId, runId });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      agUiSseSend(res, { type: EVENT.RUN_ERROR, threadId, runId, message: msg });
+      console.warn(`[ag-ui] run failed app=${appId ?? "none"} thread=${threadId}: ${msg}`);
+      agUiSseSend(res, { type: EVENT.RUN_ERROR, threadId, runId, message: describeRunError(msg) });
     } finally {
       stopHeartbeat();
       res.end();
@@ -543,7 +547,7 @@ export function registerAgUiRoutes(
     if (!threadId) {
       return res.status(400).json({ error: "threadId query required" });
     }
-    const deleted = deleteHermesSessionTranscript(threadId);
+    const deleted = deleteHermesSessionTranscript(toHermesSessionId(threadId));
     res.json({ ok: true, threadId, deleted });
   });
 }

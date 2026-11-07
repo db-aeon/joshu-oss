@@ -1,0 +1,635 @@
+{
+  "schema_version": 1,
+  "diagram_type": "dataflow",
+  "meta": {
+    "title": "How a Research report organizes its information",
+    "output": ".archify/technical-reference/research-reports.html",
+    "quality_profile": "showcase",
+    "locale": "en",
+    "repository": {
+      "url": "https://github.com/db-aeon/joshu.git",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "25bd687484af3d5a89a49fa94f6176ef821625c4"
+    },
+    "viewBox": [
+      1080,
+      696
+    ],
+    "legend": {
+      "mode": "auto",
+      "entries": {
+        "emphasis": {
+          "label": "main path"
+        },
+        "security": {
+          "label": "code check"
+        },
+        "dashed": {
+          "label": "side input"
+        }
+      }
+    }
+  },
+  "stages": [
+    {
+      "label": "Question"
+    },
+    {
+      "label": "Web research"
+    },
+    {
+      "label": "Stories and facts"
+    },
+    {
+      "label": "Themes and check"
+    },
+    {
+      "label": "Parts of the PDF"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "topic",
+      "type": "frontend",
+      "label": "Owner's topic",
+      "sublabel": "any channel",
+      "stage": 0,
+      "row": 0,
+      "sources": [
+        {
+          "path": "src/research/make.ts",
+          "line": 161,
+          "end_line": 309,
+          "label": "makeResearchReport"
+        }
+      ],
+      "width": 120,
+      "height": 50
+    },
+    {
+      "id": "plan",
+      "type": "backend",
+      "label": "Plan",
+      "sublabel": "questions + company",
+      "stage": 0,
+      "row": 1,
+      "sources": [
+        {
+          "path": "src/research/pipeline/plan.ts",
+          "line": 23,
+          "end_line": 37,
+          "label": "plan prompt, extra goals"
+        },
+        {
+          "path": "src/research/pipeline/plan.ts",
+          "line": 160,
+          "end_line": 191,
+          "label": "planResearch"
+        }
+      ],
+      "width": 120,
+      "height": 50
+    },
+    {
+      "id": "search",
+      "type": "external",
+      "label": "Exa search",
+      "sublabel": "recent + evergreen",
+      "stage": 1,
+      "row": 1,
+      "sources": [
+        {
+          "path": "src/research/pipeline/search.ts",
+          "line": 151,
+          "end_line": 246,
+          "label": "searchWeb"
+        },
+        {
+          "path": "src/research/pipeline/exa.ts",
+          "line": 62,
+          "end_line": 109,
+          "label": "Exa client"
+        }
+      ],
+      "width": 120,
+      "height": 50
+    },
+    {
+      "id": "pages",
+      "type": "database",
+      "label": "Ranked pages",
+      "sublabel": "24 kept, 12 read",
+      "stage": 1,
+      "row": 2,
+      "sources": [
+        {
+          "path": "src/research/pipeline/search.ts",
+          "line": 76,
+          "end_line": 124,
+          "label": "rankPages"
+        }
+      ],
+      "width": 120,
+      "height": 50
+    },
+    {
+      "id": "composio",
+      "type": "external",
+      "label": "Composio Search",
+      "sublabel": "news, papers, company",
+      "stage": 1,
+      "row": 3,
+      "sources": [
+        {
+          "path": "src/research/pipeline/composioSearch.ts",
+          "line": 133,
+          "end_line": 168,
+          "label": "makeComposioSearchClient"
+        },
+        {
+          "path": "src/research/pipeline/company.ts",
+          "line": 112,
+          "end_line": 145,
+          "label": "collectCompany"
+        }
+      ],
+      "width": 120,
+      "height": 50
+    },
+    {
+      "id": "social",
+      "type": "external",
+      "label": "Social posts",
+      "sublabel": "10 per goal",
+      "stage": 2,
+      "row": 4,
+      "sources": [
+        {
+          "path": "src/research/social/pool.ts",
+          "line": 51,
+          "end_line": 63,
+          "label": "collectSocialPool"
+        },
+        {
+          "path": "src/research/social/sources.ts",
+          "line": 97,
+          "end_line": 106,
+          "label": "searchSocial"
+        },
+        {
+          "path": "src/contentRouter/goals.ts",
+          "line": 261,
+          "end_line": 325,
+          "label": "resolveGoal"
+        }
+      ],
+      "width": 120,
+      "height": 50,
+      "yOffset": -16
+    },
+    {
+      "id": "cache",
+      "type": "database",
+      "label": "Route cache",
+      "sublabel": "routes + shapes",
+      "stage": 0,
+      "row": 4,
+      "sources": [
+        {
+          "path": "src/contentRouter/store.ts",
+          "line": 165,
+          "end_line": 175,
+          "label": "routes.json, shapes.json"
+        },
+        {
+          "path": "src/contentRouter/store.ts",
+          "line": 204,
+          "end_line": 229,
+          "label": "read and save"
+        }
+      ],
+      "width": 120,
+      "height": 50,
+      "yOffset": -16
+    },
+    {
+      "id": "learn",
+      "type": "backend",
+      "label": "Learning model",
+      "sublabel": "only on a miss",
+      "stage": 0,
+      "row": 3,
+      "sources": [
+        {
+          "path": "src/contentRouter/learn.ts",
+          "line": 157,
+          "end_line": 192,
+          "label": "learnRoute"
+        },
+        {
+          "path": "src/contentRouter/learn.ts",
+          "line": 211,
+          "end_line": 235,
+          "label": "learnRecipe"
+        }
+      ],
+      "width": 120,
+      "height": 50
+    },
+    {
+      "id": "router",
+      "type": "cloud",
+      "label": "Router call",
+      "sublabel": "control plane, 1 per goal",
+      "stage": 1,
+      "row": 4,
+      "sources": [
+        {
+          "path": "src/contentRouter/client.ts",
+          "line": 196,
+          "end_line": 213,
+          "label": "router call route"
+        },
+        {
+          "path": "src/contentRouter/client.ts",
+          "line": 169,
+          "end_line": 182,
+          "label": "402: usage wallet empty"
+        }
+      ],
+      "width": 120,
+      "height": 50,
+      "yOffset": -16
+    },
+    {
+      "id": "extract",
+      "type": "backend",
+      "label": "Stories + facts",
+      "sublabel": "themes, 1 call each",
+      "stage": 2,
+      "row": 2,
+      "sources": [
+        {
+          "path": "src/research/recurring/stories.ts",
+          "line": 55,
+          "end_line": 86,
+          "label": "groupStories"
+        },
+        {
+          "path": "src/research/themes/sort.ts",
+          "line": 82,
+          "end_line": 135,
+          "label": "sortThemes"
+        },
+        {
+          "path": "src/research/pipeline/extract.ts",
+          "line": 102,
+          "end_line": 124,
+          "label": "extractFacts"
+        }
+      ],
+      "width": 120,
+      "height": 50
+    },
+    {
+      "id": "facts",
+      "type": "database",
+      "label": "Checked facts",
+      "sublabel": "quote + page",
+      "stage": 2,
+      "row": 3,
+      "sources": [
+        {
+          "path": "src/research/pipeline/extract.ts",
+          "line": 70,
+          "end_line": 95,
+          "label": "checkFacts"
+        }
+      ],
+      "width": 120,
+      "height": 50
+    },
+    {
+      "id": "write",
+      "type": "backend",
+      "label": "Theme writer",
+      "sublabel": "1 call each + summary",
+      "stage": 3,
+      "row": 3,
+      "sources": [
+        {
+          "path": "src/research/themes/write.ts",
+          "line": 84,
+          "end_line": 152,
+          "label": "writeThemes"
+        },
+        {
+          "path": "src/research/themes/write.ts",
+          "line": 162,
+          "end_line": 207,
+          "label": "writeSummary"
+        }
+      ],
+      "width": 120,
+      "height": 50
+    },
+    {
+      "id": "check",
+      "type": "security",
+      "label": "Sentence check",
+      "sublabel": "cites and numbers",
+      "stage": 3,
+      "row": 2,
+      "sources": [
+        {
+          "path": "src/research/pipeline/write.ts",
+          "line": 98,
+          "end_line": 112,
+          "label": "verifyText"
+        }
+      ],
+      "width": 120,
+      "height": 50
+    },
+    {
+      "id": "pictures",
+      "type": "backend",
+      "label": "Pictures",
+      "sublabel": "from cited pages",
+      "stage": 3,
+      "row": 4,
+      "sources": [
+        {
+          "path": "src/research/pipeline/pictures.ts",
+          "line": 78,
+          "end_line": 107,
+          "label": "pickPictures"
+        }
+      ],
+      "width": 120,
+      "height": 50,
+      "yOffset": -16
+    },
+    {
+      "id": "cover",
+      "type": "frontend",
+      "label": "Cover + summary",
+      "sublabel": "deck + summary",
+      "stage": 4,
+      "row": 1,
+      "sources": [
+        {
+          "path": "src/research/template.ts",
+          "line": 263,
+          "end_line": 278,
+          "label": "cover, summary"
+        }
+      ],
+      "width": 120,
+      "height": 50
+    },
+    {
+      "id": "findings",
+      "type": "frontend",
+      "label": "Background themes",
+      "sublabel": "from the plan",
+      "stage": 4,
+      "row": 2,
+      "sources": [
+        {
+          "path": "src/research/template.ts",
+          "line": 280,
+          "end_line": 293,
+          "label": "findings"
+        }
+      ],
+      "width": 120,
+      "height": 50
+    },
+    {
+      "id": "themes",
+      "type": "frontend",
+      "label": "News themes",
+      "sublabel": "headline, picture",
+      "stage": 4,
+      "row": 3,
+      "sources": [
+        {
+          "path": "src/research/template.ts",
+          "line": 295,
+          "end_line": 310,
+          "label": "themes"
+        }
+      ],
+      "width": 120,
+      "height": 50
+    },
+    {
+      "id": "socialbox",
+      "type": "frontend",
+      "label": "Theme links",
+      "sublabel": "lead + more, posts",
+      "stage": 4,
+      "row": 4,
+      "sources": [
+        {
+          "path": "src/research/themes/links.ts",
+          "line": 46,
+          "end_line": 69,
+          "label": "themeLinks"
+        },
+        {
+          "path": "src/research/template.ts",
+          "line": 127,
+          "end_line": 138,
+          "label": "themeLinksHtml"
+        }
+      ],
+      "width": 120,
+      "height": 50,
+      "yOffset": -16
+    }
+  ],
+  "flows": [
+    {
+      "id": "f-topic-plan",
+      "from": "topic",
+      "to": "plan",
+      "label": "topic",
+      "variant": "emphasis",
+      "labelDy": 25
+    },
+    {
+      "id": "f-plan-search",
+      "from": "plan",
+      "to": "search",
+      "label": "12 queries",
+      "variant": "emphasis",
+      "route": "straight"
+    },
+    {
+      "id": "f-search-pages",
+      "from": "search",
+      "to": "pages",
+      "label": "results",
+      "variant": "emphasis",
+      "labelDy": 25
+    },
+    {
+      "id": "f-plan-composio",
+      "from": "plan",
+      "to": "composio",
+      "label": "queries, ticker",
+      "variant": "dashed"
+    },
+    {
+      "id": "f-composio-pages",
+      "from": "composio",
+      "to": "pages",
+      "label": "more hits",
+      "classification": "skipped on failure",
+      "variant": "dashed",
+      "labelDy": -10
+    },
+    {
+      "id": "f-pages-extract",
+      "from": "pages",
+      "to": "extract",
+      "label": "page text",
+      "variant": "emphasis",
+      "route": "straight"
+    },
+    {
+      "id": "f-extract-facts",
+      "from": "extract",
+      "to": "facts",
+      "label": "quote on page",
+      "classification": "else dropped",
+      "variant": "security",
+      "labelDy": 25
+    },
+    {
+      "id": "f-facts-write",
+      "from": "facts",
+      "to": "write",
+      "label": "cited facts",
+      "variant": "emphasis",
+      "route": "straight"
+    },
+    {
+      "id": "f-write-check",
+      "from": "write",
+      "to": "check",
+      "label": "draft text",
+      "variant": "security"
+    },
+    {
+      "id": "f-check-cover",
+      "from": "check",
+      "to": "cover",
+      "label": "overview",
+      "variant": "emphasis",
+      "fromSide": "top",
+      "toSide": "left",
+      "via": [
+        [
+          745,
+          267
+        ]
+      ]
+    },
+    {
+      "id": "f-check-findings",
+      "from": "check",
+      "to": "findings",
+      "label": "background",
+      "variant": "emphasis",
+      "route": "straight"
+    },
+    {
+      "id": "f-check-themes",
+      "from": "check",
+      "to": "themes",
+      "label": "news",
+      "variant": "emphasis"
+    },
+    {
+      "id": "f-pictures-themes",
+      "from": "pictures",
+      "to": "themes",
+      "label": "1 per theme",
+      "variant": "dashed"
+    },
+    {
+      "id": "f-learn-cache",
+      "from": "learn",
+      "to": "cache",
+      "label": "route, recipe",
+      "variant": "dashed",
+      "labelDy": 25
+    },
+    {
+      "id": "f-cache-router",
+      "from": "cache",
+      "to": "router",
+      "label": "endpoint",
+      "variant": "dashed"
+    },
+    {
+      "id": "f-router-social",
+      "from": "router",
+      "to": "social",
+      "label": "reply",
+      "variant": "emphasis"
+    },
+    {
+      "id": "f-social-box",
+      "from": "social",
+      "to": "socialbox",
+      "label": "posts",
+      "classification": "left out on failure",
+      "variant": "dashed",
+      "route": "bottom-channel"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "How one fact reaches the page",
+      "items": [
+        "Exa finds a page, and the box reads its text",
+        "The model quotes a sentence from it; code keeps the fact only if the quote is on the page",
+        "The writer cites it as [F12]; the PDF shows a small number that links to the page"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "What the check removes",
+      "items": [
+        "A sentence that cites a fact that does not exist",
+        "A sentence with a number that is not in a quote it cites",
+        "Removed sentences stay in report.json for review (12 in the e-bike run)"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "When little is found",
+      "items": [
+        "Fewer than 8 facts or fewer than 3 themes: the summary says that little was found",
+        "A theme without a fact that passes the check is left out",
+        "Charts of coverage over time are in the PDF of a report update, not in a Research report"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "How a social goal is read",
+      "items": [
+        "The route cache names the provider endpoint; the shape recipe turns its reply into posts",
+        "On a miss, one model call picks the route and one writes the recipe",
+        "Hints can add up to three extra goals, for example prediction market odds",
+        "HTTP 402: the usage wallet is empty, and the source list says so"
+      ]
+    }
+  ]
+}

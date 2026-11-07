@@ -4,7 +4,7 @@ description: Daily handoff — prep yesterday carryover, interactive morning rev
 metadata:
   hermes:
     category: executive-assistant
-    version: "1.3.0"
+    version: "1.3.1"
 ---
 
 # EA Morning Review (daily handoff)
@@ -36,7 +36,7 @@ Yesterday's diagram stays frozen; today gets a new file after review.
 
 Run at start of owner workday **before** the pointer email.
 
-1. **Bootstrap Nylas profile** — check `.joshu/nylas/profile.json` (under `$JOSHU_FILES_ROOT`). If missing or empty, call `nylas_get_profile()` then persist with `nylas_update_profile()` before any Nylas sends. See **`ea-playbook`** "Every run — read first" for the canonical startup sequence.
+1. **Bootstrap Nylas profile** — check `.joshu/nylas/profile.json` (under `$JOSHU_FILES_ROOT`). If missing or empty, call `nylas_get_profile()` then persist with `nylas_update_profile()` before any Nylas sends. See **`ea-mail-track`** "Every run — read first" for the canonical startup sequence.
 2. **Dates** — owner local **today** = `YYYY-MM-DD`; **yesterday** = prior calendar day.
 3. **Find the most recent workday's plan** (not necessarily yesterday):
    - If yesterday had a time-block plan (weekday), read it directly.
@@ -118,7 +118,7 @@ Skip sections with nothing new. Full data-source table lives in **`ea-playbook`*
 ## Do not
 
 - Edit yesterday's `.excalidraw` to cross out blocks (history per day)
-- Replace **`ea-playbook`** triage or mail ingress
+- Replace **`ea-mail-ingress`** triage or mail ingress
 - Skip interactive step and treat cron draft as final plan without owner confirmation (unless owner explicitly says "skip review today")
 
 ## References

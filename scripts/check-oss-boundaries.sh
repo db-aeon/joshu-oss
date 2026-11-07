@@ -6,6 +6,12 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${ROOT_DIR}"
 
+# Each scan below ends in "|| true", so without rg every scan would find nothing and pass.
+if ! command -v rg >/dev/null 2>&1; then
+  echo "[check-oss-boundaries] FAIL: rg (ripgrep) is not installed, so no scan can run" >&2
+  exit 1
+fi
+
 SCAN_DIRS=(
   .env.example
   .hermes
@@ -75,6 +81,8 @@ should_skip() {
     [[ "${file}" == "${ex}"/* || "${file}" == *"/${ex}/"* || "${file}" == *"/${ex}" ]] && return 0
   done
   # docs/<name>.md with a docs/<name>.oss.md twin: the twin replaces it in the OSS tree.
+  # The user's manual has no twins, so this scan also reads its hosted-only blocks, which
+  # www.joshu.me shows.
   [[ "${file}" == docs/*.md && "${file}" != *.oss.md && -f "${ROOT_DIR}/${file%.md}.oss.md" ]] && return 0
   # Private-only docs excluded from OSS snapshot.
   case "${file}" in
@@ -171,6 +179,19 @@ while IFS= read -r file; do
   echo "[check-oss-boundaries] FAIL: proprietary path reference in ${file}" >&2
   FAILED=1
 done < <(rg -l --no-messages 'proprietary/' "${RG_PATHS[@]}" 2>/dev/null </dev/null | rg -v '^proprietary/' || true)
+
+# The user's manual: no twins, valid block markers, and no joshu.me in the OSS rendering.
+# The hosted service text belongs in hosted-only blocks (docs/user-manual/AGENTS.md).
+while IFS= read -r twin; do
+  echo "[check-oss-boundaries] FAIL: ${twin} is a twin; put its text in self-host blocks of the chapter" >&2
+  FAILED=1
+done < <(find docs/user-manual -name '*.oss.md' | sort)
+# render-oss-manual.mjs prints each marker problem, and each line outside the hosted-only
+# blocks that names joshu.me, with its file and line.
+if ! node scripts/render-oss-manual.mjs --grep 'joshu\.me' docs/user-manual; then
+  echo "[check-oss-boundaries] FAIL: block markers of docs/user-manual/, or joshu.me outside a hosted-only block (see above)" >&2
+  FAILED=1
+fi
 
 if [[ "${FAILED}" -eq 1 ]]; then
   echo "[check-oss-boundaries] AGPL boundary violations found — fix before OSS publish." >&2

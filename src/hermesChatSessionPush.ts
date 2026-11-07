@@ -1,6 +1,6 @@
 /**
  * Push transcript updates to open jChat clients (SSE per session).
- * Async jobs (last30days, cron, …) notify here after appending to Hermes SessionDB.
+ * Async jobs (cron, …) notify here after appending to Hermes SessionDB.
  */
 
 import type { Response } from "express";

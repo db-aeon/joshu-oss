@@ -17,7 +17,8 @@ export type KanbanBridgeAction =
   | "cancel"
   | "archive_stale_blocked"
   | "reopen"
-  | "find_open_by_text";
+  | "find_open_by_text"
+  | "set_skills";
 
 export type KanbanBridgePayload = Record<string, unknown> & { action: KanbanBridgeAction };
 
@@ -37,6 +38,8 @@ export type KanbanTaskSummary = {
   block_reason?: string | null;
   /** Block kind (openspec/glossary.md). `needs_input` marks an owner question. */
   block_kind?: KanbanBlockKind | null;
+  /** Skills that Hermes preloads for the worker of the task. */
+  skills?: string[] | null;
   /**
    * Current cause of a blocked status. `worker` = kanban_block with a reason
    * (an owner question); `system` = Hermes circuit breaker (`gave_up`) or a

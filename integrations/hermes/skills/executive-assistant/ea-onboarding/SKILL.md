@@ -4,7 +4,7 @@ description: "Resolve setup cards on ea-onboarding: required setup steps (profil
 metadata:
   hermes:
     category: joshu
-    version: "1.0.0"
+    version: "1.0.1"
 ---
 
 # EA Onboarding
@@ -42,7 +42,7 @@ When Joshu routes an owner reply to this skill:
 ## Forbidden
 
 - `nylas_send_message` on this board
-- `ea-playbook` mail ingress or Project reconcile (no project slug)
+- `ea-mail-ingress` mail ingress or `ea-mail-track` Project reconcile (no project slug)
 - Inventing new setup steps not in the card body
 - Nudging the owner about a setup tip
 

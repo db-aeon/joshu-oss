@@ -1,8 +1,9 @@
 /**
  * Owner calendar across all calendar accounts: owner availability, owner calendar events,
  * one event with its guests, and writes with the calendar account that can write the target calendar.
- * Spec: openspec/changes/calendar-all-accounts/specs/owner-calendar/spec.md and
- * openspec/changes/calendar-meet-and-event-tools/specs/owner-calendar/spec.md
+ * Spec: openspec/changes/calendar-all-accounts/specs/owner-calendar/spec.md,
+ * openspec/changes/calendar-meet-and-event-tools/specs/owner-calendar/spec.md, and
+ * openspec/changes/calendar-owner-on-guest-list/specs/owner-calendar/spec.md
  */
 import { Temporal } from "@js-temporal/polyfill";
 import { randomUUID } from "node:crypto";
@@ -686,6 +687,19 @@ export function wantsMeetingRoom(input: Pick<OwnerCalendarEventInput, "createMee
   return (input.attendees?.length ?? 0) > 0 && !input.location?.trim();
 }
 
+/**
+ * The guest list to send to Google: the given guests and the owner. Google does not put the organizer
+ * of an event that the API makes on the guest list, so without this step the other guests do not see
+ * the owner, and the owner gets no reply status. The owner address is the email of the calendar
+ * account that writes the event. A missing or empty guest list stays as it is, because a hold has no guests.
+ */
+export function withOwnerAttendee(attendees: string[] | undefined, ownerEmail: string | undefined): string[] | undefined {
+  const owner = ownerEmail?.trim();
+  if (!attendees?.length || !owner) return attendees;
+  if (attendees.some((a) => a.trim().toLowerCase() === owner.toLowerCase())) return attendees;
+  return [owner, ...attendees];
+}
+
 /** Create an owner calendar event with the calendar account that can write the target calendar. */
 export async function createOwnerCalendarEvent(
   projectRoot: string,
@@ -701,8 +715,8 @@ export async function createOwnerCalendarEvent(
   const end = resolveEventEnd(input);
   if (!end.ok) return { ok: false, kind: "invalid", message: end.message };
   const resolved = { ...input, end: end.end };
-  return writeOwnerCalendarEvent(projectRoot, input, "GOOGLECALENDAR_CREATE_EVENT", async (calendarId) =>
-    buildCreateEventArgs(calendarId, resolved),
+  return writeOwnerCalendarEvent(projectRoot, input, "GOOGLECALENDAR_CREATE_EVENT", async (calendarId, account) =>
+    buildCreateEventArgs(calendarId, { ...resolved, attendees: withOwnerAttendee(resolved.attendees, account.email) }),
   );
 }
 
@@ -772,6 +786,8 @@ export async function updateOwnerCalendarEvent(
       if (!current.ok) return { error: `Cannot read event ${id} before adding Meet: ${current.message}` };
       if (!current.event.meetLink) meetRequestId = randomUUID();
     }
-    return buildPatchEventArgs(calendarId, id, resolved, meetRequestId);
+    // attendees replaces the guest list, so the owner stays on it.
+    const attendees = withOwnerAttendee(resolved.attendees, account.email);
+    return buildPatchEventArgs(calendarId, id, { ...resolved, attendees }, meetRequestId);
   });
 }

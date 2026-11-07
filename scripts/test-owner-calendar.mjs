@@ -27,6 +27,7 @@ import {
   mergeAccountFreeSlots,
   readEventDetail,
   wantsMeetingRoom,
+  withOwnerAttendee,
 } from "../src/connectors/composio/calendarOwner.js";
 import { combineCalendarFreeBusy as combine } from "../src/connectors/composio/calendarAvailability.js";
 import { connectorsToolBlockReason } from "../src/mcpToolPolicy.js";
@@ -463,6 +464,24 @@ function createArgs(input) {
   assert.equal(withMeet.conference_data_version, 1);
   const noMeet = buildPatchEventArgs("db@example.com", "evt1", input);
   assert.ok(!("conference_data" in noMeet) && !("conference_data_version" in noMeet), "no Meet request: conference data untouched");
+}
+
+// --- The owner is on the guest list of each meeting that Joshu books ---
+{
+  // alex 2026-10-20: the event was on the work calendar of the owner, but the guests saw only themselves.
+  const guests = ["db@example.com", "companion@example.com"];
+  assert.deepEqual(withOwnerAttendee(guests, "owner@work.com"), ["owner@work.com", ...guests], "the owner is added");
+  assert.deepEqual(withOwnerAttendee(["Owner@Work.com ", "db@example.com"], "owner@work.com"), ["Owner@Work.com ", "db@example.com"], "the owner is not added twice");
+  assert.equal(withOwnerAttendee(undefined, "owner@work.com"), undefined, "a hold without guests stays without guests");
+  assert.deepEqual(withOwnerAttendee([], "owner@work.com"), [], "an empty guest list stays empty");
+  assert.deepEqual(withOwnerAttendee(guests, undefined), guests, "a calendar account without an email changes nothing");
+
+  const base = { calendarId: "owner@work.com", summary: "Intro", start: "2026-10-29T14:00:00", end: "2026-10-29T14:30:00", timezone: "America/New_York" };
+  const created = buildCreateEventArgs("owner@work.com", { ...base, attendees: withOwnerAttendee(["db@example.com"], B.email) });
+  assert.deepEqual(created.attendees, ["owner@work.com", "db@example.com"]);
+  assert.equal(created.create_meeting_room, true, "the Meet default does not change");
+  const patched = buildPatchEventArgs("owner@work.com", "evt1", { calendarId: "owner@work.com", attendees: withOwnerAttendee(guests, B.email) });
+  assert.deepEqual(patched.attendees, ["owner@work.com", ...guests], "a new guest list keeps the owner");
 }
 
 // --- One event with its guests and its meeting link ---

@@ -366,6 +366,27 @@ try {
     fakeTwilio([{ status: "sent" }]);
     assert.deepEqual(await sendOwnerText(smsProject, reminderText), { delivered: true, channel: "sms" });
 
+    // Owner text channel: each delivered SMS is a box turn on the owner's SMS session thread.
+    const threadsDir = path.join(root, "threads");
+    process.env.JOSHU_REALTIME_GOALS_STATE_DIR = threadsDir;
+    const smsThreadTurns = async () => {
+      const state = JSON.parse(await readFile(path.join(threadsDir, "threads.json"), "utf8"));
+      return state.threads["sms:+15550001111"]?.turns ?? [];
+    };
+    fakeTwilio([{ status: "delivered" }]);
+    await sendOwnerText(smsProject, reminderText);
+    assert.deepEqual(
+      (await smsThreadTurns()).map((t) => [t.role, t.source, t.text]),
+      [["box", "delivery", "Reminder: x"]],
+    );
+    // A session thread that cannot be written does not fail the send.
+    const blocker = path.join(root, "not-a-dir");
+    await writeFile(blocker, "x");
+    process.env.JOSHU_REALTIME_GOALS_STATE_DIR = path.join(blocker, "threads");
+    fakeTwilio([{ status: "delivered" }]);
+    assert.deepEqual(await sendOwnerText(smsProject, reminderText), { delivered: true, channel: "sms" });
+    process.env.JOSHU_REALTIME_GOALS_STATE_DIR = threadsDir;
+
     // Owner text channel: an undelivered SMS goes to the email fallback (here: no companion mailbox).
     fakeTwilio([UNDELIVERED]);
     assert.deepEqual(await sendOwnerText(smsProject, reminderText), {
@@ -424,6 +445,7 @@ try {
         });
         assert.equal(emails.length, 1);
         assert.equal(emails[0].op, "sendMessage");
+        assert.equal((await smsThreadTurns()).length, 1, "an SMS that went by email is not on the session thread");
         assert.deepEqual(emails[0].args.to.map((r) => r.email), ["owner@example.com"]);
 
         // Owner reminder run: the email delivered it, and an SMS DONE does not retire it.

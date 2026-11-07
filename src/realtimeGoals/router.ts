@@ -32,6 +32,8 @@ export type RouteRealtimeGoalMessageInput = {
   deliveryCommands?: boolean;
   /** Minimum confidence to queue (default: queueConfidenceThreshold()). */
   queueThreshold?: number;
+  /** Files and chat context that came with the latest owner message (intakeRouterNote). */
+  messageNote?: string;
 };
 
 export type RouteRealtimeGoalMessageOptions = {
@@ -208,18 +210,6 @@ export function isExplicitCancelPhrase(text: string): boolean {
   return EXPLICIT_CANCEL_PATTERN.test(normalizeAdmissionText(text));
 }
 
-function threadReferencesActiveGoal(
-  threadTurns: SessionThreadTurn[],
-  activeGoals: RealtimeGoalRecord[],
-): boolean {
-  if (activeGoals.length === 0) return false;
-  const recent = threadTurns.slice(-6).map((turn) => turn.text.toLowerCase()).join("\n");
-  return activeGoals.some((goal) => {
-    const title = goal.title.toLowerCase();
-    return title.length >= 4 && recent.includes(title.slice(0, Math.min(title.length, 40)));
-  });
-}
-
 function latestActive(activeGoals: RealtimeGoalRecord[]): RealtimeGoalRecord | undefined {
   return [...activeGoals].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
 }
@@ -253,9 +243,7 @@ function activeGoalsPrompt(activeGoals: RealtimeGoalRecord[]): string {
 
 function normalize(
   parsed: Record<string, unknown>,
-  text: string,
   activeGoals: RealtimeGoalRecord[],
-  threadTurns: SessionThreadTurn[],
   queueCapable: boolean,
   bound = false,
   deliveryCommands = false,
@@ -317,29 +305,11 @@ function normalize(
   if (decision === "status" && (confidence < RELATION_CONFIDENCE || !knownGoal)) {
     decision = "pass";
   }
-  if (decision === "cancel") {
-    const explicit = isExplicitCancelPhrase(text);
-    const threadContext = threadReferencesActiveGoal(threadTurns, activeGoals);
-    if (
-      confidence < CANCEL_CONFIDENCE ||
-      (!knownGoal && !threadContext && !explicit)
-    ) {
-      decision = "ack";
-    } else if (decision === "cancel" && !knownGoal && activeGoals.length === 1) {
-      const onlyGoal = activeGoals[0];
-      if (!onlyGoal) {
-        decision = "ack";
-      } else {
-        return {
-          decision: "cancel",
-          confidence,
-          goalId: onlyGoal.id,
-          reason: short(parsed.reason, 200) ?? "classified",
-        };
-      }
-    } else if (decision === "cancel" && !knownGoal) {
-      decision = "ack";
-    }
+  // A cancel changes a goal, so it needs the goal the model chose. Without one the
+  // message is not about a known goal: pass it on (nudge reply / SMS turn) rather
+  // than text a cancel that does not happen.
+  if (decision === "cancel" && (confidence < CANCEL_CONFIDENCE || !knownGoal)) {
+    decision = "pass";
   }
 
   const reply = short(parsed.reply, 320);
@@ -466,9 +436,7 @@ async function runRouterCompletion(
     ]);
     return normalize(
       JSON.parse(raw) as Record<string, unknown>,
-      input.text,
       goalsForCancel,
-      input.threadTurns,
       input.queueCapable,
       bound,
       input.deliveryCommands,
@@ -480,6 +448,11 @@ async function runRouterCompletion(
   } finally {
     if (timeout) clearTimeout(timeout);
   }
+}
+
+/** Lines after the latest owner message about its files and chat context. */
+function latestMessageNote(input: RouteRealtimeGoalMessageInput): string[] {
+  return input.messageNote ? ["", "With the latest owner message:", input.messageNote] : [];
 }
 
 export async function routeRealtimeGoalMessage(
@@ -506,6 +479,7 @@ export async function routeRealtimeGoalMessage(
       "",
       "Latest owner message:",
       input.text.slice(0, 4000),
+      ...latestMessageNote(input),
     ].join("\n");
     return runRouterCompletion(
       input,
@@ -527,6 +501,7 @@ export async function routeRealtimeGoalMessage(
     "",
     "Latest owner message:",
     input.text.slice(0, 4000),
+    ...latestMessageNote(input),
   ].join("\n");
 
   return runRouterCompletion(

@@ -142,5 +142,31 @@ assert.deepEqual(
   "the probe reads a top-level or nested version from the front matter only",
 );
 
+// hermes_config redacts secret keys, also when the probe Python has no PyYAML (issue #124).
+writeFileSync(join(home, "config.yaml"), "model:\n  default: m1\n  api_key: sk-secret\ntoolsets: [web, mcp-fal]\n");
+const expectedConfig = { model: { default: "m1", api_key: "[redacted]" }, toolsets: ["web", "mcp-fal"] };
+let hasYaml = true;
+try {
+  execFileSync("python3", ["-c", "import yaml"], { stdio: "ignore" });
+} catch {
+  hasYaml = false;
+}
+if (hasYaml) assert.deepEqual(runProbe("hermes_config").config, expectedConfig);
+// python3 -S has no site-packages, so the probe asks JOSHU_HERMES_PYTHON to read the file. The fake
+// Hermes Python checks that it gets the config path and prints the parsed file as JSON.
+const fakeHermesPython = join(home, "fake-hermes-python");
+writeFileSync(
+  fakeHermesPython,
+  `#!/bin/sh\n[ "$3" = "${join(home, "config.yaml")}" ] || exit 9\necho '{"model": {"default": "m1", "api_key": "sk-secret"}, "toolsets": ["web", "mcp-fal"]}'\n`,
+  { mode: 0o755 },
+);
+const probeNoYaml = JSON.parse(
+  execFileSync("python3", ["-S", "-c", DIAGNOSTICS_PROBE, "hermes_config"], {
+    env: { ...process.env, HERMES_HOME: home, JOSHU_HERMES_PYTHON: fakeHermesPython },
+    encoding: "utf8",
+  }),
+);
+assert.deepEqual(probeNoYaml.config, expectedConfig, "the probe reads config.yaml with the Hermes Python");
+
 console.log("test-box-diagnostics: ok");
 

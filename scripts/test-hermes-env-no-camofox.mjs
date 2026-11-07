@@ -39,6 +39,11 @@ try {
   // A second sync with the same entries changes nothing.
   assert.equal(await syncHermesDotenv({ BROWSER_CDP_URL: "http://127.0.0.1:9333" }), false);
 
+  // A key that is in the file many times keeps one line.
+  await writeFile(envPath, `${await readFile(envPath, "utf8")}TELEGRAM_BOT_TOKEN=1:a\nTELEGRAM_BOT_TOKEN=1:a\nTELEGRAM_BOT_TOKEN=1:a\n`);
+  assert.equal(await syncHermesDotenv({ TELEGRAM_BOT_TOKEN: "1:a" }), true);
+  assert.equal((await readFile(envPath, "utf8")).match(/^TELEGRAM_BOT_TOKEN=/gm)?.length, 1);
+
   // The gateway environment drops the Camofox keys of the Joshu API process.
   const env = hermesProcessEnv({ PATH: "/usr/bin", CAMOFOX_URL: "http://127.0.0.1:9377", HITL_CAMOFOX_USER_ID: "u" });
   assert.deepEqual(env, { PATH: "/usr/bin" });

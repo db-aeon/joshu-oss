@@ -292,6 +292,18 @@ export async function openDesktopFile(relativePath: string): Promise<boolean> {
     return true;
   }
 
+  // A PDF (a Research report, the full update of a recurring report) opens in the ArozOS PDF Viewer.
+  if (ext === "pdf") {
+    openFileWindow(desktop, "PDF Viewer/viewer.html", filepath, {
+      url: `PDF Viewer/viewer.html#${openParam}`,
+      width: 1024,
+      height: 768,
+      appicon: "PDF Viewer/icons/module_icon.png",
+      title: `PDF Viewer — ${filename}`,
+    });
+    return true;
+  }
+
   desktop.newFloatWindow({
     url: `MDEditor/mde.html#${openParam}`,
     width: 1080,

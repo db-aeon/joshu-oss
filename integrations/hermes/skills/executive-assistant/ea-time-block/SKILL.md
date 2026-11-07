@@ -4,7 +4,7 @@ description: Cal Newport time-block plan for today as a linked Excalidraw diagra
 metadata:
   hermes:
     category: executive-assistant
-    version: "1.5.1"
+    version: "1.5.2"
 ---
 
 # EA Time Block (Cal Newport)
@@ -54,7 +54,7 @@ The script pre-fills **`blocks[]`** with today's **meeting** blocks (live calend
    - `_gather.activeProjects` → deep/shallow blocks with `Projects/<slug>/about.md` links
    - `_gather.recentJournals` for context only
    - Optional `gbrain` for "today priority"
-   - Do not deep-triage mail — **`ea-playbook`** owns filing
+   - Do not deep-triage mail — **`ea-mail-ingress`** owns filing
    - Merge into plan JSON; remove or ignore `_gather` before render (renderer ignores extra keys)
 5. **Write plan JSON** — update `${JOSHU_FILES_ROOT}/Planning/.time-block-plan-YYYY-MM-DD.json`:
 

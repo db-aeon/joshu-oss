@@ -63,7 +63,7 @@ The script adds `oss` → `https://github.com/db-aeon/joshu-oss.git` if missing,
 | `arozos/web-overlays-vanilla/` | Branded paper shell (`JOSHU_DESIGN_PACK`) |
 | `docs/` | **Fleet canon** — OSS gets a sanitized export via `prepare-oss-snapshot.sh` + `oss-doc-sanitize.sh`; pulling OSS docs back would strip control-plane, fleet, and SOP references |
 | `README.md`, `CONTRIBUTING.md`, `*.oss.md` | Fleet vs OSS curated copies |
-| `scripts/prepare-oss-snapshot.sh`, `oss-doc-sanitize.sh`, `publish-oss-release.sh`, `check-oss-boundaries.sh` | OSS export pipeline — assumes fleet `docs/vps-sandbox/` layout |
+| `scripts/prepare-oss-snapshot.sh`, `oss-doc-sanitize.sh`, `publish-oss-release.sh`, `check-oss-boundaries.sh`, `export-public-docs.sh` | OSS export pipeline and the export for www.joshu.me — assumes fleet `docs/vps-sandbox/` layout |
 | `.github/workflows/joshu-oss-image.yml`, `oss-boundaries.yml` | OSS CI (fleet uses `joshu-sandbox-image.yml`) |
 | `scripts/sync-from-oss.sh` | Fleet-only (stripped from OSS snapshot) |
 | `.github/workflows/fleet-sync-check.yml`, `joshu-sandbox-image.yml` | Fleet CI |
@@ -75,7 +75,7 @@ The script adds `oss` → `https://github.com/db-aeon/joshu-oss.git` if missing,
 | Fleet → OSS | `prepare-oss-snapshot.sh` + `oss-doc-sanitize.sh` | Full fleet docs are copied, fleet-only trees removed, links/paths rewritten for self-host |
 | OSS → Fleet | **not synced** | `sync-from-oss.sh` excludes `docs/` entirely |
 
-**Public twins:** a file `<name>.oss.md` anywhere in `docs/` replaces `<name>.md` in the OSS tree. The doc indexes and the self-host chapters of the user manual use this.
+**Public twins:** a file `<name>.oss.md` anywhere in `docs/` replaces `<name>.md` in the OSS tree. The doc indexes use this. The user's manual has no twins: `prepare-oss-snapshot.sh` writes the OSS rendering of its self-host blocks, and `scripts/export-public-docs.sh` exports the manual and the technical reference for www.joshu.me. See [public docs](technical-reference/public-docs.md).
 
 **Release notes:** `docs/releases/` in joshu-oss holds the OSS release notes (for example `0.1.47-0.1.59.md`), written directly in joshu-oss. The fleet `docs/releases/` stays private, and the snapshot leaves the OSS folder alone.
 

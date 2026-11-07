@@ -53,6 +53,29 @@ owner and the box said on the channel — inbound SMS, broker acks, delivery
 SMS, and Hermes replies on the pass path — so the router can interpret short
 follow-ups in context without loading the entire agent transcript.
 
+Each text that Joshu sends to the owner by SMS is on the session thread,
+including the texts that do not come from the realtime-goal broker. Nudges,
+owner reminders, and team texts go through the owner text channel
+(`sendOwnerText` in `src/ownerTextChannel.ts`), and that function adds each SMS
+that counts as delivered to the thread `sms:<owner mobile>` as a box turn with
+source `delivery`. A text that goes by email is not added, and a failed write
+to the session thread does not change the result of the send. Before
+2026-10-26 these texts were missing. An owner answered a nudge with "I got it
+figured out. You can cancel", and the router saw only an older goal about
+return labels, so the answer was taken as being about that goal. The write is
+in `sendOwnerText` and not in each sender, so a new sender is covered too.
+Sending these texts through the owner outbox, which already writes the session
+thread, was rejected, because it changes the receipts and the email fallback of
+the owner text channel for a fix that needs only the context.
+
+All `SessionThreadStore` instances in one process share one write chain for
+each `threads.json` file. The owner text channel makes its own instance and the
+broker has another one. With a chain for each instance, two writes at the same
+time could read the same file and the later write would drop the turn of the
+first. Passing the broker into the owner text channel was rejected, because the
+owner text channel has no LLM and few dependencies, and each of its callers
+would need the broker.
+
 Hermes keeps its own session for sync turns. On queue-capable channels, when a
 message passes through to Hermes, Joshu injects a **compact broker snapshot**
 (active branch, active goals, last few thread turns) as an extra system message
@@ -84,6 +107,33 @@ Slack and Telegram enter through the Hermes gateway hook, which calls the same
 broker `route()` as SMS. Voice `think` calls `POST /api/realtime-goals/route`
 before Hermes, with the same structured payload Hermes will see.
 
+### Files and chat context of a Slack or Telegram message
+
+The hook skips normal dispatch when the broker answers, so the realtime goal
+must carry everything that the normal Hermes turn would have seen. The hook
+sends the text with the files that the adapter downloaded (`media_urls` and
+`media_types`, as `attachments`) and with the context that the adapter
+collected (`channel_context` of a Slack thread or group DM, and `reply_to_text`
+of a reply, as `context`). The router sees one short note about them after the
+latest owner message, so "please book this" with a screenshot or under a
+request in a group DM is not taken for a vague message. When a decision stores
+the message on a realtime goal (queue, clarify, update), the broker copies each
+file under `<state dir>/files/` and stores the owner text with the list of the
+copied files and the context. The Kanban worker reads that text on its card. A
+file that cannot be copied (gone, not a regular file, more than 25 MB) keeps
+its gateway path with a note. Joshu does not delete the copies yet; a message
+has at most 10 files of at most 25 MB. A message with no text (a photo without a caption,
+a voice note before transcription) takes the normal Hermes turn, because the
+router has nothing to classify.
+
+Why copy the files: the Hermes gateway keeps downloads in its cache, and a
+worker can start minutes later or run again a day later after an owner answer.
+Why the text and not a new field on the goal: the owner text already flows into
+the objective, the card, and the owner updates, so one place carries the files
+to the worker. Why only a note for the router: the router decides where the
+message goes and needs to know that it has more than the text, not the whole
+context.
+
 ## Branch continuation (deterministic)
 
 When an active branch is bound, the LLM router is **not** called.
@@ -108,12 +158,23 @@ branch is active.
 | --- | --- |
 | **pass** | Sync Hermes turn on this message |
 | **queue** | New long work → new branch → Kanban after commit window |
-| **cancel** | Owner stops an active goal (with thread/goal binding; not bare "nope") |
+| **cancel** | Owner stops an active goal that the router names (not bare "nope") |
 | **status** | Owner asks how a goal is going |
 | **ack** | Owner answers the box's last prompt; brief reply, no Hermes, no cancel |
 
 Follow-ups on an in-progress branch are **never** classified here — the broker
 binds them deterministically first.
+
+A **cancel** needs the id of a listed active goal and enough confidence
+(`CANCEL_CONFIDENCE`). Otherwise the decision becomes **pass**, the broker texts
+nothing, and the nudge reply path or the SMS turn answers with the full context
+and can ask the owner what the owner means. A cancel changes a goal, so it needs
+the goal that the model chose. Before 2026-10-26 a cancel without a goal became
+**ack**, and the broker texted the reply that the model wrote for a cancel
+("I'll cancel that return-label help attempt") while nothing was cancelled. A
+cancel without a goal also cancelled the only active goal. Keeping **ack** and
+dropping the reply was rejected, because an ack marks the owner message as
+handled on an unrelated goal and the owner gets no answer.
 
 Deterministic shortcuts are minimal (explicit cancel/status phrases, greetings).
 SMS carrier keywords (`STOP`, etc.) stay in the SMS gateway, not the router.
@@ -143,8 +204,34 @@ SMS carrier keywords (`STOP`, etc.) stay in the SMS gateway, not the router.
    A missed callback texts the full result and backs off instead of parking;
    any owner message clears the backoff; "call me back" on any channel calls.
    An SMS counts as heard only when Twilio reports it delivered; an
-   undelivered SMS leaves the item open for the next route.
+   undelivered SMS leaves the item open for the next route. When a Slack or
+   Telegram send of an item fails twice, the item goes by SMS (or to the
+   surface when SMS is not usable). A chat route can fail for hours, for
+   example when the outbox has no bot token, and a retry on the same route
+   does not help the owner. The outbox reads the bot token from the same
+   `~/.hermes/.env` as the Hermes gateway when Joshu has no copy, so a chat
+   that the gateway serves is a chat that the outbox can answer.
    See [realtime-goals — Owner outbox](../realtime-goals.md#owner-outbox-2026-09-27).
+
+6. **Done on another channel, or no answer** — an owner can ask for the same
+   thing on two channels, for example on Slack and then by email. The mail
+   ingress card of an email of the owner lists the open realtime goals (at
+   most 5), and the mail ingress worker closes the one that the email asks
+   for again with `realtime_goal_close_done_elsewhere`. The broker stops and
+   archives the Kanban task of the realtime goal, cancels its open outbox
+   items, marks it `done` with `doneElsewhere`, and puts the note of the worker
+   in the owner outbox as the result, so the owner gets one line on the
+   channel of the realtime goal. A blocked realtime goal whose question had no
+   owner answer or owner message for 48 hours
+   (`JOSHU_REALTIME_GOALS_BLOCKED_EXPIRY_HOURS`) is cancelled without a
+   message. Why the worker matches and not the broker: deciding that two
+   requests are the same needs the content of the email and the judgment of a
+   model, and the mail ingress worker already reads both; a text match in the
+   broker would close the wrong goal. Why a fixed 48 hours and not "after the
+   meeting time": the broker does not know the time that a realtime goal waits
+   for, and a question with no answer for two days is stale for every kind of
+   request. Why cancel quietly: the owner did not answer, so a message about
+   the expiry only adds noise; an owner who answers later starts a new request.
 
 Kanban owns execution truth; Joshu state owns intake, idempotency, thread,
 active branch pointer, delivery cursors, the commit window, and (outbox) the
@@ -224,6 +311,28 @@ Design decisions:
   error. Resuming the same Hermes session in a worker was rejected, because a
   Kanban worker runs its own Hermes session; the note in the objective and the
   state of the shared browser give the worker what it needs.
+
+An owner SMS that a restart loses gets one text to the owner. Before the SMS
+gateway answers Twilio, it reserves the owner SMS in `state.json` with the run
+id of the broker, a random id that the broker makes when it starts. When the
+SMS turn ends, the SMS gateway marks the owner SMS as done. On each tick, the
+broker looks for an owner SMS that is not done 2 minutes after it arrived and
+that an earlier run reserved. The broker texts the owner that it restarted
+before it finished that SMS, quotes the SMS, and asks the owner to send it
+again. A record without a run id is from code that wrote no run id, so it
+counts as from an earlier run.
+
+- **2026-10-24: skip the owner SMS of the running broker.** Before this
+  decision, the check looked only at the age of the owner SMS. An SMS turn
+  that took 2 minutes and 15 seconds got the text "I restarted… Please resend
+  it" while the box was still working on it and had not restarted. A higher
+  age limit (above the limit of 20 minutes) was rejected, because the owner
+  would then wait more than 20 minutes to learn about an SMS that a restart
+  really lost. A list in memory of the owner SMS that the SMS gateway is
+  answering was rejected, because the run id gives the same answer with one
+  field, and the record then tells which run reserved it. The age limit of 2
+  minutes stays for the records of an earlier run, because during an update
+  the old and the new container can run at the same time for a short while.
 
 Limits: a new owner SMS that the broker passes to Hermes waits for the running
 SMS turn, so a long SMS turn delays the answer to it. Status and cancel of

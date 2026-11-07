@@ -38,7 +38,7 @@ npm run test:runtime-assets                           # src + dest exist
 
 | What | How it reaches the box |
 |------|------------------------|
-| Vite desktop apps (jMail, last30days, jTerm) | `npm run build:<app>` → `dist/<app>/` → Dockerfile `rsync` into the ArozOS template. Add **both** the package.json script and the Dockerfile rsync line. |
+| Vite desktop apps (jMail, jTerm, Telephone) | `npm run build:<app>` → `dist/<app>/` → Dockerfile `rsync` into the ArozOS template. Add **both** the package.json script and the Dockerfile rsync line. |
 | Skills, MCP `.mjs`, vanilla overlays | Sandbox image (`COPY` in `deploy/Dockerfile`). New release image. |
 | Factory YAML (`manifest.yaml`, `onboarding-prompts.yaml`) | Sandbox image. New release image. |
 | This list (API-served static) | Copy into `dist/` beside compiled JS. |

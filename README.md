@@ -80,7 +80,7 @@ Your companion checks your calendar and emails the other people. When they answe
 >
 > **Joshu:** Done. The report is on my desktop. Do you want me to watch the topic every week?
 
-The last30days app on the desktop makes the same reports, and it can watch a topic every day or every week.
+The Research app on the desktop lists every report, and your companion can send you what is new on a topic every day or every week.
 
 ### Let it keep you on track
 
@@ -148,6 +148,8 @@ You need an Ubuntu server with 8 GB of RAM (for example on Hetzner or DigitalOce
 
 Other ways to install, e.g., Docker Compose, are in the [self-host guide](docs/self-host.md).
 
+Some tools use a paid service with your own key. In Connectors, section **AI providers**, you can paste a [fal.ai](https://fal.ai) key for images, video, and audio, and a router API key of the Joshu content router, which you create in your account on [hello.joshu.me](https://hello.joshu.me). With the content router, Research reports get posts from Reddit, YouTube, TikTok, Instagram, and X, the companion can read the caption, the transcript, and the comments of a social post from its link, and the companion can make images and videos. Each call takes the provider price plus the router markup from your usage wallet. How the box uses these keys is in [the technical reference on metered providers](docs/technical-reference/metered-providers.md).
+
 ### Your first ten minutes
 
 After Welcome, you can chat with your companion in jChat. Then connect the rest, in this order:
@@ -189,7 +191,7 @@ The last command starts the shared Chromium browser, builds the desktop when nee
 | Build a desktop app | [app-sdk.md](docs/app-sdk.md) and [app-agent.md](docs/app-agent.md) |
 | Executive assistant skills | [executive-assistant.md](docs/executive-assistant.md) |
 | Connectors and mail | [connectors.md](docs/connectors.md) |
-| last30days research app | [last30days-user-guide.md](docs/last30days-user-guide.md) |
+| Research reports and recurring reports | [research-arozos-app.md](docs/research-arozos-app.md) and [technical-reference/research-reports.md](docs/technical-reference/research-reports.md) |
 
 Everything else is in the [documentation index](docs/README.md).
 

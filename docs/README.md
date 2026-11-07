@@ -21,7 +21,7 @@ Docs for **self-hosting** the Joshu box stack, building ArozOS apps, and integra
 | **jTerm** | [`jterm-arozos-app.md`](jterm-arozos-app.md) |
 | **Telephone** | [`telephone-arozos-app.md`](telephone-arozos-app.md) — box number, owner mobile, think passphrase |
 | **Multiplayer** | [`teams.md`](teams.md#the-multiplayer-app) — teams of companions: a group chat of the team with team cards |
-| **last30days** | [`last30days-user-guide.md`](last30days-user-guide.md) · [`last30days-arozos-app.md`](last30days-arozos-app.md) |
+| **Research** | [`research-arozos-app.md`](research-arozos-app.md) · [`technical-reference/research-reports.md`](technical-reference/research-reports.md) — Research reports and recurring reports |
 
 Shortcut format: [`arozos-desktop-shortcuts.md`](arozos-desktop-shortcuts.md).
 
@@ -36,13 +36,14 @@ Shortcut format: [`arozos-desktop-shortcuts.md`](arozos-desktop-shortcuts.md).
 | **Slack chat** (Connect Slack, the Slack app of a box, tokens, first direct message; how and why) | [`technical-reference/slack-chat.md`](technical-reference/slack-chat.md) |
 | **Shared browser live view** (jWeb and the handoff page, active page, Browser Use tab strip; how and why) | [`technical-reference/shared-browser.md`](technical-reference/shared-browser.md) |
 | **Voice agent tools** (native async tool path, the delivery claim guard and the work claim guard; how and why) | [`technical-reference/voice-agent-tools.md`](technical-reference/voice-agent-tools.md) |
+| **Public docs** (self-host and hosted-only blocks of the user's manual, the OSS export, and the export for www.joshu.me; how and why) | [`technical-reference/public-docs.md`](technical-reference/public-docs.md) |
 | **Kanban boards** (every board, task kind, and file pointer; the Hermes dispatcher and the Joshu patches; with diagrams) | [`kanban/README.md`](kanban/README.md) |
 | **Releases** | [GitHub Releases](https://github.com/db-aeon/joshu-oss/releases) |
 | Box state / factory reset | [`box-state.md`](box-state.md) |
 | Local dev install | [`local-installation.md`](local-installation.md) |
 | Hermes integration (skills, gateway, env) | [`hermes-integration.md`](hermes-integration.md) |
 | Connectors (mail, calendar, MCP) | [`connectors.md`](connectors.md) |
-| **Paid MCP / metered fal** (self-host: paste your own key) | [`metered-providers.md`](metered-providers.md) · [`connectors-arozos-app.md`](connectors-arozos-app.md) |
+| **Metered providers** (fal.ai and the content router; self-host: paste your own key) | [`technical-reference/metered-providers.md`](technical-reference/metered-providers.md) · [`connectors-arozos-app.md`](connectors-arozos-app.md) |
 | File index + search (gbrain) | [`file-brain.md`](file-brain.md) |
 | Chat with shared files | [`share-chat.md`](share-chat.md) |
 | **Runtime assets** (HTML/PNG the API reads — must land in `dist/`) | [`runtime-assets.md`](runtime-assets.md) |

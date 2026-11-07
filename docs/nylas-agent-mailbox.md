@@ -52,10 +52,13 @@ Grant file: `${AROZ_DATA}/files/users/<user>/.joshu/nylas/agent.json` (`grantId`
 
 ## Joshu API
 
+Each route under `/joshu/api/nylas` needs the desktop session of the owner or a direct localhost request; other requests get `401`. The one exception is `POST /joshu/api/nylas/agent/import`, which the control plane calls over HTTPS and which never replaces a saved grant ([box API edge security](vps-sandbox/box-api-edge-security.md#connectors-nylas-and-onboarding-routes)).
+
 | Method | Path | Purpose |
 |--------|------|---------|
 | GET | `/joshu/api/nylas/status` | Configured + agent provisioned + profile |
 | POST | `/joshu/api/nylas/agent` | `{ "email": "agent@…" }` create Agent Account |
+| POST | `/joshu/api/nylas/agent/import` | `{ "grantId", "email" }` save the companion grant that the control plane made. `409` `grant_already_set` when the box has a different grant |
 | GET | `/joshu/api/nylas/messages` | List/search (`q`, `unread`, `limit`) |
 | GET | `/joshu/api/nylas/messages/:id` | Full message (body, headers) |
 | PATCH | `/joshu/api/nylas/messages/:id` | Update (`unread`, `starred`) |
@@ -111,7 +114,7 @@ Agent sends (Hermes MCP, REST, `execute_code` → this route) enforce owner visi
 
 1. **Auto-CC** — when any recipient is external (not owner primary work email, not agent mailbox), Joshu appends owner `primaryWorkEmail` to `cc` if missing. Log: `[nylas-send] owner_cc_enforced`. Implementation: [`src/ea/ownerMailVisibility.ts`](../src/ea/ownerMailVisibility.ts).
 2. **Thread scan** — when `sourcePath` is set, Joshu scans the mirror for prior owner presence and passes `ownerOnThread` / `threadContextSnippet` to action guard (approval SMS only — not sent to Nylas).
-3. **Ingress flag** — mail ingress Kanban tasks include `owner_on_thread: true|false` for agents ([`ea-playbook`](../integrations/hermes/skills/executive-assistant/ea-playbook/SKILL.md)).
+3. **Ingress flag** — mail ingress Kanban tasks include `owner_on_thread: true|false` for agents ([`ea-mail-ingress`](../integrations/hermes/skills/executive-assistant/ea-mail-ingress/SKILL.md)).
 
 **Bypasses:** jMail owner compose (`X-Joshu-Mail-Client: jmail` + same-origin); owner-only recipient sends (action-guard `bypassOwnerOnlyRecipients`). Full policy: [`agent-safety.md` — Owner visibility](agent-safety.md#owner-visibility-on-external-mail).
 

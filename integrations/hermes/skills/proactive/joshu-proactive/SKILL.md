@@ -4,7 +4,7 @@ description: "Proactive owner nudges for blocked Kanban tasks; reply resolution.
 metadata:
   hermes:
     category: joshu
-    version: "0.5.2"
+    version: "0.5.3"
 ---
 
 # Joshu Proactive
@@ -62,7 +62,7 @@ You must:
 6. **Scheduling** — follow ea-scheduling; send authorized outreach (do not only file project notes).
 7. **Project → scheduling** — when the project track has `thread_id` or references an open `ea-scheduling` task, load **`ea-scheduling`**, find the meeting task, and send the follow-up the owner authorized — not only update `Projects/<slug>/` files.
 8. **Owner-reply** — continue deliverable; `nylas_send_message` if that was the ask.
-9. **Project** — follow ea-project-kanban; action guard on sends. Then **`skill_view('ea-playbook')` → Project reconcile** on the `project_slug`: `mail_list_track_tasks(projectSlug=…)` returns the compact track list of **all** open tracks on that slug (no full bodies; `taskId=` for one full body). An outcome (“they passed”, “role closed”) completes **sibling** tracks, not only this card; set `about.md` `status: done` if nothing is left waiting.
+9. **Project** — follow ea-project-kanban; action guard on sends. Then **`skill_view('ea-mail-track')` → Project reconcile** on the `project_slug`: `mail_list_track_tasks(projectSlug=…)` returns the compact track list of **all** open tracks on that slug (no full bodies; `taskId=` for one full body). An outcome (“they passed”, “role closed”) completes **sibling** tracks, not only this card; set `about.md` `status: done` if nothing is left waiting.
 10. Outcomes:
    - Decision clear → `kanban_unblock` or `kanban_complete` with summary.
    - Still need owner → re-`kanban_block(reason="awaiting owner — <what is still needed>", kind="needs_input")`.

@@ -141,6 +141,12 @@ export type RealtimeGoalRecord = {
   kanbanTaskId?: string;
   lastKanbanStatus?: string;
   lastBlockReason?: string;
+  /** When the realtime goal asked its current blocked question (expiry, issue #172). */
+  blockedAskedAt?: string;
+  /** Another task did the work of this realtime goal (mail ingress, issue #172). */
+  doneElsewhere?: { taskId: string; at: string };
+  /** The blocked question had no owner answer for the expiry time; cancelled without a message. */
+  expiredAt?: string;
   /** When the owner replied while the goal was blocked waiting on input. */
   blockedAnsweredAt?: string;
   /** Block question text the owner already answered (for repeat-block detection). */
@@ -337,13 +343,27 @@ export type RealtimeGoalInboxRecord = {
   origin: RealtimeGoalOrigin;
   text: string;
   receivedAt: string;
+  /** Run of the broker that reserved the text; recovery skips texts of the running broker. */
+  runId?: string;
   processedAt?: string;
   recoveryNotifiedAt?: string;
+};
+
+/** A file that came with a Slack or Telegram owner message (local path on the box). */
+export type RealtimeGoalAttachment = {
+  path: string;
+  mediaType?: string;
+  /** Why the broker could not copy the file under the state directory. */
+  note?: string;
 };
 
 export type RealtimeGoalRouteInput = {
   origin: RealtimeGoalOrigin;
   text: string;
+  /** Files downloaded by the Hermes gateway for this message (Slack, Telegram). */
+  attachments?: RealtimeGoalAttachment[];
+  /** Earlier messages that the chat adapter sent with this message (thread, group DM, reply). */
+  context?: string;
 };
 
 export type RealtimeGoalRouteResult =

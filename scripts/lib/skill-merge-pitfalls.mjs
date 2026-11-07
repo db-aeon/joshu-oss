@@ -111,13 +111,61 @@ export function keepBoxPitfalls({ box, merged, dropped }) {
   return { text: appendUnderKeptHeading(merged, restored.map((p) => p.text)), restored, droppedWithReason };
 }
 
-function appendUnderKeptHeading(merged, paragraphs) {
+const MERGE_INTRO =
+  "The skills seed kept these pitfalls of this box, because the merge with a factory update left them out without a reason.";
+const SPLIT_INTRO =
+  "The skills seed moved these pitfalls of this box here from the box copy of the skill that this skill was split from.";
+
+/** The text of each heading line ("## Mail ingress" gives "mail ingress"), for matching. */
+function headingKeys(skillText) {
+  return new Set(
+    skillText
+      .split("\n")
+      .filter((line) => /^#{1,6}\s/.test(line))
+      .map((line) => normalizeForMatch(line.replace(/^#+\s*/, "")))
+      .filter(Boolean),
+  );
+}
+
+/**
+ * Move the box pitfalls of a split skill (change mail-worker-skills). A new factory skill can
+ * name the skill it was split from (metadata.joshu.split_from). When the skills seed first adds
+ * the new skill to a box, each box pitfall of the old box skill whose heading is also a heading
+ * of the new skill goes to the new skill, unless the new skill already has it.
+ * @returns {{ text: string, moved: { key: string, text: string }[] }}
+ */
+export function moveSplitPitfalls({ source, target }) {
+  const targetHeadings = headingKeys(target);
+  const targetNorm = normalizeForMatch(target);
+  const moved = [];
+  let heading = "";
+  let section = [];
+  const flush = () => {
+    if (targetHeadings.has(heading)) {
+      for (const pitfall of findBoxPitfalls(section.join("\n"))) {
+        if (!targetNorm.includes(pitfall.key) && !moved.some((p) => p.key === pitfall.key)) moved.push(pitfall);
+      }
+    }
+    section = [];
+  };
+  for (const line of source.split("\n")) {
+    if (/^#{1,6}\s/.test(line)) {
+      flush();
+      heading = normalizeForMatch(line.replace(/^#+\s*/, ""));
+    } else {
+      section.push(line);
+    }
+  }
+  flush();
+  if (moved.length === 0) return { text: target, moved };
+  return { text: appendUnderKeptHeading(target, moved.map((p) => p.text), SPLIT_INTRO), moved };
+}
+
+function appendUnderKeptHeading(merged, paragraphs, intro = MERGE_INTRO) {
   const body = paragraphs.join("\n\n");
   const lines = merged.replace(/\s+$/, "").split("\n");
   const head = lines.indexOf(KEPT_HEADING);
   if (head === -1) {
-    const intro =
-      "The skills seed kept these pitfalls of this box, because the merge with a factory update left them out without a reason.";
     return `${lines.join("\n")}\n\n${KEPT_HEADING}\n\n${intro}\n\n${body}\n`;
   }
   let end = lines.length;

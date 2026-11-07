@@ -4,7 +4,7 @@ description: Live browser HITL — hand the shared browser tab to the owner on m
 metadata:
   hermes:
     category: browser
-    version: "1.10.0"
+    version: "1.11.0"
 ---
 
 # Joshu browser handoff (live HITL)
@@ -33,6 +33,25 @@ Joshu boxes use **one** shared browser session. The backend is chosen at stack s
 **Local rule:** call **`browser_task`** for autonomous browsing. Stop before payment, CAPTCHA, or secrets, then **`browser_handoff_request`**. While handoff is `pending`, `browser_task` is refused.
 
 **Browser down = system problem.** Joshu wakes the shared browser automatically on every `browser_*` call. If a browser tool still fails with **`browser_unavailable`** or a CDP / WebSocket error (e.g. `502 Bad Gateway`): retry that tool **once**, then **`kanban_block("system: browser unavailable")`** and stop. **Never** investigate the box — no `ps` / `ss` / port scans, no reading `/opt/joshu/dist` or Hermes source, no changing Hermes config (`hermes config`, `config.yaml`), no curling local Joshu or browser supervisor APIs to drive the page. Joshu owns that recovery.
+
+---
+
+## Bot checks and captchas
+
+A bot check is a page or a challenge that a site shows to tell people from automated browsers, for example a captcha, an hCaptcha or reCAPTCHA puzzle, a Cloudflare "Just a moment..." page, or a "Checking your browser" page. A bot check can appear when a page opens, or after you click a button such as **Sign up** or **Submit**.
+
+On **Browser Use Cloud**, the shared browser has a residential proxy and a captcha solver that runs by itself. Ignore any old tool text that says the browser runs without residential proxies or that tells you to change a Browserbase setting, because Joshu does not use Browserbase. When you see a bot check, do this:
+
+1. Do not refresh the page, click the challenge, or open another browser, because Browser Use says those actions can stop the captcha solver.
+2. Wait about 10 seconds (run `sleep 10` in the terminal), then call **`browser_snapshot`** and look at the page again.
+3. When the bot check is still there, wait and look one more time.
+4. When the bot check is still there after two checks, stage the page and call **`browser_handoff_request`** with a handoff brief that names the challenge, for example "Hugging Face shows a puzzle. Solve it, then tap I'm done."
+
+On **local Chromium**, the box has no captcha solver, so stage the page and call **`browser_handoff_request`** when you see a bot check.
+
+Fill forms with **`browser_click`** and **`browser_type`**. Do not set field values or click buttons with JavaScript in `browser_console` when `browser_click` or `browser_type` works on the field, because a bot check can flag input that does not come from a real click or key press.
+
+Do not decide that a site blocks the shared browser from a fetch with `curl` or another tool on the box. The box has a different network address from the shared browser, so a site can refuse the box and still accept the shared browser. Open the page with **`browser_navigate`** before you report the site as blocked.
 
 ---
 

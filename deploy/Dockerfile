@@ -38,6 +38,11 @@ RUN rm -rf /usr/local/go \
     && ln -sf /usr/local/go/bin/go /usr/local/bin/go
 
 # Hermes venv (image build extras)
+# Hermes dashboard: `npm install` in web/ puts the dev tools of the Hermes npm workspace
+# into /opt/hermes-agent/node_modules (about 300 MB: vite, vitest, jsdom, undici). The
+# build bakes the dashboard into hermes_cli/web_dist and then removes node_modules, so
+# the image ships none of those packages. The Chat tab of the dashboard has no prebuilt
+# TUI in this image, so Hermes installs and builds the TUI the first time someone opens it.
 # Extra installs are constrained to Hermes' own mcp/starlette pins: hindsight pulls
 # claude-agent-sdk, which otherwise upgrades mcp to 2.x. mcp 2.x drops
 # streamablehttp_client, and Hermes then silently disables every HTTP MCP server
@@ -79,7 +84,10 @@ RUN git init "${HERMES_DIR}" \
     && cd web \
     && npm install --include=dev \
     && npm run build \
-    && rm -rf node_modules /root/.npm
+    && cd .. \
+    && rm -rf node_modules web/node_modules /root/.npm \
+    && test -f hermes_cli/web_dist/index.html \
+    && test ! -e node_modules
 
 # v0.20+ applicators (Python) plus legacy .patch fallbacks for older pins.
 COPY scripts/hermes-langfuse-system-prompt.patch \
@@ -107,6 +115,8 @@ COPY scripts/hermes-langfuse-system-prompt.patch \
      scripts/apply-hermes-pairing-reply.sh \
      scripts/patch-hermes-approval-no-permanent.py \
      scripts/apply-hermes-approval-no-permanent.sh \
+     scripts/patch-hermes-slack-group-dm.py \
+     scripts/apply-hermes-slack-group-dm.sh \
      /tmp/joshu-hermes-patches/
 RUN HERMES_DIR="${HERMES_DIR}" bash /tmp/joshu-hermes-patches/apply-hermes-langfuse-patches.sh \
     && HERMES_DIR="${HERMES_DIR}" bash /tmp/joshu-hermes-patches/apply-hermes-kanban-ws-base-path-patch.sh \
@@ -118,6 +128,7 @@ RUN HERMES_DIR="${HERMES_DIR}" bash /tmp/joshu-hermes-patches/apply-hermes-langf
     && HERMES_DIR="${HERMES_DIR}" bash /tmp/joshu-hermes-patches/apply-hermes-openrouter-data-collection.sh \
     && HERMES_DIR="${HERMES_DIR}" bash /tmp/joshu-hermes-patches/apply-hermes-pairing-reply.sh \
     && HERMES_DIR="${HERMES_DIR}" bash /tmp/joshu-hermes-patches/apply-hermes-approval-no-permanent.sh \
+    && HERMES_DIR="${HERMES_DIR}" bash /tmp/joshu-hermes-patches/apply-hermes-slack-group-dm.sh \
     && "${HERMES_DIR}/venv/bin/python" /tmp/joshu-hermes-patches/patch-hindsight-openrouter-rerank.py \
     && rm -rf "${HERMES_DIR}/.git" /root/.cache/pip /tmp/joshu-hermes-patches
 
@@ -184,7 +195,7 @@ RUN bash ${APP_DIR}/scripts/apply-arozos-patches.sh \
     && rsync -a ${APP_DIR}/arozos-subservice-staging/jterm/ ${AROZ_TEMPLATE}/subservice/jterm/ \
     && rsync -a ${APP_DIR}/arozos-subservice-staging/telephone/ ${AROZ_TEMPLATE}/subservice/telephone/ \
     && rsync -a ${APP_DIR}/arozos-subservice-staging/boss-mode/ ${AROZ_TEMPLATE}/subservice/boss-mode/ \
-    && rsync -a ${APP_DIR}/arozos-subservice-staging/last30days/ ${AROZ_TEMPLATE}/subservice/last30days/ \
+    && rsync -a ${APP_DIR}/arozos-subservice-staging/research/ ${AROZ_TEMPLATE}/subservice/research/ \
     && rsync -a ${APP_DIR}/dist/excalidraw/ ${AROZ_TEMPLATE}/subservice/excalidraw/app/ \
     && rsync -a ${APP_DIR}/dist/md-editor/ ${AROZ_TEMPLATE}/subservice/md-editor/app/ \
     && rsync -a ${APP_DIR}/dist/hermes-chat/ ${AROZ_TEMPLATE}/subservice/hermes-chat/app/ \
@@ -199,7 +210,7 @@ RUN bash ${APP_DIR}/scripts/apply-arozos-patches.sh \
     && rsync -a ${APP_DIR}/dist/jterm/ ${AROZ_TEMPLATE}/subservice/jterm/app/ \
     && rsync -a ${APP_DIR}/dist/telephone/ ${AROZ_TEMPLATE}/subservice/telephone/app/ \
     && rsync -a ${APP_DIR}/dist/boss-mode/ ${AROZ_TEMPLATE}/subservice/boss-mode/app/ \
-    && rsync -a ${APP_DIR}/dist/last30days-app/ ${AROZ_TEMPLATE}/subservice/last30days/app/ \
+    && rsync -a ${APP_DIR}/dist/research-app/ ${AROZ_TEMPLATE}/subservice/research/app/ \
     && bash ${APP_DIR}/scripts/install-proprietary-apps.sh ${AROZ_TEMPLATE}/subservice \
     && chmod +x ${AROZ_TEMPLATE}/subservice/*/start.sh \
     && (python3 ${APP_DIR}/scripts/apply_arozos_joshu_theme.py ${AROZ_TEMPLATE}/web || true)
@@ -229,11 +240,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && python3 -m pip install --no-cache-dir --break-system-packages pypdf \
     && curl -fsSL https://bun.sh/install | bash \
     && /root/.bun/bin/bun install -g "github:garrytan/gbrain#${GBRAIN_REF}" \
-    && curl -fsSL https://astral.sh/uv/install.sh | sh \
-    && /root/.local/bin/uv python install 3.12 \
-    && mkdir -p /opt/joshu/.local/python312/bin \
-    && ln -sf /root/.local/share/uv/python/cpython-3.12-*/bin/python3.12 /opt/joshu/.local/python312/bin/python3.12 \
-    && /opt/joshu/.local/python312/bin/python3.12 --version
+    && curl -fsSL https://astral.sh/uv/install.sh | sh
 
 # Node 22 for the Joshu API, Hermes dashboard rebuild, and the Chromium supervisor (see builder stage note).
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
@@ -276,14 +283,14 @@ COPY deploy/scripts/vps-start.sh ${APP_DIR}/scripts/vps-start.sh
 COPY deploy/RELEASE.json ${APP_DIR}/RELEASE.json
 COPY browser/chromium/package.json browser/chromium/supervisor.mjs browser/chromium/localProxy.mjs browser/chromium/entrypoint.sh browser/chromium/agent-service.py browser/chromium/requirements.txt /opt/browser/
 # browser-use pins old versions exactly, so install the security fixes after it:
-# Pillow (image decoders), aiohttp (8 advisories of 2026-10), pypdf (denial of service
+# Pillow (image decoders), aiohttp (8 advisories of 2026-10), pypdf 6.21.4 (denial of service
 # in PDF parsing), anyio (TLS host name encoding), and mcp 2.2.0 (GHSA-84m7-p3x7-pcfv).
 # Drop each override when browser-use reaches it. pip itself is updated first, because
 # the venv copy (25.1.1) has advisories that are fixed in 26.
 RUN python3 -m venv /opt/browser/venv \
     && /opt/browser/venv/bin/pip install --no-cache-dir --upgrade 'pip>=26.2' \
     && /opt/browser/venv/bin/pip install --no-cache-dir -r /opt/browser/requirements.txt \
-    && /opt/browser/venv/bin/pip install --no-cache-dir 'pillow==13.0.0' 'aiohttp==3.14.5' 'pypdf==6.21.2' 'anyio==4.14.2' 'mcp==2.2.0' \
+    && /opt/browser/venv/bin/pip install --no-cache-dir 'pillow==13.0.0' 'aiohttp==3.14.5' 'pypdf==6.21.4' 'anyio==4.14.2' 'mcp==2.2.0' \
     && /opt/browser/venv/bin/python -c 'import PIL, aiohttp, pypdf, anyio, mcp, browser_use; import importlib.metadata as m; assert m.version("mcp") == "2.2.0"; print("browser venv ok", PIL.__version__, aiohttp.__version__, pypdf.__version__, m.version("mcp"))'
 
 RUN cd /opt/browser && npm install --omit=dev --no-audit --no-fund \
@@ -322,20 +329,12 @@ RUN cd /opt/browser && npm install --omit=dev --no-audit --no-fund \
 RUN node scripts/copy-runtime-assets.mjs --check \
     && test -f apps/share-chat/index.html
 
-# last30days engine is gitignored; CI must run sync-last30days-skill.sh before docker build.
-# Bake a second copy outside integrations/ so a future bind-mount cannot shadow it.
-# The no-training routing patch is idempotent; it also covers a local engine copy synced before the patch existed.
-RUN test -f integrations/last30days-skill/skills/last30days/scripts/last30days.py \
-    || (echo "ERROR: last30days engine missing; run scripts/sync-last30days-skill.sh before docker build" >&2; exit 1) \
-    && python3 scripts/patch-last30days-openrouter-data-collection.py
 # Boot scripts: unshadowable copy. Compose used to bind-mount host /opt/joshu/scripts over
 # the image, so a stale clone skipped jNotes/md-editor even on a current GHCR tag.
 # CMD uses .image/vps-start.sh; optional host hotfix/scripts overlays at boot.
 RUN mkdir -p /opt/joshu/.image \
-    && cp -a integrations/last30days-skill /opt/joshu/.image/last30days-skill \
     && cp -a ${APP_DIR}/scripts /opt/joshu/.image/scripts \
     && chmod +x /opt/joshu/.image/scripts/vps-start.sh \
-    && test -f /opt/joshu/.image/last30days-skill/skills/last30days/scripts/last30days.py \
     && test -f /opt/joshu/.image/scripts/vps-start.sh \
     && test -f /opt/joshu/.image/scripts/lib/arozos-desktop-shortcuts.sh
 
@@ -380,8 +379,6 @@ ENV PATH="/root/.bun/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin
     HINDSIGHT_POSTGRES_DATA_DIR=/var/lib/postgresql/hindsight/data \
     HERMES_BIN=${HERMES_DIR}/venv/bin/hermes \
     HERMES_AGENT_REF=${HERMES_AGENT_REF} \
-    LAST30DAYS_PYTHON=/opt/joshu/.local/python312/bin/python3.12 \
-    LAST30DAYS_IMAGE_ENGINE_ROOT=/opt/joshu/.image/last30days-skill \
     NODE_ENV=production
 
 EXPOSE 8787 8788

@@ -1,0 +1,78 @@
+{
+ "note": "The Hermes cron jobs of a box with a custom Watch digest (gideon, 2026-10-29), with the owner data removed, plus one unrelated job.",
+ "jobs": [
+  {
+   "skills": [],
+   "model": null,
+   "deliver": "local",
+   "enabled": true,
+   "state": "scheduled",
+   "workdir": null,
+   "job_id": "c350b417920b",
+   "name": "last30days: watchlist daily",
+   "prompt": "",
+   "schedule": "0 8 * * *",
+   "script": "last30days-watchlist-run.sh",
+   "no_agent": true,
+   "created_at": "2026-09-01T03:18:29.914334+00:00"
+  },
+  {
+   "skills": [],
+   "model": null,
+   "deliver": "local",
+   "enabled": true,
+   "state": "scheduled",
+   "workdir": null,
+   "job_id": "043b0c4cf42b",
+   "name": "last30days: watchlist weekly",
+   "prompt": "",
+   "schedule": "0 8 * * 1",
+   "script": "last30days-watchlist-weekly.sh",
+   "no_agent": true,
+   "created_at": "2026-09-01T03:18:31.492876+00:00"
+  },
+  {
+   "skills": [
+    "agent-nylas-send"
+   ],
+   "model": null,
+   "deliver": "local",
+   "enabled": true,
+   "state": "scheduled",
+   "workdir": null,
+   "job_id": "ee0451ee9eda",
+   "name": "News digest: robotics / defense / physical AI (7am weekdays)",
+   "prompt": "Daily news digest email for the owner. The JSON in the attached script output is TODAY'S refreshed findings from the last30days watch lanes, already ranked and grouped into lanes: ROBOTICS (with sub-lane Humanoid), PHYSICAL AI, DEFENSE DEMAND, NEAR-SHORE / ON-SHORE MFG, SUPPLY-BASE CHOKEPOINTS, CAPITAL / DEAL FLOW, POLICY, CHINA THREATS.\n\nCompose ONE email and send it from the agent mailbox via mcp__joshu_connectors__nylas_send_message (call shape: to array, subject, body - flat args).\n\nRules:\n1. Recipients: to = [\"owner@example.com\", \"owner.home@example.com\"] (both inboxes, as array elements).\n2. Subject: \"Daily brief - robotics / defense / physical AI - <Mon DD>\". Use the OWNER-LOCAL date.\n3. Body: at most 8 items total across all lanes. Print each lane as an ALL-CAPS header in the lane order supplied, keep ROBOTICS broad with Humanoid shown as a sub-heading. Skip lanes with no items.\n4. Each item: the headline on one line, the source link on its own line, then one short line starting \"Why it matters:\" written for the owner specifically: humanoid robotics research, a robotics venture studio, defense robotics demand, and VC deal flow in robotics and defense tech.\n5. Plain ASCII text, no markdown tables, no HTML, minimal emoji. Do NOT add a signature.",
+   "schedule": "0 7 * * 1-5",
+   "script": "last30days-digest-data.py",
+   "no_agent": false,
+   "created_at": "2026-10-06T19:18:48.109799-07:00"
+  },
+  {
+   "skills": [],
+   "model": null,
+   "deliver": "local",
+   "enabled": true,
+   "state": "scheduled",
+   "workdir": null,
+   "job_id": "a1b2c3d4e5f6",
+   "name": "Morning brief",
+   "prompt": "Write the morning brief.",
+   "schedule": "0 6 * * *",
+   "script": null,
+   "no_agent": false,
+   "created_at": "2026-09-01T03:00:00+00:00"
+  }
+ ],
+ "topics": [
+  "Robotics",
+  "Humanoid robots",
+  "Physical AI",
+  "Defense demand",
+  "Near-shore and on-shore manufacturing",
+  "Supply-base chokepoints",
+  "Capital and deal flow",
+  "Robotics policy",
+  "China threats"
+ ]
+}

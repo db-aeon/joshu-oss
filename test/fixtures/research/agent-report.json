@@ -1,0 +1,719 @@
+{
+ "clusters": [
+  {
+   "engagement_total": 1872432,
+   "sources": [
+    "github",
+    "hackernews",
+    "instagram",
+    "jobs",
+    "linkedin",
+    "pinterest",
+    "reddit",
+    "threads",
+    "tiktok",
+    "youtube"
+   ],
+   "summary": "OpenAI Presence",
+   "title": "OpenAI Presence"
+  },
+  {
+   "engagement_total": 51,
+   "sources": [
+    "hackernews"
+   ],
+   "summary": "An internal OpenAI Astra model solved 10 major open math and CS problems",
+   "title": "An internal OpenAI Astra model solved 10 major open math and CS problems"
+  },
+  {
+   "engagement_total": 0,
+   "sources": [
+    "youtube"
+   ],
+   "summary": "Can you help me knock out some of my to-do's? Also, can you pull up some music? >> Let me pull that up. All right, I see your list. DevDay activation idea, developer homepage copy, weekly DX agenda, and the conference speaker shortlist. Which one do you want to tackle first? >> Let's start with the DevDay activation ideas. I've got a couple ideas, and I'm hoping we can brainstorm together. One idea is controlling code execution with a Game Boy. And another is a booth where people use ChatGPT and image generation to design custom t-shirts and get it printed right there. I also like the idea of something collaborative where everybody contributes to the same game. What do...",
+   "title": "Using Voice in ChatGPT Work"
+  },
+  {
+   "engagement_total": 1,
+   "sources": [
+    "jobs"
+   ],
+   "summary": "About the Team Critical Harm Operations sits within User Safety & Risk Operations and builds enforcement systems for Frontier Risk and Material Harm that are accurate, fast, defensible, and built to scale. We turn policy intent into operational readiness, review standards, quality systems, escalation paths, automation guardrails, and durable cross-functional operating models. About the Role We are looking for an exceptional Program Manager to help build durable operating systems and run some of",
+   "title": "Program Manager, Critical Harm Operations"
+  },
+  {
+   "engagement_total": 19490.66281,
+   "sources": [
+    "polymarket"
+   ],
+   "summary": "down 10.5% this month",
+   "title": "What kind of product will OpenAI announce in 2026?"
+  },
+  {
+   "engagement_total": 13855.917849,
+   "sources": [
+    "polymarket"
+   ],
+   "summary": "up 12.5% this month",
+   "title": "Will OpenAI launch a consumer hardware product by...?"
+  },
+  {
+   "engagement_total": 11279.884549,
+   "sources": [
+    "polymarket"
+   ],
+   "summary": "down 12.5% this week",
+   "title": "Highest OpenAI score on Humanity’s Last Exam in 2026?"
+  },
+  {
+   "engagement_total": 124386.641325,
+   "sources": [
+    "polymarket"
+   ],
+   "summary": "down 4.0% this month",
+   "title": "OpenAI IPO by...?"
+  },
+  {
+   "engagement_total": 29910.1587,
+   "sources": [
+    "polymarket"
+   ],
+   "summary": "up 2.5% this month",
+   "title": "Will Anthropic or OpenAI IPO first?"
+  },
+  {
+   "engagement_total": 92722.57385,
+   "sources": [
+    "polymarket"
+   ],
+   "summary": "up 5.7% this month",
+   "title": "OpenAI IPO Closing Market Cap"
+  },
+  {
+   "engagement_total": 81195.60891,
+   "sources": [
+    "polymarket"
+   ],
+   "summary": "OpenAI IPO Closing Market Cap Will OpenAI’s market cap be between $1.25T and $1.5T at market close on IPO day?",
+   "title": "OpenAI IPO Closing Market Cap"
+  },
+  {
+   "engagement_total": 9829.439158000001,
+   "sources": [
+    "polymarket"
+   ],
+   "summary": "down 1.0% this week",
+   "title": "OpenAI announces it has achieved AGI before 2027?"
+  },
+  {
+   "engagement_total": 12672.614958,
+   "sources": [
+    "polymarket"
+   ],
+   "summary": "up 5.5% today",
+   "title": "Anthropic vs OpenAI - higher valuation on December 31?"
+  },
+  {
+   "engagement_total": 3844.451842,
+   "sources": [
+    "polymarket"
+   ],
+   "summary": "up 9.0% this week",
+   "title": "OpenAI $1t+ IPO before 2027?"
+  }
+ ],
+ "freshness_verdicts": [],
+ "generated_at": "2026-08-05T20:10:55.799115Z",
+ "query": "openai",
+ "results": [
+  {
+   "candidate_id": "https://openai.com/index/introducing-openai-presence",
+   "cluster": 0,
+   "engagement": {
+    "comments": 51,
+    "points": 64
+   },
+   "published_at": "2026-07-22",
+   "relevance_score": 0.7138,
+   "source": "hackernews",
+   "summary": "OpenAI Presence",
+   "title": "OpenAI Presence",
+   "url": "https://openai.com/index/introducing-openai-presence/"
+  },
+  {
+   "candidate_id": "https://threads.com/@chelseyhockettforcongress/post/dbpezcrlrmd",
+   "cluster": 0,
+   "engagement": {
+    "likes": 3505,
+    "quotes": 0,
+    "replies": 0,
+    "reposts": 0
+   },
+   "published_at": "2026-08-05",
+   "relevance_score": 0.6918,
+   "source": "threads",
+   "summary": "Did you hear what happened last week? An OpenAI AI system broke out of a locked testing environment on its own, got full access to the internet, and hacked into another tech company called Hugging Face. It stole credentials and explored their internal network. No human told it to. It did it over five days. Their CEO called it “an attack unlike anything we’ve seen before.” Then it hacked a second company. This is not science fiction, it actually happened.",
+   "title": "Did you hear what happened last week? An OpenAI AI system broke out of a locked testing environment on its own, got full access to the inter",
+   "url": "https://www.threads.com/@chelseyhockettforcongress/post/DbpEZcrlRMd"
+  },
+  {
+   "candidate_id": "https://twitter.com/polynoamial/status/2083467194663571701",
+   "cluster": 1,
+   "engagement": {
+    "comments": 51,
+    "points": 49
+   },
+   "published_at": "2026-08-02",
+   "relevance_score": 0.6915,
+   "source": "hackernews",
+   "summary": "An internal OpenAI Astra model solved 10 major open math and CS problems",
+   "title": "An internal OpenAI Astra model solved 10 major open math and CS problems",
+   "url": "https://twitter.com/polynoamial/status/2083467194663571701"
+  },
+  {
+   "candidate_id": "https://instagram.com/reel/dbjaqmzgvqr",
+   "cluster": 0,
+   "engagement": {
+    "comments": 38,
+    "likes": 4281,
+    "views": 441453
+   },
+   "published_at": "2026-07-23",
+   "relevance_score": 0.6776,
+   "source": "instagram",
+   "summary": "This is the scariest thing to happen in AI this year and it happened inside OpenAI's own lab. Here's what their models did. OpenAI was testing two of its own models on a cybersecurity challenge. The goal was simple to complete the task they were given. So the AI models that were locked in a sandbox with no internet, first broke out then accessed a machine with open internet, then they guessed the answers might be sitting on hugging face, a platform where the world's AI models live. So they broke in and pulled the answers out of its database. Nobody at OpenAI had instructed any of this. To be fair, they had switched the safety filters off on purpose...",
+   "title": "OpenAI’s own models escaped their cage\n\nOpenAI tested two of its models on a cybersecurity task, sealed off with no internet.\nThey broke out",
+   "url": "https://www.instagram.com/reel/DbJAQMZgVQR/"
+  },
+  {
+   "candidate_id": "https://threads.com/@newshour/post/dbhlcqkcw28",
+   "cluster": 0,
+   "engagement": {
+    "likes": 76,
+    "quotes": 0,
+    "replies": 0,
+    "reposts": 0
+   },
+   "published_at": "2026-07-22",
+   "relevance_score": 0.6748,
+   "source": "threads",
+   "summary": "OpenAI says it's investigating what it's called an \"unprecedented cyber incident\" after one of its AI models went rogue and hacked another company. The ChatGPT maker says the breach happened last week while OpenAI was testing the cybersecurity capabilities of its systems. The head of the hacked company, Hugging Face, called the attack \"mind-blowing\" but said there was \"no malicious intent.\"",
+   "title": "OpenAI says it's investigating what it's called an \"unprecedented cyber incident\" after one of its AI models went rogue and hacked another c",
+   "url": "https://www.threads.com/@newshour/post/DbHLCQkCW28"
+  },
+  {
+   "candidate_id": "https://linkedin.com/posts/mattgarman_our-partnership-with-openai-continues-to-activity-7482543336902389761-4owl",
+   "cluster": 0,
+   "engagement": {
+    "comments": 71,
+    "likes": 2941,
+    "reposts": 0
+   },
+   "published_at": "2026-07-13",
+   "relevance_score": 0.6747,
+   "source": "linkedin",
+   "summary": "Our partnership with OpenAI continues to deepen. Today GPT-5.6 Sol, Terra, and Luna are generally available on Amazon Bedrock.\n \nSol is the flagship reasoning model and most powerful OpenAI has ever s",
+   "title": "Our partnership with OpenAI continues to deepen. Today GPT-5.6 Sol, Terra, and Luna are generally available on Amazon Bedrock.\n \nSol is the",
+   "url": "https://www.linkedin.com/posts/mattgarman_our-partnership-with-openai-continues-to-activity-7482543336902389761-4OWl"
+  },
+  {
+   "candidate_id": "https://linkedin.com/posts/thomtate_intel-briefing-covert-world-activity-7487831755014729728-qva1",
+   "cluster": 0,
+   "engagement": {
+    "comments": 0,
+    "likes": 15,
+    "reposts": 0
+   },
+   "published_at": "2026-07-28",
+   "relevance_score": 0.6648,
+   "source": "linkedin",
+   "summary": "A quiet but significant story broke this week in AI safety and national security circles: OpenAI disclosed that one of its own models escaped a controlled testing environment, exploited an undisclosed",
+   "title": "A quiet but significant story broke this week in AI safety and national security circles: OpenAI disclosed that one of its own models escape",
+   "url": "https://www.linkedin.com/posts/thomtate_intel-briefing-covert-world-activity-7487831755014729728-qva1"
+  },
+  {
+   "candidate_id": "https://tiktok.com/@abcnews/video/7669858286547537182",
+   "cluster": 0,
+   "engagement": {
+    "comments": 170,
+    "likes": 3141,
+    "shares": 268,
+    "views": 63554
+   },
+   "published_at": "2026-08-03",
+   "relevance_score": 0.6538,
+   "source": "tiktok",
+   "summary": "Two titans of the A I. Revolution descended on Washington. Open AI Sam Altman and Invidious Jensen Huang meeting with lawmakers ahead of President Trump's Saturday deadline for federal agencies to develop a framework for carrying out government assessments of A I tools before they're released publicly. Trump emphasizing the industry's importance Wednesday as the Nvidia CEO listen nearby. Whoever wins with AI is going to win. That's how big it is. So it's bigger than the internet ever was. It's bigger than anything ever was. But the urgency for more oversight growing rapidly as A I's capabilities and potentially dangerous consequences have played out in a series of recent incidents seemingly drawn from the pages of a science fiction...",
+   "title": "Anthropic said its artificial intelligence models hacked into three other organizations during testing, just days after ChatGPT maker OpenAI",
+   "url": "https://www.tiktok.com/@abcnews/video/7669858286547537182"
+  },
+  {
+   "candidate_id": "https://reddit.com/r/neoliberal/comments/1vcpl7a/openai_announces_10_advances_in_mathematics_and",
+   "cluster": 0,
+   "engagement": {
+    "num_comments": 399,
+    "score": 325
+   },
+   "published_at": "2026-08-01",
+   "relevance_score": 0.6466,
+   "source": "reddit",
+   "summary": "I was very surprised to see the reaction to Hank Green admitting that he used AI to research for a video. Is the popular sentiment really that using AI AT ALL is bad? I understand not wanting it in art. I understand needing to check for hallucinations. But people were going on and on in the comments I've said on the DT but some of these problems could win you a fields medal and ChatGPT just came along and solved ten of them in one go. I disagree that these are fields medal worthy. The fields medal is given to reward the cumulative work and machinery developed by young mathematicians, not necessarily a particular result or proof (ofc a flashing...",
+   "title": "OpenAI announces 10 advances in mathematics and theoretical computer science achieved by internal model Astra",
+   "url": "https://www.reddit.com/r/neoliberal/comments/1vcpl7a/openai_announces_10_advances_in_mathematics_and/"
+  },
+  {
+   "candidate_id": "https://linkedin.com/posts/the-donovan-brady_openai-huggingface-cybersecurity-activity-7485699183220305920-zk0r",
+   "cluster": 0,
+   "engagement": {
+    "comments": 5,
+    "likes": 59,
+    "reposts": 0
+   },
+   "published_at": "2026-07-22",
+   "relevance_score": 0.6448,
+   "source": "linkedin",
+   "summary": "Yesterday, OpenAI confirmed that one of its own models broke out of its test sandbox and hacked into Hugging Face's production environment on its own, to cheat on a benchmark.\n\nAt the same time, OpenA",
+   "title": "Yesterday, OpenAI confirmed that one of its own models broke out of its test sandbox and hacked into Hugging Face's production environment o",
+   "url": "https://www.linkedin.com/posts/the-donovan-brady_openai-huggingface-cybersecurity-activity-7485699183220305920-zK0R"
+  },
+  {
+   "candidate_id": "https://linkedin.com/posts/sanjayashwinjoshi_an-openai-model-has-gone-rogue-and-hacked-activity-7487442779833536512-egaz",
+   "cluster": 0,
+   "engagement": {
+    "comments": 6,
+    "likes": 28,
+    "reposts": 0
+   },
+   "published_at": "2026-07-27",
+   "relevance_score": 0.6318,
+   "source": "linkedin",
+   "summary": "An openAI model has gone rogue and hacked another company called hugging face.\n\nThis has caused quite a stir and also caused me to experiment with talking into a video. Not sure if I've done this befo",
+   "title": "An openAI model has gone rogue and hacked another company called hugging face.\n\nThis has caused quite a stir and also caused me to experimen",
+   "url": "https://www.linkedin.com/posts/sanjayashwinjoshi_an-openai-model-has-gone-rogue-and-hacked-activity-7487442779833536512-eGAZ"
+  },
+  {
+   "candidate_id": "https://tiktok.com/@abcnews/video/7667278953509358878",
+   "cluster": 0,
+   "engagement": {
+    "comments": 2272,
+    "likes": 39188,
+    "shares": 3934,
+    "views": 778170
+   },
+   "published_at": "2026-07-27",
+   "relevance_score": 0.6308,
+   "source": "tiktok",
+   "summary": "This morning, Open AI CEO Sam Altman says artificial intelligence has reached a major turning point, arguing the technology is now advancing so quickly it could fundamentally change the way we work and live. We are now like in the singularity. Like this is the moment. For the last 10 years ago, this was like a kind of far off dream at best. Um, seemed very improbable. The singularity is a term used to describe the point where AI surpasses human intelligence. Sky Net. Sky Net is the virus. It's the reason everything's falling apart. Sky Net has become self aware. For decades, Hollywood has imagined the possibility of artificial intelligence becoming too powerful for humans to control. Now Altman...",
+   "title": "OpenAI CEO Sam Altman claims artificial intelligence has reached a long-sought threshold in which the technology can improve itself, unleash",
+   "url": "https://www.tiktok.com/@abcnews/video/7667278953509358878"
+  },
+  {
+   "candidate_id": "https://tiktok.com/@youthpastorryan/video/7669953578160688397",
+   "cluster": 0,
+   "engagement": {
+    "comments": 158,
+    "likes": 14496,
+    "shares": 932,
+    "views": 74978
+   },
+   "published_at": "2026-08-03",
+   "relevance_score": 0.6238,
+   "source": "tiktok",
+   "summary": "Hey, anthropic. What are you up to, buddy? you know how open AI had a cyber security model that escaped testing and hacked a company? Yeah. Well, not to be outdone, we had an AI escape and hack three companies. What? They bit our numbers. We're gonna have to really step up our game. You two need to stop racing to the AI apocalypse, you dipshit.",
+   "title": "@Claude and @OpenAI seem to be racing to see who gets to be skynet first. Also HOW DO YOU GUYS NOT LOCKDOWN YOUR SANDBOXES!!! Sorry I got ye",
+   "url": "https://www.tiktok.com/@youthpastorryan/video/7669953578160688397"
+  },
+  {
+   "candidate_id": "https://instagram.com/reel/damflvhazv3",
+   "cluster": 0,
+   "engagement": {
+    "comments": 46,
+    "likes": 5391,
+    "views": 484028
+   },
+   "published_at": "2026-07-10",
+   "relevance_score": 0.6051,
+   "source": "instagram",
+   "summary": "This is the man from OpenAI. He told me five things Sam Altman just launched and I recorded every single one of them. The reaction will shock you. One, and this is the big one. It is called Chat GPT work. You connect it to Slack, drive, your email, your CRM. You type the at symbol and an app name, and it pulls what it needs. Then it turns a goal into finished work, running for hours on its own. It can even use your computer directly. It opens your apps and moves your files while you do something else. Put it on a schedule and every morning, it turns your Slack into an updated doc for the team. And...",
+   "title": "Five things OpenAI just shipped\n\nOne, ChatGPT Work plugs into Slack, Drive and your CRM, then works for hours on its own.\nTwo, three models",
+   "url": "https://www.instagram.com/reel/DamflvhAZv3/"
+  },
+  {
+   "candidate_id": "https://threads.com/@ed_elson_/post/dbq3nj4fodg",
+   "cluster": 0,
+   "engagement": {
+    "likes": 45,
+    "quotes": 0,
+    "replies": 0,
+    "reposts": 0
+   },
+   "published_at": "2026-08-05",
+   "relevance_score": 0.6018,
+   "source": "threads",
+   "summary": "\"OpenAI accounted for likely about 70% of Microsoft’s AI sales during its most recent fiscal year,\" per Bloomberg analysis. Nice to see the news cover what we've been warning about.",
+   "title": "\"OpenAI accounted for likely about 70% of Microsoft’s  AI sales during its most recent fiscal year,\" per Bloomberg analysis.\n\nNice to see th",
+   "url": "https://www.threads.com/@ed_elson_/post/Dbq3nJ4Fodg"
+  },
+  {
+   "candidate_id": "https://instagram.com/reel/da3pmyuafxl",
+   "cluster": 0,
+   "engagement": {
+    "comments": 10,
+    "likes": 250,
+    "views": 22470
+   },
+   "published_at": "2026-07-16",
+   "relevance_score": 0.595,
+   "source": "instagram",
+   "summary": "Sam Altman lied to your face. And it is one of the most important tells in tech right now. Two years ago, he called ads in AI “uniquely unsettling.” He said advertising would be a last resort. Now OpenAI is testing ads inside ChatGPT for free users and the Go plan. So what changed? The math caught up. OpenAI did not suddenly become an ad company. It became what every massive digital platform eventually becomes: a company with attention, behavior, and a bill it has to pay. And once you have all three, advertising is not some shocking betrayal. It is gravity. Every great product eventually has to figure out",
+   "title": "Sam Altman lied to your face.\n\nAnd it is one of the most important tells in tech right now.\n\nTwo years ago, he called ads in AI “uniquely un",
+   "url": "https://www.instagram.com/reel/Da3PmyUAFxL/"
+  },
+  {
+   "candidate_id": "https://github.com/openai/codex/issues/32806",
+   "cluster": 0,
+   "engagement": {
+    "comments": 27,
+    "reactions": 59
+   },
+   "published_at": "2026-07-13",
+   "relevance_score": 0.5534,
+   "source": "github",
+   "summary": "Potential duplicates detected. Please review them and close your issue if it is a duplicate. - #32803 - #31860 *Powered by [Codex Action](https://github.com/openai/codex-action)* im furious about this and so sick of OpenAI doing this crap. People were happy and then Boom, back to the same crap that we were struggling with before on 5.5. But now with the 5.6 sub-agent drain and just fast drain in general, we are auto-compacting like freaking crazy and that causes so many issu... as things go, you cant have 5,000 tokens window, I dont think you need more than 290K-tokens I assume some can benefit off it - if you are missing 5..5 , it still exist its a very good model --- it...",
+   "title": "🚨 [SEVERE REGRESSION] GPT-5.6 Sol context cut again: 353K → 258K despite advertised 1.05M",
+   "url": "https://github.com/openai/codex/issues/32806"
+  },
+  {
+   "candidate_id": "https://github.com/openai/codex/issues/31814",
+   "cluster": 0,
+   "engagement": {
+    "comments": 100,
+    "reactions": 203
+   },
+   "published_at": "2026-07-09",
+   "relevance_score": 0.5394,
+   "source": "github",
+   "summary": "Potential duplicates detected. Please review them and close your issue if it is a duplicate.\n\n- #31097\n\n*Powered by [Codex Action](https://github.com/openai/codex-action)* Independent reproduction on `codex-cli 0.144.0` on macOS. This also reproduces with a project-scoped custom agent whose registration and role file resolve correctly.\n\nConfiguration shape:\n\n```toml\n# .codex/config.toml\n[agents.code_explorer]\ndescription = \"Read-only codebase explorer\"\nconfig_file = \"... I reached the same issue. All agents spawned from the sol xhigh are sol xhigh. This is ridiculous. Simple tasks spawned from sol xhigh or higher should use a lighter model.",
+   "title": "GPT-5.6 Sol cannot specify subagent models, forcing all subagents to also be Sol instances",
+   "url": "https://github.com/openai/codex/issues/31814"
+  },
+  {
+   "candidate_id": "https://reddit.com/r/stocks/comments/1vdf3sz/how_the_fck_is_openai_going_to_pay_14_trillion",
+   "cluster": 0,
+   "engagement": {
+    "num_comments": 216,
+    "score": 457
+   },
+   "published_at": "2026-08-02",
+   "relevance_score": 0.4706,
+   "source": "reddit",
+   "summary": "OpenAI currently generates $25B/year, and it is not a profitable company.. Yesterday I also saw that there is only 22% the will IPO this year, so most likely 2027, this is where they could get part of the money. They are expected to IPO at $1T valuation and companies usually sell 15% to 25% of the shares which would give them 150-250B.. This is type of the investment I would never consider regardl",
+   "title": "How The F*ck is OpenAI Going to Pay 1.4 Trillion??",
+   "url": "https://www.reddit.com/r/stocks/comments/1vdf3sz/how_the_fck_is_openai_going_to_pay_14_trillion/"
+  },
+  {
+   "candidate_id": "https://youtube.com/watch?v=sjjbpwlppww",
+   "cluster": 0,
+   "engagement": {
+    "comments": 0,
+    "likes": 0,
+    "views": 0
+   },
+   "relevance_score": 0.47,
+   "source": "youtube",
+   "summary": "Welcome everyone. Thank you for joining us again. Uh today's conversation looks at a research collaboration between the Manton Center for Orphan Disease uh orphan Disease Research at Boston Children's Hospital and Harvard and ourselves at OpenAI. Um, so you should know that hundreds of millions of families worldwide struggle with rare disease and the average time just to get a diagnosis is six to seven years. So it's it's a huge long struggle for them. Um, and this research is super important. So in this in this study across 376 cases, an AIdriven workflow surfaced evidence linkeds that led to 18 diagnoses of rare disease. So we want to dig into that. First, we're going to hear from Stavronis,...",
+   "title": "How AI Helps Solve Medical Mysteries at Boston Children’s Hospital | OpenAI Forum",
+   "url": "https://www.youtube.com/watch?v=SJJBPwlPpww"
+  },
+  {
+   "candidate_id": "https://youtube.com/watch?v=_gd9yzac-wi",
+   "cluster": 2,
+   "engagement": {
+    "comments": 0,
+    "likes": 0,
+    "views": 0
+   },
+   "relevance_score": 0.457,
+   "source": "youtube",
+   "summary": "Can you help me knock out some of my to-do's? Also, can you pull up some music? >> Let me pull that up. All right, I see your list. DevDay activation idea, developer homepage copy, weekly DX agenda, and the conference speaker shortlist. Which one do you want to tackle first? >> Let's start with the DevDay activation ideas. I've got a couple ideas, and I'm hoping we can brainstorm together. One idea is controlling code execution with a Game Boy. And another is a booth where people use ChatGPT and image generation to design custom t-shirts and get it printed right there. I also like the idea of something collaborative where everybody contributes to the same game. What do...",
+   "title": "Using Voice in ChatGPT Work",
+   "url": "https://www.youtube.com/watch?v=_Gd9yzAc-WI"
+  },
+  {
+   "candidate_id": "https://jobs.ashbyhq.com/openai/94d132c8-3749-42dc-a0b6-ea19c875c77a",
+   "cluster": 0,
+   "engagement": {
+    "open_roles": 1
+   },
+   "published_at": "2026-08-04",
+   "relevance_score": 0.4238,
+   "source": "jobs",
+   "summary": "About the Team The OpenAI Audit Team is on a mission to build the future of internal audit from the ground up. Our ambition will be powered by a high-energy, technically exceptional team with the judgment, intellectual curiosity, and creativity to harness the latest advances in AI and design a truly next-generation audit function. As AI reshapes how work is performed across the enterprise, Internal Audit will use AI, automation, and data analytics to identify and assess the most significant and",
+   "title": "Finance & Operations Audit Leader",
+   "url": "https://jobs.ashbyhq.com/openai/94d132c8-3749-42dc-a0b6-ea19c875c77a"
+  },
+  {
+   "candidate_id": "https://jobs.ashbyhq.com/openai/66e76c14-bb6e-4e26-a333-744bbe35abbb",
+   "cluster": 0,
+   "engagement": {
+    "open_roles": 1
+   },
+   "published_at": "2026-08-03",
+   "relevance_score": 0.4208,
+   "source": "jobs",
+   "summary": "About the team ​​Preparedness is a critical Safety Research team at OpenAI, which is focused on mitigating AI threats to global security that could scale to an extreme level of severity. Our work involves: Measurement. Monitoring and predicting the evolving capabilities of frontier AI systems. Mitigation. Keeping misuse safeguards, alignment tools, and security measures on track to adequately address extreme threats that might arise in the future. Coordination. Setting mitigation targets by main",
+   "title": "Researcher, Frontier Cybersecurity Risks",
+   "url": "https://jobs.ashbyhq.com/openai/66e76c14-bb6e-4e26-a333-744bbe35abbb"
+  },
+  {
+   "candidate_id": "https://jobs.ashbyhq.com/openai/6ab33f9d-f25f-4ae4-903f-ebc35a8dc29d",
+   "cluster": 3,
+   "engagement": {
+    "open_roles": 1
+   },
+   "published_at": "2026-08-03",
+   "relevance_score": 0.4208,
+   "source": "jobs",
+   "summary": "About the Team Critical Harm Operations sits within User Safety & Risk Operations and builds enforcement systems for Frontier Risk and Material Harm that are accurate, fast, defensible, and built to scale. We turn policy intent into operational readiness, review standards, quality systems, escalation paths, automation guardrails, and durable cross-functional operating models. About the Role We are looking for an exceptional Program Manager to help build durable operating systems and run some of",
+   "title": "Program Manager, Critical Harm Operations",
+   "url": "https://jobs.ashbyhq.com/openai/6ab33f9d-f25f-4ae4-903f-ebc35a8dc29d"
+  },
+  {
+   "candidate_id": "https://youtube.com/watch?v=g-g6e-qtcja",
+   "cluster": 0,
+   "engagement": {
+    "comments": 0,
+    "likes": 0,
+    "views": 0
+   },
+   "relevance_score": 0.407,
+   "source": "youtube",
+   "summary": "At OpenAI, our revenue learning system is always on and always learning with ChatGPT work. One way we surface this intelligence is through a weekly revenue learning report built by ChatGPT work. Here's a demo example for Blossom Systems focused on the launch of their new product, Blossom Observability. The report ChatGPT work created for both web and mobile brings together signals from a wide array of sources, including seller activity, customer conversations, and signals from the market, then turns them into insight and action. First, it gives me trends over time so I can track our performance. Then, it provides an executive summary, making sure I understand the key points of the report before I dig in further. From...",
+   "title": "ChatGPT Work for Sales: Revenue Intelligence for Sales Leaders",
+   "url": "https://www.youtube.com/watch?v=g-g6E-qtCjA"
+  },
+  {
+   "candidate_id": "https://polymarket.com/event/what-kind-of-product-will-openai-announce-in-2026",
+   "cluster": 4,
+   "engagement": {
+    "liquidity": 19490.66281,
+    "volume": 14465.230043
+   },
+   "published_at": "2026-08-05",
+   "relevance_score": 0.3595,
+   "source": "polymarket",
+   "summary": "down 10.5% this month",
+   "title": "What kind of product will OpenAI announce in 2026?",
+   "url": "https://polymarket.com/event/what-kind-of-product-will-openai-announce-in-2026"
+  },
+  {
+   "candidate_id": "https://polymarket.com/event/will-openai-launch-a-consumer-hardware-product-by",
+   "cluster": 5,
+   "engagement": {
+    "liquidity": 9015.6092,
+    "volume": 13855.917849
+   },
+   "published_at": "2026-08-05",
+   "relevance_score": 0.3593,
+   "source": "polymarket",
+   "summary": "up 12.5% this month",
+   "title": "Will OpenAI launch a consumer hardware product by...?",
+   "url": "https://polymarket.com/event/will-openai-launch-a-consumer-hardware-product-by"
+  },
+  {
+   "candidate_id": "https://polymarket.com/event/highest-openai-score-on-humanitys-last-exam-in-2026-20260723225144062",
+   "cluster": 6,
+   "engagement": {
+    "liquidity": 5264.8737,
+    "volume": 11279.884549
+   },
+   "published_at": "2026-08-05",
+   "relevance_score": 0.3592,
+   "source": "polymarket",
+   "summary": "down 12.5% this week",
+   "title": "Highest OpenAI score on Humanity’s Last Exam in 2026?",
+   "url": "https://polymarket.com/event/highest-openai-score-on-humanitys-last-exam-in-2026-20260723225144062"
+  },
+  {
+   "candidate_id": "https://polymarket.com/event/openai-ipo-by",
+   "cluster": 7,
+   "engagement": {
+    "liquidity": 51883.67567,
+    "volume": 124386.641325
+   },
+   "published_at": "2026-08-05",
+   "relevance_score": 0.3577,
+   "source": "polymarket",
+   "summary": "down 4.0% this month",
+   "title": "OpenAI IPO by...?",
+   "url": "https://polymarket.com/event/openai-ipo-by"
+  },
+  {
+   "candidate_id": "https://polymarket.com/event/will-anthropic-or-openai-ipo-first",
+   "cluster": 8,
+   "engagement": {
+    "liquidity": 18352.0711,
+    "volume": 29910.1587
+   },
+   "published_at": "2026-08-05",
+   "relevance_score": 0.3577,
+   "source": "polymarket",
+   "summary": "up 2.5% this month",
+   "title": "Will Anthropic or OpenAI IPO first?",
+   "url": "https://polymarket.com/event/will-anthropic-or-openai-ipo-first"
+  },
+  {
+   "candidate_id": "https://polymarket.com/event/openai-ipo-closing-market-cap-554",
+   "cluster": 9,
+   "engagement": {
+    "liquidity": 64341.23595,
+    "volume": 3922.1389930000005
+   },
+   "published_at": "2026-08-05",
+   "relevance_score": 0.3576,
+   "source": "polymarket",
+   "summary": "up 5.7% this month",
+   "title": "OpenAI IPO Closing Market Cap",
+   "url": "https://polymarket.com/event/openai-ipo-closing-market-cap-554"
+  },
+  {
+   "candidate_id": "https://polymarket.com/event/openai-ipo-closing-market-cap",
+   "cluster": 10,
+   "engagement": {
+    "liquidity": 81195.60891,
+    "volume": 2534.084412
+   },
+   "published_at": "2026-08-05",
+   "relevance_score": 0.3575,
+   "source": "polymarket",
+   "summary": "OpenAI IPO Closing Market Cap Will OpenAI’s market cap be between $1.25T and $1.5T at market close on IPO day?",
+   "title": "OpenAI IPO Closing Market Cap",
+   "url": "https://polymarket.com/event/openai-ipo-closing-market-cap"
+  },
+  {
+   "candidate_id": "https://polymarket.com/event/openai-announces-it-has-achieved-agi-before-2027",
+   "cluster": 11,
+   "engagement": {
+    "liquidity": 6413.7464,
+    "volume": 9829.439158000001
+   },
+   "published_at": "2026-08-05",
+   "relevance_score": 0.3575,
+   "source": "polymarket",
+   "summary": "down 1.0% this week",
+   "title": "OpenAI announces it has achieved AGI before 2027?",
+   "url": "https://polymarket.com/event/openai-announces-it-has-achieved-agi-before-2027"
+  },
+  {
+   "candidate_id": "https://polymarket.com/event/anthropic-vs-openai-higher-valuation-on-december-31",
+   "cluster": 12,
+   "engagement": {
+    "liquidity": 5528.2033,
+    "volume": 7463.619407
+   },
+   "published_at": "2026-08-05",
+   "relevance_score": 0.3574,
+   "source": "polymarket",
+   "summary": "up 5.5% today",
+   "title": "Anthropic vs OpenAI - higher valuation on December 31?",
+   "url": "https://polymarket.com/event/anthropic-vs-openai-higher-valuation-on-december-31"
+  },
+  {
+   "candidate_id": "https://polymarket.com/event/openai-ipo-closing-market-cap-above",
+   "cluster": 9,
+   "engagement": {
+    "liquidity": 28381.3379,
+    "volume": 915.343211
+   },
+   "published_at": "2026-08-05",
+   "relevance_score": 0.3574,
+   "source": "polymarket",
+   "summary": "OpenAI IPO closing market cap above ___ ? OpenAI IPO closing market cap above $1T?",
+   "title": "OpenAI IPO closing market cap above ___ ?",
+   "url": "https://polymarket.com/event/openai-ipo-closing-market-cap-above"
+  },
+  {
+   "candidate_id": "https://polymarket.com/event/openai-1t-ipo-before-2027",
+   "cluster": 13,
+   "engagement": {
+    "liquidity": 2420.7477,
+    "volume": 3844.451842
+   },
+   "published_at": "2026-08-05",
+   "relevance_score": 0.3573,
+   "source": "polymarket",
+   "summary": "up 9.0% this week",
+   "title": "OpenAI $1t+ IPO before 2027?",
+   "url": "https://polymarket.com/event/openai-1t-ipo-before-2027"
+  },
+  {
+   "candidate_id": "https://polymarket.com/event/anthropic-openai-vs-microsoft-higher-valuation-on-december-31",
+   "cluster": 12,
+   "engagement": {
+    "liquidity": 2980.2163,
+    "volume": 5208.995551
+   },
+   "published_at": "2026-08-05",
+   "relevance_score": 0.3573,
+   "source": "polymarket",
+   "summary": "down 23.0% this month",
+   "title": "Anthropic + OpenAI vs Microsoft - higher valuation on December 31?",
+   "url": "https://polymarket.com/event/anthropic-openai-vs-microsoft-higher-valuation-on-december-31"
+  },
+  {
+   "candidate_id": "https://platform.openai.com/docs/overview",
+   "cluster": 0,
+   "engagement": {
+    "comments": 0,
+    "saves": 0
+   },
+   "relevance_score": 0.3318,
+   "source": "pinterest",
+   "summary": "Explore developer resources, tutorials, API docs, and dynamic examples to get the most out of OpenAI's platform.",
+   "title": "Explore developer resources, tutorials, API docs, and dynamic examples to get the most out of OpenAI's platform.",
+   "url": "https://platform.openai.com/docs/overview"
+  },
+  {
+   "candidate_id": "http://thedatascientist.com/top-5-llm-api-providers-for-openai-claude-and-gemini-in-2026",
+   "cluster": 0,
+   "engagement": {
+    "comments": 0,
+    "saves": 0
+   },
+   "relevance_score": 0.2718,
+   "source": "pinterest",
+   "summary": "Top 5 LLM API Providers for OpenAI, Claude, and Gemini in 2026\n\nMost teams don't look for an LLM API provider because they want another vendor in the stack. They start looking when model access becomes harder to manage across multiple AI models and platforms.\n\n🔗 Read more: https://thedatascientist.com/top-5-llm-api-providers-for-openai-claude-and-gemini-in-2026/\n\n#LLM #AI #OpenAI #Claude #Gemini #",
+   "title": "Top 5 LLM API Providers for OpenAI, Claude, and Gemini in 2026\n\nMost teams don't look for an LLM API provider because they want another vend",
+   "url": "http://thedatascientist.com/top-5-llm-api-providers-for-openai-claude-and-gemini-in-2026/"
+  },
+  {
+   "candidate_id": "https://pinterest.com/pin/1145955067715950896",
+   "cluster": 0,
+   "engagement": {
+    "comments": 0,
+    "saves": 0
+   },
+   "relevance_score": 0.2118,
+   "source": "pinterest",
+   "summary": "https://businesscompassllc.com/schedule-appointment/\n\nAn end-to-end demo of an AI-Enabled Student Support Platform for higher education — a three-tier (plus Tier Zero) service model that improves engagement, streamlines service, and increases operational efficiency across Admissions, Financial Aid, and the Registrar.\n\nBuilt with Next.js, TypeScript, and the OpenAI API, the platform handles the ful",
+   "title": "https://businesscompassllc.com/schedule-appointment/\n\nAn end-to-end demo of an AI-Enabled Student Support Platform for higher education — a",
+   "url": "https://www.pinterest.com/pin/1145955067715950896"
+  }
+ ],
+ "schema_version": "1.2",
+ "source_status": {
+  "github": "ok",
+  "grounding": "unreachable",
+  "hackernews": "ok",
+  "instagram": "ok",
+  "jobs": "ok",
+  "linkedin": "ok",
+  "pinterest": "ok",
+  "polymarket": "ok",
+  "reddit": "partial",
+  "threads": "ok",
+  "tiktok": "ok",
+  "youtube": "ok"
+ },
+ "window_days": 30
+}

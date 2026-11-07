@@ -1,11 +1,11 @@
 ---
 name: joshu-brain
 description: Search Desktop files via gbrain; mail use joshu-mail.
-version: 1.10.0
+version: 1.10.1
 metadata:
   hermes:
     category: brain
-    version: 1.10.0
+    version: 1.10.1
 ---
 
 # Joshu File Brain

@@ -1,22 +1,33 @@
 /**
- * Supervise Joshu MCP HTTP servers (gbrain, connectors, composio guard).
+ * Supervise Joshu MCP HTTP servers (gbrain, connectors, composio guard, metered MCP relays).
  * Restarts unhealthy processes and nudges Hermes gateway when connectors recover.
  */
 
 import { execFile as execFileCb } from "node:child_process";
 import path from "node:path";
 import { promisify } from "node:util";
-import { listJoshuMcpDependencies, probeMcpHttpHealth } from "./mcpDependencyHealth.js";
+import {
+  listJoshuMcpDependencies,
+  meteredMcpRelayLabel,
+  probeMcpHttpHealth,
+} from "./mcpDependencyHealth.js";
+import { METERED_PROVIDER_DEFINITIONS } from "./meteredProviders/config.js";
 import { readProvisionInstanceEnv } from "./provisionInstanceEnv.js";
 import { resolveScriptPath } from "./scriptsRoot.js";
 
 const execFile = promisify(execFileCb);
 
-const START_SCRIPTS: Record<string, string> = {
-  "gbrain MCP": "start-gbrain-mcp-http.sh",
-  "connectors MCP": "start-joshu-connectors-mcp.sh",
-  "composio MCP guard": "start-composio-mcp-guard.sh",
-  "fal MCP relay": "start-fal-mcp-relay.sh",
+/** Start script and its arguments for each MCP dependency label. */
+const START_SCRIPTS: Record<string, [script: string, ...args: string[]]> = {
+  "gbrain MCP": ["start-gbrain-mcp-http.sh"],
+  "connectors MCP": ["start-joshu-connectors-mcp.sh"],
+  "composio MCP guard": ["start-composio-mcp-guard.sh"],
+  ...Object.fromEntries(
+    METERED_PROVIDER_DEFINITIONS.map((def) => [
+      meteredMcpRelayLabel(def),
+      ["start-metered-mcp-relay.sh", def.id, String(def.localMcpPort)] as [string, ...string[]],
+    ]),
+  ),
 };
 
 /** Boot scripts come from the scripts root of the image (see src/scriptsRoot.ts). */
@@ -56,14 +67,15 @@ export function startJoshuMcpSupervisor(opts: McpSupervisorOptions): () => void 
         const wasOk = lastHealthy.get(dep.label) ?? true;
 
         if (!ok) {
-          const script = START_SCRIPTS[dep.label];
+          const start = START_SCRIPTS[dep.label];
           const now = Date.now();
           const lastRestart = lastRestartAt.get(dep.label) ?? 0;
-          if (script && now - lastRestart >= minRestartMs) {
+          if (start && now - lastRestart >= minRestartMs) {
+            const [script, ...scriptArgs] = start;
             console.warn(`[mcp-supervisor] ${dep.label} unhealthy — restarting (${dep.healthUrl})`);
             lastRestartAt.set(dep.label, now);
             try {
-              await execFile("bash", [resolveStartScript(opts.projectRoot, script)], {
+              await execFile("bash", [resolveStartScript(opts.projectRoot, script), ...scriptArgs], {
                 cwd: opts.projectRoot,
                 timeout: 120_000,
                 env: { ...process.env, ...readProvisionInstanceEnv(), APP_DIR: opts.projectRoot },

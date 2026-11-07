@@ -17,6 +17,7 @@ import { resolveJoshuIdentity } from "../joshuIdentity.js";
 import { resolveEventWindow, resolveListEventsWindow, type LocalSlotInput } from "./localSlot.js";
 import { buildJoshuSignedEmailHtml } from "../email/joshuEmailSignature.js";
 import { readAgentGrant, writeAgentGrant } from "./store.js";
+import { companionGrantPushAllowed } from "../connectors/apiAccess.js";
 import { parseOptionalRecipients, parseRequiredTo } from "./recipients.js";
 import { agentRestWriteBlocked } from "../actionGuard/agentRestGate.js";
 import { gateNylasSendRequest, isJmailOwnerSend } from "../actionGuard/nylasSendGate.js";
@@ -108,7 +109,10 @@ export function registerNylasRoutes(router: Router, opts: { projectRoot: string 
     }
   });
 
-  /** Import a grant created by the control plane (signup provisioning). */
+  /**
+   * Import a grant created by the control plane (signup provisioning). Open to the internet,
+   * because the control plane pushes over HTTPS; it never replaces another grant.
+   */
   router.post("/api/nylas/agent/import", async (req: Request, res: Response) => {
     const body = req.body as { grantId?: unknown; email?: unknown };
     const grantId = readString(body.grantId);
@@ -117,6 +121,17 @@ export function registerNylasRoutes(router: Router, opts: { projectRoot: string 
       res.status(400).json({ error: "grantId and email are required" });
       return;
     }
+    const saved = readAgentGrant(opts.projectRoot);
+    if (!companionGrantPushAllowed(saved, { grantId, email })) {
+      console.warn(`[nylas] companion grant push refused grant=${grantId} (box has another grant)`);
+      res.status(409).json({ error: "grant_already_set" });
+      return;
+    }
+    if (saved?.grantId === grantId) {
+      res.json({ ok: true, agent: saved });
+      return;
+    }
+    console.info(`[nylas] companion grant imported grant=${grantId}`);
     const record = {
       grantId,
       email,

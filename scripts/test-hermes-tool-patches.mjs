@@ -75,7 +75,21 @@ def browser_navigate(url: str, task_id: Optional[str] = None) -> str:
     """Navigate to a URL."""
     if _is_camofox_mode():
         return camofox_navigate(url, task_id)
-    return json.dumps({"success": True, "cdp": os.environ.get("BROWSER_CDP_URL", "")})
+    session_info = _active_sessions.get(task_id or "", {})
+    title = os.environ.get("FIXTURE_TITLE", "Example Domain")
+    response = {"success": True, "cdp": os.environ.get("BROWSER_CDP_URL", ""), "title": title}
+    if response["success"]:
+        if any(p in title.lower() for p in ("captcha", "just a moment", "are you a robot")):
+            response["bot_detection_warning"] = (
+                "3) Enable advanced stealth (BROWSERBASE_ADVANCED_STEALTH=true, requires Scale plan)"
+            )
+        if "features" in session_info and not session_info["features"].get("proxies"):
+            response["stealth_warning"] = "Running WITHOUT residential proxies."
+
+        # Auto-take a compact snapshot so the model can act immediately
+        # without a separate browser_snapshot call.
+        response["snapshot"] = "- page"
+    return json.dumps(response)
 
 
 MODULE_SENTINEL = "kept"
@@ -154,6 +168,12 @@ assert.ok(
   once.indexOf('Snapshot of the page.\n    """\n    _joshu_ensure_err') > 0,
   "ensure call goes after the multi-line signature and docstring",
 );
+assert.equal((once.match(/^def _joshu_bot_check_advice\(/gm) || []).length, 1);
+assert.equal((once.match(/^        _joshu_bot_check_advice\(response, session_info\)$/gm) || []).length, 1);
+assert.ok(
+  once.indexOf("_joshu_bot_check_advice(response, session_info)\n        # Auto-take a compact snapshot") > 0,
+  "bot check advice runs right before the automatic snapshot",
+);
 
 // --- Upgrade from the old touch patch (bare call right after the def line) ---
 const legacy = path.join(tmp, "legacy_browser_tool.py");
@@ -183,23 +203,48 @@ const upgraded = fs.readFileSync(legacy, "utf8");
 assert.ok(pyCompiles(legacy), "upgrade repairs the file");
 assert.equal((upgraded.match(/^    _joshu_cloud_browser_touch\(\)$/gm) || []).length, 0);
 assert.equal((upgraded.match(/^def _joshu_cloud_browser_touch/gm) || []).length, 1);
-assert.ok(upgraded.includes("joshu_cloud_browser_ensure_v3"));
+assert.ok(upgraded.includes("joshu_cloud_browser_ensure_v4"));
 assert.ok(upgraded.includes("LEGACY_SENTINEL = 1"), "module code after the old helper survives");
 assert.match(runPatch(browserPatch, legacy), /already applied/);
+
+// --- Upgrade from v3 ensure (no backend line, no bot check advice) ---
+const v3Path = path.join(tmp, "v3_browser_tool.py");
+const backendLines = /\n    backend = str\(payload\.get\("backend"\)[\s\S]*?os\.environ\["JOSHU_SHARED_BROWSER_BACKEND"\] = backend\n/;
+assert.match(once, backendLines, "v4 helper stores the backend");
+const botCheckDef = /def _joshu_bot_check_advice\([\s\S]*?\n(?=\n\ndef browser_navigate\()/;
+assert.match(once, botCheckDef);
+fs.writeFileSync(
+  v3Path,
+  once
+    .replaceAll("joshu_cloud_browser_ensure_v4", "joshu_cloud_browser_ensure_v3")
+    .replace(backendLines, "\n")
+    .replace(botCheckDef, "")
+    .replace("        _joshu_bot_check_advice(response, session_info)\n", ""),
+);
+assert.ok(pyCompiles(v3Path), "v3 fixture compiles");
+assert.ok(!fs.readFileSync(v3Path, "utf8").includes("_joshu_bot_check_advice"));
+runPatch(browserPatch, v3Path);
+const v4FromV3 = fs.readFileSync(v3Path, "utf8");
+assert.ok(pyCompiles(v3Path), "v3 → v4 upgrade compiles");
+assert.ok(v4FromV3.includes("joshu_cloud_browser_ensure_v4"));
+assert.equal((v4FromV3.match(/JOSHU_SHARED_BROWSER_BACKEND"\] = backend/g) || []).length, 1);
+assert.equal((v4FromV3.match(/^def _joshu_bot_check_advice\(/gm) || []).length, 1);
+assert.equal((v4FromV3.match(/^        _joshu_bot_check_advice\(response, session_info\)$/gm) || []).length, 1);
+assert.match(runPatch(browserPatch, v3Path), /already applied/);
 
 // --- Upgrade from v2 ensure (no browser_restarted branch) ---
 const v2Path = path.join(tmp, "v2_browser_tool.py");
 const restartedBranch = /\n    restarted = payload\.get\("restarted"\)\n[\s\S]*?\n        \)\n/;
-assert.match(once, restartedBranch, "v3 helper has the browser_restarted branch");
+assert.match(once, restartedBranch, "v4 helper has the browser_restarted branch");
 fs.writeFileSync(
   v2Path,
-  once.replaceAll("joshu_cloud_browser_ensure_v3", "joshu_cloud_browser_ensure_v2").replace(restartedBranch, "\n"),
+  once.replaceAll("joshu_cloud_browser_ensure_v4", "joshu_cloud_browser_ensure_v2").replace(restartedBranch, "\n"),
 );
 assert.ok(pyCompiles(v2Path), "v2 fixture compiles");
 runPatch(browserPatch, v2Path);
 const v3 = fs.readFileSync(v2Path, "utf8");
-assert.ok(pyCompiles(v2Path), "v2 → v3 upgrade compiles");
-assert.ok(v3.includes("joshu_cloud_browser_ensure_v3"));
+assert.ok(pyCompiles(v2Path), "v2 → v4 upgrade compiles");
+assert.ok(v3.includes("joshu_cloud_browser_ensure_v4"));
 assert.equal((v3.match(/"browser_restarted"/g) || []).length, 1);
 assert.equal((v3.match(/^def _joshu_cloud_browser_touch/gm) || []).length, 1);
 assert.equal((v3.match(/_joshu_ensure_err = _joshu_cloud_browser_touch\(\)/g) || []).length, 10);
@@ -210,14 +255,14 @@ const v1 = path.join(tmp, "v1_browser_tool.py");
 fs.writeFileSync(
   v1,
   once
-    .replaceAll("joshu_cloud_browser_ensure_v3", "joshu_cloud_browser_ensure")
+    .replaceAll("joshu_cloud_browser_ensure_v4", "joshu_cloud_browser_ensure")
     .replaceAll("_joshu_drop_cdp_sessions", "_joshu_drop_stale_cdp_sessions"),
 );
 assert.ok(pyCompiles(v1), "v1 fixture compiles");
 runPatch(browserPatch, v1);
 const v2 = fs.readFileSync(v1, "utf8");
 assert.ok(pyCompiles(v1), "v1 → v2 upgrade compiles");
-assert.ok(v2.includes("joshu_cloud_browser_ensure_v3"));
+assert.ok(v2.includes("joshu_cloud_browser_ensure_v4"));
 assert.equal((v2.match(/^def _joshu_cloud_browser_touch/gm) || []).length, 1);
 assert.equal((v2.match(/^def _joshu_drop_cdp_sessions/gm) || []).length, 1);
 assert.equal((v2.match(/^def _joshu_drop_stale_cdp_sessions/gm) || []).length, 0, "v1 drop helper removed");
@@ -294,6 +339,27 @@ out["restarted"] = json.loads(bt.browser_navigate("https://example.com", task_id
 out["restarted_generation"] = os.environ["JOSHU_CDP_GENERATION"]
 state["ensure"] = (200, {"ok": True, "backend": "cloud", "cdpUrl": relay, "generation": 3})
 out["after_restart"] = json.loads(bt.browser_navigate("https://example.com", task_id="t3"))
+
+# Bot check advice on the shared browser (CDP override sessions).
+bt._active_sessions["bc"] = {"cdp_url": "ws://127.0.0.1:9333/devtools/browser/a", "features": {"cdp_override": True}}
+os.environ["FIXTURE_TITLE"] = "Just a moment..."
+out["bc_cloud"] = json.loads(bt.browser_navigate("https://example.com", task_id="bc"))
+out["bc_backend"] = os.environ["JOSHU_SHARED_BROWSER_BACKEND"]
+os.environ["FIXTURE_TITLE"] = "Example Domain"
+out["bc_normal"] = json.loads(bt.browser_navigate("https://example.com", task_id="bc"))
+state["ensure"] = (200, {"ok": True, "backend": "local", "cdpUrl": ""})
+os.environ["FIXTURE_TITLE"] = "Are you a robot?"
+out["bc_local"] = json.loads(bt.browser_navigate("https://example.com", task_id="bc"))
+# An older Joshu stack without /api/browser/ensure reports no backend: local advice.
+os.environ.pop("JOSHU_SHARED_BROWSER_BACKEND")
+state["ensure"] = (404, None)
+os.environ["FIXTURE_TITLE"] = "Captcha"
+out["bc_unknown"] = json.loads(bt.browser_navigate("https://example.com", task_id="bc"))
+out["bc_unknown_env"] = os.environ.get("JOSHU_SHARED_BROWSER_BACKEND")
+# A session that Hermes made with its own cloud provider keeps the upstream text.
+bt._active_sessions["hermes_cloud"] = {"cdp_url": "", "features": {"proxies": False}}
+os.environ["FIXTURE_TITLE"] = "Captcha"
+out["bc_upstream"] = json.loads(bt.browser_navigate("https://example.com", task_id="hermes_cloud"))
 print(json.dumps(out))
 `, tmp);
 const r = JSON.parse(runtime.trim().split("\n").pop());
@@ -317,6 +383,24 @@ assert.equal(r.restarted.message, "Joshu stopped the shared browser.");
 assert.equal(r.restarted.stoppedAt, "2026-10-16T00:06:19.000Z");
 assert.equal(r.restarted_generation, "3", "the new browser is adopted before the notice returns");
 assert.equal(r.after_restart.success, true, "the next call runs on the new browser");
+assert.equal(r.bc_backend, "cloud", "ensure stores the backend");
+assert.equal(r.bc_cloud.stealth_warning, undefined, "no proxy warning on the shared browser");
+assert.match(r.bc_cloud.bot_detection_warning, /^Page title 'Just a moment\.\.\.' looks like a bot check/);
+assert.match(r.bc_cloud.bot_detection_warning, /Wait about 10 seconds, then call browser_snapshot/);
+assert.match(r.bc_cloud.bot_detection_warning, /browser_handoff_request/);
+assert.match(r.bc_cloud.bot_detection_warning, /different network address/);
+assert.doesNotMatch(r.bc_cloud.bot_detection_warning, /BROWSERBASE/i);
+assert.equal(r.bc_cloud.snapshot, "- page", "the automatic snapshot still runs");
+assert.equal(r.bc_normal.bot_detection_warning, undefined);
+assert.equal(r.bc_normal.stealth_warning, undefined);
+assert.match(r.bc_local.bot_detection_warning, /has no captcha solver/);
+assert.match(r.bc_local.bot_detection_warning, /browser_handoff_request/);
+assert.doesNotMatch(r.bc_local.bot_detection_warning, /Wait about 10 seconds/);
+assert.equal(r.bc_unknown_env, null, "no backend stored without /api/browser/ensure");
+assert.match(r.bc_unknown.bot_detection_warning, /has no captcha solver/, "unknown backend gets the local advice");
+assert.match(r.bc_unknown.bot_detection_warning, /browser_handoff_request/);
+assert.match(r.bc_upstream.bot_detection_warning, /BROWSERBASE_ADVANCED_STEALTH/, "Hermes cloud sessions keep upstream text");
+assert.equal(r.bc_upstream.stealth_warning, "Running WITHOUT residential proxies.");
 
 // --- Terminal guard: Hermes config and runtime file writes blocked, reads allowed ---
 // The fixture is a tools/ package, so the execute_code patch can import tools.terminal_tool.

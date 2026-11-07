@@ -13,9 +13,10 @@ The manual is for a box that you run yourself. You install the box on your own s
 5. [Files, search, and memory](05-files-search-and-memory.md): where your companion keeps its work and what it remembers.
 6. [Sharing your files](06-sharing-your-files.md): let other people ask questions about your files.
 7. [Safety and approvals](07-safety-and-approvals.md): how to turn on approvals, and when your companion asks you first.
-8. [How to use Multiplayer](08-boss-mode.md): let your companion work together with the companions of your team or your family.
+8. [How to use Multiplayer](08-multiplayer.md): let your companion work together with the companions of your team or your family.
 9. [Your desktop apps](09-desktop-apps.md): a short tour of each app.
-10. [Help and common questions](10-help.md).
+10. [Research reports](10-research-reports.md): ask your companion for a report on what was published about a topic.
+11. [Help and common questions](11-help.md).
 
 ## Five things to try first
 

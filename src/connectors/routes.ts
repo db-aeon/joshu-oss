@@ -18,6 +18,7 @@ import {
 } from "./scheduler.js";
 import { isComposioEnabled } from "../composioApi.js";
 import { agentRestWriteBlocked } from "../actionGuard/agentRestGate.js";
+import { verifyArozosDesktopSession } from "../httpLocalhost.js";
 import { readAgentGrant } from "../nylas/store.js";
 import { isNylasConfigured } from "../nylas/config.js";
 import {
@@ -37,6 +38,7 @@ import {
 } from "./composio/gmail.js";
 import { epochMsToIso } from "./composio/gmailBodies.js";
 import { fetchGmailAttachmentToProject, GmailAttachmentError } from "./composio/gmailAttachments.js";
+import { GmailLiveSearchError, searchOwnerGmailLive } from "./composio/gmailLiveSearch.js";
 import {
   listGmailRegistryAccounts,
   resolveGmailAccount,
@@ -75,7 +77,7 @@ import {
 import { parseOneNoteUrl, requirePageId } from "../onenote/parseUrl.js";
 import { COMPOSIO_ONENOTE_TOOLKIT_VERSION } from "./composio/onenoteConfig.js";
 import { COMPOSIO_GOOGLECALENDAR_TOOLKIT_VERSION } from "./composio/googleCalendarConfig.js";
-import { localDateDayBounds } from "../nylas/localSlot.js";
+import { queryDayBounds } from "../nylas/localSlot.js";
 import {
   buildOwnerTimeAnchorPayload,
   enrichCalendarEventsWithTimeContext,
@@ -456,6 +458,35 @@ export function registerConnectorRoutes(
     res.json({ hits, query: q || undefined, connectedAccountId: connectedAccountId || undefined });
   });
 
+  // Live Gmail search (spec gmail-live-search): Gmail itself, not the mail mirror. Read-only.
+  // Owner desktop session or direct localhost (the connectors MCP) only.
+  router.get("/api/connectors/mail/gmail/live-search", async (req: Request, res: Response) => {
+    if (!(await verifyArozosDesktopSession(req))) {
+      res.status(403).json({ error: "forbidden" });
+      return;
+    }
+    if (!isComposioEnabled()) {
+      res.status(503).json({ error: "Composio is disabled on this box" });
+      return;
+    }
+    const includeSpamTrash = readString(req.query.includeSpamTrash) !== "false";
+    try {
+      const result = await searchOwnerGmailLive(projectRoot, {
+        query: readString(req.query.q),
+        limit: readLimit(req.query.limit, 0) || undefined,
+        connectedAccountId: readConnectedAccountId(req),
+        includeSpamTrash,
+      });
+      res.json(result);
+    } catch (err) {
+      if (err instanceof GmailLiveSearchError) {
+        res.status(err.status).json({ error: err.message, accounts: err.accounts });
+        return;
+      }
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
   router.get("/api/connectors/mail/:provider/messages/:messageId", async (req: Request, res: Response) => {
     const provider = mailProviderFromParam(readString(req.params.provider));
     const messageId = readString(req.params.messageId);
@@ -778,7 +809,11 @@ export function registerConnectorRoutes(
     let timeMin: string | undefined;
     let timeMax: string | undefined;
     if (date && timezone) {
-      const bounds = localDateDayBounds(date, timezone);
+      const bounds = queryDayBounds(date, timezone);
+      if ("error" in bounds) {
+        res.status(400).json({ error: bounds.error });
+        return;
+      }
       timeMin = new Date(bounds.start * 1000).toISOString();
       timeMax = new Date(bounds.end * 1000).toISOString();
     }
@@ -870,7 +905,11 @@ export function registerConnectorRoutes(
     let timeMin = readString(req.query.timeMin) || readString(req.query.time_min);
     let timeMax = readString(req.query.timeMax) || readString(req.query.time_max);
     if (date && timezone && (!timeMin || !timeMax)) {
-      const bounds = localDateDayBounds(date, timezone);
+      const bounds = queryDayBounds(date, timezone);
+      if ("error" in bounds) {
+        res.status(400).json({ error: bounds.error });
+        return;
+      }
       timeMin = new Date(bounds.start * 1000).toISOString();
       timeMax = new Date(bounds.end * 1000).toISOString();
     }

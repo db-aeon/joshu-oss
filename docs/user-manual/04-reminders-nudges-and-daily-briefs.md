@@ -20,7 +20,9 @@ Reminders come by text message when your box can text you. Your box can text you
 
 Sometimes your companion needs a decision from you, for example "Should I accept the new meeting time from Alex?" When nobody else can answer, your companion sends you a **nudge**: a short text about one open question. Each nudge ends with a reference line such as `Ref: pj/t_3888bee9`, so that your reply goes to the right question.
 
-By default, you get at most one nudge each day, on weekdays between 08:00 and 17:00, and never during a meeting. Nudges come the same way as reminders, by text or by email.
+By default, you get at most one nudge each day, on weekdays between 08:00 and 17:00, and never during a meeting.
+
+Nudges come the same way as reminders, by text or by email.
 
 Reply to a nudge in one of these ways:
 

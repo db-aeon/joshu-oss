@@ -12,7 +12,7 @@ Your desktop has a folder named **joshu's files**. Your companion keeps all of i
 | `Planning` | Your daily capture list (ideas and tasks that you mention in chat or by phone), your morning and evening review, and your time-block plan for the day. |
 | `Triage` | Emails that your companion still has to file. Each note points to an email. |
 | `connectors` | Copies of your mail and calendar that your companion keeps up to date. |
-| `Teams` | Your notes for [Multiplayer](08-boss-mode.md) teams. |
+| `Teams` | Your notes for [Multiplayer](08-multiplayer.md) teams. |
 
 ### How email becomes project work
 

@@ -23,6 +23,7 @@ import {
   realtimeGoalCallbackWindow,
   withinCivilHours,
 } from "./callbackWindow.js";
+import { reportFilesInText } from "../research/reportLinks.js";
 import { postSlackMessage, sendTelegramMessage } from "./delivery.js";
 import type { OwnerOutboxSenders } from "./outboxDispatcher.js";
 import type { OwnerOutboxItem, RealtimeGoalDeliveryKind } from "./types.js";
@@ -85,6 +86,7 @@ export function createOwnerOutboxSenders(
         const sids = await sendSms(to, text);
         return sids.length > 0 ? { ok: true, pendingIds: sids } : { ok: false, error: "empty SMS" };
       }
+      const files = reportFilesInText(projectRoot, text);
       const sent =
         route === "slack"
           ? await postSlackMessage(projectRoot, {
@@ -92,11 +94,13 @@ export function createOwnerOutboxSenders(
               threadTs: address.threadId,
               text,
               dedupeKey,
+              files,
             })
           : await sendTelegramMessage(projectRoot, {
               chatId: address.replyAddress,
               threadId: address.threadId,
               text,
+              files,
             });
       return { ok: sent.delivered, providerId: sent.providerId, error: sent.error };
     },

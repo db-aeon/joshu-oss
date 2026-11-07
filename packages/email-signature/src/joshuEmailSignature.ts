@@ -178,8 +178,11 @@ function isOrderedListBlock(lines: string[]): boolean {
   return nonempty.length > 0 && nonempty.every((l) => /^\s*\d+\.\s+\S/.test(l));
 }
 
-/** One blank-line-delimited block → paragraph, list, or soft heading. */
-function renderEmailBlock(paragraph: string): string {
+/**
+ * One blank-line-delimited block → paragraph, list, or soft heading.
+ * `olStart` is the number of the first item when the block is an ordered list.
+ */
+function renderEmailBlock(paragraph: string, olStart = 1): string {
   const lines = paragraph.split("\n");
 
   if (isUnorderedListBlock(lines)) {
@@ -201,7 +204,8 @@ function renderEmailBlock(paragraph: string): string {
         return `<li style="margin:0 0 4px;">${formatInlineEmailText(content)}</li>`;
       })
       .join("");
-    return `<ol style="${P_STYLE}padding-left:24px;">${items}</ol>`;
+    const start = olStart === 1 ? "" : ` start="${olStart}"`;
+    return `<ol${start} style="${P_STYLE}padding-left:24px;">${items}</ol>`;
   }
 
   // Soft headings: "# Title" on its own line (agents often draft in markdown).
@@ -226,7 +230,25 @@ export function plainTextToSimpleEmailHtml(text: string): string {
     return `<div style="${BODY_FONT};"></div>`;
   }
 
-  const inner = trimmed.split(/\n{2,}/).map(renderEmailBlock).join("");
+  // Agents often put a blank line between numbered items ("1. A\n\n2. B"), which splits
+  // one list into many blocks. Each block keeps its written number, and a block that
+  // follows a list and repeats a number ("1." each time) continues the count.
+  let nextOrdinal: number | null = null;
+  const inner = trimmed
+    .split(/\n{2,}/)
+    .map((block) => {
+      const lines = block.split("\n");
+      if (!isOrderedListBlock(lines)) {
+        nextOrdinal = null;
+        return renderEmailBlock(block);
+      }
+      const itemCount = lines.filter((l) => l.trim()).length;
+      const written = Number(/^\s*(\d+)\./.exec(lines.find((l) => l.trim()) ?? "")?.[1] ?? "1");
+      const start = nextOrdinal !== null && written < nextOrdinal ? nextOrdinal : written;
+      nextOrdinal = start + itemCount;
+      return renderEmailBlock(block, start);
+    })
+    .join("");
   return `<div style="${BODY_FONT};">${inner}</div>`;
 }
 

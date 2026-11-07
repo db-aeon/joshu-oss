@@ -1,0 +1,57 @@
+{
+ "ok": true,
+ "status": 200,
+ "json": {
+  "success": true,
+  "posts": [
+   {
+    "id": "1xg4d3p",
+    "permalink": "/r/aigamedev/comments/1xg4d3p/nvidia_has_released_the_weights_for_motionbricks/",
+    "url": "https://www.reddit.com/r/aigamedev/comments/1xg4d3p/nvidia_has_released_the_weights_for_motionbricks/",
+    "title": "NVIDIA has released the weights for MotionBricks on HuggingFace",
+    "selftext": "https://huggingface.co/nvidia/MotionBricks MotionBricks generates real-time motion for game characters and humanoid robots. Give it a character's recent poses and the poses it should reach next, and i",
+    "created_utc": 1793037906,
+    "score": 803,
+    "ups": 803,
+    "num_comments": 115,
+    "subreddit": "aigamedev"
+   },
+   {
+    "id": "1xd8qwb",
+    "permalink": "/r/singularity/comments/1xd8qwb/scientists_grew_a_human_minibrain_and_used_it_to/",
+    "url": "https://www.reddit.com/r/singularity/comments/1xd8qwb/scientists_grew_a_human_minibrain_and_used_it_to/",
+    "title": "Scientists grew a human mini-brain and used it to control a humanoid robot. It learned to grasp objects with 94% accuracy, chase a laser, and transfer learning between tasks—outperforming a conventional neural network in limited tests.",
+    "selftext": "",
+    "created_utc": 1792745554,
+    "score": 580,
+    "ups": 580,
+    "num_comments": 121,
+    "subreddit": "singularity"
+   },
+   {
+    "id": "1xgvhth",
+    "permalink": "/r/EngineeringPorn/comments/1xgvhth/unitree_g1_humanoid_plans_contact_points_across/",
+    "url": "https://www.reddit.com/r/EngineeringPorn/comments/1xgvhth/unitree_g1_humanoid_plans_contact_points_across/",
+    "title": "Unitree G1 humanoid plans contact points across nine body parts to climb ladders, cross obstacles, and recover from falls",
+    "selftext": "ETH Zurich researchers developed a system that lets the robot decide where to place its hands, feet, elbows, knees, and pelvis instead of following a fixed movement sequence. The G1 demonstrated ladde",
+    "created_utc": 1793114668,
+    "score": 482,
+    "ups": 482,
+    "num_comments": 44,
+    "subreddit": "EngineeringPorn"
+   },
+   {
+    "id": "1xfwg29",
+    "permalink": "/r/BGMStock/comments/1xfwg29/a_tech_company_from_shenzhen_chinas_tech_hub_just/",
+    "url": "https://www.reddit.com/r/BGMStock/comments/1xfwg29/a_tech_company_from_shenzhen_chinas_tech_hub_just/",
+    "title": "A tech company from Shenzhen, China's tech hub, just combined humanoid robots with industrial robot arms!",
+    "selftext": "",
+    "created_utc": 1793020377,
+    "score": 458,
+    "ups": 458,
+    "num_comments": 99,
+    "subreddit": "BGMStock"
+   }
+  ]
+ }
+}

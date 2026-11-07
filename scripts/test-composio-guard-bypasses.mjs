@@ -41,7 +41,21 @@ for (const policy of [mjsPolicy, tsPolicy]) {
   const reason = (name, args) => policy.composioCallBlockReason(name, args, enabled);
 
   assert.match(reason("COMPOSIO_MULTI_EXECUTE_TOOL", multi(["GMAIL_FETCH_EMAILS"], ["GMAIL_SEND_EMAIL"])), /Gmail mail send/);
-  assert.match(reason("COMPOSIO_MULTI_EXECUTE_TOOL", multi(["GMAIL_CREATE_EMAIL_DRAFT"])), /Gmail mail send/);
+  assert.match(reason("COMPOSIO_MULTI_EXECUTE_TOOL", multi(["GMAIL_FORWARD_MESSAGE"])), /Gmail mail send/);
+
+  // Gmail drafts: create and read pass the hard blocks; update and send stay blocked
+  for (const name of ["GMAIL_CREATE_EMAIL_DRAFT", "GMAIL_LIST_DRAFTS", "GMAIL_GET_DRAFT"]) {
+    assert.equal(reason(name, {}), null, name);
+    assert.equal(reason("COMPOSIO_MULTI_EXECUTE_TOOL", multi([name])), null, `${name} in multi execute`);
+  }
+  assert.match(reason("COMPOSIO_MULTI_EXECUTE_TOOL", multi(["GMAIL_UPDATE_DRAFT"])), /draft updates are disabled/);
+  assert.match(reason("GMAIL_SEND_DRAFT", {}), /Gmail mail send/);
+  assert.match(reason("GMAIL_DELETE_DRAFT", {}), /disabled for agents/);
+  assert.match(
+    reason("COMPOSIO_MULTI_EXECUTE_TOOL", multi(["GMAIL_CREATE_EMAIL_DRAFT"], ["GMAIL_SEND_DRAFT"])),
+    /Gmail mail send/,
+    "one blocked inner tool call refuses the whole call",
+  );
   assert.match(
     reason("COMPOSIO_MULTI_EXECUTE_TOOL", multi(["COMPOSIO_MULTI_EXECUTE_TOOL", multi(["GOOGLECALENDAR_DELETE_EVENT"])])),
     /Delete\/trash/,
@@ -75,6 +89,12 @@ assert.deepEqual([...tsPolicy.COMPOSIO_BLOCKED_TOOLS], mjsPolicy.COMPOSIO_BLOCKE
   assert.deepEqual(
     guardedComposioCalls("COMPOSIO_MULTI_EXECUTE_TOOL", multi(["GMAIL_FETCH_EMAILS"]), externalPolicy),
     [],
+  );
+  // A Gmail draft create passes the hard blocks, but the action guard still asks the owner
+  const draftArgs = { recipient_email: "guest@example.com", subject: "Hello", body: "Hi" };
+  assert.deepEqual(
+    guardedComposioCalls("COMPOSIO_MULTI_EXECUTE_TOOL", multi(["GMAIL_CREATE_EMAIL_DRAFT", draftArgs]), externalPolicy),
+    [{ toolName: "GMAIL_CREATE_EMAIL_DRAFT", args: draftArgs }],
   );
   assert.deepEqual(
     guardedComposioCalls("COMPOSIO_MULTI_EXECUTE_TOOL", multi(["GOOGLECALENDAR_PATCH_EVENT"]), { ...externalPolicy, enabled: false }),

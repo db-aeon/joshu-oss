@@ -114,7 +114,7 @@ On **complete**, work/personal emails resolve into `profile.json` ([`src/onboard
 
 ## API
 
-Mounted under `PUBLIC_BASE_PATH` (default `/joshu`). JSON body routes require `express.json()` **before** onboarding routes in [`src/server.ts`](../src/server.ts).
+Mounted under `PUBLIC_BASE_PATH` (default `/joshu`). JSON body routes require `express.json()` **before** onboarding routes in [`src/server.ts`](../src/server.ts). Each route needs the desktop session of the owner or a direct localhost request; other requests get `401` `desktop_session_required` ([box API edge security](vps-sandbox/box-api-edge-security.md#connectors-nylas-and-onboarding-routes)). Fleet scripts call these routes on the box over SSH, for example `scripts/repair-fleet-ea-cron-timezone.sh`.
 
 | Method | Path | Description |
 |--------|------|-------------|

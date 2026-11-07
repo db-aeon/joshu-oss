@@ -1,0 +1,70 @@
+{
+ "data": {
+  "articles": [
+   {
+    "authors": [
+     {
+      "link": null,
+      "name": "M Brüning"
+     }
+    ],
+    "citation_count": null,
+    "link": "https://www.sciencedirect.com/science/article/pii/S1361920926002725",
+    "pdf_link": null,
+    "publication_year": "2026",
+    "snippet": "… Subscription bundles have mostly been studied in the context of mobility-as-a-service (MaaS… associated with shared e-scooter and e-bike systems exceed those of the modes they …",
+    "source": "Elsevier",
+    "title": "Public transit and shared micromobility bundles: Contrasting stated preferences and actual sales"
+   },
+   {
+    "authors": [
+     {
+      "link": "https://scholar.google.com/citations?user=7y2_A3QAAAAJ&hl=en&oi=sra",
+      "name": "R Julio"
+     },
+     {
+      "link": "https://scholar.google.com/citations?user=A0sUP_EAAAAJ&hl=en&oi=sra",
+      "name": "A Monzon"
+     }
+    ],
+    "citation_count": 48,
+    "link": "https://www.sciencedirect.com/science/article/pii/S2213624X22000943",
+    "pdf_link": null,
+    "publication_year": "2022",
+    "snippet": "… category addressing the factors affecting e-bike BSSs. Second, … the impact of the BSS on the travel patterns of subscribers. … ’ mobility might serve as a catalyser towards active mobility. …",
+    "source": "Elsevier",
+    "title": "Long term assessment of a successful e-bike-sharing system. Key drivers and impact on travel behaviour"
+   },
+   {
+    "authors": [
+     {
+      "link": "https://scholar.google.com/citations?user=nivdqUYAAAAJ&hl=en&oi=sra",
+      "name": "Z Shi"
+     },
+     {
+      "link": null,
+      "name": "J Wu"
+     },
+     {
+      "link": null,
+      "name": "K Wang"
+     },
+     {
+      "link": "https://scholar.google.com/citations?user=otTqvH0AAAAJ&hl=en&oi=sra",
+      "name": "Z Zhu"
+     }
+    ],
+    "citation_count": null,
+    "link": "https://www.sciencedirect.com/science/article/pii/S2210539526000969",
+    "pdf_link": null,
+    "publication_year": "2026",
+    "snippet": "… , but operational data only reflects the shared e-bike trips with motivational factors, lacking … shared micro-mobility service, then discuss the psychological influence in subscription, and …",
+    "source": "Elsevier",
+    "title": "Identifying psychological barriers and facilitators to E-bike sharing subscription"
+   }
+  ],
+  "total_results": 2080
+ },
+ "successful": true,
+ "error": null
+}

@@ -97,7 +97,13 @@ async function createMcpServer() {
         method: "tools/call",
         params: { name, arguments: args },
       });
+      // The control plane can refuse a call with a JSON-RPC error, for example tool_not_allowed.
+      if (payload?.error) {
+        const reason = readString(payload.error.message) || "error";
+        return { content: [{ type: "text", text: `Metered provider error: ${reason}` }], isError: true };
+      }
       if (payload?.content) return payload;
+      if (payload?.result?.content) return payload.result;
       return formatToolResult(payload?.result ?? payload);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

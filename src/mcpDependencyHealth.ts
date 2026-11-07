@@ -1,10 +1,16 @@
 /**
- * Health probes for Joshu-supervised MCP HTTP servers (gbrain, connectors, composio guard).
+ * Health probes for Joshu-supervised MCP HTTP servers (gbrain, connectors, composio guard,
+ * the metered MCP relay of each metered provider).
  * Hermes registers MCP tools once at gateway boot — these must be up first.
  */
 
 import { isActionGuardEnabled } from "./actionGuard/index.js";
-import { falRelayConfigured } from "./meteredProviders/config.js";
+import {
+  METERED_PROVIDER_DEFINITIONS,
+  meteredProviderRelayConfigured,
+  resolveMeteredProviderLocalBaseUrl,
+  type MeteredProviderDefinition,
+} from "./meteredProviders/config.js";
 
 function envTrim(name: string, fallback = ""): string {
   return process.env[name]?.trim() || fallback;
@@ -28,12 +34,9 @@ export function resolveComposioMcpGuardHealthUrl(): string {
   return `${base}/health`;
 }
 
-export function resolveFalMcpRelayHealthUrl(): string {
-  return healthUrlFromBase("JOSHU_FAL_MCP_HTTP_URL", "http://127.0.0.1:8797");
-}
-
-export function isFalMcpRelayRequired(): boolean {
-  return falRelayConfigured();
+/** Label of the metered MCP relay of one provider, for example "fal MCP relay". */
+export function meteredMcpRelayLabel(def: MeteredProviderDefinition): string {
+  return `${def.id} MCP relay`;
 }
 
 export function isComposioMcpGuardRequired(): boolean {
@@ -103,10 +106,11 @@ export function listJoshuMcpDependencies(): McpDependencyProbe[] {
       required: true,
     });
   }
-  if (isFalMcpRelayRequired()) {
+  for (const def of METERED_PROVIDER_DEFINITIONS) {
+    if (!meteredProviderRelayConfigured(def)) continue;
     deps.push({
-      label: "fal MCP relay",
-      healthUrl: resolveFalMcpRelayHealthUrl(),
+      label: meteredMcpRelayLabel(def),
+      healthUrl: `${resolveMeteredProviderLocalBaseUrl(def)}/health`,
       required: true,
     });
   }

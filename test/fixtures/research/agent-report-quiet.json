@@ -1,0 +1,101 @@
+{
+ "clusters": [
+  {
+   "engagement_total": 4,
+   "sources": [
+    "hackernews"
+   ],
+   "summary": "Former OpenAI CTO does what Altman won't, releases a frontier AI model",
+   "title": "Former OpenAI CTO does what Altman won't, releases a frontier AI model"
+  },
+  {
+   "engagement_total": 1,
+   "sources": [
+    "jobs"
+   ],
+   "summary": "About the Team The OpenAI Audit Team is on a mission to build the future of internal audit from the ground up. Our ambition will be powered by a high-energy, technically exceptional team with the judgment, intellectual curiosity, and creativity to harness the latest advances in AI and design a truly next-generation audit function. As AI reshapes how work is performed across the enterprise, Internal Audit will use AI, automation, and data analytics to identify and assess the most significant and",
+   "title": "Finance & Operations Audit Leader"
+  },
+  {
+   "engagement_total": 1,
+   "sources": [
+    "jobs"
+   ],
+   "summary": "About the team ​​Preparedness is a critical Safety Research team at OpenAI, which is focused on mitigating AI threats to global security that could scale to an extreme level of severity. Our work involves: Measurement. Monitoring and predicting the evolving capabilities of frontier AI systems. Mitigation. Keeping misuse safeguards, alignment tools, and security measures on track to adequately address extreme threats that might arise in the future. Coordination. Setting mitigation targets by main",
+   "title": "Researcher, Frontier Cybersecurity Risks"
+  },
+  {
+   "engagement_total": 1,
+   "sources": [
+    "jobs"
+   ],
+   "summary": "About the Team Like every team at OpenAI, the Marketing team contributes to our broader mission of ensuring responsible and widespread adoption of artificial intelligence. With that aim in mind, we are responsible for developing and executing strategies that drive awareness, engagement, and usage for OpenAI’s products and platform amongst our core audiences. We take a data-driven approach to understand our customers' needs and challenges, ensuring that their voices are reflected in product devel",
+   "title": "Integrated Marketing Manager, Government"
+  }
+ ],
+ "freshness_verdicts": [],
+ "generated_at": "2026-08-05T19:21:21.476295Z",
+ "query": "openai",
+ "results": [
+  {
+   "candidate_id": "https://theregister.com/ai-and-ml/2026/07/16/former-openai-cto-does-what-altman-wont-releases-a-frontier-ai-model-thats-actually-open/5272177",
+   "cluster": 0,
+   "engagement": {
+    "comments": 1,
+    "points": 4
+   },
+   "published_at": "2026-07-16",
+   "relevance_score": 0.4225,
+   "source": "hackernews",
+   "summary": "Former OpenAI CTO does what Altman won't, releases a frontier AI model",
+   "title": "Former OpenAI CTO does what Altman won't, releases a frontier AI model",
+   "url": "https://www.theregister.com/ai-and-ml/2026/07/16/former-openai-cto-does-what-altman-wont-releases-a-frontier-ai-model-thats-actually-open/5272177"
+  },
+  {
+   "candidate_id": "https://jobs.ashbyhq.com/openai/94d132c8-3749-42dc-a0b6-ea19c875c77a",
+   "cluster": 1,
+   "engagement": {
+    "open_roles": 1
+   },
+   "published_at": "2026-08-04",
+   "relevance_score": 0.0741,
+   "source": "jobs",
+   "summary": "About the Team The OpenAI Audit Team is on a mission to build the future of internal audit from the ground up. Our ambition will be powered by a high-energy, technically exceptional team with the judgment, intellectual curiosity, and creativity to harness the latest advances in AI and design a truly next-generation audit function. As AI reshapes how work is performed across the enterprise, Internal Audit will use AI, automation, and data analytics to identify and assess the most significant and",
+   "title": "Finance & Operations Audit Leader",
+   "url": "https://jobs.ashbyhq.com/openai/94d132c8-3749-42dc-a0b6-ea19c875c77a"
+  },
+  {
+   "candidate_id": "https://jobs.ashbyhq.com/openai/66e76c14-bb6e-4e26-a333-744bbe35abbb",
+   "cluster": 2,
+   "engagement": {
+    "open_roles": 1
+   },
+   "published_at": "2026-08-03",
+   "relevance_score": 0.0732,
+   "source": "jobs",
+   "summary": "About the team ​​Preparedness is a critical Safety Research team at OpenAI, which is focused on mitigating AI threats to global security that could scale to an extreme level of severity. Our work involves: Measurement. Monitoring and predicting the evolving capabilities of frontier AI systems. Mitigation. Keeping misuse safeguards, alignment tools, and security measures on track to adequately address extreme threats that might arise in the future. Coordination. Setting mitigation targets by main",
+   "title": "Researcher, Frontier Cybersecurity Risks",
+   "url": "https://jobs.ashbyhq.com/openai/66e76c14-bb6e-4e26-a333-744bbe35abbb"
+  },
+  {
+   "candidate_id": "https://jobs.ashbyhq.com/openai/5468fcd0-f63b-442f-9341-195de5ebab74",
+   "cluster": 3,
+   "engagement": {
+    "open_roles": 1
+   },
+   "published_at": "2026-07-22",
+   "relevance_score": 0.0612,
+   "source": "jobs",
+   "summary": "About the Team Like every team at OpenAI, the Marketing team contributes to our broader mission of ensuring responsible and widespread adoption of artificial intelligence. With that aim in mind, we are responsible for developing and executing strategies that drive awareness, engagement, and usage for OpenAI’s products and platform amongst our core audiences. We take a data-driven approach to understand our customers' needs and challenges, ensuring that their voices are reflected in product devel",
+   "title": "Integrated Marketing Manager, Government",
+   "url": "https://jobs.ashbyhq.com/openai/5468fcd0-f63b-442f-9341-195de5ebab74"
+  }
+ ],
+ "schema_version": "1.2",
+ "source_status": {
+  "grounding": "no-results",
+  "hackernews": "ok",
+  "jobs": "ok"
+ },
+ "window_days": 30
+}

@@ -2,7 +2,9 @@
 
 When the user asks to **find**, **search**, or **recall** email (sent or received, agent or principal Gmail). Load skill **`joshu-mail`** first.
 
-**Local cache first, deep server search if the cache misses.** Steps 1–3 search synced mirror markdown on the box (fast). Step 4 is **Composio live Gmail** — a heavier **server-side** search against Google when the local cache does not surface the thread.
+**Mail mirror first, live Gmail search if the mail mirror misses.** Steps 1 to 3 search the mail mirror on the box (fast). Step 4 is the **live Gmail search** (`gmail_search_live`), which searches Gmail itself in each owner Gmail account.
+
+The mail mirror never holds all mail. The mail sync skips each thread with label `CATEGORY_UPDATES`, `CATEGORY_SOCIAL`, `CATEGORY_FORUMS`, `CATEGORY_PROMOTIONS`, `SPAM`, or `TRASH`, and it reads only recent mail. Verification emails and sign-up confirmations are usually `CATEGORY_UPDATES`, so they are never in the mail mirror. A miss in steps 1 to 3 does not mean that the email does not exist.
 
 Synced mail and calendar live as **markdown** under:
 
@@ -51,9 +53,17 @@ Then **repeat step 1**. Optional: `GET /joshu/api/connectors/mail/gmail/mirror` 
 
 `search_files` or `grep` on `connectors/mail/gmail/{account_key}/threads/` for exact subject or keywords under `${JOSHU_FILES_ROOT}`.
 
-## 4. Deep server-side search — Composio Gmail (fallback only)
+## 4. Live Gmail search (when steps 1 to 3 miss)
 
-Only if **local cache** steps 1–3 did not surface the thread (including exact-subject grep on the **correct** `{account_key}` folder). This is **live Gmail on Google’s servers** via Composio — not another pass over box mirrors. Follow **`composio-gmail-live.md`** end-to-end: `COMPOSIO_SEARCH_TOOLS` → `COMPOSIO_MULTI_EXECUTE_TOOL` → **`COMPOSIO_REMOTE_WORKBENCH` or `COMPOSIO_REMOTE_BASH_TOOL`** when `remote_file_info` appears (or to parse empty/ambiguous inline previews). Do not mix Composio live search with local `terminal`/`search_files` for Composio sandbox paths (`/mnt/files/…`).
+```text
+mcp_joshu_connectors_gmail_search_live
+  q: "to:owner+alias@example.com newer_than:1d"   # Gmail search query
+  connectedAccountId: "ca_..."                     # optional; omit = every owner Gmail account
+```
+
+It searches Gmail itself, in each owner Gmail account, with spam and trash. Each hit has `messageId`, `threadId`, `connectedAccountId`, `accountEmail`, `from`, `subject`, `date`, `snippet`, and `labels`. Read the full body of a hit with `mcp_joshu_connectors_gmail_get_message` (`messageId` and `connectedAccountId` of the hit). Do not run more syncs for an email that the mail sync skips.
+
+Do not search the owner's Gmail with the Composio Tool Router (`COMPOSIO_MULTI_EXECUTE_TOOL` with `GMAIL_FETCH_EMAILS`), because the Tool Router can't choose the owner Gmail account.
 
 ## 5. Live APIs (when you already have an id)
 
@@ -61,7 +71,7 @@ These are for **actions** or refreshing one message — not the first hop for �
 
 | Mailbox | Get detail | Send / reply |
 |---------|------------|--------------|
-| Principal Gmail | `GET .../gmail/messages/:id?connectedAccountId=` | **Agent blocked** — owner jMail only (`X-Joshu-Mail-Client: jmail`) |
+| Principal Gmail | `gmail_get_message` (`GET .../gmail/messages/:id?connectedAccountId=`) | **Agent blocked** — owner jMail only (`X-Joshu-Mail-Client: jmail`) |
 | Agent (Nylas) | `GET .../nylas/messages/:id` or `nylas_get_message` | **`mcp_joshu_connectors_nylas_send_message`** only (Hermes) — not raw REST |
 
 ## Agent send (outbound)
@@ -86,13 +96,14 @@ When action guard is enabled, owner approves by **SMS** (Y/N) before delivery. T
 | Agent profile (TZ, emails) | `nylas_get_profile` | `GET /joshu/api/nylas/profile` |
 | Agent calendar (read only) | `nylas_list_events`, `nylas_get_event` | `GET …/nylas/events` — **writes blocked** |
 | Owner calendar create / move | `mcp_joshu_connectors_google_calendar_create_event` / `…_update_event` | Joshu connectors MCP (picks the calendar account) — see **`ea-scheduling`** |
-| Principal Gmail message | — | `GET /joshu/api/connectors/mail/gmail/messages/:id` |
+| Principal Gmail live search | `gmail_search_live` | `GET /joshu/api/connectors/mail/gmail/live-search?q=` (owner desktop session or localhost only) |
+| Principal Gmail message | `gmail_get_message` | `GET /joshu/api/connectors/mail/gmail/messages/:id?connectedAccountId=` |
 | Principal Gmail attachment | `gmail_fetch_attachment` | `POST /joshu/api/connectors/mail/gmail/attachments/fetch` — saves to `Projects/<slug>/attachments/` |
 | Principal Gmail send/reply | — | **Agent blocked** (jMail owner UI only) |
 
 **Agent send body + signature:** Pass message content in `body` (plain text or light markdown: links, bold/italic, lists). Joshu converts to HTML (clickable URLs) and appends a branded signature (companion name, `{owner}'s Joshu`, https://joshu.me) — do not include signature markup yourself.
 
-Mail **search** is steps 1–3 (mirror + gbrain), not these tools — except live get-by-id when you already have a message id.
+Mail **search** is steps 1 to 3 (mirror + gbrain), then `gmail_search_live` (step 4).
 
 ## Composio primary (non-mail)
 

@@ -61,7 +61,7 @@ Skills (`joshu-mail`) describe *when* to escalate; this SDK describes *how*.
 | Method | Tier | Route |
 |--------|------|-------|
 | `search({ provider, q, tier })` | `cache` (default) | `GET /connectors/mail/{provider}/search` |
-| `search(..., tier: 'live')` | live Gmail | same + `live=true` |
+| `search(..., tier: 'live')` | live Gmail | same + `live=true`. The Joshu API ignores `live` today and searches the mail mirror. Live Gmail search is `GET /connectors/mail/gmail/live-search` |
 | `sync({ provider, ... })` | sync | `POST /connectors/mail/{provider}/sync` |
 | `mirror({ provider })` | cache probe | `GET /connectors/mail/{provider}/mirror` |
 | `getGmailMessage`, `sendGmail`, `replyGmail` | live | Gmail connector routes |

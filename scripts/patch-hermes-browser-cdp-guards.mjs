@@ -14,6 +14,10 @@
  *   `browser_unavailable` instead of a raw CDP 502, so workers block the task
  *   rather than debugging the box. After an idle stop the first call returns
  *   `browser_restarted` once with Joshu's notice; the next call works.
+ * - Bot check advice (`_joshu_bot_check_advice`): on the shared browser,
+ *   browser_navigate drops the upstream "WITHOUT residential proxies" warning
+ *   and replaces the Browserbase advice of a bot check with advice for the
+ *   backend that /api/browser/ensure reported.
  *
  * Idempotent. Upgrades files patched by older versions (lock only, or lock +
  * the old fire-and-forget `/api/browser/touch` helper).
@@ -31,8 +35,11 @@ const MARKER = "hitl_browser_cdp_guards";
  * v2: follows the relay `generation` (the endpoint no longer changes when the browser does).
  * v3: returns `browser_restarted` once after an idle stop, so the companion learns that
  * Joshu (not the website) dropped its open pages.
+ * v4: stores the reported backend in JOSHU_SHARED_BROWSER_BACKEND for the bot check advice.
  */
-const ENSURE_MARKER = "joshu_cloud_browser_ensure_v3";
+const ENSURE_MARKER = "joshu_cloud_browser_ensure_v4";
+const BOT_CHECK_MARKER = "joshu_bot_check_advice_v1";
+const BOT_CHECK_FN = "_joshu_bot_check_advice";
 /** v1 drop helper, removed on upgrade. */
 const LEGACY_DROP_FN = "_joshu_drop_stale_cdp_sessions";
 const DROP_FN = "_joshu_drop_cdp_sessions";
@@ -183,6 +190,10 @@ def ${ENSURE_FN}() -> Optional[str]:
         payload = resp.json() if resp.content else {}
     except ValueError:
         payload = {}
+    backend = str(payload.get("backend") or "").strip()
+    if backend:
+        # Read by ${BOT_CHECK_FN}() in browser_navigate.
+        os.environ["JOSHU_SHARED_BROWSER_BACKEND"] = backend
     if payload.get("error") == "browser_unavailable":
         return json.dumps(_JOSHU_BROWSER_UNAVAILABLE)
     if resp.status_code >= 400:
@@ -247,6 +258,46 @@ def ${DROP_FN}(cdp_url: Optional[str]) -> None:
         except Exception as exc:
             logger.warning("Joshu stale CDP session cleanup failed for %s: %s", key, exc)
 `;
+
+const botCheckFunction = `def ${BOT_CHECK_FN}(response: Dict[str, Any], session_info: Optional[Dict[str, Any]]) -> None:
+    """Fix the proxy and bot check warnings of browser_navigate on the shared browser (${BOT_CHECK_MARKER}).
+
+    Joshu, not Hermes, sets up the shared browser and its proxy, so a CDP override
+    session has no "proxies" feature, and upstream Hermes warns about a missing
+    proxy and suggests Browserbase settings. Sessions that Hermes made with its
+    own cloud provider keep the upstream text.
+    """
+    features = (session_info or {}).get("features") or {}
+    if not features.get("cdp_override"):
+        return
+    response.pop("stealth_warning", None)
+    if "bot_detection_warning" not in response:
+        return
+    title = str(response.get("title") or "")
+    lead = f"Page title '{title}' looks like a bot check (a captcha or a 'checking your browser' page). "
+    no_fetch = (
+        "Do not decide that the site blocks the shared browser from a fetch with curl or another "
+        "tool on the box, because the box has a different network address from the shared browser."
+    )
+    if os.environ.get("JOSHU_SHARED_BROWSER_BACKEND", "").strip() == "cloud":
+        advice = (
+            "The shared browser is a Browser Use Cloud session with a residential proxy and a "
+            "captcha solver. Do not refresh the page, click the challenge, or open another browser. "
+            "Wait about 10 seconds, then call browser_snapshot and look again. When the bot check "
+            "is still there after two checks, stage the page and call browser_handoff_request so "
+            "the owner can clear it. "
+        )
+    else:
+        advice = (
+            "The shared browser on this box has no captcha solver. Do not refresh the page or click "
+            "the challenge. Stage the page and call browser_handoff_request so the owner can clear it. "
+        )
+    response["bot_detection_warning"] = lead + advice + no_fetch
+`;
+
+/** Upstream browser_navigate takes its automatic snapshot right after the warnings. */
+const SNAPSHOT_ANCHOR = "        # Auto-take a compact snapshot so the model can act immediately\n";
+const botCheckCall = `        ${BOT_CHECK_FN}(response, session_info)\n`;
 
 const ensureCall = `    _joshu_ensure_err = ${ENSURE_FN}()
     if _joshu_ensure_err:
@@ -395,9 +446,28 @@ source = insertAfterCamofoxReturn(
   lockNeedle + guardNeedle("press", '{"key": key}'),
 );
 
+// 4. Bot check advice: the helper goes right before browser_navigate (replacing
+//    an older version), and the call goes before the automatic snapshot.
+const oldBotCheck = functionSpan(source, BOT_CHECK_FN);
+if (oldBotCheck && !source.slice(oldBotCheck[0], oldBotCheck[1]).includes(BOT_CHECK_MARKER)) {
+  source = source.slice(0, oldBotCheck[0]) + source.slice(oldBotCheck[1]);
+}
+if (!source.includes(BOT_CHECK_MARKER)) {
+  const nav = source.indexOf("\ndef browser_navigate(");
+  if (nav < 0) fail("browser_navigate() not found");
+  source = source.slice(0, nav + 1) + botCheckFunction + "\n\n" + source.slice(nav + 1);
+}
+const navSpan = functionSpan(source, "browser_navigate");
+if (!navSpan) fail("browser_navigate() not found");
+if (!source.slice(navSpan[0], navSpan[1]).includes(botCheckCall)) {
+  const anchor = source.indexOf(SNAPSHOT_ANCHOR, navSpan[0]);
+  if (anchor < 0 || anchor > navSpan[1]) fail("automatic snapshot anchor not found in browser_navigate()");
+  source = source.slice(0, anchor) + botCheckCall + source.slice(anchor);
+}
+
 if (source === original) {
-  console.log("[hermes-patch] CDP browser handoff lock + cloud ensure already applied.");
+  console.log("[hermes-patch] CDP browser handoff lock + cloud ensure + bot check advice already applied.");
   process.exit(0);
 }
 writeFileSync(target, source);
-console.log("[hermes-patch] applied CDP browser handoff lock + cloud ensure — restart Hermes gateway");
+console.log("[hermes-patch] applied CDP browser handoff lock + cloud ensure + bot check advice — restart Hermes gateway");

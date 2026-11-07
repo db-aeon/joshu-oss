@@ -1,0 +1,154 @@
+{
+ "data": {
+  "results": {
+   "currency": "USD",
+   "graph": [
+    {
+     "date": "Sep 21 2026, 04:00 PM UTC-04:00",
+     "price": 227.38,
+     "volume": 109806068
+    },
+    {
+     "date": "Sep 22 2026, 04:00 PM UTC-04:00",
+     "price": 228.87,
+     "volume": 95746745
+    },
+    {
+     "date": "Sep 23 2026, 04:00 PM UTC-04:00",
+     "price": 225.51,
+     "volume": 89547291
+    },
+    {
+     "date": "Sep 24 2026, 04:00 PM UTC-04:00",
+     "price": 224.58,
+     "volume": 77469856
+    },
+    {
+     "date": "Sep 25 2026, 04:00 PM UTC-04:00",
+     "price": 225.07,
+     "volume": 89947713
+    },
+    {
+     "date": "Sep 28 2026, 04:00 PM UTC-04:00",
+     "price": 228.86,
+     "volume": 142344322
+    },
+    {
+     "date": "Sep 29 2026, 04:00 PM UTC-04:00",
+     "price": 227.21,
+     "volume": 101494933
+    },
+    {
+     "date": "Sep 30 2026, 04:00 PM UTC-04:00",
+     "price": 228.38,
+     "volume": 121732189
+    },
+    {
+     "date": "Oct 01 2026, 04:00 PM UTC-04:00",
+     "price": 230.86,
+     "volume": 98591412
+    },
+    {
+     "date": "Oct 02 2026, 04:00 PM UTC-04:00",
+     "price": 233.95,
+     "volume": 135167818
+    },
+    {
+     "date": "Oct 05 2026, 04:00 PM UTC-04:00",
+     "price": 238.9,
+     "volume": 127171520
+    },
+    {
+     "date": "Oct 06 2026, 04:00 PM UTC-04:00",
+     "price": 239.24,
+     "volume": 101701855
+    },
+    {
+     "date": "Oct 07 2026, 04:00 PM UTC-04:00",
+     "price": 237.47,
+     "volume": 81772404
+    },
+    {
+     "date": "Oct 08 2026, 04:00 PM UTC-04:00",
+     "price": 230.48,
+     "volume": 118697435
+    },
+    {
+     "date": "Oct 09 2026, 04:00 PM UTC-04:00",
+     "price": 229.28,
+     "volume": 84645560
+    },
+    {
+     "date": "Oct 12 2026, 04:00 PM UTC-04:00",
+     "price": 226.32,
+     "volume": 70690254
+    },
+    {
+     "date": "Oct 13 2026, 04:00 PM UTC-04:00",
+     "price": 228.52,
+     "volume": 84036942
+    },
+    {
+     "date": "Oct 14 2026, 04:00 PM UTC-04:00",
+     "price": 221.3,
+     "volume": 118730084
+    },
+    {
+     "date": "Oct 15 2026, 04:00 PM UTC-04:00",
+     "price": 217.23,
+     "volume": 127087854
+    },
+    {
+     "date": "Oct 16 2026, 04:00 PM UTC-04:00",
+     "price": 214.13,
+     "volume": 121252523
+    },
+    {
+     "date": "Oct 19 2026, 04:00 PM UTC-04:00",
+     "price": 217.09,
+     "volume": 98684722
+    },
+    {
+     "date": "Oct 20 2026, 04:00 PM UTC-04:00",
+     "price": 216.47,
+     "volume": 79609078
+    },
+    {
+     "date": "Oct 21 2026, 12:10 PM UTC-04:00",
+     "price": 220.395
+    }
+   ],
+   "summary": {
+    "currency": "USD",
+    "date": "Oct 21 2026, 12:10:55 PM UTC-04:00",
+    "exchange": "NASDAQ",
+    "extensions": [
+     "Oct 21, 12:10:55 PM UTC-4",
+     "USD",
+     "NASDAQ"
+    ],
+    "extracted_price": 220.395,
+    "market": {
+     "currency": "USD",
+     "extracted_price": 220.73,
+     "price": "USD220.73",
+     "price_movement": {
+      "movement": "Up",
+      "percentage": 0.15199594,
+      "value": 0.33499146
+     }
+    },
+    "price": "USD220.395",
+    "price_movement": {
+     "movement": "Down",
+     "percentage": 3.07195004,
+     "value": 6.985
+    },
+    "stock": "NVDA",
+    "title": "NVIDIA Corp"
+   }
+  }
+ },
+ "successful": true,
+ "error": null
+}

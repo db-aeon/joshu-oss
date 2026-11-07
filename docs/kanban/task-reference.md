@@ -8,8 +8,8 @@ Joshu writes most bodies as a short YAML-like header followed by instructions fo
 
 | Kind | Board | Created by | Skill | Starts as | Idempotency key |
 |---|---|---|---|---|---|
-| `mail_ingress` | `ea-mail-ingress` | `queueMailIngressTask` (`src/ea/mailCron.ts`) | `ea-playbook` | `ready` | `ea-mail-ingress-<rfc:Message-ID or message id>` |
-| `mail_track` | `project-<slug>` | `queueMailTrackTask`, through MCP `mail_create_track_task` | `ea-playbook` | `blocked` | `ea-mail-track-<message id>` |
+| `mail_ingress` | `ea-mail-ingress` | `queueMailIngressTask` (`src/ea/mailCron.ts`) | `ea-mail-ingress`, `ea-mail-track` | `ready` | `ea-mail-ingress-<rfc:Message-ID or message id>` |
+| `mail_track` | `project-<slug>` | `queueMailTrackTask`, through MCP `mail_create_track_task` | `ea-mail-track` | `blocked` | `ea-mail-track-<message id>` |
 | `meeting` | `ea-scheduling` | `queueSchedulingMeetingTask`, through `scheduling_create_meeting_task` | `ea-scheduling` | `ready` | `ea-meet-msg-<message id>` |
 | `owner_reply` | `ea-owner-reply` | `queueOwnerReplyTask`, through `owner_reply_create_task` | `ea-owner-reply` | `ready` | `ea-owner-reply-msg-<message id>` |
 | `onboarding` | `ea-onboarding` | `reconcileOnboardingBoard` | `ea-onboarding` | `blocked`, `needs_input` (required setup step); `blocked`, no block kind (setup tip) | `onboarding:<prompt id>` |
@@ -25,7 +25,7 @@ When the same key comes back after the task is done, the bridge creates a new ta
 ```text
 kind: mail_ingress
 board: ea-mail-ingress
-Use ea-playbook skill — MAIL INGRESS mode.
+Use the preloaded skill ea-mail-ingress — MAIL INGRESS short-circuit (do not explore).
 message_id: 19c2f0a7d3e8b514
 provider: gmail
 thread_id: 19c2ef31a6b0c972
@@ -40,7 +40,7 @@ owner_reply_eligible: false
 allowed_actions: file
 authorization_reason: "not_copied_or_delegated"
 coordination_scope_id: 3f7a92c0d15e48b6a2c07e19
-Order: (1) skill_view ea-playbook (2) read_file source_path (3) file Projects/<slug>/ (4) mail_list_track_tasks(projectSlug=…, threadId=19c2ef31a6b0c972) … (6) Triage stub state:done → _done/ (7) kanban_complete.
+Order: (1) skills are preloaded, no skill_view (2) read_file source_path (3) file Projects/<slug>/ (4) mail_list_track_tasks(projectSlug=…, threadId=19c2ef31a6b0c972) … (6) Triage stub state:done → _done/ (7) kanban_complete.
 Job: FILE this email — match or create Projects/<slug>/ and project track.
 NOT authorized to act: the companion was not copied on this message and owner did not delegate. File project docs only — no scheduling child, no outbound mail.
 Owner profile (injected at queue — use this; do not read .joshu from disk):

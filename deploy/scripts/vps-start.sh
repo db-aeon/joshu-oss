@@ -217,48 +217,52 @@ EOF
 
   if [[ -n "${OPENROUTER_API_KEY:-}" || -n "${ANTHROPIC_API_KEY:-}" || -n "${HERMES_API_KEY:-}" || -n "${HERMES_LANGFUSE_PUBLIC_KEY:-}" || -n "${EXA_API_KEY:-}" ]]; then
     local tmp="${HERMES_HOME}/.env.sync"
-    grep -v -E '^(OPENROUTER_API_KEY|ANTHROPIC_API_KEY|HERMES_API_KEY|API_SERVER_KEY|EXA_API_KEY|HERMES_LANGFUSE_|TELEGRAM_)=' "${dotenv}" 2>/dev/null >"${tmp}" || true
-    {
-      cat "${tmp}" 2>/dev/null || true
+    local -a written=() strip=(OPENROUTER_API_KEY ANTHROPIC_API_KEY HERMES_API_KEY API_SERVER_KEY EXA_API_KEY
+      HERMES_LANGFUSE_PUBLIC_KEY HERMES_LANGFUSE_SECRET_KEY HERMES_LANGFUSE_BASE_URL)
+    local key
+    for key in OPENROUTER_API_KEY ANTHROPIC_API_KEY HERMES_API_KEY API_SERVER_KEY \
+      HERMES_LANGFUSE_PUBLIC_KEY HERMES_LANGFUSE_SECRET_KEY HERMES_LANGFUSE_BASE_URL HERMES_LANGFUSE_ENV \
+      HERMES_LANGFUSE_USER_ID HERMES_LANGFUSE_RELEASE EXA_API_KEY \
+      TELEGRAM_BOT_TOKEN TELEGRAM_ALLOWED_USERS TELEGRAM_GROUP_ALLOWED_USERS TELEGRAM_GROUP_ALLOWED_CHATS \
+      TELEGRAM_HOME_CHANNEL TELEGRAM_HOME_CHANNEL_NAME TELEGRAM_WEBHOOK_URL TELEGRAM_WEBHOOK_SECRET; do
       # Plain KEY=value lines (no bash %q quotes — Hermes/Python dotenv treats those as part of the secret).
-      [[ -n "${OPENROUTER_API_KEY:-}" ]] && echo "OPENROUTER_API_KEY=${OPENROUTER_API_KEY}"
-      [[ -n "${ANTHROPIC_API_KEY:-}" ]] && echo "ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}"
-      [[ -n "${HERMES_API_KEY:-}" ]] && echo "HERMES_API_KEY=${HERMES_API_KEY}"
-      [[ -n "${API_SERVER_KEY:-}" ]] && echo "API_SERVER_KEY=${API_SERVER_KEY}"
-      [[ -n "${HERMES_LANGFUSE_PUBLIC_KEY:-}" ]] && echo "HERMES_LANGFUSE_PUBLIC_KEY=${HERMES_LANGFUSE_PUBLIC_KEY}"
-      [[ -n "${HERMES_LANGFUSE_SECRET_KEY:-}" ]] && echo "HERMES_LANGFUSE_SECRET_KEY=${HERMES_LANGFUSE_SECRET_KEY}"
-      [[ -n "${HERMES_LANGFUSE_BASE_URL:-}" ]] && echo "HERMES_LANGFUSE_BASE_URL=${HERMES_LANGFUSE_BASE_URL}"
-      [[ -n "${HERMES_LANGFUSE_ENV:-}" ]] && echo "HERMES_LANGFUSE_ENV=${HERMES_LANGFUSE_ENV}"
-      [[ -n "${HERMES_LANGFUSE_USER_ID:-}" ]] && echo "HERMES_LANGFUSE_USER_ID=${HERMES_LANGFUSE_USER_ID}"
-      [[ -n "${HERMES_LANGFUSE_RELEASE:-}" ]] && echo "HERMES_LANGFUSE_RELEASE=${HERMES_LANGFUSE_RELEASE}"
-      [[ -n "${EXA_API_KEY:-}" ]] && echo "EXA_API_KEY=${EXA_API_KEY}"
-      [[ -n "${TELEGRAM_BOT_TOKEN:-}" ]] && echo "TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}"
-      [[ -n "${TELEGRAM_ALLOWED_USERS:-}" ]] && echo "TELEGRAM_ALLOWED_USERS=${TELEGRAM_ALLOWED_USERS}"
-      [[ -n "${TELEGRAM_GROUP_ALLOWED_USERS:-}" ]] && echo "TELEGRAM_GROUP_ALLOWED_USERS=${TELEGRAM_GROUP_ALLOWED_USERS}"
-      [[ -n "${TELEGRAM_GROUP_ALLOWED_CHATS:-}" ]] && echo "TELEGRAM_GROUP_ALLOWED_CHATS=${TELEGRAM_GROUP_ALLOWED_CHATS}"
-      [[ -n "${TELEGRAM_HOME_CHANNEL:-}" ]] && echo "TELEGRAM_HOME_CHANNEL=${TELEGRAM_HOME_CHANNEL}"
-      [[ -n "${TELEGRAM_HOME_CHANNEL_NAME:-}" ]] && echo "TELEGRAM_HOME_CHANNEL_NAME=${TELEGRAM_HOME_CHANNEL_NAME}"
-      [[ -n "${TELEGRAM_WEBHOOK_URL:-}" ]] && echo "TELEGRAM_WEBHOOK_URL=${TELEGRAM_WEBHOOK_URL}"
-      [[ -n "${TELEGRAM_WEBHOOK_SECRET:-}" ]] && echo "TELEGRAM_WEBHOOK_SECRET=${TELEGRAM_WEBHOOK_SECRET}"
-    } >"${dotenv}"
-    chmod 600 "${dotenv}" 2>/dev/null || true
+      if [[ -n "${!key:-}" ]]; then
+        written+=("${key}=${!key}")
+        strip+=("${key}")
+      fi
+    done
+    # Drop the old lines of each key written here, and of the secrets above even when unset.
+    # Keep other keys: a Telegram or Slack token from the safety settings is in the file only
+    # (Joshu writes it, and this function runs again after Joshu starts).
+    {
+      grep -v -E "^($(IFS='|'; echo "${strip[*]}"))=" "${dotenv}" 2>/dev/null || true
+      printf '%s\n' "${written[@]}"
+    } >"${tmp}"
+    cat "${tmp}" >"${dotenv}"
     rm -f "${tmp}"
+    chmod 600 "${dotenv}" 2>/dev/null || true
     echo "[vps-start] synced Hermes keys into ${dotenv}"
   else
     echo "[vps-start] WARN: OPENROUTER_API_KEY/HERMES_API_KEY missing after loading instance.env" >&2
   fi
 
-  # Hermes only discovers user plugins under $HERMES_HOME/plugins (persistent volume).
-  # Image / compose bind leave joshu-langfuse-relay at /opt/joshu/.hermes/plugins/ — copy in
-  # before `plugins enable` or enable fails with "not installed or bundled" (Finn-class gap).
-  local relay_src="${APP_DIR}/.hermes/plugins/joshu-langfuse-relay"
-  local relay_dst="${HERMES_HOME}/plugins/joshu-langfuse-relay"
-  if [[ -f "${relay_src}/plugin.yaml" ]]; then
-    mkdir -p "${HERMES_HOME}/plugins"
-    rm -rf "${relay_dst}"
-    cp -a "${relay_src}" "${relay_dst}"
-    echo "[vps-start] installed Hermes plugin joshu-langfuse-relay → ${relay_dst}"
-  fi
+  # Hermes discovers user plugins under $HERMES_HOME/plugins (persistent volume), and project
+  # plugins under <cwd>/.hermes/plugins. The gateway runs in /opt/joshu and finds the project
+  # plugins, but the Kanban dispatcher starts each worker in the owner's files folder, so a worker
+  # finds only the user plugins. Copy every Joshu plugin of the image into $HERMES_HOME/plugins at
+  # each boot, so workers get the tools of this release (for example the research tools for a
+  # request by text message). A project plugin overrides a user plugin with the same name, so the
+  # gateway is not changed. The copy also comes before `plugins enable`, which fails with "not
+  # installed or bundled" for a plugin that is not there.
+  local plugin_src plugin_name
+  mkdir -p "${HERMES_HOME}/plugins"
+  for plugin_src in "${APP_DIR}"/.hermes/plugins/*/; do
+    [[ -f "${plugin_src}plugin.yaml" ]] || continue
+    plugin_name="$(basename "${plugin_src}")"
+    rm -rf "${HERMES_HOME}/plugins/${plugin_name}"
+    cp -a "${plugin_src%/}" "${HERMES_HOME}/plugins/${plugin_name}"
+    echo "[vps-start] installed Hermes plugin ${plugin_name} → ${HERMES_HOME}/plugins/${plugin_name}"
+  done
 
   # Enable Langfuse (and other) plugins before gateway start — gateway only reads plugins.enabled at boot.
   if [[ -n "${JOSHU_HERMES_PLUGIN_NAMES:-}" && -x "${HERMES_BIN:-}" ]]; then
@@ -412,6 +416,14 @@ apply_hermes_approval_no_permanent() {
     || echo "[vps-start] WARN: approval no-permanent patch failed" >&2
 }
 
+# The owner can address the companion by name in a Slack group DM (issue #170).
+apply_hermes_slack_group_dm() {
+  local script="${JOSHU_SCRIPTS_ROOT}/apply-hermes-slack-group-dm.sh"
+  [[ -f "${script}" ]] || return 0
+  HERMES_DIR="${HERMES_DIR}" bash "${script}" \
+    || echo "[vps-start] WARN: Slack group DM patch failed" >&2
+}
+
 # Block Hermes terminal and execute_code from reading secrets and changing runtime files
 # (jterm zero-shared-keys, change companion-runtime-guard).
 # Bind-mounted from host until baked into the next sandbox image.
@@ -475,6 +487,7 @@ apply_hermes_kanban_guidance_gate
 apply_hermes_joshu_disable_native_sms_platform
 apply_hermes_pairing_reply
 apply_hermes_approval_no_permanent
+apply_hermes_slack_group_dm
 apply_hermes_terminal_secrets_guard
 apply_hermes_browser_cdp_guards
 apply_hermes_factory_skill_background_writes
@@ -869,22 +882,6 @@ for _pkg in app-sdk box-state email-signature; do
     cp -a "${APP_DIR}/packages/${_pkg}" "${APP_DIR}/node_modules/@joshu/${_pkg}"
   fi
 done
-
-ensure_last30days_python() {
-  local script="${JOSHU_SCRIPTS_ROOT}/ensure-last30days-python.sh"
-  [[ -f "${script}" ]] || return 0
-  bash "${script}" || echo "[vps-start] WARN: last30days Python 3.12 ensure failed" >&2
-}
-ensure_last30days_python
-
-# Source so LAST30DAYS_ENGINE_ROOT (image fallback) is visible to node.
-ensure_last30days_engine() {
-  local script="${JOSHU_SCRIPTS_ROOT}/ensure-last30days-engine.sh"
-  [[ -f "${script}" ]] || return 0
-  # shellcheck disable=SC1090
-  source "${script}" || echo "[vps-start] WARN: last30days engine ensure failed" >&2
-}
-ensure_last30days_engine
 
 # dist/chromiumSession.js imports playwright-core. The 0.1.46 image does not ship it.
 ensure_playwright_core() {

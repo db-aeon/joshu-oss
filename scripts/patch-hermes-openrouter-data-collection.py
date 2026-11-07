@@ -6,7 +6,9 @@ workers, and subagents that inherit the setting. Hermes does not apply
 ``provider_routing`` to auxiliary tasks (session_search, compression,
 title_generation, vision, ...), and clears it for a subagent when
 ``delegation.provider`` is set. This patch adds ``provider_routing.data_collection``
-of config.yaml to each OpenRouter request that has no ``data_collection`` value:
+of config.yaml to each OpenRouter request that has no ``data_collection`` value,
+and adds the upstream providers of ``provider_routing.ignore`` (the excluded
+upstream providers that Joshu writes) to the ignore list of each request:
 
   - writes module agent/joshu_openrouter_privacy.py;
   - OpenRouterProfile.build_extra_body (all requests that use the OpenRouter
@@ -17,7 +19,8 @@ of config.yaml to each OpenRouter request that has no ``data_collection`` value:
     of auxiliary.<task>.extra_body to the profile, so the profile merges them
     and does not replace them.
 
-Spec: openspec model-provider-privacy (change openrouter-data-collection-deny).
+Spec: openspec model-provider-privacy (changes openrouter-data-collection-deny and
+openrouter-exclude-relace).
 Idempotent. Stops with an error when an anchor is missing, so a Hermes upgrade
 that moves the code fails the image build.
 
@@ -37,35 +40,58 @@ CHAT_COMPLETIONS = HERMES_DIR / "agent" / "transports" / "chat_completions.py"
 AUXILIARY = HERMES_DIR / "agent" / "auxiliary_client.py"
 MARKER = "joshu_openrouter_privacy"
 
-MODULE_TEXT = '''"""Joshu: no-training routing for OpenRouter requests.
+# Excluded upstream providers (openspec glossary). Keep the list the same as
+# JOSHU_OPENROUTER_IGNORED_PROVIDERS in src/joshuOpenRouterDefaults.ts; the test compares them.
+IGNORED_PROVIDERS = ["relace"]
+
+MODULE_TEXT = '''"""Joshu: no-training routing and excluded upstream providers for OpenRouter requests.
 
 Written by joshu scripts/patch-hermes-openrouter-data-collection.py. Do not edit.
 """
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any, Dict, List
+
+# Used when config.yaml cannot be read (fail closed).
+DEFAULT_IGNORED_PROVIDERS: List[str] = %s
+
+
+def _with_ignored(ignore: Any, extra: List[str]) -> List[str]:
+    merged = [slug for slug in ignore if isinstance(slug, str)] if isinstance(ignore, list) else []
+    present = {slug.strip().lower() for slug in merged}
+    for slug in extra:
+        if isinstance(slug, str) and slug.strip().lower() not in present:
+            merged.append(slug)
+            present.add(slug.strip().lower())
+    return merged
 
 
 def with_config_data_collection(prefs: Any) -> Dict[str, Any]:
-    """Return OpenRouter provider preferences with data_collection from config.yaml.
+    """Return OpenRouter provider preferences with data_collection and ignore from config.yaml.
 
-    A value in ``prefs`` wins. When config.yaml cannot be read, the value is
-    "deny" (fail closed).
+    A data_collection value in ``prefs`` wins. The upstream providers in
+    provider_routing.ignore of config.yaml are added to the ignore list of
+    ``prefs``. When config.yaml cannot be read, data_collection is "deny" and
+    the ignore list gets DEFAULT_IGNORED_PROVIDERS (fail closed).
     """
     merged: Dict[str, Any] = dict(prefs) if isinstance(prefs, dict) else {}
-    if merged.get("data_collection"):
-        return merged
     try:
         from hermes_cli.config import read_raw_config_readonly
 
         routing = read_raw_config_readonly().get("provider_routing") or {}
-        value = str(routing.get("data_collection") or "").strip().lower() if isinstance(routing, dict) else ""
+        if not isinstance(routing, dict):
+            routing = {}
+        value = str(routing.get("data_collection") or "").strip().lower()
+        ignored = routing.get("ignore") if isinstance(routing.get("ignore"), list) else []
     except Exception:
         value = "deny"
-    if value in ("allow", "deny"):
+        ignored = DEFAULT_IGNORED_PROVIDERS
+    if not merged.get("data_collection") and value in ("allow", "deny"):
         merged["data_collection"] = value
+    if ignored:
+        merged["ignore"] = _with_ignored(merged.get("ignore"), ignored)
     return merged
-'''
+''' % repr(IGNORED_PROVIDERS)
 
 PROFILE_OLD = """        prefs = context.get("provider_preferences")
         if prefs:

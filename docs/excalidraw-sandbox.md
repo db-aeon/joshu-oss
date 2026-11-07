@@ -343,7 +343,7 @@ Bundled Hermes **`excalidraw`** skill supplies JSON envelope / container-label r
 - **Auto-load** — today's `Planning/time-block-YYYY-MM-DD.excalidraw` on startup (skipped when ArozOS opens a specific file)
 - **Open from Files** — ArozOS hash `[{filepath, filename}]` → `/media`; also `?file=`, `#file=`, Joshu-relative paths → files API
 - **Link clicks** — `onLinkOpen` on native Excalidraw `link`; `joshu://…` → ArozOS
-  `newFloatWindow` (jWhiteboard for `.excalidraw`; **jNotes** for `.md` / `.txt`; previously MDEditor)
+  `newFloatWindow` (jWhiteboard for `.excalidraw`; **jNotes** for `.md` / `.txt`; the PDF Viewer for `.pdf`; previously MDEditor)
 - **Markdown fork** — WYSIWYG rendering via vendored Excalidraw source; **`onExcalidrawAPI`** (not `excalidrawAPI`) for scene control
 
 **Joshu files API** ([`src/filesApi.ts`](../src/filesApi.ts)) — load diagrams and Joshu-relative paths; ArozOS file opens prefer `/media`:

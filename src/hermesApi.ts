@@ -38,14 +38,14 @@ import {
   runIngressSweepOnce,
 } from "./ea/ingressSweep.js";
 import { toolsetsWithComposio } from "./composioHermesMcpPolicy.js";
+import { anyMeteredProviderRelayConfigured, fetchUsageSummaryFromCp } from "./meteredProviders/config.js";
+import { ensureContentCache } from "./contentRouter/store.js";
 import {
-  falMcpEnabled,
-  falRelayConfigured,
-  refreshFalMcpEnabled,
-  resolveFalApiKey,
-  resolveFalMode,
-  resolveFalMcpHttpUrl,
-} from "./meteredProviders/config.js";
+  routerToolsetActive,
+  syncMediaBackend,
+  syncMeteredProviderMcpServers,
+  toolsetsWithMeteredProviders,
+} from "./meteredProviders/hermesConfig.js";
 import { isActionGuardEnabled, loadActionGuardPolicy, resolveComposioMcpGuardProxyUrl } from "./actionGuard/index.js";
 import { resolveEnvWithLocalFallback } from "./safetySettings/localEnv.js";
 import { buildHermesMessagingDotenvEntries } from "./hermesMessagingEnv.js";
@@ -109,7 +109,7 @@ import {
 const DEFAULT_JOSHU_HERMES_MODEL = JOSHU_OPENROUTER_DEFAULT_MODEL;
 const DEFAULT_JOSHU_HERMES_PROVIDER = "openrouter";
 const DEFAULT_JOSHU_HERMES_TOOLSETS =
-  '["mcp-gbrain", "mcp-joshu-connectors", "kanban", "hermes-cli", "browser", "joshu-desktop", "joshu-app-gui", "joshu-browser-handoff", "joshu-realtime-goals"]';
+  '["mcp-gbrain", "mcp-joshu-connectors", "kanban", "hermes-cli", "browser", "joshu-desktop", "joshu-app-gui", "joshu-browser-handoff", "joshu-realtime-goals", "joshu-research"]';
 /** Cap concurrent Hermes cron agent runs (env > config.yaml > unbounded in upstream Hermes). */
 const DEFAULT_JOSHU_HERMES_CRON_MAX_PARALLEL = 2;
 
@@ -122,13 +122,6 @@ function getJoshuHermesCronMaxParallel(): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_JOSHU_HERMES_CRON_MAX_PARALLEL;
 }
 
-function toolsetsWithFal(toolsets: string[], falActive: boolean): string[] {
-  const next = [...toolsets];
-  const idx = next.indexOf("mcp-fal");
-  if (falActive && idx < 0) next.push("mcp-fal");
-  if (!falActive && idx >= 0) next.splice(idx, 1);
-  return next;
-}
 
 export type ComposioMcpEndpoint = {
   url: string;
@@ -297,6 +290,13 @@ export async function syncHermesDotenv(entries: Record<string, string>): Promise
   for (const [key, value] of Object.entries(entries)) {
     if (!value.trim() || isHermesForbiddenEnvKey(key)) continue;
     const next = `${key}=${formatHermesDotenvValue(value)}`;
+    // Keep one line per key: older boxes have the same key many times.
+    const first = lines.findIndex((line) => line.startsWith(`${key}=`));
+    const deduped = lines.filter((line, i) => i === first || !line.startsWith(`${key}=`));
+    if (deduped.length !== lines.length) {
+      lines = deduped;
+      changed = true;
+    }
     const idx = lines.findIndex((line) => line === next || line.startsWith(`${key}=`));
     if (idx >= 0) {
       if (lines[idx] !== next) {
@@ -334,7 +334,7 @@ export function buildHermesLlmDotenvEntries(projectRoot = process.cwd()): Record
     entries.API_SERVER_KEY = envString("API_SERVER_KEY") || gatewayKey;
   }
   // Exa for web_search / web_extract (CP mint or shared → instance.env EXA_API_KEY).
-  // Not a Welcome box-secrets UI key — resolve from provision/process like last30days.
+  // Not a Welcome box-secrets UI key — resolve from provision/process like the Research reports.
   const exa = provisionEnvTrim("EXA_API_KEY") || process.env.EXA_API_KEY?.trim() || "";
   if (exa) entries.EXA_API_KEY = exa;
   return entries;
@@ -362,12 +362,47 @@ function getConfiguredJoshuPluginNames(): string[] {
 /** jChat, voice brain, and Joshu SMS all hit Hermes `api_server` (:8642). */
 const INTERACTIVE_HERMES_PLATFORMS = ["api_server"] as const;
 
+/** Hermes plugin of the removed last30days app. Boxes drop it at the next config sync. */
+export const RETIRED_LAST30DAYS_PLUGIN = "joshu-last30days";
+
+/**
+ * Research reports replace the last30days app (change research-reports): enable the plugin
+ * joshu-research in `plugins.enabled` and in the global `toolsets` (which workers use), and drop
+ * the retired joshu-last30days plugin from both. Changes `config` and `toolsets` in place.
+ */
+export function syncResearchPlugin(
+  config: ConfigRecord,
+  toolsets: string[],
+): { changed: boolean; pluginsChanged: boolean } {
+  let changed = false;
+  let pluginsChanged = false;
+  const plugins = asRecord(config.plugins);
+  const enabled = asStringArray(plugins.enabled).filter((name) => name !== RETIRED_LAST30DAYS_PLUGIN);
+  if (!enabled.includes("joshu-research")) enabled.push("joshu-research");
+  if (JSON.stringify(enabled) !== JSON.stringify(plugins.enabled)) {
+    plugins.enabled = enabled;
+    config.plugins = plugins;
+    changed = true;
+    pluginsChanged = true;
+  }
+  const retired = toolsets.indexOf(RETIRED_LAST30DAYS_PLUGIN);
+  if (retired >= 0) {
+    toolsets.splice(retired, 1);
+    changed = true;
+  }
+  if (!toolsets.includes("joshu-research")) {
+    toolsets.push("joshu-research");
+    changed = true;
+  }
+  return { changed, pluginsChanged };
+}
+
 /**
  * Global `config.toolsets` includes product toolsets, but platform tool resolution
  * uses `platform_toolsets.api_server` — default `hermes-api-server` alone omits
  * native `kanban_*`, `desktop_open`, and `app_gui_action`. Pin them on interactive platforms.
  */
-function syncInteractivePlatformKanbanToolsets(config: ConfigRecord): boolean {
+export function syncInteractivePlatformKanbanToolsets(config: ConfigRecord): boolean {
   const platformToolsets = asRecord(config.platform_toolsets);
   let changed = false;
   const required = [
@@ -377,10 +412,14 @@ function syncInteractivePlatformKanbanToolsets(config: ConfigRecord): boolean {
     "joshu-browser-handoff",
     "joshu-browser-agent",
     "joshu-realtime-goals",
+    "joshu-research",
   ] as const;
   for (const platform of INTERACTIVE_HERMES_PLATFORMS) {
     const existing = asStringArray(platformToolsets[platform]);
-    const desired = existing.length > 0 ? [...existing] : ["hermes-api-server"];
+    // The last30days app is gone (change research-reports); Research reports replace it.
+    const desired = (existing.length > 0 ? [...existing] : ["hermes-api-server"]).filter(
+      (name) => name !== RETIRED_LAST30DAYS_PLUGIN,
+    );
     for (const name of required) {
       if (!desired.includes(name)) desired.push(name);
     }
@@ -2074,19 +2113,9 @@ export class HermesApiRunner extends EventEmitter {
       }
     }
     {
-      const plugins = asRecord(config.plugins);
-      const enabled = asStringArray(plugins.enabled);
-      if (!enabled.includes("joshu-last30days")) {
-        enabled.push("joshu-last30days");
-        changed = true;
-        pluginsChanged = true;
-      }
-      plugins.enabled = enabled;
-      config.plugins = plugins;
-    }
-    if (!toolsets.includes("joshu-last30days")) {
-      toolsets.push("joshu-last30days");
-      changed = true;
+      const research = syncResearchPlugin(config, toolsets);
+      if (research.changed) changed = true;
+      if (research.pluginsChanged) pluginsChanged = true;
     }
     {
       const plugins = asRecord(config.plugins);
@@ -2204,41 +2233,11 @@ export class HermesApiRunner extends EventEmitter {
     // Multiplayer: one team MCP server for each team of this box.
     if (syncTeamMcpServers(mcpServers, teamSlugsSync(process.cwd()), desiredConnectors.url)) changed = true;
 
-    if (falRelayConfigured()) {
-      await refreshFalMcpEnabled(process.cwd());
+    if (anyMeteredProviderRelayConfigured()) {
+      await fetchUsageSummaryFromCp();
     }
-    const falActive = falMcpEnabled(process.cwd());
-    const falServer = asRecord(mcpServers.fal_ai);
-    if (falActive) {
-      const mode = resolveFalMode();
-      const desiredFal =
-        mode === "relay"
-          ? {
-              url: resolveFalMcpHttpUrl(),
-              connect_timeout: 120,
-              enabled: true,
-            }
-          : {
-              url: "https://mcp.fal.ai/mcp",
-              headers: { Authorization: `Bearer ${resolveFalApiKey(process.cwd())}` },
-              connect_timeout: 120,
-              enabled: true,
-            };
-      const headersMatch =
-        JSON.stringify(asRecord(falServer.headers)) === JSON.stringify(desiredFal.headers ?? {});
-      if (
-        falServer.url !== desiredFal.url ||
-        falServer.enabled !== true ||
-        falServer.connect_timeout !== desiredFal.connect_timeout ||
-        !headersMatch
-      ) {
-        mcpServers.fal_ai = desiredFal;
-        changed = true;
-      }
-    } else if (Object.keys(falServer).length > 0 && falServer.enabled !== false) {
-      mcpServers.fal_ai = { ...falServer, enabled: false };
-      changed = true;
-    }
+    const metered = syncMeteredProviderMcpServers(mcpServers, process.cwd());
+    if (metered.changed) changed = true;
 
     // aeon MCP blocks local boot when nothing listens on :8001 (60s × retries).
     const aeonServer = asRecord(mcpServers.aeon);
@@ -2264,9 +2263,9 @@ export class HermesApiRunner extends EventEmitter {
       cdpForBrowser && sidecarBrowser
         ? toolsets.filter((name) => name !== "browser")
         : toolsets;
-    const orderedToolsets = toolsetsWithFal(
+    const orderedToolsets = toolsetsWithMeteredProviders(
       toolsetsWithComposio(browserToolsets, composioSessionActive),
-      falActive,
+      metered.activeToolsets,
     );
     if (cdpForBrowser && sidecarBrowser) {
       const platformToolsets = asRecord(config.platform_toolsets);
@@ -2287,6 +2286,20 @@ export class HermesApiRunner extends EventEmitter {
       }
       config.platform_toolsets = platformToolsets;
     }
+    // The media backend `joshu` follows the toolset of the content router (change content-router, D7).
+    const routerActive = routerToolsetActive(metered.activeToolsets);
+    const media = syncMediaBackend(config, orderedToolsets, routerActive);
+    if (routerActive) {
+      // Make the box skill joshu-content-cache now, so that the companion can read the route cache
+      // and write hints before the first Research report (design D3).
+      try {
+        ensureContentCache();
+      } catch (err) {
+        console.warn(`[hermes-api] joshu-content-cache not made: ${(err as Error).message}`);
+      }
+    }
+    if (media.changed) changed = true;
+    if (media.pluginsChanged) pluginsChanged = true;
     if (JSON.stringify(parseToolsets(config.toolsets)) !== JSON.stringify(orderedToolsets)) {
       config.toolsets = orderedToolsets;
       changed = true;
@@ -2369,8 +2382,9 @@ export class HermesApiRunner extends EventEmitter {
     auxiliary.session_search = sessionSearch;
     config.auxiliary = auxiliary;
 
-    // No-training routing for main turns, Hermes cron jobs, workers, and subagents.
-    // scripts/patch-hermes-openrouter-data-collection.py applies the same value to auxiliary tasks.
+    // No-training routing and the excluded upstream providers for main turns, Hermes cron jobs,
+    // workers, and subagents. scripts/patch-hermes-openrouter-data-collection.py applies the same
+    // values to auxiliary tasks.
     if (syncJoshuOpenRouterDataPolicy(config)) changed = true;
 
     // Slack + Telegram: idle-reset after 30m (override with JOSHU_HERMES_MESSAGING_IDLE_MINUTES).

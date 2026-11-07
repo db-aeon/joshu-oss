@@ -4,7 +4,7 @@ description: "Drips, pipelines, HITL: Kanban project boards, not todo.md."
 metadata:
   hermes:
     category: executive-assistant
-    version: "1.5.0"
+    version: "1.5.1"
 ---
 
 # EA Project Kanban
@@ -28,7 +28,7 @@ Layout: `docs/executive-assistant.md` · `${JOSHU_FILES_ROOT}/FILING.md`
 | **Long-running** | Work may span days; needs resume after restart |
 | **Supervision** | Owner wants to see cards on Hermes Admin |
 
-**Skip Kanban** for: single quick answers, one immediate send with no follow-up, inbox stub filing (`ea-playbook`), or automated meeting-mail scheduling (`ea-scheduling`).
+**Skip Kanban** for: single quick answers, one immediate send with no follow-up, inbox stub filing (`ea-mail-ingress`), or automated meeting-mail scheduling (`ea-scheduling`).
 
 ## Triggers
 
@@ -37,14 +37,15 @@ Layout: `docs/executive-assistant.md` · `${JOSHU_FILES_ROOT}/FILING.md`
 | User asks to **start a project** or any **multi-step / HITL** task | Full kickoff below |
 | Drip/outreach, email N people + follow up | Full kickoff below |
 | User asks **status** on an active Kanban project | Read `about.md` `kanban_board`, use `kanban_list` on that board |
-| Mail triage stub | **Not this skill** — use `ea-playbook` |
+| Mail triage stub | **Not this skill** — use `ea-mail-ingress` |
 | Scheduling / meeting mail | **Not this skill** — use `ea-scheduling` on `ea-sched-*` boards |
 
 ## vs other EA skills
 
 | Skill | Role |
 |-------|------|
-| **ea-playbook** | Ingest stubs → update `Projects/` docs; cron rollups |
+| **ea-mail-ingress** / **ea-mail-track** | Ingest stubs → update `Projects/` docs; mail tracks |
+| **ea-playbook** | Cron rollups, summaries, in-chat capture |
 | **ea-scheduling** | Fixed ingress + meeting boards for calendar negotiation |
 | **ea-project-kanban** | **Multi-step and HITL work** on `project-<slug>` boards (campaigns are one common case) |
 

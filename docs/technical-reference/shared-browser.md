@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The live view is the picture of the shared browser that the owner sees and controls in jWeb on the desktop and on the browser handoff page on a phone. The companion, the workers, and the owner use the same shared browser, so the live view lets the owner watch the companion and take over a step, for example a sign-in. This document covers how the live view works on the two browser backends, why jWeb shows the browser chrome of Browser Use, how long a Browser Use Cloud session stays up when nobody uses it, and what the SMS continuation after a browser handoff knows. Operations notes for the shared browser are in [`hitl-camofox-notes.md`](../hitl-camofox-notes.md).
+The live view is the picture of the shared browser that the owner sees and controls in jWeb on the desktop and on the browser handoff page on a phone. The companion, the workers, and the owner use the same shared browser, so the live view lets the owner watch the companion and take over a step, for example a sign-in. This document covers how the live view works on the two browser backends, why jWeb shows the browser chrome of Browser Use, how long a Browser Use Cloud session stays up when nobody uses it, what the SMS continuation after a browser handoff knows, and what the browser tools tell a worker about a bot check. Operations notes for the shared browser are in [`hitl-camofox-notes.md`](../hitl-camofox-notes.md).
 
 ## Motivation
 
@@ -57,6 +57,17 @@ The turn gets its context from one system message, which `buildSmsHandoffContinu
 
 Plugin `joshu-browser-handoff` sends the Kanban task id with `browser_handoff_request`. When the model passes no `kanban_task_id`, the plugin sends `HERMES_KANBAN_TASK`, which Hermes sets for each Kanban worker.
 
+### Bot checks
+
+The control plane creates each Browser Use Cloud session with a residential proxy and the captcha solver of Browser Use turned on. Local Chromium has neither. Hermes does not know either fact, because a session on the shared browser is a CDP override session, which has only feature `cdp_override` in the session record of Hermes.
+
+Upstream `browser_navigate` adds two warnings to its result. On the first page of a session without feature `proxies`, it adds `stealth_warning`, which says that the browser runs without residential proxies. When the page title matches a list of bot check words, e.g., "captcha" or "just a moment", it adds `bot_detection_warning` with advice that names a Browserbase setting. The patch of `tools/browser_tool.py` adds `_joshu_bot_check_advice`, which runs right before the automatic snapshot of `browser_navigate`. For a CDP override session, the helper removes `stealth_warning` and replaces the text of `bot_detection_warning`. The ensure helper stores field `backend` of `POST /api/browser/ensure` in the environment variable `JOSHU_SHARED_BROWSER_BACKEND` of the Hermes process, and the advice depends on it:
+
+- `cloud`: do not refresh the page or click the challenge, wait about 10 seconds for the captcha solver, call `browser_snapshot` again, and call `browser_handoff_request` when the bot check is still there after two checks.
+- `local` or not set: the box has no captcha solver, so call `browser_handoff_request`.
+
+Both texts also tell the worker not to judge a site from a fetch on the box, because the box has a different network address from the shared browser. Skill `joshu-browser-handoff` repeats the rules in section "Bot checks and captchas", because a bot check often appears after a click, and Hermes checks the page title only in `browser_navigate`.
+
 ## Design decisions
 
 - **2026-09-23: show Browser Use Cloud in an iframe with `ui=false`.** jWeb had its own address bar, so the page alone was enough. Replaced for jWeb by the decision of 2026-10-11.
@@ -83,6 +94,10 @@ Plugin `joshu-browser-handoff` sends the Kanban task id with `browser_handoff_re
 
 - The SMS continuation reads the Kanban task only on board `realtime-goals`. A browser handoff from a Kanban task on another board gets no Kanban task in the system message, and it gets no objective, because only a realtime goal has one.
 - The rule against requests for secrets is skill text. A model that ignores the skill can still ask for a secret, and Joshu does not stop the SMS.
+- Browser Use does not list which captcha types its captcha solver handles, and it sends no CDP event when the captcha solver starts or stops. The worker waits a fixed time and looks again, so a captcha that the captcha solver cannot solve costs about 30 seconds before the browser handoff.
+- `bot_detection_warning` looks only at the page title in `browser_navigate`. A bot check that appears after a click gets no warning, and only the skill covers it.
+
+- **2026-10-30: Joshu patches the bot check text of Hermes.** A worker that tried to list a product on about 30 websites gave up on most sign-up pages. Hermes told the worker that the browser had no residential proxy and that it should turn on a Browserbase setting, and no skill told the worker that the captcha solver exists, so the worker never waited for it and never asked for a browser handoff. Upstream Hermes deleted the built-in browser tools, and both warnings with them, after the commit that Joshu pins, so an upstream fix would not reach the boxes, and moving the pin would remove the browser tools that the skills use. The patch removes the proxy warning, because it is never true on a box. It keeps the bot check detection and rewrites its text, because a worker on a bot check page needs the next step. Removing both warnings was the other option, but then the worker gets no hint at all. The patch reads the backend from `POST /api/browser/ensure`, because the CDP relay and local Chromium both use a `127.0.0.1` address, so the address does not tell the backends apart. Sessions that Hermes makes with its own cloud provider keep the upstream text.
 
 ## Code map
 
@@ -92,7 +107,8 @@ Plugin `joshu-browser-handoff` sends the Kanban task id with `browser_handoff_re
 | Active page | `src/cloudBrowserActivePage.ts` |
 | Session lifetime and restart notice | `tick`, `stopCloudBrowser`, `takeCloudBrowserRestartNotice` in `src/cloudBrowser.ts`; `busy()`, `onStop`, and `POST /api/browser/ensure` in `src/server.ts` |
 | Browser handoff hold and status message | `pendingHandoffBlocksCloudBrowser`, `markHandoffsBrowserStopped`, `handoffStatusMessage` in `src/browserHandoff/store.ts`; `GET /api/browser-handoff/status/:id` in `src/browserHandoff/routes.ts` |
-| Hermes ensure helper (`browser_restarted`) | `scripts/patch-hermes-browser-cdp-guards.mjs` |
+| Hermes ensure helper (`browser_restarted`) and bot check advice (`_joshu_bot_check_advice`) | `scripts/patch-hermes-browser-cdp-guards.mjs` |
+| Worker rules for bot checks | section "Bot checks and captchas" of `integrations/hermes/skills/browser/joshu-browser-handoff/SKILL.md` |
 | Screencast (local Chromium) | `src/browserScreencast.ts`, `public/screencast-client.js` |
 | Iframe client | `public/cloud-live-frame.js` |
 | jWeb | `public/app.js`, `public/index.html`, `public/styles.css` |

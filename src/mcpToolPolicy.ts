@@ -8,6 +8,7 @@
  *
  * Routing intent:
  * - Outbound mail: Nylas agent mailbox only (never principal Gmail via Composio)
+ * - Principal Gmail drafts: create and read via Composio; never update or send a draft
  * - Calendar create/update: owner Google Calendar via Composio (never Nylas calendar writes)
  * - Deletes: blocked everywhere
  */
@@ -39,8 +40,15 @@ export const CONNECTORS_BLOCKED_TOOLS = [
 ] as const;
 
 /** Heuristic Composio tool-name patterns (applied when policy enabled). */
+/**
+ * Composio Gmail draft updates. Composio GMAIL_UPDATE_DRAFT sent three drafts to their recipients
+ * on a box (2026-10-15), so a draft update counts as a send. Draft creates and draft reads stay open.
+ */
+const GMAIL_DRAFT_UPDATE_PATTERN = /^GMAIL_.*UPDATE.*DRAFT/i;
+
 export const COMPOSIO_BLOCKED_PATTERNS: RegExp[] = [
-  /^GMAIL_.*(SEND|REPLY|FORWARD|CREATE_DRAFT|DRAFT)/i,
+  /^GMAIL_.*(SEND|REPLY|FORWARD)/i,
+  GMAIL_DRAFT_UPDATE_PATTERN,
   /DELETE/i,
   /TRASH/i,
 ];
@@ -103,12 +111,15 @@ export function composioToolBlockReason(toolName: string, policy = loadMcpToolPo
   const name = normalizeToolName(toolName);
   const upper = name.toUpperCase();
   if (policy.composioBlockedTools.some((t) => t.toUpperCase() === upper)) {
-    if (/^GMAIL_/i.test(name) && /(SEND|REPLY|FORWARD|DRAFT)/i.test(name)) {
+    if (/^GMAIL_/i.test(name) && /(SEND|REPLY|FORWARD)/i.test(name)) {
       return "Principal Gmail mail send is disabled for agents. Use mcp_joshu_connectors_nylas_send_message.";
     }
     return `Composio tool ${name} is blocked by Joshu MCP policy.`;
   }
   if (matchesComposioPatterns(name)) {
+    if (GMAIL_DRAFT_UPDATE_PATTERN.test(name)) {
+      return "Gmail draft updates are disabled for agents, because Composio can send the draft. To change a draft, create a new draft with GMAIL_CREATE_EMAIL_DRAFT.";
+    }
     if (/^GMAIL_/i.test(name)) {
       return "Principal Gmail mail send is disabled for agents. Use mcp_joshu_connectors_nylas_send_message.";
     }

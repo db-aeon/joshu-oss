@@ -13,11 +13,11 @@ The mail sync runs every 10 minutes for the companion's inbox (Nylas) and the ow
 3. classifies the email with an LLM as `noise`, `info`, or `track`, with a guessed project slug;
 4. for `track` only, decides whether the companion may act on it, writes a triage stub in `Triage/`, and calls `queueMailIngressTask`.
 
-`queueMailIngressTask` (`src/ea/mailCron.ts`) checks the open meeting and owner-reply tasks of the thread, writes the body (including what the worker may do), and creates the task `ready` with skill `ea-playbook`.
+`queueMailIngressTask` (`src/ea/mailCron.ts`) checks the open meeting and owner-reply tasks of the thread, writes the body (including what the worker may do), and creates the task `ready` with the preloaded skills `ea-mail-ingress` and `ea-mail-track` (see [Skills of the mail workers](#skills-of-the-mail-workers)).
 
 ## What the ingress worker does
 
-Within a minute the dispatcher starts a worker, which follows the "Mail ingress" section of `ea-playbook`:
+Within a minute the dispatcher starts a worker, which follows the "Mail ingress" section of `ea-mail-ingress`:
 
 1. Read the mail mirror.
 2. **File it.** Match or create `Projects/<slug>/`, and add journal and `todo.md` entries that link to the mirror.
@@ -64,6 +64,22 @@ When a new email belongs to a track, the ingress worker hands it off (`handoffMa
 An owner Gmail reply gets the same handoff without an ingress task. When the newest message of an owner Gmail thread is the owner's reply after an inbound message, the Gmail sync mirrors the thread, does not triage it, and calls `handoffOwnerGmailReply` (`src/ea/ownerGmailReply.ts`). That function finds each open track of the thread on all project boards with one bridge call (action `find_open_by_text`) and hands off the reply. It skips the handoff when the companion is a recipient, because the Nylas sync and mail ingress handle that email.
 
 No Joshu code completes a track by itself. A track closes when a worker or a chat turn completes it: the track worker after a handoff, a later ingress worker during Project reconcile, the owner replying DONE to a nudge, or the daily hygiene cron.
+
+## Skills of the mail workers
+
+Hermes puts the whole `SKILL.md` of each preloaded skill of a task into the system prompt of the worker, so the worker sends it again on each LLM call. Until release 0.1.61, both mail workers preloaded `ea-playbook`, about 13,500 tokens. Most of it was for chat and crons, and the worker of a track used less than a quarter of it. Now each mail worker preloads only the sections that it uses:
+
+| Task | Preloaded skills | Tokens of the preloaded text |
+|---|---|---|
+| Ingress task | `ea-mail-ingress`, `ea-mail-track` | about 9,400 (was 13,500) |
+| Track | `ea-mail-track` | about 2,900 (was 13,500) |
+
+The token counts are from tokenizer `o200k_base`. `ea-mail-track` has the filing rules that both workers use: "Every run — read first", "Project files", "Link discipline", "Mail attachments", "Canonical project matching", "Project reconcile", "Project boards — no scheduling sends", and "MCP / Joshu API failures". `ea-mail-ingress` has the steps of the ingress worker: "Mail ingress", "Scheduling decision gate", "Core loop", and "Classification guide". `ea-playbook` keeps the sections of chat and crons, and a table that names the skill of each moved section. The constants are `MAIL_INGRESS_TASK_SKILLS` and `MAIL_TRACK_TASK_SKILLS` in `src/ea/mailTypes.ts`, and `npm run test:mail-worker-skills` checks that no section is in two skills.
+
+- **Two skills, and the ingress task preloads both.** The alternative was one skill for each worker kind, with the shared sections in both. It was rejected, because each fix of a shared section would then be needed twice, and the copies would drift. A second alternative was one skill for each section, loaded with `skill_view` on demand. It was rejected, because a worker that skips a `skill_view` call skips a rule, and the result of each `skill_view` call stays in the history of the run, so after a few LLM calls it costs as much as a preload.
+- **The sections moved word for word.** Only step 1 of the Required order (the skills are preloaded, so the worker does not load them again) and the links between skills changed. The workers do the same steps as before. The body of an ingress task no longer asks for `skill_view('ea-playbook')`. That call loaded the preloaded skill a second time, in about one of four ingress runs on one box.
+- **`ea-playbook` names the skill of each moved section.** Chat and crons load a moved section with `skill_view` when they need it, for example Project reconcile after the owner reports an outcome. The same table tells the worker of a task that still preloads `ea-playbook` to load the new skills.
+- **A handoff moves an old track to `ea-mail-track`.** A track can stay blocked for weeks, so many tracks were created with `ea-playbook`. A handoff is the only step that gives such a track new work. Before `handoffMailToTrackTask` unblocks or reopens a track whose preloaded skills include `ea-playbook`, it sets them to `ea-mail-track` with bridge action `set_skills`. A failure only logs a line, because the table in `ea-playbook` still leads the worker to the new skill. A one-time migration of all tracks at start was rejected: it must open every project board, and a track that never runs again gains nothing.
 
 ## Project folders and boards
 

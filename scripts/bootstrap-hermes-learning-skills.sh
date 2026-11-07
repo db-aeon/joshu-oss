@@ -23,6 +23,7 @@ STATE_FILE="${TARGET_DIR}/.joshu-seed-skills.tsv"
 SEED_MODE="${JOSHU_HERMES_SKILLS_SEED_MODE:-merge}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MERGE_SCRIPT="${APP_DIR}/scripts/merge-hermes-factory-skill.mjs"
+SPLIT_SCRIPT="${APP_DIR}/scripts/move-split-skill-pitfalls.mjs"
 NODE_BIN="${NODE_BIN:-node}"
 
 log() { printf '[hermes-learning-seed] %s\n' "$*"; }
@@ -72,7 +73,8 @@ file_sha() { python3 -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[
 
 NEW_STATE="${STATE_FILE}.new.$$"
 : > "${NEW_STATE}"
-trap 'rm -f "${NEW_STATE}"' EXIT
+SPLIT_SNAPSHOTS="$(mktemp -d)"
+trap 'rm -f "${NEW_STATE}"; rm -rf "${SPLIT_SNAPSHOTS}"' EXIT
 record() { printf '%s\t%s\t%s\n' "$1" "$2" "${3:-$(file_sha "${TARGET_DIR}/$1/SKILL.md")}" >> "${NEW_STATE}"; }
 
 copy_dir() {
@@ -100,9 +102,44 @@ seed_overwrite() {
 
 failed=0
 
+# Name of the skill that a factory skill was split from (metadata.joshu.split_from), or "".
+split_from() {
+  awk 'NR == 1 && $0 != "---" { exit } NR > 1 && $0 == "---" { exit } /^[[:space:]]*split_from:/ { print $2; exit }' "$1" \
+    | tr -d "\"'"
+}
+
+# Before any merge, keep a copy of each box skill that a new factory skill was split from,
+# so the merge of the old skill cannot drop its box pitfalls before they move.
+snapshot_split_sources() {
+  while IFS=$'\t' read -r skill_dir _hash; do
+    [[ "${skill_dir}" == "*" ]] && continue
+    [[ -f "${TARGET_DIR}/${skill_dir}/SKILL.md" ]] && continue
+    local name source
+    name="$(split_from "${SOURCE_DIR}/${skill_dir}/SKILL.md")"
+    [[ -n "${name}" && ! -f "${SPLIT_SNAPSHOTS}/${name}.md" ]] || continue
+    source="$(find "${TARGET_DIR}" -maxdepth 3 -path "*/${name}/SKILL.md" -print -quit)"
+    [[ -n "${source}" ]] && cp "${source}" "${SPLIT_SNAPSHOTS}/${name}.md"
+  done <<< "${factory_hashes}"
+}
+
+# Move the box pitfalls of the old skill into a new split skill. Prints the move count.
+move_split_pitfalls() {
+  local skill_dir="$1" name snapshot out
+  name="$(split_from "${SOURCE_DIR}/${skill_dir}/SKILL.md")"
+  snapshot="${SPLIT_SNAPSHOTS}/${name}.md"
+  [[ -n "${name}" && -f "${snapshot}" && -f "${SPLIT_SCRIPT}" ]] || { echo 0; return; }
+  if out="$("${NODE_BIN}" "${SPLIT_SCRIPT}" --source "${snapshot}" --target "${TARGET_DIR}/${skill_dir}/SKILL.md")"; then
+    echo "${out##* }"
+  else
+    log "WARN: could not move box pitfalls of ${name} into ${skill_dir}"
+    echo 0
+  fi
+}
+
 seed_merge() {
   log "merge: integrating factory skills ${seed_key} into box skills"
   local merged=0 skipped=0 copied=0 unchanged=0 updated=0
+  snapshot_split_sources
 
   while IFS=$'\t' read -r skill_dir hash; do
     [[ "${skill_dir}" == "*" ]] && continue
@@ -114,7 +151,15 @@ seed_merge() {
     if [[ ! -f "${target_file}" ]]; then
       mkdir -p "${target_skill}"
       copy_dir "${factory_skill}/" "${target_skill}/"
-      record "${skill_dir}" "${hash}"
+      local moved
+      moved="$(move_split_pitfalls "${skill_dir}")"
+      if [[ "${moved}" =~ ^[1-9][0-9]*$ ]]; then
+        # The box copy now holds box pitfalls, so the next factory update merges, not copies.
+        log "moved ${moved} box pitfall(s) into ${skill_dir}"
+        record "${skill_dir}" "${hash}" merged
+      else
+        record "${skill_dir}" "${hash}"
+      fi
       copied=$((copied + 1))
       continue
     fi

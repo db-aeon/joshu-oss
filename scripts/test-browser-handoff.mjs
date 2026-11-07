@@ -329,7 +329,8 @@ const cdpPatch = fs.readFileSync(
 );
 assert.match(cdpPatch, /hitl_browser_cdp_guards/);
 assert.match(cdpPatch, /joshu_cloud_browser_touch/);
-assert.match(cdpPatch, /joshu_cloud_browser_ensure_v3/);
+assert.match(cdpPatch, /joshu_cloud_browser_ensure_v4/);
+assert.match(cdpPatch, /joshu_bot_check_advice_v1/);
 assert.match(cdpPatch, /browser_restarted/);
 assert.match(cdpPatch, /\/api\/browser\/ensure/);
 assert.match(cdpPatch, /browser_navigate/);

@@ -55,7 +55,7 @@ See [Mail, calendar, and meetings](03-mail-calendar-and-meetings.md) for more.
 
 ## Slack and Telegram
 
-In Slack, send your companion a direct message. To talk with your companion in a channel, invite it first with `/invite @<companion>`, and then mention it. In Telegram, send it a direct message.
+In Slack, send your companion a direct message. To talk with your companion in a channel, invite it first with `/invite @<companion>`, and then mention it. In a group direct message with your companion and other people, start your message with the name of your companion, for example "Mina, please book a call with Sam on Tuesday", or mention it. Your companion reads the recent messages of the group so it knows what "this meeting" means, and it does not answer messages that you and the other people send to each other. In Telegram, send it a direct message.
 
 To connect Slack, you need a Slack workspace where you can add apps. In most small workspaces, the person who made the workspace can add apps.
 

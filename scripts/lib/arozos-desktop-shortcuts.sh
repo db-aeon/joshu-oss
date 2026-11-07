@@ -15,13 +15,13 @@ FILE_BRAIN_SHORTCUT_CONTENT=$'module\nFile Brain\nFile Brain\nimg/joshu/file-man
 JMOVIE_SHORTCUT_CONTENT=$'module\njMovie\njMovie\nimg/joshu/movie.png\n'
 JMAIL_SHORTCUT_CONTENT=$'module\njMail\njMail\nimg/joshu/mail.png\n'
 SCHEDULES_SHORTCUT_CONTENT=$'module\nSchedules\nSchedules\nimg/joshu/schedules.png\n'
-LAST30DAYS_SHORTCUT_CONTENT=$'module\nlast30days\nlast30days\nimg/joshu/hindsight.png\n'
 WELCOME_SHORTCUT_CONTENT=$'module\nWelcome\nWelcome\nimg/joshu/chat.png\n'
 CONNECTORS_SHORTCUT_CONTENT=$'module\nConnectors\nConnectors\nimg/joshu/connectors.png\n'
 SAFETY_SHORTCUT_CONTENT=$'module\nSafety\nSafety\nimg/joshu/system-setting.png\n'
 JTERM_SHORTCUT_CONTENT=$'module\njTerm\njTerm\nimg/joshu/terminal.png\n'
 TELEPHONE_SHORTCUT_CONTENT=$'module\nTelephone\nTelephone\nimg/joshu/telephone.png\n'
 BOSS_MODE_SHORTCUT_CONTENT=$'module\nMultiplayer\nMultiplayer\nimg/joshu/boss-mode.png\n'
+RESEARCH_SHORTCUT_CONTENT=$'module\nResearch\nResearch\nimg/joshu/research.png\n'
 HERMES_ADMIN_DASHBOARD_PATH="${PUBLIC_BASE_PATH:-/joshu}/hermes-admin/"
 
 # VPS direct mode: https://hermes-admin.<CUSTOMER_DOMAIN>/ — not /joshu/hermes-admin (local dev only).
@@ -60,7 +60,6 @@ JOSHU_AROZ_SUBSERVICE_IDS=(
   hindsight-viewer
   file-brain-viewer
   schedules
-  last30days
   jmovie
   jmail
   connectors
@@ -69,6 +68,7 @@ JOSHU_AROZ_SUBSERVICE_IDS=(
   jterm
   telephone
   boss-mode
+  research
 )
 
 _write_desktop_shortcut() {
@@ -180,9 +180,6 @@ install_schedules_shortcuts() {
   _write_desktop_shortcut "Schedules.shortcut" "${SCHEDULES_SHORTCUT_CONTENT}"
 }
 
-install_last30days_shortcuts() {
-  _write_desktop_shortcut "last30days.shortcut" "${LAST30DAYS_SHORTCUT_CONTENT}"
-}
 
 install_welcome_shortcuts() {
   _write_desktop_shortcut "Welcome.shortcut" "${WELCOME_SHORTCUT_CONTENT}"
@@ -214,6 +211,10 @@ install_boss_mode_shortcuts() {
   done
 }
 
+install_research_shortcuts() {
+  _write_desktop_shortcut "Research.shortcut" "${RESEARCH_SHORTCUT_CONTENT}"
+}
+
 install_all_joshu_desktop_shortcuts() {
   install_files_shortcuts
   install_settings_shortcuts
@@ -227,13 +228,13 @@ install_all_joshu_desktop_shortcuts() {
   install_jmovie_shortcuts
   install_jmail_shortcuts
   install_schedules_shortcuts
-  install_last30days_shortcuts
   install_connectors_shortcuts
   install_safety_shortcuts
   install_welcome_shortcuts
   install_jterm_shortcuts
   install_telephone_shortcuts
   install_boss_mode_shortcuts
+  install_research_shortcuts
   if [[ "${JOSHU_HERMES_DASHBOARD_ENABLED:-true}" =~ ^(1|true|yes)$ ]]; then
     install_hermes_admin_shortcuts
   fi

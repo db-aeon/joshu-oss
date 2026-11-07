@@ -6,7 +6,7 @@
  */
 import assert from "node:assert/strict";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -36,11 +36,17 @@ function writeSkill(base, rel, text) {
 // writes box + factory text, so a test can see that the box evolution stays.
 mkdirSync(join(appDir, "scripts"), { recursive: true });
 writeFileSync(join(appDir, "scripts/merge-hermes-factory-skill.mjs"), "// stub target\n");
+// The real script that moves the box pitfalls of a split skill (change mail-worker-skills).
+mkdirSync(join(appDir, "scripts/lib"), { recursive: true });
+for (const rel of ["move-split-skill-pitfalls.mjs", "lib/skill-merge-pitfalls.mjs"]) {
+  copyFileSync(join(scriptsDir, rel), join(appDir, "scripts", rel));
+}
 const stub = join(root, "node-stub.sh");
 writeFileSync(
   stub,
   `#!/usr/bin/env bash
 set -euo pipefail
+if [[ "$1" == *move-split-skill-pitfalls.mjs ]]; then exec node "$@"; fi
 shift
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -148,6 +154,42 @@ try {
 
   // 8. The real factory tree yields a seed key.
   assert.match(seedKey(join(repoRoot, "integrations/hermes/skills")), /^sha256:[0-9a-f]{16}$/);
+
+  // 10. Split skill (change mail-worker-skills): a new factory skill names the skill it was
+  //     split from. The seed moves the box pitfalls of the moved sections into the new skill,
+  //     before the merge of the old skill, and later factory updates merge the new skill.
+  const P_INGRESS = "**Pitfall — the stub path has the account key** (observed 2026-10-20): open the stub by path.";
+  const P_SUMMARY = "**Pitfall — old unread Nylas threads** (observed 2026-10-21): skip sent artifacts.";
+  writeFileSync(
+    boxPlaybook,
+    skill("ea-playbook", "2.26.0", `## Mail ingress\n\n1. File.\n\n${P_INGRESS}\n\n## Summary email\n\n${P_SUMMARY}`),
+  );
+  const splitFront = (name, version, body) =>
+    `---\nname: ${name}\nmetadata:\n  hermes:\n    version: "${version}"\n  joshu:\n    split_from: ea-playbook\n---\n\n${body}\n`;
+  writeSkill(factory, "executive-assistant/ea-mail-ingress", splitFront("ea-mail-ingress", "1.0.0", "## Mail ingress\n\n1. File."));
+  writeSkill(factory, "executive-assistant/ea-playbook", skill("ea-playbook", "3.0.0", "## Summary email\n\nSend it."));
+  r = run();
+  const boxIngress = join(target, "executive-assistant/ea-mail-ingress/SKILL.md");
+  const ingressText = readFileSync(boxIngress, "utf8");
+  assert.ok(ingressText.includes(P_INGRESS), "box pitfall of a moved section moves to the new skill");
+  assert.ok(!ingressText.includes(P_SUMMARY), "box pitfall of a section that stays does not move");
+  assert.match(ingressText, /## Pitfalls kept from this box/);
+  assert.match(r.out, /moved 1 box pitfall\(s\) into executive-assistant\/ea-mail-ingress/);
+  const ingressState = readFileSync(join(target, ".joshu-seed-skills.tsv"), "utf8")
+    .split("\n")
+    .find((l) => l.startsWith("executive-assistant/ea-mail-ingress\t"));
+  assert.equal(ingressState.split("\t")[2], "merged", "a new skill with moved box pitfalls counts as box-evolved");
+  writeSkill(factory, "executive-assistant/ea-mail-ingress", splitFront("ea-mail-ingress", "1.1.0", "## Mail ingress\n\n1. File now."));
+  r = run();
+  assert.deepEqual(r.merges, ["executive-assistant/ea-mail-ingress/SKILL.md"], "the next factory update merges the new skill");
+  //     A box without the old skill gets the plain factory copy of a new split skill.
+  writeSkill(factory, "executive-assistant/ea-mail-track", splitFront("ea-mail-track", "1.0.0", "## Project reconcile\n\nReconcile."));
+  rmSync(join(target, "executive-assistant/ea-playbook"), { recursive: true });
+  r = run();
+  assert.equal(
+    readFileSync(join(target, "executive-assistant/ea-mail-track/SKILL.md"), "utf8"),
+    readFileSync(join(factory, "executive-assistant/ea-mail-track/SKILL.md"), "utf8"),
+  );
 
   // 9. One skills seed at a time (flock; Linux only, macOS has no flock).
   if (spawnSync("flock", ["--version"]).status === 0) {

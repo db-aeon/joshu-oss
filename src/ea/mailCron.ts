@@ -13,7 +13,10 @@ import type { AfterMirrorThreadInput } from "./triageTypes.js";
 import { formatKanbanProfileBlock } from "./schedulingCron.js";
 import {
   EA_MAIL_INGRESS_BOARD,
+  EA_MAIL_INGRESS_SKILL,
   EA_PLAYBOOK_SKILL,
+  MAIL_INGRESS_TASK_SKILLS,
+  MAIL_TRACK_TASK_SKILLS,
   normalizeProjectSlug,
   parseEmailAddress,
   projectBoardSlug,
@@ -26,6 +29,8 @@ import {
 import type { MailAgentAuthorization } from "./agentAuthorization.js";
 import { resolveOwnerEmails } from "./agentAuthorization.js";
 import { resolveJoshuAgentEmails } from "./ingestFilters.js";
+import { mailIngressOpenGoalLines } from "../realtimeGoals/doneElsewhere.js";
+import { RealtimeGoalStore } from "../realtimeGoals/store.js";
 import { isOwnerReplyEligible, isOwnerDirectAgentAsk, ownerReplyIngressPlaybookLines } from "./ownerReplyEligibility.js";
 import {
   listActiveCoordinationForScope,
@@ -146,6 +151,19 @@ export async function buildMailIngressTaskBody(
     }
   }
 
+  // Issue #172: an email of the owner can ask again for an open realtime goal of another channel.
+  const ownerEmails = resolveOwnerEmails(projectRoot, input.accountEmail);
+  let openGoalLines: string[] = [];
+  if (fromEmail && ownerEmails.has(fromEmail.toLowerCase())) {
+    try {
+      openGoalLines = mailIngressOpenGoalLines(
+        await new RealtimeGoalStore(projectRoot).listActiveForOwner(),
+      );
+    } catch {
+      /* the realtime goal list is best-effort at ingress body build */
+    }
+  }
+
   const ownerReplyGate = isOwnerReplyEligible({
     provider: input.provider,
     agentInbox: input.provider === "nylas",
@@ -172,8 +190,7 @@ export async function buildMailIngressTaskBody(
   const lines = [
     "kind: mail_ingress",
     `board: ${EA_MAIL_INGRESS_BOARD}`,
-    `Use ${EA_PLAYBOOK_SKILL} skill — MAIL INGRESS mode.`,
-    "REQUIRED FIRST: skill_view('ea-playbook') then follow MAIL INGRESS short-circuit (do not explore).",
+    `Use the preloaded skill ${EA_MAIL_INGRESS_SKILL} — MAIL INGRESS short-circuit (do not explore).`,
     `message_id: ${input.messageId}`,
     `provider: ${input.provider}`,
     `thread_id: ${input.threadId}`,
@@ -196,7 +213,7 @@ export async function buildMailIngressTaskBody(
     ...(hasOwnerDeliverable
       ? ["coordination_note: open owner_deliverable on scope — handoff only."]
       : []),
-    `Order: (1) skill_view ea-playbook (2) read_file source_path (3) file Projects/<slug>/ (4) mail_list_track_tasks(projectSlug=…, threadId=${input.threadId}) — one track returned → handoff to it; none but done_match → handoff to done_match if this email continues that matter (Joshu reopens it); else mail_list_track_tasks(projectSlug=…) (compact track list) and match by judgment, else create (4b) Project reconcile only if no handoff returned evaluation_queued: true (5) schedule only if allowed_actions includes schedule (5b) owner_reply spawn if owner_reply_eligible (6) Triage stub state:done → _done/ (7) kanban_complete.`,
+    `Order: (1) skills are preloaded, no skill_view (2) read_file source_path (3) file Projects/<slug>/ (4) mail_list_track_tasks(projectSlug=…, threadId=${input.threadId}) — one track returned → handoff to it; none but done_match → handoff to done_match if this email continues that matter (Joshu reopens it); else mail_list_track_tasks(projectSlug=…) (compact track list) and match by judgment, else create (4b) Project reconcile only if no handoff returned evaluation_queued: true (5) schedule only if allowed_actions includes schedule (5b) owner_reply spawn if owner_reply_eligible (6) Triage stub state:done → _done/ (7) kanban_complete.`,
     "MCP args: projectSlug = folder slug (not board id, not nested tool_call). Stub = Triage/gmail-<account_key>-<thread_id>.stub.md (or <provider>-<thread_id>.stub.md).",
     "Job: FILE this email — match or create Projects/<slug>/ and project track.",
     "Standalone scheduling with no project → Projects/other/.",
@@ -221,6 +238,7 @@ export async function buildMailIngressTaskBody(
         ]
       : []),
     ...ownerReplyIngressPlaybookLines(ownerReplyEligible),
+    ...openGoalLines,
     "Route: match open track on project board or create blocked track via mail_* MCP.",
     "Use mail_* MCP — not Hermes kanban_create cross-board. Do not load ea-project-kanban.",
     ...formatKanbanProfileBlock(profile, assistantEmail),
@@ -309,7 +327,7 @@ export async function queueMailIngressTask(
     body,
     assignee: eaSchedulingKanbanAssignee(),
     idempotency_key: idempotencyKey,
-    skills: [EA_PLAYBOOK_SKILL],
+    skills: MAIL_INGRESS_TASK_SKILLS,
     workspace_kind: "dir",
     workspace_path: filesRoot,
   });
@@ -601,7 +619,7 @@ export async function queueMailTrackTask(opts: {
     body,
     assignee: eaSchedulingKanbanAssignee(),
     idempotency_key: mailTrackTaskIdempotencyKey(messageId),
-    skills: [EA_PLAYBOOK_SKILL],
+    skills: MAIL_TRACK_TASK_SKILLS,
     workspace_kind: "dir",
     workspace_path: projectDir,
   });
@@ -701,6 +719,7 @@ export async function handoffMailToTrackTask(
   }
   const wasBlocked = before.task.status === "blocked";
   const wasDone = before.task.status === "done";
+  await moveTrackOffPlaybook(bridge, board, taskId, before.task.skills);
 
   const append = buildMailHandoffAppend({
     existingBody: before.task.body ?? "",
@@ -760,6 +779,24 @@ export async function handoffMailToTrackTask(
     evaluation_queued: wake.queued,
     ...(wake.queued ? {} : { error: `handoff_ok_evaluation_failed:${wake.reason}` }),
   };
+}
+
+/**
+ * A track created before the split of ea-playbook preloads ea-playbook. Before its worker runs
+ * again, point the track at the mail track skills. A failure only logs: the slim ea-playbook
+ * tells an old track worker to load ea-mail-track.
+ */
+async function moveTrackOffPlaybook(
+  bridge: KanbanBridgeCall,
+  board: string,
+  taskId: string,
+  skills: string[] | null | undefined,
+): Promise<void> {
+  if (!Array.isArray(skills) || !skills.includes(EA_PLAYBOOK_SKILL)) return;
+  const result = await bridge({ action: "set_skills", board, task_id: taskId, skills: MAIL_TRACK_TASK_SKILLS });
+  if (!result.success) {
+    console.warn(`[ea-mail] track skills not updated task=${taskId} reason=${result.error ?? "unknown"}`);
+  }
 }
 
 export async function queueMailTrackTaskHandler(

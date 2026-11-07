@@ -5,6 +5,8 @@
 # Regenerate after Hermes pin bump: npm run hermes:sync-skills-policy
 # Bundled discovered: 190 | Enabled: 14 | Computed disabled: 177
 enabled:
+  - ea-mail-ingress
+  - ea-mail-track
   - ea-morning-review
   - ea-onboarding
   - ea-owner-reply
@@ -18,8 +20,12 @@ enabled:
   - joshu-brain
   - joshu-browser
   - joshu-browser-handoff
+  - joshu-content-router
   - joshu-mail
+  - joshu-manual
   - joshu-proactive
+  - joshu-social-posts
   - mcporter
   - realtime-goal
+  - research-report
   - team-standup

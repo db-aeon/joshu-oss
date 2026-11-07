@@ -122,6 +122,7 @@ type MeteredProviderRow = {
   balanceUsdDisplay: string | null;
   dashboardUrl: string | null;
   ossEnvKey: string;
+  ossKeyHint?: string;
 };
 
 type SlackbotSetupStatus = {
@@ -179,8 +180,9 @@ function App() {
   const [teamsBotDisplayName, setTeamsBotDisplayName] = useState("");
   const [teamsBotMsg, setTeamsBotMsg] = useState("");
   const [meteredProviders, setMeteredProviders] = useState<MeteredProviderRow[]>([]);
-  const [falApiKey, setFalApiKey] = useState("");
-  const [falPanelOpen, setFalPanelOpen] = useState(false);
+  /** Key input and open panel of each metered provider card, by provider id. */
+  const [providerKeys, setProviderKeys] = useState<Record<string, string>>({});
+  const [providerPanelOpen, setProviderPanelOpen] = useState<string | null>(null);
   const [meteredMsg, setMeteredMsg] = useState("");
   const backgroundStarted = useRef(false);
 
@@ -562,25 +564,25 @@ function App() {
     window.open(`${SHARE_CHAT_API}/teams/manifest.zip`, "_blank", "noopener,noreferrer");
   };
 
-  const falProvider = useMemo(
-    () => meteredProviders.find((row) => row.id === "fal") ?? null,
+  const activeMeteredProviders = useMemo(
+    () => meteredProviders.filter((row) => row.mode !== "off"),
     [meteredProviders],
   );
 
-  const saveFalApiKey = async () => {
-    setBusy("fal-save");
+  const saveProviderKey = async (provider: MeteredProviderRow) => {
+    setBusy(`${provider.id}-save`);
     setMeteredMsg("");
     try {
-      const res = await fetch(`${CONNECTORS_API}/providers/fal/setup`, {
+      const res = await fetch(`${CONNECTORS_API}/providers/${provider.id}/setup`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ apiKey: falApiKey }),
+        body: JSON.stringify({ apiKey: providerKeys[provider.id] ?? "" }),
       });
       const json = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
-      setFalApiKey("");
-      setMeteredMsg("fal.ai key saved.");
-      setFalPanelOpen(false);
+      setProviderKeys((prev) => ({ ...prev, [provider.id]: "" }));
+      setMeteredMsg(`${provider.displayName} key saved.`);
+      setProviderPanelOpen(null);
       await refreshMeteredProviders().catch(() => undefined);
     } catch (err) {
       setMeteredMsg(err instanceof Error ? err.message : String(err));
@@ -589,22 +591,19 @@ function App() {
     }
   };
 
-  const toggleFal = async (enabled: boolean) => {
-    setBusy("fal-toggle");
+  const toggleProvider = async (provider: MeteredProviderRow, enabled: boolean) => {
+    setBusy(`${provider.id}-toggle`);
     setMeteredMsg("");
     try {
-      const res = await fetch(`${CONNECTORS_API}/providers/fal/toggle`, {
+      const res = await fetch(`${CONNECTORS_API}/providers/${provider.id}/toggle`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ enabled }),
       });
       const json = (await res.json().catch(() => ({}))) as MeteredProviderRow & { error?: string };
       if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
-      setMeteredProviders((prev) => {
-        const rest = prev.filter((row) => row.id !== "fal");
-        return [...rest, json];
-      });
-      if (!enabled) setFalPanelOpen(false);
+      setMeteredProviders((prev) => prev.map((row) => (row.id === provider.id ? json : row)));
+      if (!enabled) setProviderPanelOpen(null);
     } catch (err) {
       setMeteredMsg(err instanceof Error ? err.message : String(err));
     } finally {
@@ -922,38 +921,41 @@ function App() {
                   Search
                 </button>
               </div>
-              {toolkitsLoading && toolkits.length === 0 && !falProvider ? (
+              {toolkitsLoading && toolkits.length === 0 && activeMeteredProviders.length === 0 ? (
                 <div className="loading-panel" role="status" aria-live="polite">
                   <span className="loading-spinner" aria-hidden />
                   <p>Loading apps…</p>
                 </div>
-              ) : toolkits.length === 0 && !falProvider ? (
+              ) : toolkits.length === 0 && activeMeteredProviders.length === 0 ? (
                 <p className="hint">No apps found. Try a different search, or check COMPOSIO_API_KEY.</p>
               ) : (
               <ul className={`composio-list${toolkitsLoading ? " is-loading" : ""}`}>
-                {falProvider && falProvider.mode !== "off" ? (
-                  <li className="composio-toolkit composio-fal" id="fal">
+                {activeMeteredProviders.map((provider) => {
+                  const panelOpen = providerPanelOpen === provider.id;
+                  const keyValue = providerKeys[provider.id] ?? "";
+                  return (
+                  <li className={`composio-toolkit composio-${provider.id}`} id={provider.id} key={provider.id}>
                     <div className="composio-row">
                       <div className="composio-row-main">
                         <span className="composio-logo composio-logo-fallback" aria-hidden>
-                          F
+                          {provider.displayName.charAt(0).toUpperCase()}
                         </span>
                         <div>
-                          <strong>{falProvider.displayName}</strong>
+                          <strong>{provider.displayName}</strong>
                           <small>
-                            {falProvider.mode === "relay" ? (
+                            {provider.mode === "relay" ? (
                               <>
                                 Fleet · relay
-                                {falProvider.balanceUsdDisplay != null
-                                  ? ` · $${falProvider.balanceUsdDisplay} balance`
+                                {provider.balanceUsdDisplay != null
+                                  ? ` · $${provider.balanceUsdDisplay} balance`
                                   : ""}
-                                {falProvider.mcpActive
+                                {provider.mcpActive
                                   ? " · Active"
-                                  : falProvider.userEnabled
+                                  : provider.userEnabled
                                     ? " · Needs funds"
                                     : " · Disabled"}
                               </>
-                            ) : falProvider.configured ? (
+                            ) : provider.configured ? (
                               "Self-host · key saved"
                             ) : (
                               "Self-host · paste API key"
@@ -962,53 +964,53 @@ function App() {
                         </div>
                       </div>
                       <div className="composio-account-actions">
-                        {falProvider.mode === "relay" ? (
+                        {provider.mode === "relay" ? (
                           <button
                             type="button"
                             className="btn"
-                            onClick={() => setFalPanelOpen((v) => !v)}
+                            onClick={() => setProviderPanelOpen(panelOpen ? null : provider.id)}
                           >
-                            {falPanelOpen ? "Hide" : "Manage"}
+                            {panelOpen ? "Hide" : "Manage"}
                           </button>
                         ) : (
                           <button
                             type="button"
                             className="btn"
-                            onClick={() => setFalPanelOpen((v) => !v)}
+                            onClick={() => setProviderPanelOpen(panelOpen ? null : provider.id)}
                           >
-                            {falPanelOpen ? "Hide" : falProvider.configured ? "Replace key" : "Add key"}
+                            {panelOpen ? "Hide" : provider.configured ? "Replace key" : "Add key"}
                           </button>
                         )}
-                        {falProvider.configured ? (
+                        {provider.configured ? (
                           <button
                             type="button"
                             className="btn btn-primary"
-                            disabled={busy === "fal-toggle"}
-                            onClick={() => void toggleFal(!falProvider.userEnabled)}
+                            disabled={busy === `${provider.id}-toggle`}
+                            onClick={() => void toggleProvider(provider, !provider.userEnabled)}
                           >
-                            {busy === "fal-toggle"
+                            {busy === `${provider.id}-toggle`
                               ? "Saving…"
-                              : falProvider.userEnabled
+                              : provider.userEnabled
                                 ? "Disable"
                                 : "Enable"}
                           </button>
                         ) : null}
                       </div>
                     </div>
-                    {falPanelOpen ? (
+                    {panelOpen ? (
                       <div className="provider-panel">
-                        <p className="hint">{falProvider.description}</p>
-                        {falProvider.mode === "relay" ? (
+                        <p className="hint">{provider.description}</p>
+                        {provider.mode === "relay" ? (
                           <>
                             <p className="hint">
-                              Usage is billed from your shared control-plane balance. Hermes activates fal
-                              tools when enabled and balance is above zero.
+                              Usage is billed from your shared control-plane balance. Hermes activates the{" "}
+                              {provider.displayName} tools when enabled and balance is above zero.
                             </p>
                             <div className="search-row">
-                              {falProvider.dashboardUrl ? (
+                              {provider.dashboardUrl ? (
                                 <a
                                   className="btn btn-primary"
-                                  href={falProvider.dashboardUrl}
+                                  href={provider.dashboardUrl}
                                   target="_blank"
                                   rel="noreferrer"
                                 >
@@ -1026,31 +1028,35 @@ function App() {
                           </>
                         ) : (
                           <div className="provider-direct">
-                            <label htmlFor="falApiKey">{falProvider.ossEnvKey}</label>
+                            {provider.ossKeyHint ? <p className="hint">{provider.ossKeyHint}</p> : null}
+                            <label htmlFor={`${provider.id}ApiKey`}>{provider.ossEnvKey}</label>
                             <input
-                              id="falApiKey"
+                              id={`${provider.id}ApiKey`}
                               type="password"
-                              value={falApiKey}
-                              onChange={(e) => setFalApiKey(e.target.value)}
+                              value={keyValue}
+                              onChange={(e) =>
+                                setProviderKeys((prev) => ({ ...prev, [provider.id]: e.target.value }))
+                              }
                               placeholder={
-                                falProvider.configured ? "Saved — paste to replace" : "Paste fal API key"
+                                provider.configured ? "Saved — paste to replace" : `Paste ${provider.ossEnvKey}`
                               }
                               autoComplete="off"
                             />
                             <button
                               type="button"
                               className="btn btn-primary"
-                              disabled={busy === "fal-save" || !falApiKey.trim()}
-                              onClick={() => void saveFalApiKey()}
+                              disabled={busy === `${provider.id}-save` || !keyValue.trim()}
+                              onClick={() => void saveProviderKey(provider)}
                             >
-                              {busy === "fal-save" ? "Saving…" : "Save key"}
+                              {busy === `${provider.id}-save` ? "Saving…" : "Save key"}
                             </button>
                           </div>
                         )}
                       </div>
                     ) : null}
                   </li>
-                ) : null}
+                );
+                })}
                 {toolkits.map((row) => {
                   const slugLower = row.slug.toLowerCase();
                   const accounts: ComposioConnectedAccountSummary[] = row.connectedAccounts?.length

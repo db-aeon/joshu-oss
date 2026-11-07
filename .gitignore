@@ -30,8 +30,6 @@ portable-soul/
 .docker-staging/joshu-design/*
 !.docker-staging/joshu-design/.no-design-pack
 
-# Ephemeral bundle from scripts/hotpatch-last30days-multimodal.sh (older versions staged here).
-.hotpatch-last30days-staging/
 
 # On-box boot overlay (hotfix/scripts/.gitkeep is tracked; never commit live patches).
 hotfix/scripts/**
@@ -44,7 +42,6 @@ deploy/Caddyfile
 # commit hashed app bundles dropped into the repo tree by local builds.
 arozos/subservice/connectors/app/
 arozos/subservice/jterm/app/
-arozos/subservice/last30days/app/
 arozos/subservice/md-editor/app/
 arozos/web-overlays-vanilla/subservice/
 
@@ -65,8 +62,13 @@ proprietary/.joshu/
 vendor/arozos/
 vendor/excalidraw/
 
-# last30days Python engine snapshot — pin in integrations/last30days-skill.pin; sync via scripts/sync-last30days-skill.sh
+# Copy of the removed last30days engine on an old checkout; never commit it
 integrations/last30days-skill/
 
 # Fleet SOP must not live in the AGPL tree (canonical under joshu/docs/Joshu-SOP/).
 docs/Joshu-SOP/
+
+# Archify render output (the diagram JSON and SVG live in docs/technical-reference/diagrams/)
+.archify/
+# taste-skill working files (/design-taste-frontend)
+.taste-skill/

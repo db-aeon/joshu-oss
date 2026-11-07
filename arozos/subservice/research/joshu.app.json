@@ -1,0 +1,10 @@
+{
+  "id": "research",
+  "name": "Research",
+  "version": "0.1.0",
+  "license": "AGPL-3.0",
+  "publisher": "joshu",
+  "entry": "research/index.html",
+  "apiPrefix": "/joshu/api/research",
+  "description": "Research reports and recurring reports: the list, the report updates and stories of each recurring report, and one form for a new report"
+}

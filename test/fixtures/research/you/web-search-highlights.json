@@ -1,0 +1,38 @@
+{
+  "results": {
+    "web": [
+      {
+        "url": "https://upway.co/blogs/news/what-is-an-electric-bike-subscription",
+        "contents": {
+          "highlights": [
+            "E-bike subscriptions are also called e-Bike memberships. This fairly recent concept is changing how people access the world of e-Bikes, especially in cities.",
+            "An e-Bike subscription is a service that lets you ride an e-Bike for a monthly fee."
+          ]
+        },
+        "title": "What Is An Electric Bike Subscription?",
+        "description": "Learn how e-bike subscriptions work and what they include.",
+        "thumbnail_url": "https://imgs.search.brave.com/upway-thumb.jpg",
+        "original_thumbnail_url": "https://upway.co/cdn/shop/articles/subscription.jpg",
+        "page_age": "2026-01-24T00:00:00",
+        "favicon_url": "https://upway.co/favicon.ico"
+      },
+      {
+        "url": "https://himiwaybike.com/blogs/news/ebike-voucher",
+        "title": "E-bike vouchers in 2026",
+        "description": "Cities pay part of the price of an e-bike.",
+        "snippets": ["Several cities started e-bike voucher programs in October 2026."],
+        "thumbnail_url": "https://imgs.search.brave.com/himiway-thumb.jpg",
+        "page_age": "2026-11-05T21:24:23",
+        "favicon_url": "https://himiwaybike.com/favicon.ico"
+      },
+      {
+        "url": "https://wombi.us/",
+        "contents": { "highlights": [] },
+        "title": "Wombi: e-bike subscriptions in Seattle",
+        "description": "Ride a new e-bike for a monthly fee, with repairs included.",
+        "favicon_url": "https://wombi.us/favicon.ico"
+      },
+      { "title": "A result without a URL" }
+    ]
+  }
+}

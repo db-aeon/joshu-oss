@@ -1,0 +1,15 @@
+{
+  "Name": "Research",
+  "Desc": "Research reports and recurring reports of your companion",
+  "Group": "Joshu Apps",
+  "IconPath": "img/joshu/research.png",
+  "Version": "0.1.0",
+  "StartDir": "research/index.html",
+  "SupportFW": true,
+  "LaunchFWDir": "research/index.html",
+  "SupportEmb": false,
+  "LaunchEmb": "",
+  "InitFWSize": [1180, 800],
+  "InitEmbSize": [960, 720],
+  "SupportedExt": []
+}

@@ -8,7 +8,9 @@ About every 10 minutes, your companion looks at new mail in your inboxes and in 
 
 Your companion acts on an email thread only when you include it: when it is in To, CC, or BCC, or when you write in the email that it will help, for example "copying my assistant Mina" or "Mina will help us find a time." Otherwise it only files the email and keeps track of it.
 
-You can read your companion's inbox and your connected inboxes in the **jMail** app. Your connected inboxes come through your Composio account, and your companion's own inbox comes from your Nylas account (see [Optional services](01-getting-started.md#optional-services)). You can copy your companion on a thread, and your companion can send email, only when it has its own inbox.
+You can read your companion's inbox and your connected inboxes in the **jMail** app.
+
+Your connected inboxes come through your Composio account, and your companion's own inbox comes from your Nylas account (see [Optional services](01-getting-started.md#optional-services)). You can copy your companion on a thread, and your companion can send email, only when it has its own inbox.
 
 ## Schedule a meeting
 

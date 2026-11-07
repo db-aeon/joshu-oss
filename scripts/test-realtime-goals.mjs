@@ -127,8 +127,42 @@ try {
     receivedAt: new Date(Date.now() - 1_000).toISOString(),
   });
   assert.equal((await store.listStaleInbound(0)).length, 1);
+  assert.equal(
+    (await store.listStaleInbound(0, "run-now")).length,
+    1,
+    "a text without a run id is from an earlier run",
+  );
   await store.completeInbound("sms:SM-INBOX");
   assert.equal((await store.listStaleInbound(0)).length, 0);
+
+  // A slow reply of the running broker is not a lost text; only a text that
+  // an earlier run left unfinished gets the "I restarted" notice.
+  const runningBroker = new RealtimeGoalBroker(process.cwd());
+  const nextBroker = new RealtimeGoalBroker(process.cwd());
+  await store.reserveInbound({
+    id: "sms:SM-SLOW",
+    origin: {
+      channel: "sms",
+      sessionKey: "sms:+15555550123",
+      messageId: "SM-SLOW",
+      replyAddress: "+15555550123",
+    },
+    text: "Okay what was in my email?",
+    receivedAt: new Date(Date.now() - 10 * 60_000).toISOString(),
+    runId: runningBroker.runId,
+  });
+  await runningBroker.recoverStaleInbound();
+  assert.deepEqual(
+    (await store.listStaleInbound(0)).map((item) => item.id),
+    ["sms:SM-SLOW"],
+    "the running broker must not report its own slow text as interrupted",
+  );
+  await nextBroker.recoverStaleInbound();
+  assert.equal(
+    (await store.listStaleInbound(0)).length,
+    0,
+    "a later run must report the unfinished text once",
+  );
 
   const hotelMenu =
     "No Loop-area hotel is under $250/night. Holiday Inn ($646), Ohio House ($638). Which one do you want me to hold?";
@@ -857,6 +891,182 @@ try {
   );
   assert.match(routerMessages[0]?.content ?? "", /NEVER queue a new goal to look up details/);
   assert.match(routerMessages[1]?.content ?? "", /waiting_on_owner=".*United \$447/);
+
+  // Two session thread stores on one threads.json share one write chain.
+  {
+    const savedMax = process.env.JOSHU_REALTIME_GOALS_THREAD_MAX_TURNS;
+    process.env.JOSHU_REALTIME_GOALS_THREAD_MAX_TURNS = "50";
+    const first = new SessionThreadStore(process.cwd());
+    const second = new SessionThreadStore(process.cwd());
+    await Promise.all(
+      Array.from({ length: 20 }, (_, i) => [
+        first.recordBoxTurn("sms:+15555550888", `first ${i}`, "broker"),
+        second.recordBoxTurn("sms:+15555550888", `second ${i}`, "delivery"),
+      ]).flat(),
+    );
+    assert.equal((await first.getTurns("sms:+15555550888")).length, 40, "no turn lost between stores");
+    if (savedMax === undefined) delete process.env.JOSHU_REALTIME_GOALS_THREAD_MAX_TURNS;
+    else process.env.JOSHU_REALTIME_GOALS_THREAD_MAX_TURNS = savedMax;
+  }
+
+  // A cancel needs a named, listed goal with enough confidence; otherwise it passes.
+  {
+    const other = { ...goal, id: "goal-other", title: "Other goal" };
+    const cancelRoute = (answer, goals) =>
+      routeRealtimeGoalMessage(
+        { text: "I got it figured out. You can cancel", activeGoals: goals, threadTurns: [], queueCapable: true },
+        { completionOverride: async () => JSON.stringify({ reason: "cancel_requested", reply: "I'll cancel that.", ...answer }) },
+      );
+    const noIdTwo = await cancelRoute({ decision: "cancel", confidence: 0.92 }, [goal, other]);
+    assert.equal(noIdTwo.decision, "pass");
+    assert.equal((await cancelRoute({ decision: "cancel", confidence: 0.92 }, [goal])).decision, "pass");
+    const named = await cancelRoute({ decision: "cancel", confidence: 0.9, goal_id: other.id }, [goal, other]);
+    assert.equal(named.decision, "cancel");
+    assert.equal(named.goalId, other.id);
+    assert.equal((await cancelRoute({ decision: "cancel", confidence: 0.5, goal_id: other.id }, [goal, other])).decision, "pass");
+  }
+
+  // Replay 2026-10-26: "You can cancel" after a nudge and an owner reminder is not about the old goal.
+  {
+    const ownerSession = "sms:+15555550777";
+    const at = new Date().toISOString();
+    const base = {
+      version: 1,
+      origin: { channel: "sms", sessionKey: ownerSession, replyAddress: "+15555550777" },
+      createdAt: at,
+      updatedAt: at,
+      releaseAt: at,
+      intakeReply: "Queued.",
+      delivery: { state: "outbox", attempts: 0 },
+    };
+    const returnLabels = {
+      ...base,
+      id: "goal-return-labels",
+      title: "Find return labels for three recently purchased books",
+      objective: "Return labels for three books bought last week",
+      status: "blocked",
+      kanbanTaskId: "t_return",
+      sourceMessageId: "SM-return",
+      idempotencyKey: "realtime-goal:v1:return-labels",
+      messages: [{ at, role: "owner", text: "I need return labels for three books" }],
+    };
+    const research = {
+      ...base,
+      id: "goal-research",
+      title: "Research private car sale",
+      objective: "Research how to sell a car without a dealer",
+      status: "running",
+      kanbanTaskId: "t_research",
+      sourceMessageId: "SM-research",
+      idempotencyKey: "realtime-goal:v1:research",
+      messages: [{ at, role: "owner", text: "Research how to sell a car without a dealer" }],
+    };
+    await store.insert(returnLabels);
+    await store.insert(research);
+    await threads.recordBoxTurn(ownerSession, "Dan, your \"check this\" came through with no picture attached.", "delivery");
+    await threads.recordBoxTurn(ownerSession, "Reminder: Get the HubSpot contract end date. Reply DONE when it is done.", "delivery");
+    const replayBroker = new RealtimeGoalBroker(process.cwd(), (input) =>
+      routeRealtimeGoalMessage(input, {
+        completionOverride: async () =>
+          JSON.stringify({
+            decision: "cancel",
+            confidence: 0.92,
+            goal_id: null,
+            reply: "Got it — I'll cancel that return-label help attempt for now.",
+            reason: "Owner explicitly says to cancel; no specific goal id referenced",
+          }),
+      }),
+    );
+    const replay = await replayBroker.route({
+      origin: { channel: "sms", sessionKey: ownerSession, messageId: "SM-cancel", replyAddress: "+15555550777" },
+      text: "I got it figured out. You can cancel",
+    });
+    assert.deepEqual(replay, { action: "pass" });
+    assert.equal((await store.get(returnLabels.id))?.status, "blocked");
+    assert.equal((await store.get(research.id))?.status, "running");
+    const boxTurnsAfter = (await threads.getTurns(ownerSession)).filter((t) => t.role === "box" && t.source === "broker");
+    assert.equal(boxTurnsAfter.length, 0, "the broker texts no reply");
+  }
+
+  // Issue #171: files and chat context of a Slack or Telegram message reach the realtime goal.
+  {
+    const { writeFile, stat } = await import("node:fs/promises");
+    const {
+      parseIntakeAttachments,
+      parseIntakeContext,
+      MAX_INTAKE_CONTEXT_CHARS,
+    } = await import("../src/realtimeGoals/intakeExtras.ts");
+    assert.deepEqual(
+      parseIntakeAttachments([
+        { path: "/tmp/a.png", mediaType: "image/png" },
+        { path: "relative.png" },
+        "not an object",
+        { path: "/tmp/b.pdf" },
+      ]),
+      [{ path: "/tmp/a.png", mediaType: "image/png" }, { path: "/tmp/b.pdf" }],
+    );
+    assert.equal(parseIntakeAttachments(Array.from({ length: 20 }, (_, i) => ({ path: `/f${i}` }))).length, 10);
+    assert.equal(parseIntakeContext("  "), undefined);
+    assert.equal(parseIntakeContext("x".repeat(9000)).length, MAX_INTAKE_CONTEXT_CHARS + 1);
+
+    const cache = await mkdtemp(path.join(tmpdir(), "joshu-hermes-cache-"));
+    const screenshot = path.join(cache, "img_invite.png");
+    await writeFile(screenshot, "fake png bytes");
+    const context =
+      "[Group DM context — recent messages in this group DM]\nJT: Mina, please book 30 minutes with Sam on Tuesday at 3 PM PT on my Zoom";
+    const seen = [];
+    const filesBroker = new RealtimeGoalBroker(process.cwd(), async (input) => {
+      seen.push(input);
+      return /weather/i.test(input.text)
+        ? { decision: "pass", confidence: 0.9, reason: "quick" }
+        : { decision: "queue", confidence: 0.95, title: "Book the meeting", reason: "booking" };
+    });
+    const slackOrigin = {
+      channel: "slack",
+      sessionKey: "agent:main:slack:group:C0GROUP",
+      replyAddress: "C0GROUP",
+    };
+    const queued = await filesBroker.route({
+      origin: { ...slackOrigin, messageId: "1761102300.000100" },
+      text: "please book this meeting",
+      attachments: [{ path: screenshot, mediaType: "image/png" }],
+      context,
+    });
+    assert.equal(queued.action, "reply");
+    assert.equal(queued.outcome, "queued");
+    assert.match(seen[0].messageNote ?? "", /attached 1 file\(s\): img_invite\.png \(image\/png\)/);
+    assert.match(seen[0].messageNote ?? "", /Tuesday at 3 PM PT/);
+    assert.equal(seen[0].text, "please book this meeting", "the router text stays the owner text");
+    const stored = await store.get(queued.goalId);
+    const intake = stored.messages[0].text;
+    assert.match(intake, /^please book this meeting/);
+    const copied = intake.match(/^- (\S+) \(image\/png\)$/m)?.[1];
+    assert.ok(copied?.startsWith(path.join(temp, "files")), `file copied under the state dir: ${intake}`);
+    assert.equal((await stat(copied)).size, "fake png bytes".length);
+    assert.match(intake, /Tuesday at 3 PM PT on my Zoom/);
+    assert.match(intake, /\[unverified\] are not from the owner/);
+    assert.equal(stored.title, "Book the meeting");
+    assert.match(stored.objective, /Tuesday at 3 PM PT/);
+
+    // A file that is gone keeps its path with a note; a pass copies nothing.
+    const missing = await filesBroker.route({
+      origin: { ...slackOrigin, messageId: "1761102400.000100" },
+      text: "and add this agenda",
+      attachments: [{ path: path.join(cache, "gone.pdf"), mediaType: "application/pdf" }],
+    });
+    const missingGoal = await store.get(missing.goalId);
+    assert.match(missingGoal.messages.at(-1).text, /gone\.pdf \(application\/pdf\) \[not copied: /);
+    const before = await (await import("node:fs/promises")).readdir(path.join(temp, "files"));
+    const passed = await filesBroker.route({
+      origin: { ...slackOrigin, messageId: "1761102500.000100" },
+      text: "what's the weather",
+      attachments: [{ path: screenshot, mediaType: "image/png" }],
+    });
+    assert.deepEqual(passed, { action: "pass" });
+    const after = await (await import("node:fs/promises")).readdir(path.join(temp, "files"));
+    assert.deepEqual(after, before, "a pass copies no file");
+    await rm(cache, { recursive: true, force: true });
+  }
 
   console.log("test-realtime-goals: ok");
 } finally {

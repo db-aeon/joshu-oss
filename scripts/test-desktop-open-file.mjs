@@ -1,7 +1,7 @@
 #!/usr/bin/env npx tsx
 /**
  * `openDesktopFile` of @joshu/app-agent: Markdown opens in jNotes, a whiteboard in
- * jWhiteboard, and a click on a file that is already open raises its window instead of
+ * jWhiteboard, a PDF in the PDF Viewer, and a click on a file that is already open raises its window instead of
  * opening one more (Multiplayer "What I share" opened a new notes window on each click).
  *
  * Usage: npm run test:desktop-open-file
@@ -85,6 +85,16 @@ await test("another file, or the same file in another app, opens a new window", 
   await openDesktopFile("Planning/board.excalidraw");
   assert.equal(desktop.opened.length, 2);
   assert.equal(desktop.opened[1].url.startsWith("excalidraw/index.html#"), true);
+});
+
+await test("a PDF opens in the PDF Viewer, not in MDEditor", async () => {
+  const desktop = fakeDesktop([]);
+  const rel = "Research/2026-10-30-clara-analytics/report.pdf";
+  const param = encodeURIComponent(JSON.stringify([{ filepath: `user:/Desktop/joshu's files/${rel}`, filename: "report.pdf" }]));
+  assert.equal(await openDesktopFile(rel), true);
+  assert.equal(desktop.opened[0].url, `PDF Viewer/viewer.html#${param}`);
+  await openDesktopFile(rel);
+  assert.equal(desktop.opened.length, 1, "a PDF that is open is raised");
 });
 
 await test("findOpenFileWindow matches the exact file", () => {

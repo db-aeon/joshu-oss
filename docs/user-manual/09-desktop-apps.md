@@ -15,8 +15,8 @@ Your desktop has apps for the things that you do with your companion. You can do
 | **File Brain** | Search everything on your desktop. |
 | **jNotes** | Write and edit notes. Your companion can help you edit. |
 | **jWhiteboard** | A shared whiteboard for planning with your companion. |
-| **last30days** | Find out what people said about a topic in the last week or month. |
-| **Multiplayer** | See your [Multiplayer](08-boss-mode.md#see-your-teams-in-the-multiplayer-app) teams: a group chat where each companion posts, and a board of all the team's work. |
+| **Research** | Your [Research reports](10-research-reports.md#the-research-app) and the topics that your companion follows for you. Start a new report here, or pause and change a regular update. |
+| **Multiplayer** | See your [Multiplayer](08-multiplayer.md#see-your-teams-in-the-multiplayer-app) teams: a group chat where each companion posts, and a board of all the team's work. |
 | **jMovie** | Edit videos. |
 | **Welcome** | Your AI keys, and your profile: work email, time zone, working hours, and priorities. |
 | **Files**, **Settings**, **Trash** | The file manager, the settings of your box, and the trash. |
@@ -33,12 +33,6 @@ Click **New Board**, then **Start Session**, and ask your companion to add or ch
 
 Schedules lists the jobs that your companion runs on a timetable. You can pause, resume, run, or delete a job, and you can make a new one. The easiest way to make a new job is to ask your companion, for example "Every Friday at 4 pm, send me a summary of open client work."
 
-## last30days
-
-Click **Research** for a one-time report on what people say about a topic, or **Watch** to check a topic every day or week. After three checks, a watched topic is labeled Trending, Steady, or Quiet. You can also ask your companion in chat, for example "Is anybody talking about our new product?"
-
-On a self-hosted box, last30days searches the web without a key. For Reddit, YouTube, and TikTok, paste your own ScrapeCreators key, and for X, paste your own Xquik key. You paste both keys in the app, under the gear button, in **Settings**. See the [last30days guide](../last30days-user-guide.md).
-
 ## The Kanban dashboard
 
 The Kanban dashboard shows your companion's to-do lists as boards of cards. Open it with the **Hermes Admin** icon on your desktop. The dashboard has its own address, `https://hermes-admin.` followed by your desktop domain, for example `https://hermes-admin.mybox.example.com`. The dashboard address needs its own DNS record (see the [VPS quickstart](../vps-sandbox/hetzner-quickstart.md#hermes-admin-desktop-shortcut)).
@@ -53,7 +47,7 @@ In the **Kanban** tab, a list at the top lets you switch between boards:
 - `realtime-goals`: requests that you made by text, phone, Slack, or Telegram.
 - `project-…`: one board for each project, mostly emails that wait for somebody's answer.
 - `ea-onboarding`: setup steps that are still open.
-- `team-…`: your promises to a [Multiplayer](08-boss-mode.md) team.
+- `team-…`: your promises to a [Multiplayer](08-multiplayer.md) team.
 
 You never have to use the dashboard. It is there when you want to see everything that your companion is working on.
 
@@ -72,4 +66,4 @@ On a self-hosted box, a hard reset also deletes the settings that you made in th
 
 jTerm is a command line for experts. It can change anything on your box, and it has no safety checks. If you are not sure what it does, do not use it.
 
-Next: [Help and common questions](10-help.md).
+Next: [Research reports](10-research-reports.md).

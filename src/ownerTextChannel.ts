@@ -3,11 +3,15 @@
  * gateway and an owner mobile, otherwise email from the companion mailbox.
  * An undelivered SMS (the carrier rejected it) also falls back to email.
  * Nudges and owner reminders send through this helper. No LLM.
+ * A delivered SMS goes on the owner's SMS session thread, so the router of the
+ * realtime-goal broker knows what a reply answers.
  */
 import { sendMessage } from "./nylas/client.js";
 import { readAgentProfile } from "./nylas/profile.js";
 import { readAgentGrant } from "./nylas/store.js";
+import { SessionThreadStore } from "./realtimeGoals/sessionThread.js";
 import {
+  normalizePhone,
   ownerSmsPhone,
   SMS_RECEIPT_WAIT_MS,
   sendSmsWithReceipt,
@@ -44,6 +48,15 @@ function smsRoute(projectRoot: string): string | null {
   return ownerSmsPhone(projectRoot) || null;
 }
 
+/** Same thread key as the SMS gateway (`sms:<E.164>`). A failed write never fails the send. */
+async function recordSmsOnSessionThread(projectRoot: string, phone: string, text: string): Promise<void> {
+  try {
+    await new SessionThreadStore(projectRoot).recordBoxTurn(`sms:${normalizePhone(phone)}`, text, "delivery");
+  } catch (err) {
+    console.warn("[owner-text] session thread write failed:", err);
+  }
+}
+
 /** The sender and recipient when the box can email the owner, otherwise null. */
 function emailRoute(projectRoot: string) {
   const profile = readAgentProfile(projectRoot);
@@ -76,7 +89,10 @@ export async function sendOwnerText(projectRoot: string, input: OwnerTextInput):
   if (phone) {
     try {
       const receipt = await sendSmsWithReceipt(phone, input.sms, SMS_RECEIPT_WAIT_MS);
-      if (receipt.outcome !== "undelivered") return { delivered: true, channel: "sms" };
+      if (receipt.outcome !== "undelivered") {
+        await recordSmsOnSessionThread(projectRoot, phone, input.sms);
+        return { delivered: true, channel: "sms" };
+      }
       smsError = receipt.detail;
       console.warn(`[owner-text] SMS undelivered (${receipt.detail}); trying email`);
     } catch (err) {

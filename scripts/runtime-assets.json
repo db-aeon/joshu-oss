@@ -1,11 +1,15 @@
 {
-  "description": "Non-TS files the Joshu API reads at runtime. tsc does not emit these. npm run build copies src → dest under dist/ so VPS dist bind-mounts serve them. Add a row when you add such a file — see docs/runtime-assets.md.",
+  "description": "Non-TS files the Joshu API reads at runtime. tsc does not emit these. npm run build copies src \u2192 dest under dist/ so VPS dist bind-mounts serve them. Add a row when you add such a file \u2014 see docs/runtime-assets.md.",
   "assets": [
     {
       "src": "apps/share-chat/index.html",
       "dest": "dist/shareChat/ui/index.html",
       "reason": "Public Chat with files guest HTML",
-      "contains": ["{{SHARE_UUID}}", "{{ASSET_BASE}}", "{{ASSISTANT_NAME}}"]
+      "contains": [
+        "{{SHARE_UUID}}",
+        "{{ASSET_BASE}}",
+        "{{ASSISTANT_NAME}}"
+      ]
     },
     {
       "src": "src/shareChat/teamsBotAssets/color.png",
@@ -16,6 +20,36 @@
       "src": "src/shareChat/teamsBotAssets/outline.png",
       "dest": "dist/shareChat/teamsBotAssets/outline.png",
       "reason": "Teams sideload package outline icon"
+    },
+    {
+      "src": "node_modules/@fontsource-variable/newsreader/files/newsreader-latin-opsz-normal.woff2",
+      "dest": "dist/research/fonts/newsreader-latin-opsz-normal.woff2",
+      "reason": "Font embedded in each Research report (src/research/fonts.ts)"
+    },
+    {
+      "src": "node_modules/@fontsource-variable/newsreader/files/newsreader-latin-opsz-italic.woff2",
+      "dest": "dist/research/fonts/newsreader-latin-opsz-italic.woff2",
+      "reason": "Font embedded in each Research report (src/research/fonts.ts)"
+    },
+    {
+      "src": "node_modules/@fontsource/work-sans/files/work-sans-latin-400-normal.woff2",
+      "dest": "dist/research/fonts/work-sans-latin-400-normal.woff2",
+      "reason": "Font embedded in each Research report (src/research/fonts.ts)"
+    },
+    {
+      "src": "node_modules/@fontsource/work-sans/files/work-sans-latin-500-normal.woff2",
+      "dest": "dist/research/fonts/work-sans-latin-500-normal.woff2",
+      "reason": "Font embedded in each Research report (src/research/fonts.ts)"
+    },
+    {
+      "src": "node_modules/@fontsource/work-sans/files/work-sans-latin-600-normal.woff2",
+      "dest": "dist/research/fonts/work-sans-latin-600-normal.woff2",
+      "reason": "Font embedded in each Research report (src/research/fonts.ts)"
+    },
+    {
+      "src": "node_modules/@fontsource/silkscreen/files/silkscreen-latin-400-normal.woff2",
+      "dest": "dist/research/fonts/silkscreen-latin-400-normal.woff2",
+      "reason": "Font embedded in each Research report (src/research/fonts.ts)"
     }
   ]
 }

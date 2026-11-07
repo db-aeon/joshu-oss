@@ -46,7 +46,9 @@ When you finish, your companion sets up your morning, evening, and weekly briefs
 
 ## The four setup steps
 
-Your companion works best when four things are done. Until they are, your companion reminds you once a day, and it mentions the next open step at the end of one reply each day. The daily reminder comes by text message when your box can send texts, and otherwise by email from your companion's mailbox to your work email.
+Your companion works best when four things are done. Until they are, your companion reminds you once a day, and it mentions the next open step at the end of one reply each day.
+
+The daily reminder comes by text message when your box can send texts, and otherwise by email from your companion's mailbox to your work email.
 
 1. **Your profile.** Your work email, time zone, and working hours, in the Welcome app.
 2. **Your mobile number.** Open the **Telephone** app and enter your own mobile number with the country code, for example `+1 415 555 0100`. Do not enter your companion's number here. Your companion uses your mobile to text you, to ask for your approval, and to recognize you when you call.

@@ -2,6 +2,8 @@
  * App-scoped AG-UI context — trimmed prompts from joshu.app.json agent block.
  */
 
+import { createHash } from "node:crypto";
+
 import type { HermesChatMessage } from "./hermesApi.js";
 import { getAppManifest, type JoshuAppManifest } from "./appRegistry.js";
 
@@ -52,6 +54,61 @@ function formatGuiActionsForPrompt(manifest: JoshuAppManifest): string[] {
 /** Hermes session key for embedded app agents (distinct from jChat). */
 export function buildAppAgentSessionId(appId: string, threadId: string): string {
   return `joshu-app:${appId}:${threadId}`;
+}
+
+/** Hermes `X-Hermes-Session-Id` length cap (api_server `_MAX_SESSION_HEADER_LEN`). */
+const HERMES_SESSION_ID_MAX = 256;
+
+/** Mirrors Hermes `gateway.session._is_path_unsafe` plus the header control-char check. */
+function isUnsafeHermesSessionId(value: string): boolean {
+  return (
+    value.includes("..") ||
+    value.includes("/") ||
+    value.includes("\\") ||
+    /[\r\n\0]/.test(value) ||
+    /^[A-Za-z]:/.test(value) ||
+    value.length > HERMES_SESSION_ID_MAX
+  );
+}
+
+/**
+ * Hermes session id for an AG-UI thread. Hermes names files on disk after the session id and
+ * answers 400 when it holds a path separator, so a jNotes thread for `Notes/plan.md` must be
+ * encoded. Safe thread ids pass through unchanged, which keeps existing sessions.
+ */
+export function toHermesSessionId(threadId: string): string {
+  if (!isUnsafeHermesSessionId(threadId)) return threadId;
+  let id = threadId
+    .replace(/%/g, "%25")
+    .replace(/\//g, "%2F")
+    .replace(/\\/g, "%5C")
+    .replace(/\.\./g, ".%2E")
+    .replace(/\r/g, "%0D")
+    .replace(/\n/g, "%0A")
+    .replace(/\0/g, "%00");
+  if (/^[A-Za-z]:/.test(id)) id = `t-${id}`;
+  if (id.length > HERMES_SESSION_ID_MAX) {
+    const hash = createHash("sha256").update(threadId).digest("hex").slice(0, 16);
+    id = `${id.slice(0, HERMES_SESSION_ID_MAX - hash.length - 1)}~${hash}`;
+  }
+  return id;
+}
+
+/** Short owner-facing text for a failed run; keeps the Hermes error message, drops the raw body. */
+export function describeRunError(message: string): string {
+  const match = /^Hermes chat request failed: (\d+) ?([\s\S]*)$/.exec(message);
+  if (!match) return message;
+  const [, status, body = ""] = match;
+  let detail = body.trim();
+  try {
+    const parsed = JSON.parse(detail) as { error?: { message?: unknown } | string };
+    const inner = typeof parsed.error === "string" ? parsed.error : parsed.error?.message;
+    if (typeof inner === "string" && inner.trim()) detail = inner.trim();
+  } catch {
+    /* not JSON; keep the raw text */
+  }
+  detail = detail.slice(0, 200);
+  return detail ? `Hermes returned ${status}: ${detail}` : `Hermes returned ${status}.`;
 }
 
 /** Compact system messages injected before the user turn for app-scoped AG-UI runs. */

@@ -1,17 +1,19 @@
 import type { Request, Response, Router } from "express";
 import type { HermesApiRunner } from "../hermesApi.js";
 import {
+  anyMeteredProviderRelayConfigured,
   controlPlaneUsageDashboardUrl,
-  falRelayConfigured,
   fetchUsageSummaryFromCp,
   getMeteredProviderDefinition,
   METERED_PROVIDER_DEFINITIONS,
+  meteredProviderRelayConfigured,
   readMeteredProviderConfig,
-  resolveFalApiKey,
-  resolveFalMode,
-  resolveFalUserEnabled,
-  setFalUserEnabled,
+  resolveMeteredProviderApiKey,
+  resolveMeteredProviderMode,
+  resolveMeteredProviderUserEnabled,
+  setMeteredProviderUserEnabled,
   writeMeteredProviderConfig,
+  type MeteredProviderDefinition,
 } from "../meteredProviders/config.js";
 
 function readString(value: unknown): string {
@@ -29,17 +31,17 @@ function readBoolean(value: unknown): boolean | null {
 }
 
 async function buildProviderRow(
-  def: (typeof METERED_PROVIDER_DEFINITIONS)[number],
+  def: MeteredProviderDefinition,
   projectRoot: string,
   usage: Awaited<ReturnType<typeof fetchUsageSummaryFromCp>>,
 ) {
-  const mode = def.id === "fal" ? resolveFalMode() : "off";
-  const userEnabled = def.id === "fal" ? resolveFalUserEnabled(projectRoot) : false;
+  const mode = resolveMeteredProviderMode(def);
+  const userEnabled = resolveMeteredProviderUserEnabled(def, projectRoot);
   const configured =
     mode === "relay"
-      ? falRelayConfigured()
+      ? meteredProviderRelayConfigured(def)
       : mode === "direct"
-        ? Boolean(resolveFalApiKey(projectRoot))
+        ? Boolean(resolveMeteredProviderApiKey(def, projectRoot))
         : false;
   const mcpActive =
     mode === "relay"
@@ -58,8 +60,9 @@ async function buildProviderRow(
     mcpActive,
     balanceUsd: usage?.balanceUsd ?? null,
     balanceUsdDisplay: usage?.balanceUsdDisplay ?? null,
-    dashboardUrl: falRelayConfigured() ? controlPlaneUsageDashboardUrl() : null,
+    dashboardUrl: meteredProviderRelayConfigured(def) ? controlPlaneUsageDashboardUrl() : null,
     ossEnvKey: def.ossEnvKey,
+    ossKeyHint: def.ossKeyHint,
   };
 }
 
@@ -70,7 +73,7 @@ export function registerMeteredProviderRoutes(
 ): void {
   router.get("/api/connectors/providers", async (_req: Request, res: Response) => {
     try {
-      const usage = falRelayConfigured() ? await fetchUsageSummaryFromCp() : null;
+      const usage = anyMeteredProviderRelayConfigured() ? await fetchUsageSummaryFromCp() : null;
       const providers = await Promise.all(
         METERED_PROVIDER_DEFINITIONS.map((def) => buildProviderRow(def, projectRoot, usage)),
       );
@@ -88,7 +91,7 @@ export function registerMeteredProviderRoutes(
         res.status(404).json({ ok: false, error: "unknown_provider" });
         return;
       }
-      const usage = falRelayConfigured() ? await fetchUsageSummaryFromCp() : null;
+      const usage = anyMeteredProviderRelayConfigured() ? await fetchUsageSummaryFromCp() : null;
       const row = await buildProviderRow(def, projectRoot, usage);
       res.json({
         ok: true,
@@ -103,7 +106,8 @@ export function registerMeteredProviderRoutes(
   router.post("/api/connectors/providers/:providerId/toggle", async (req: Request, res: Response) => {
     try {
       const providerId = readString(req.params.providerId).toLowerCase();
-      if (providerId !== "fal") {
+      const def = getMeteredProviderDefinition(providerId);
+      if (!def) {
         res.status(404).json({ ok: false, error: "unknown_provider" });
         return;
       }
@@ -112,23 +116,26 @@ export function registerMeteredProviderRoutes(
         res.status(400).json({ ok: false, error: "enabled boolean required" });
         return;
       }
-      const mode = resolveFalMode();
-      const hasKey = mode === "relay" ? falRelayConfigured() : Boolean(resolveFalApiKey(projectRoot));
+      const mode = resolveMeteredProviderMode(def);
+      const hasKey =
+        mode === "relay"
+          ? meteredProviderRelayConfigured(def)
+          : Boolean(resolveMeteredProviderApiKey(def, projectRoot));
       if (enabled && !hasKey) {
         res.status(400).json({
           ok: false,
           error:
             mode === "relay"
-              ? "fal relay is not configured on this box"
-              : "Save FAL_KEY before enabling fal.ai",
+              ? `${def.displayName} relay is not configured on this box`
+              : `Save ${def.ossEnvKey} before enabling ${def.displayName}`,
         });
         return;
       }
       // Direct/OSS: reject obviously bad keys before we rewrite Hermes MCP + restart.
-      // A 401 fal_ai entry is non-fatal, but the restart race can leave :8642 unbound.
+      // A 401 MCP entry is non-fatal, but the restart race can leave :8642 unbound.
       if (enabled && mode === "direct") {
-        const key = resolveFalApiKey(projectRoot);
-        const probe = await fetch("https://mcp.fal.ai/mcp", {
+        const key = resolveMeteredProviderApiKey(def, projectRoot);
+        const probe = await fetch(def.ossMcpUrl, {
           method: "POST",
           headers: {
             Authorization: `Bearer ${key}`,
@@ -141,25 +148,20 @@ export function registerMeteredProviderRoutes(
         if (probe && (probe.status === 401 || probe.status === 403)) {
           res.status(400).json({
             ok: false,
-            error: "FAL_KEY was rejected by fal.ai (401/403). Update the key in Manage, then enable.",
+            error: `${def.ossEnvKey} was rejected by ${def.displayName} (401/403). Update the key in Manage, then enable.`,
           });
           return;
         }
       }
-      setFalUserEnabled(enabled, projectRoot);
+      setMeteredProviderUserEnabled(def, enabled, projectRoot);
       // Prefer cached balance so toggle stays snappy; Hermes reload is backgrounded.
-      const usage = falRelayConfigured()
+      const usage = anyMeteredProviderRelayConfigured()
         ? await fetchUsageSummaryFromCp({ ttlMs: 60_000 })
         : null;
-      const def = getMeteredProviderDefinition("fal");
-      if (!def) {
-        res.status(500).json({ ok: false, error: "fal provider missing" });
-        return;
-      }
       if (runner) {
         // Write config.yaml before responding; gateway restart continues in background.
         await runner.applyConfigAndReloadGatewayInBackground(
-          `fal MCP ${enabled ? "enable" : "disable"}`,
+          `${def.id} MCP ${enabled ? "enable" : "disable"}`,
         );
       }
       const row = await buildProviderRow(def, projectRoot, usage);
@@ -177,7 +179,7 @@ export function registerMeteredProviderRoutes(
         res.status(404).json({ ok: false, error: "unknown_provider" });
         return;
       }
-      const mode = providerId === "fal" ? resolveFalMode() : "off";
+      const mode = resolveMeteredProviderMode(def);
       if (mode === "relay") {
         res.status(400).json({
           ok: false,
@@ -190,12 +192,12 @@ export function registerMeteredProviderRoutes(
         res.status(400).json({ ok: false, error: "apiKey required" });
         return;
       }
-      writeMeteredProviderConfig({ [def.ossEnvKey]: apiKey, FAL_MCP_USER_ENABLED: "true" }, projectRoot);
-      const usage = falRelayConfigured()
+      writeMeteredProviderConfig({ [def.ossEnvKey]: apiKey, [def.userEnabledKey]: "true" }, projectRoot);
+      const usage = anyMeteredProviderRelayConfigured()
         ? await fetchUsageSummaryFromCp({ ttlMs: 60_000 })
         : null;
       if (runner) {
-        await runner.applyConfigAndReloadGatewayInBackground("fal MCP key save");
+        await runner.applyConfigAndReloadGatewayInBackground(`${def.id} MCP key save`);
       }
       const row = await buildProviderRow(def, projectRoot, usage);
       res.json({ ok: true, ...row });

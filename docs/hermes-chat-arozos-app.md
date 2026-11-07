@@ -152,7 +152,7 @@ jChat can open ArozOS apps and files on the user's screen without asking them to
 | **Fast — voice** | Voice (S2S) | “open browser”, “open email”, … | Realtime `open_desktop` → `desktop_action` wire event → same executor |
 | **Brain** | Text + voice | Specific file, search, calendar content | Hermes `desktop_open` tool → Joshu queue → `desktop_action` SSE |
 
-A file opens in its app: `.md`, `.markdown`, `.mdx`, and `.txt` in jNotes (as a double-click on the desktop does), `.excalidraw` in jWhiteboard, and other files in MDEditor. When a window already shows the same file in that app, `openDesktopFile` shows and raises that window instead of opening another one (`packages/app-agent/src/desktopActions.ts`, test `npm run test:desktop-open-file`). The Multiplayer app uses the same function for "What I share".
+A file opens in its app: `.md`, `.markdown`, `.mdx`, and `.txt` in jNotes (as a double-click on the desktop does), `.excalidraw` in jWhiteboard, `.pdf` in the ArozOS PDF Viewer, and other files in MDEditor. When a window already shows the same file in that app, `openDesktopFile` shows and raises that window instead of opening another one (`packages/app-agent/src/desktopActions.ts`, test `npm run test:desktop-open-file`). The Multiplayer app uses the same function for "What I share".
 
 **Hermes plugin:** [`.hermes/plugins/joshu-desktop/`](../.hermes/plugins/joshu-desktop/) — tool `desktop_open` (`kind: module | file`, `target`). Enqueue runs in a **`post_tool_call` hook** (Hermes passes `session_id` to hooks, not tool handlers). Joshu drains the queue on `desktop_open` completion and emits `desktop_action` on the chat SSE stream.
 

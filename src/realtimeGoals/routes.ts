@@ -5,6 +5,7 @@ import {
   verifyArozosDesktopSession,
 } from "../httpLocalhost.js";
 import { isDeferCapableChannel } from "./channelPolicy.js";
+import { parseIntakeAttachments, parseIntakeContext } from "./intakeExtras.js";
 import type { RealtimeGoalBroker } from "./broker.js";
 import type {
   RealtimeGoalChannel,
@@ -67,7 +68,16 @@ export function registerRealtimeGoalRoutes(
       res.status(400).json({ error: "origin and text are required" });
       return;
     }
-    res.json(await broker.route({ origin, text }));
+    const attachments = parseIntakeAttachments(req.body?.attachments);
+    const context = parseIntakeContext(req.body?.context);
+    res.json(
+      await broker.route({
+        origin,
+        text,
+        ...(attachments.length ? { attachments } : {}),
+        ...(context ? { context } : {}),
+      }),
+    );
   });
 
   /** Agent-callable fallback after an initially synchronous turn discovers long work. */
@@ -169,6 +179,30 @@ export function registerRealtimeGoalRoutes(
       return;
     }
     res.json({ ok: await broker.consumeSurfaceEvent(sessionKey, eventId) });
+  });
+
+  /**
+   * A mail ingress worker closes a realtime goal that an email of the owner
+   * asked for again (issue #172). The joshu-connectors MCP server calls it over
+   * loopback, like the /api/ea routes, so it needs a direct localhost request.
+   */
+  router.post("/api/realtime-goals/:goalId/done-elsewhere", async (req: Request, res: Response) => {
+    if (!isDirectLocalhostRequest(req)) {
+      res.status(403).json({ error: "direct localhost request required" });
+      return;
+    }
+    const taskId = readString(req.body?.taskId);
+    const note = readString(req.body?.note);
+    if (!taskId || !note) {
+      res.status(400).json({ ok: false, error: "taskId and note are required" });
+      return;
+    }
+    const result = await broker.closeDoneElsewhere(readString(req.params.goalId), { taskId, note });
+    res.status(result.ok ? 200 : result.error === "goal not found" ? 404 : 409).json(
+      result.ok
+        ? { ok: true, goalId: result.goal.id, status: result.goal.status }
+        : result,
+    );
   });
 
   router.get("/api/realtime-goals/:goalId", async (req, res) => {

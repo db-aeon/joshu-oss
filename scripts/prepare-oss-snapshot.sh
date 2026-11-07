@@ -41,7 +41,6 @@ rsync -a ${RSYNC_DELETE[@]+"${RSYNC_DELETE[@]}"} \
   --exclude 'arozos/subservice/md-editor/app' \
   --exclude 'arozos/subservice/connectors/app' \
   --exclude 'arozos/subservice/jterm/app' \
-  --exclude 'arozos/subservice/last30days/app' \
   --exclude 'arozos/subservice/excalidraw/app' \
   --exclude 'arozos/subservice/hermes-chat/app' \
   --exclude 'arozos/subservice/hindsight-viewer/app' \
@@ -91,9 +90,9 @@ rsync -a ${RSYNC_DELETE[@]+"${RSYNC_DELETE[@]}"} \
   --exclude 'docs/day0-cold-start.md' \
   --exclude 'docs/hermes-customizations.md' \
   --exclude 'scripts/sync-from-oss.sh' \
+  --exclude 'scripts/export-public-docs.sh' \
   --exclude 'scripts/hotpatch-twilio-sms.sh' \
   --exclude 'scripts/hotpatch-sms-canonical-reply-mutex.sh' \
-  --exclude 'scripts/hotpatch-last30days-multimodal.sh' \
   --exclude 'scripts/hotpatch-owner-voice.sh' \
   --exclude 'scripts/hotpatch-action-guard-sms.sh' \
   --exclude 'scripts/hotpatch-sms-platform-isolation.sh' \
@@ -145,12 +144,15 @@ rsync -a ${RSYNC_DELETE[@]+"${RSYNC_DELETE[@]}"} \
 # Public doc indexes (curated for joshu-oss).
 cp "${ROOT_DIR}/README.oss.md" "${OUT_DIR}/README.md"
 cp "${ROOT_DIR}/CONTRIBUTING.oss.md" "${OUT_DIR}/CONTRIBUTING.md"
-# In docs/, a file <name>.oss.md is the public copy of <name>.md (for example the self-host
-# chapters of the user manual). It replaces <name>.md in the OSS tree.
+# In docs/, a file <name>.oss.md is the public copy of <name>.md (for example docs/README.oss.md).
+# It replaces <name>.md in the OSS tree.
 find "${OUT_DIR}/docs" -type f -name '*.oss.md' -print0 |
   while IFS= read -r -d '' oss_doc; do
     mv "${oss_doc}" "${oss_doc%.oss.md}.md"
   done
+# The user's manual has no twins. Its OSS rendering keeps the self-host blocks without their
+# marker lines and leaves out the hosted-only blocks (scripts/lib/doc-blocks.mjs).
+node "${ROOT_DIR}/scripts/render-oss-manual.mjs" "${OUT_DIR}/docs/user-manual"
 
 # Keys-only self-host env template (no CP relay URLs).
 if [[ -f "${ROOT_DIR}/deploy/.env.vps.example.oss" ]]; then
@@ -210,9 +212,9 @@ rm -rf \
   "${OUT_DIR}/.cursor" \
   "${OUT_DIR}/openspec" \
   "${OUT_DIR}/scripts/sync-from-oss.sh" \
+  "${OUT_DIR}/scripts/export-public-docs.sh" \
   "${OUT_DIR}/scripts/hotpatch-twilio-sms.sh" \
   "${OUT_DIR}/scripts/hotpatch-sms-canonical-reply-mutex.sh" \
-  "${OUT_DIR}/scripts/hotpatch-last30days-multimodal.sh" \
   "${OUT_DIR}/scripts/hotpatch-owner-voice.sh" \
   "${OUT_DIR}/scripts/hotpatch-action-guard-sms.sh" \
   "${OUT_DIR}/scripts/hotpatch-sms-platform-isolation.sh" \

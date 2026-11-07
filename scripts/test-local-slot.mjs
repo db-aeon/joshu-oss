@@ -7,9 +7,11 @@
 import {
   localDateDayBounds,
   localDateTimeToEpochSeconds,
+  queryDayBounds,
   resolveEventWindow,
   resolveListEventsWindow,
 } from "../src/nylas/localSlot.js";
+import { Temporal } from "@js-temporal/polyfill";
 
 function assert(cond, msg) {
   if (!cond) throw new Error(msg);
@@ -42,5 +44,20 @@ assert(fromEpoch.resolvedFrom === "epoch", "expected epoch resolution");
 const listWindow = resolveListEventsWindow({ date, timezone: tz });
 assert(listWindow.resolvedFrom === "local_slot", "expected list local_slot");
 assert(listWindow.start === day.start && listWindow.end === day.end, "list window mismatch");
+
+// Query dates (issue #169): today and tomorrow resolve in the time zone; a bad value gives an error, not a throw.
+// 2026-06-08T05:00Z is 2026-06-07 22:00 in Los Angeles.
+const now = Temporal.Instant.from("2026-06-08T05:00:00Z");
+const today = queryDayBounds("today", tz, now);
+const june7 = localDateDayBounds("2026-06-07", tz);
+assert(today.start === june7.start && today.end === june7.end, "today should be 2026-06-07 in Los Angeles");
+const tomorrow = queryDayBounds(" Tomorrow ", tz, now);
+assert(tomorrow.start === day.start && tomorrow.end === day.end, "tomorrow should be 2026-06-08 in Los Angeles");
+assert(queryDayBounds(date, tz).start === day.start, "an ISO date keeps its bounds");
+for (const bad of ["garbage", "2026-02-30", "06/08/2026"]) {
+  const result = queryDayBounds(bad, tz);
+  assert(typeof result.error === "string", `date "${bad}" should give an error`);
+}
+assert(typeof queryDayBounds(date, "Not/AZone").error === "string", "a bad time zone should give an error");
 
 console.log("test-local-slot: ok");

@@ -96,7 +96,7 @@ Symptoms of an older build without reconciliation: Connectors shows Connected, D
 
 ### Metered AI providers (fal.ai)
 
-Connectors → **AI providers** manages fal MCP enablement and (self-host) your `FAL_KEY`. Modes, env, and Hermes gating: [`metered-providers.md`](metered-providers.md).
+Connectors → **AI providers** manages fal MCP enablement and (self-host) your `FAL_KEY`. Modes, env, and Hermes gating: [`technical-reference/metered-providers.md`](technical-reference/metered-providers.md).
 
 Self-host: set `JOSHU_FAL_MODE=direct` (or leave unset when no CP relay) and paste a fal key via **Setup**. Managed fleet boxes use prepaid wallet relay instead — no vendor key on the box.
 
@@ -107,7 +107,7 @@ Self-host: set `JOSHU_FAL_MODE=direct` (or leave unset when no CP relay) and pas
 | `COMPOSIO_API_KEY` | Your Composio project (or fleet per-box key) | Required for Connect tab; laptop vs VPS keys are separate projects |
 | `COMPOSIO_USER_ID` | Stable user/slug | Composio OAuth isolation within that project; ArozOS login unchanged |
 | `NYLAS_API_KEY` | Your Nylas key (or managed relay) | Agent mailbox (jMail Setup / Welcome) |
-| `JOSHU_FAL_MODE` | `direct` (self-host) / `relay` (managed) / `off` | See [`metered-providers.md`](metered-providers.md) |
+| `JOSHU_FAL_MODE` | `direct` (self-host) / `relay` (managed) / `off` | See [`technical-reference/metered-providers.md`](technical-reference/metered-providers.md) |
 | `FAL_KEY` | Connectors setup (direct mode only) | Stored in `connectors-providers.env` in the Joshu state folder (`JOSHU_STATE_DIR`; `.joshu/` of the repository in local development, gitignored) |
 
 If Connectors shows **NYLAS_API_KEY not configured** or Gmail accounts from another box, set keys in `/etc/joshu/instance.env` (or local `.env`) and recreate the stack — see [connectors.md](connectors.md).
@@ -156,7 +156,7 @@ For policy tiers, bypass rules, browser gate, and the **Safety** desktop app, se
 
 ## Related
 
-- [`docs/metered-providers.md`](metered-providers.md) — paid MCP / fal fleet relay (box)
+- [`docs/technical-reference/metered-providers.md`](technical-reference/metered-providers.md) — paid MCP / fal fleet relay (box)
 - [`docs/agent-safety.md`](agent-safety.md) — write policy, HITL, hard blocks
 - [`docs/safety-settings-arozos-app.md`](safety-settings-arozos-app.md) — Safety desktop app
 - [`docs/connectors.md`](connectors.md) — mirror layout and REST API

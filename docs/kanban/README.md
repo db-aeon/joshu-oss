@@ -76,6 +76,7 @@ To give a sense of scale, one box that its owner had used for about four months 
 | Triage stubs | `<files>/Triage/`, filed ones in `Triage/_done/` |
 | Project folders | `<files>/Projects/<slug>/` |
 | Realtime goals | `<files>/.joshu/realtime-goals/state.json` |
+| Files that the owner sent with a realtime goal (Slack, Telegram) | `<files>/.joshu/realtime-goals/files/<key>/` (at most 10 files of 25 MB each per message; Joshu does not delete them yet) |
 | Nudge state | `/var/lib/arozos/joshu-state/proactive/state.json` (Joshu state folder, `JOSHU_STATE_DIR`) |
 
 The owner sees boards only in the Kanban tab of the Hermes dashboard at `hermes-admin.<box domain>`, behind basic auth, where a board switcher lists every board.

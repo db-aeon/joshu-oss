@@ -31,6 +31,9 @@ or Telegram.
 2. Execute only that card's objective. Use reasonable defaults for low-risk
    details.
 3. Follow the normal action guard before consequential external writes.
+   When the card asks for research on what was published or said about a
+   topic, follow skill `research-report`: call `research_report_make` and
+   complete the card with the summary and the report link.
 4. Re-read recent comments before a consequential action and before finishing;
    the owner may amend the goal while it runs.
 

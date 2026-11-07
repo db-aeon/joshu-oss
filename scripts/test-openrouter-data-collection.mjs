@@ -4,8 +4,9 @@
  *
  * 1. Static scan: each source file that sends a request to OpenRouter (contains
  *    "openrouter.ai/api") must use withOpenRouterDataPolicy or set data_collection.
- * 2. withOpenRouterDataPolicy and syncJoshuOpenRouterDataPolicy keep other provider preferences.
- * 3. The Python patches for Hermes, Hindsight, and the last30days engine apply to fixtures with
+ * 2. withOpenRouterDataPolicy and syncJoshuOpenRouterDataPolicy add the excluded upstream providers
+ *    to the ignore list and keep other provider preferences.
+ * 3. The Python patches for Hermes and Hindsight apply to fixtures with
  *    the anchors of the pinned upstream files, are idempotent, and give the expected request body.
  * 4. scripts/start-hindsight.sh sets HINDSIGHT_API_LLM_EXTRA_BODY only for OpenRouter.
  *
@@ -65,26 +66,44 @@ assert.deepEqual(
 
 const {
   JOSHU_OPENROUTER_DATA_COLLECTION,
+  JOSHU_OPENROUTER_IGNORED_PROVIDERS,
   withOpenRouterDataPolicy,
   syncJoshuOpenRouterDataPolicy,
 } = await import(path.join(root, "src/joshuOpenRouterDefaults.ts"));
 
 assert.equal(JOSHU_OPENROUTER_DATA_COLLECTION, "deny");
-assert.deepEqual(withOpenRouterDataPolicy({ model: "m" }), { model: "m", provider: { data_collection: "deny" } });
+assert.deepEqual(JOSHU_OPENROUTER_IGNORED_PROVIDERS, ["relace"], "Relace is an excluded upstream provider (#206)");
+assert.deepEqual(withOpenRouterDataPolicy({ model: "m" }), {
+  model: "m",
+  provider: { data_collection: "deny", ignore: ["relace"] },
+});
 assert.deepEqual(
   withOpenRouterDataPolicy({ model: "m", provider: { order: ["together"], data_collection: "allow" } }).provider,
-  { order: ["together"], data_collection: "deny" },
+  { order: ["together"], data_collection: "deny", ignore: ["relace"] },
   "body helper keeps order and replaces allow",
+);
+assert.deepEqual(
+  withOpenRouterDataPolicy({ model: "m", provider: { ignore: ["novita", "Relace"] } }).provider.ignore,
+  ["novita", "Relace"],
+  "body helper keeps the ignore list and does not add a slug twice",
 );
 assert.equal("zdr" in withOpenRouterDataPolicy({ model: "m" }).provider, false, "no zero data retention");
 
 const emptyConfig = {};
 assert.equal(syncJoshuOpenRouterDataPolicy(emptyConfig), true, "first sync changes the config");
-assert.deepEqual(emptyConfig.provider_routing, { data_collection: "deny" });
+assert.deepEqual(emptyConfig.provider_routing, { data_collection: "deny", ignore: ["relace"] });
 assert.equal(syncJoshuOpenRouterDataPolicy(emptyConfig), false, "second sync changes nothing");
 const orderConfig = { provider_routing: { order: ["together"], data_collection: "allow" } };
 assert.equal(syncJoshuOpenRouterDataPolicy(orderConfig), true);
-assert.deepEqual(orderConfig.provider_routing, { order: ["together"], data_collection: "deny" });
+assert.deepEqual(orderConfig.provider_routing, { order: ["together"], data_collection: "deny", ignore: ["relace"] });
+// A box on the release before this change has data_collection but no ignore list.
+const oldBoxConfig = { provider_routing: { data_collection: "deny" } };
+assert.equal(syncJoshuOpenRouterDataPolicy(oldBoxConfig), true, "sync adds the ignore list on an old box");
+assert.deepEqual(oldBoxConfig.provider_routing, { data_collection: "deny", ignore: ["relace"] });
+const ownerIgnoreConfig = { provider_routing: { data_collection: "deny", ignore: ["novita"] } };
+assert.equal(syncJoshuOpenRouterDataPolicy(ownerIgnoreConfig), true);
+assert.deepEqual(ownerIgnoreConfig.provider_routing.ignore, ["novita", "relace"], "owner ignore list stays");
+assert.equal(syncJoshuOpenRouterDataPolicy(ownerIgnoreConfig), false, "second sync changes nothing");
 
 // --- 3. Python patches ------------------------------------------------------------------------
 
@@ -122,7 +141,7 @@ def read_raw_config_readonly():
         raise RuntimeError("config unreadable")
     if mode == "none":
         return {}
-    return {"provider_routing": {"data_collection": mode}}
+    return {"provider_routing": {"data_collection": mode, "ignore": ["relace"]}}
 `,
 );
 write(
@@ -187,6 +206,7 @@ print(json.dumps({
   "aux_task": p.build_extra_body().get("provider"),
   "main_prefs": p.build_extra_body(provider_preferences={"only": ["together"]}).get("provider"),
   "explicit": p.build_extra_body(provider_preferences={"data_collection": "allow"}).get("provider"),
+  "ignore_merge": p.build_extra_body(provider_preferences={"ignore": ["novita", "Relace"]}).get("provider").get("ignore"),
   "transport": t.build({"is_openrouter": True}).get("provider"),
   "transport_other": t.build({"is_openrouter": False}).get("provider"),
   "aux_extra_body": a.build(p, "m", "", None, {"provider": {"order": ["google"]}}).get("provider"),
@@ -195,14 +215,28 @@ print(json.dumps({
   return JSON.parse(run("python3", ["-c", code], { cwd: hermesDir, env: { ...process.env, FIXTURE_CONFIG: mode, PYTHONPATH: hermesDir } }));
 }
 const deny = hermesProbe("deny");
-assert.deepEqual(deny.aux_task, { data_collection: "deny" }, "auxiliary task gets deny from config");
-assert.deepEqual(deny.main_prefs, { only: ["together"], data_collection: "deny" }, "main prefs keep only");
-assert.deepEqual(deny.explicit, { data_collection: "allow" }, "a value in the request prefs wins");
-assert.deepEqual(deny.transport, { data_collection: "deny" }, "transport fallback path gets deny");
+const DENY = { data_collection: "deny", ignore: ["relace"] };
+assert.deepEqual(deny.aux_task, DENY, "auxiliary task gets deny and the ignore list from config");
+assert.deepEqual(deny.main_prefs, { only: ["together"], ...DENY }, "main prefs keep only");
+assert.deepEqual(
+  deny.explicit,
+  { data_collection: "allow", ignore: ["relace"] },
+  "a data_collection value in the request prefs wins; the ignore list is still added",
+);
+assert.deepEqual(deny.ignore_merge, ["novita", "Relace"], "request ignore list stays, no slug twice");
+assert.deepEqual(deny.transport, DENY, "transport fallback path gets deny");
 assert.equal(deny.transport_other, null, "non-OpenRouter transport gets no provider field");
-assert.deepEqual(deny.aux_extra_body, { order: ["google"], data_collection: "deny" }, "aux extra_body order stays");
-assert.deepEqual(hermesProbe("raise").aux_task, { data_collection: "deny" }, "unreadable config fails closed");
+assert.deepEqual(deny.aux_extra_body, { order: ["google"], ...DENY }, "aux extra_body order stays");
+assert.deepEqual(hermesProbe("raise").aux_task, DENY, "unreadable config fails closed");
 assert.equal(hermesProbe("none").aux_task, null, "no config value adds nothing");
+
+// The fallback list of the Hermes patch is the same as the list of src/joshuOpenRouterDefaults.ts.
+const moduleText = fs.readFileSync(path.join(hermesDir, "agent/joshu_openrouter_privacy.py"), "utf8");
+assert.match(
+  moduleText,
+  new RegExp(`DEFAULT_IGNORED_PROVIDERS: List\\[str\\] = \\[${JOSHU_OPENROUTER_IGNORED_PROVIDERS.map((s) => `'${s}'`).join(", ")}\\]`),
+  "Hermes patch fallback list matches JOSHU_OPENROUTER_IGNORED_PROVIDERS",
+);
 
 const hermesMissing = path.join(tmp, "hermes-missing");
 write(path.join(hermesMissing, "plugins/model-providers/openrouter/__init__.py"), "class X:\n    pass\n");
@@ -258,62 +292,6 @@ print(json.dumps(out))
 assert.deepEqual(rerankBodies["https://openrouter.ai/api/v1/rerank"], { data_collection: "deny" });
 assert.equal(rerankBodies["https://api.cohere.example/v2/rerank"], null, "other rerank hosts get no provider field");
 
-// last30days engine: anchors from the pin in integrations/last30days-skill.pin.
-const l30Lib = path.join(tmp, "last30days/lib");
-write(
-  path.join(l30Lib, "providers.py"),
-  `import os
-OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-class OpenRouterClient:
-    def generate_text(self, model, prompt):
-        payload = {
-            "model": model,
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0,
-        }
-        response = http.post(
-            os.environ.get("OPENROUTER_BASE_URL", OPENROUTER_URL),
-            payload,
-        )
-        return payload
-`,
-);
-write(
-  path.join(l30Lib, "perplexity.py"),
-  `def build(provider, json_data):
-    if provider != "perplexity":
-        json_data.pop("web_search_options", None)
-        json_data.pop("reasoning_effort", None)
-    return json_data
-`,
-);
-const l30Patch = path.join(root, "scripts/patch-last30days-openrouter-data-collection.py");
-run("python3", [l30Patch, l30Lib]);
-assert.match(run("python3", [l30Patch, l30Lib]), /already patched/, "last30days patch is idempotent");
-pyCompile(path.join(l30Lib, "providers.py"), path.join(l30Lib, "perplexity.py"));
-const l30 = JSON.parse(
-  run("python3", [
-    "-c",
-    `
-import json, sys
-sys.path.insert(0, ${JSON.stringify(l30Lib)})
-import providers, perplexity
-class H:
-    @staticmethod
-    def post(url, payload):
-        return payload
-providers.http = H
-print(json.dumps({
-  "planner": providers.OpenRouterClient().generate_text("m", "p").get("provider"),
-  "sonar_openrouter": perplexity.build("openrouter", {"model": "m"}).get("provider"),
-  "sonar_direct": perplexity.build("perplexity", {"model": "m"}).get("provider"),
-}))
-`,
-  ]),
-);
-assert.deepEqual(l30.planner, { data_collection: "deny" });
-assert.deepEqual(l30.sonar_openrouter, { data_collection: "deny" });
-assert.equal(l30.sonar_direct, null, "direct Perplexity gets no provider field");
 
 // --- 4. start-hindsight.sh --------------------------------------------------------------------
 

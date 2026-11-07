@@ -18,6 +18,9 @@
  *    else goes out for the item. After an undelivered SMS the item is never
  *    texted again: it takes the next route (fleet audit 2026-10-10: carriers
  *    rejected SMS with 30034/30003/30007 and the owner never saw them).
+ * 10. A Slack or Telegram send that failed twice → text it by SMS, or show it
+ *    on the surface when SMS is not usable (fleet audit 2026-10-28: a box
+ *    retried a Telegram send without a bot token for 10 hours).
  *
  * Nothing waits on a timer while the owner is reachable (canary box
  * 2026-09-26: one voicemail verdict held every result for an hour).
@@ -40,6 +43,8 @@ export const CALLBACK_SETTLE_MS = 60_000;
 export const MISS_BACKOFF_MS = [10 * 60_000, 30 * 60_000] as const;
 /** After this many missed callbacks, stop calling until the owner makes contact. */
 export const MAX_CONSECUTIVE_MISSES = 2;
+/** After this many failed sends on Slack or Telegram, the item takes another route. */
+export const MAX_CHAT_ROUTE_FAILURES = 2;
 /** A "call me back" stays actionable this long. */
 export const CALL_REQUEST_TTL_MS = 15 * 60_000;
 /** Lease on an item while one delivery is in flight. */
@@ -210,6 +215,12 @@ export function smsUndelivered(item: OwnerOutboxItem): boolean {
   return item.attempts.some((attempt) => attempt.route === "sms" && attempt.outcome === "undelivered");
 }
 
+/** Sends of this item on Slack or Telegram failed often enough to stop using that route. */
+export function chatRouteFailing(item: OwnerOutboxItem, route: "slack" | "telegram"): boolean {
+  const failed = item.attempts.filter((attempt) => attempt.route === route && attempt.outcome === "failed");
+  return failed.length >= MAX_CHAT_ROUTE_FAILURES;
+}
+
 /** The item can go by SMS: the box can text the owner and no SMS of it was rejected. */
 export function smsUsable(item: OwnerOutboxItem, capabilities: DeliveryCapabilities): boolean {
   return capabilities.sms && !smsUndelivered(item);
@@ -329,8 +340,15 @@ export function planOwnerDeliveries(input: OwnerDeliveryPlanInput): OwnerDeliver
       continue;
     }
 
-    const resolved = resolveRoute(item, input);
+    let resolved = resolveRoute(item, input);
     const canText = smsUsable(item, capabilities);
+    // 10. Slack or Telegram keeps failing: SMS, else the surface.
+    if ((resolved.route === "slack" || resolved.route === "telegram") && chatRouteFailing(item, resolved.route)) {
+      const reason = `${resolved.route}_failing`;
+      resolved = canText
+        ? { route: "sms", address: smsAddress(item, presence), reason }
+        : { route: "surface", reason };
+    }
 
     if (resolved.route === "sms" && !canText) {
       actions.push({ type: "wait", itemId: item.id, reason: capabilities.sms ? "sms_undelivered" : "sms_unavailable" });

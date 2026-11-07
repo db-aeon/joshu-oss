@@ -280,7 +280,7 @@
       "items": [
         "kanban_complete: done (bridge complete also needs a comment)",
         "kanban_block with reason and kind: blocked",
-        "kanban_block with kind dependency: todo, not blocked",
+        "kanban_block with kind dependency: todo when an open parent task exists, else blocked with no kind",
         "Crash, timeout (max_runtime_seconds, 28800 s on EA boards) or stale claim: back to ready and counted as a failure",
         "After 2 failures in a row (kanban.failure_limit): blocked, event gave_up"
       ]

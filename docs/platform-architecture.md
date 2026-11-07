@@ -165,7 +165,7 @@ Thin adapter — **no CopilotKit runtime on the box**. App UIs use [`@joshu/app-
 | `POST /joshu/api/ag-ui/run` | SSE stream of AG-UI BaseEvents |
 | `DELETE /joshu/api/ag-ui/session?threadId=` | Clear Hermes transcript for a chat thread (localhost) |
 
-**Supported events:** `RUN_STARTED`, `RUN_FINISHED`, `RUN_ERROR`, `TEXT_MESSAGE_*`, `TOOL_CALL_*`, `CUSTOM` (`desktop_action`, `app_action`).
+**Supported events:** `RUN_STARTED`, `RUN_FINISHED`, `RUN_ERROR`, `TEXT_MESSAGE_*`, `TOOL_CALL_*`, `CUSTOM` (`desktop_action`, `app_action`). The chat panel of `@joshu/app-agent` shows `RUN_ERROR` as the reply.
 
 **GUI action pipeline** (same idea as `desktop_open` → `desktop_action`):
 
@@ -182,6 +182,16 @@ Hermes app_gui_action → POST /app-gui-actions/enqueue
 | [`src/appGuiActionApi.ts`](../src/appGuiActionApi.ts) | Queue + validation against manifest |
 | [`src/agUiApi.ts`](../src/agUiApi.ts) | SSE adapter |
 | [`packages/app-agent/`](../packages/app-agent/) | Browser handlers + chat panel |
+
+### Hermes session id and failed runs of an embedded chat
+
+The embedded chat of an app sends a thread id `<appId>:<scope>:chat:<rev>` to `POST /joshu/api/ag-ui/run`, and the scope can hold a path, e.g., the open file of jNotes. Hermes uses the session id as a file name, so it answers 400 when the session id holds `/`, `\`, `..`, a drive prefix, or control characters, or has more than 256 characters.
+
+Design decisions (2026-10-29):
+
+1. The Joshu API encodes the thread id with `toHermesSessionId` (`src/agUiAppContext.ts`) only when Hermes would reject it. The function percent-encodes the characters that Hermes rejects and cuts a long id to a prefix plus a hash. We did not encode in the browser, because each client of the AG-UI route would then need the rule, and the Joshu API is the one place that talks to Hermes. We did not encode or hash every thread id, because each chat that worked before would get a new Hermes session and lose its history.
+2. The Hermes session id is the only place that uses the encoded id. The session key `joshu-app:{appId}:{threadId}`, the GUI action queue, and the realtime goal session key keep the thread id, because Hermes allows `/` in a session key. `DELETE /joshu/api/ag-ui/session` encodes the thread id the same way.
+3. The chat panel (`JChatCopilotThread`) shows a failed run as the reply. A `RUN_ERROR` event does not make `copilotkit.runAgent` throw, so the panel subscribes to `onRunErrorEvent` and `onRunFailed` of the agent and keeps the reason in React state. We did not add the error to the messages of the agent, because CopilotKit would then send the error text to Hermes as an assistant turn. The Joshu API logs `[ag-ui] run failed` and sends only the message of the Hermes error (`describeRunError`).
 
 Voice uses a separate Realtime wire — see [`vps-sandbox/web-voice.md`](vps-sandbox/web-voice.md).
 

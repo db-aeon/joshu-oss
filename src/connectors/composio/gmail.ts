@@ -258,6 +258,45 @@ export async function fetchGmailAllMailMessages(
     .slice(0, maxResults);
 }
 
+/**
+ * Live Gmail search of one owner Gmail account: one page of GMAIL_FETCH_EMAILS with a Gmail
+ * search query, metadata only. Spam and trash are included unless includeSpamTrash is false.
+ */
+export async function searchGmailMessages(
+  projectRoot: string,
+  ctx: GmailExecuteContext,
+  opts: { query: string; maxResults: number; includeSpamTrash?: boolean },
+): Promise<GmailMessageSummary[]> {
+  const result = await executeGmail(
+    projectRoot,
+    "GMAIL_FETCH_EMAILS",
+    {
+      user_id: "me",
+      query: opts.query,
+      max_results: opts.maxResults,
+      include_payload: false,
+      verbose: false,
+      include_spam_trash: opts.includeSpamTrash !== false,
+    },
+    ctx,
+  );
+  if (!result.successful) {
+    throw new Error(result.error || "GMAIL_FETCH_EMAILS failed");
+  }
+  const rows = unwrapData(result.data).messages;
+  const messages = extractMessageList(result.data);
+  // With verbose false, Gmail gives the snippet in preview.body, not in snippet.
+  if (Array.isArray(rows)) {
+    for (const m of messages) {
+      if (m.snippet) continue;
+      const row = rows.find((r) => r && typeof r === "object" && (r as Record<string, unknown>).messageId === m.id);
+      const preview = (row as Record<string, unknown> | undefined)?.preview as Record<string, unknown> | undefined;
+      if (typeof preview?.body === "string") m.snippet = preview.body.slice(0, 240);
+    }
+  }
+  return messages;
+}
+
 /** True when Gmail answered 404 "Requested entity was not found", for example for a deleted thread. */
 export function isGmailNotFoundError(err: unknown): boolean {
   const message = err instanceof Error ? err.message : String(err);

@@ -347,7 +347,6 @@ prepare_arozos_template() {
   rsync -a "${ROOT_DIR}/arozos/subservice/hindsight-viewer/" "${AROZ_TEMPLATE}/subservice/hindsight-viewer/"
   rsync -a "${ROOT_DIR}/arozos/subservice/file-brain-viewer/" "${AROZ_TEMPLATE}/subservice/file-brain-viewer/"
   rsync -a "${ROOT_DIR}/arozos/subservice/schedules/" "${AROZ_TEMPLATE}/subservice/schedules/"
-  rsync -a "${ROOT_DIR}/arozos/subservice/last30days/" "${AROZ_TEMPLATE}/subservice/last30days/"
   rsync -a "${ROOT_DIR}/arozos/subservice/icon-test/" "${AROZ_TEMPLATE}/subservice/icon-test/"
   rsync -a "${ROOT_DIR}/arozos/subservice/jmovie/" "${AROZ_TEMPLATE}/subservice/jmovie/"
   rsync -a "${ROOT_DIR}/arozos/subservice/jmail/" "${AROZ_TEMPLATE}/subservice/jmail/"
@@ -357,6 +356,7 @@ prepare_arozos_template() {
   rsync -a "${ROOT_DIR}/arozos/subservice/jterm/" "${AROZ_TEMPLATE}/subservice/jterm/"
   rsync -a "${ROOT_DIR}/arozos/subservice/telephone/" "${AROZ_TEMPLATE}/subservice/telephone/"
   rsync -a "${ROOT_DIR}/arozos/subservice/boss-mode/" "${AROZ_TEMPLATE}/subservice/boss-mode/"
+  rsync -a "${ROOT_DIR}/arozos/subservice/research/" "${AROZ_TEMPLATE}/subservice/research/"
   rsync -a "${ROOT_DIR}/arozos/subservice/placeholder-image/" "${AROZ_TEMPLATE}/subservice/placeholder-image/"
   bash "${ROOT_DIR}/scripts/install-proprietary-apps.sh" "${AROZ_TEMPLATE}/subservice"
   (
@@ -367,7 +367,6 @@ prepare_arozos_template() {
     npm run build:hindsight-viewer
     npm run build:file-brain-viewer
     npm run build:schedules
-    npm run build:last30days
     npm run build:movie-editor
     npm run build:jmail
     npm run build:connectors
@@ -376,6 +375,7 @@ prepare_arozos_template() {
     npm run build:jterm
     npm run build:telephone
     npm run build:boss-mode
+    npm run build:research
   )
   mkdir -p "${AROZ_TEMPLATE}/subservice/excalidraw/app"
   rsync -a --delete "${ROOT_DIR}/dist/excalidraw/" "${AROZ_TEMPLATE}/subservice/excalidraw/app/"
@@ -389,8 +389,6 @@ prepare_arozos_template() {
   rsync -a --delete "${ROOT_DIR}/dist/file-brain-viewer/" "${AROZ_TEMPLATE}/subservice/file-brain-viewer/app/"
   mkdir -p "${AROZ_TEMPLATE}/subservice/schedules/app"
   rsync -a --delete "${ROOT_DIR}/dist/schedules/" "${AROZ_TEMPLATE}/subservice/schedules/app/"
-  mkdir -p "${AROZ_TEMPLATE}/subservice/last30days/app"
-  rsync -a --delete "${ROOT_DIR}/dist/last30days-app/" "${AROZ_TEMPLATE}/subservice/last30days/app/"
   mkdir -p "${AROZ_TEMPLATE}/subservice/jmovie/app"
   rsync -a --delete "${ROOT_DIR}/dist/movie-editor/" "${AROZ_TEMPLATE}/subservice/jmovie/app/"
   mkdir -p "${AROZ_TEMPLATE}/subservice/jmail/app"
@@ -407,6 +405,8 @@ prepare_arozos_template() {
   rsync -a --delete "${ROOT_DIR}/dist/telephone/" "${AROZ_TEMPLATE}/subservice/telephone/app/"
   mkdir -p "${AROZ_TEMPLATE}/subservice/boss-mode/app"
   rsync -a --delete "${ROOT_DIR}/dist/boss-mode/" "${AROZ_TEMPLATE}/subservice/boss-mode/app/"
+  mkdir -p "${AROZ_TEMPLATE}/subservice/research/app"
+  rsync -a --delete "${ROOT_DIR}/dist/research-app/" "${AROZ_TEMPLATE}/subservice/research/app/"
   chmod +x "${AROZ_TEMPLATE}/subservice/joshu/start.sh"
   chmod +x "${AROZ_TEMPLATE}/subservice/excalidraw/start.sh"
   chmod +x "${AROZ_TEMPLATE}/subservice/md-editor/start.sh"
@@ -414,7 +414,6 @@ prepare_arozos_template() {
   chmod +x "${AROZ_TEMPLATE}/subservice/hindsight-viewer/start.sh"
   chmod +x "${AROZ_TEMPLATE}/subservice/file-brain-viewer/start.sh"
   chmod +x "${AROZ_TEMPLATE}/subservice/schedules/start.sh"
-  chmod +x "${AROZ_TEMPLATE}/subservice/last30days/start.sh"
   chmod +x "${AROZ_TEMPLATE}/subservice/icon-test/start.sh"
   chmod +x "${AROZ_TEMPLATE}/subservice/jmovie/start.sh"
   chmod +x "${AROZ_TEMPLATE}/subservice/jmail/start.sh"
@@ -424,6 +423,7 @@ prepare_arozos_template() {
   chmod +x "${AROZ_TEMPLATE}/subservice/jterm/start.sh"
   chmod +x "${AROZ_TEMPLATE}/subservice/telephone/start.sh"
   chmod +x "${AROZ_TEMPLATE}/subservice/boss-mode/start.sh"
+  chmod +x "${AROZ_TEMPLATE}/subservice/research/start.sh"
   chmod +x "${AROZ_TEMPLATE}/subservice/placeholder-image/start.sh"
 }
 

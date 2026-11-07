@@ -111,10 +111,23 @@ def redact(value):
     return value
 
 
+def load_yaml(path):
+    # The python3 of the stack has no PyYAML (issue #124). The Hermes venv has it, so the
+    # probe asks that Python to turn the file into JSON.
+    try:
+        import yaml
+    except ImportError:
+        import subprocess
+        python = os.environ.get("JOSHU_HERMES_PYTHON") or "/opt/hermes-agent/venv/bin/python"
+        script = "import json, sys, yaml; json.dump(yaml.safe_load(open(sys.argv[1])) or {}, sys.stdout, default=str)"
+        done = subprocess.run([python, "-c", script, path], capture_output=True, text=True, timeout=30, check=True)
+        return json.loads(done.stdout)
+    with open(path) as handle:
+        return yaml.safe_load(handle) or {}
+
+
 def hermes_config():
-    import yaml
-    with open(f"{HERMES}/config.yaml") as handle:
-        return {"config": redact(yaml.safe_load(handle) or {})}
+    return {"config": redact(load_yaml(f"{HERMES}/config.yaml"))}
 
 
 def env_keys():

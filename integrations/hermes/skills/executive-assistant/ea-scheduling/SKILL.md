@@ -4,7 +4,7 @@ description: Meeting-mail scheduling. Kanban ea-sched-*; Calendly fallback.
 metadata:
   hermes:
     category: executive-assistant
-    version: "4.29.0"
+    version: "4.29.1"
 ---
 
 # EA Scheduling
@@ -247,7 +247,7 @@ Joshu **auto-CCs** the owner's primary work email on external sends (API-enforce
 
 **Before claiming "MCP down":** run **`connectors_status`**. A timeout on send alone is **not** connectors failure.
 
-**Only `ea-scheduling` meeting workers** negotiate calendar mail on a thread. **`project-*` board workers** must **not** call `nylas_send_message` for meeting scheduling — see **`ea-playbook`**.
+**Only `ea-scheduling` meeting workers** negotiate calendar mail on a thread. **`project-*` board workers** must **not** call `nylas_send_message` for meeting scheduling — see **`ea-mail-track`**, section "Project boards — no scheduling sends".
 
 ### MCP / Joshu API failures (meeting worker)
 

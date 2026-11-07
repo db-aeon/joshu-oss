@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useAgent, useCopilotKit, UseAgentUpdate } from "@copilotkit/react-core/v2";
-import { JChatThread } from "@joshu/jchat-ui";
+import { JChatThread, type JChatMessage } from "@joshu/jchat-ui";
 
 import { mapAgUiMessagesToJChat } from "./mapAgUiMessagesToJChat.js";
 import {
@@ -25,6 +25,26 @@ export type JChatCopilotThreadProps = {
   apiBase?: string;
 };
 
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error ?? "");
+}
+
+/** Show a failed run as the reply, in place of the empty bubble the run left behind. */
+function withRunError(messages: JChatMessage[], runError: string | null): JChatMessage[] {
+  if (!runError) return messages;
+  const errorRow: JChatMessage = {
+    id: "joshu-run-error",
+    role: "assistant",
+    content: `Sorry, this message was not answered. ${runError}`.trim(),
+    status: "error",
+  };
+  const last = messages[messages.length - 1];
+  if (last?.role === "assistant" && !last.content.trim() && !last.tools?.length) {
+    return [...messages.slice(0, -1), errorRow];
+  }
+  return [...messages, errorRow];
+}
+
 /** CopilotKit agent run wired to the shared jChat thread UI. */
 export function JChatCopilotThread({
   agentId,
@@ -46,6 +66,21 @@ export function JChatCopilotThread({
     updates: [UseAgentUpdate.OnMessagesChanged, UseAgentUpdate.OnRunStatusChanged],
   });
   const [draft, setDraft] = useState("");
+  const [runError, setRunError] = useState<string | null>(null);
+
+  // RUN_ERROR from /api/ag-ui/run does not reject runAgent, so listen on the agent itself.
+  useEffect(() => {
+    const subscription = agent.subscribe({
+      onRunErrorEvent: ({ event }) => {
+        if (event.code === "abort") return;
+        setRunError(event.message || "The run failed.");
+      },
+      onRunFailed: ({ error }) => {
+        setRunError(errorText(error) || "The run failed.");
+      },
+    });
+    return () => subscription.unsubscribe();
+  }, [agent]);
 
   useEffect(() => {
     if (!realtimeGoalSessionKey) return;
@@ -130,8 +165,12 @@ export function JChatCopilotThread({
   }, [agent, agent.isRunning, apiBase, realtimeGoalSessionKey]);
 
   const messages = useMemo(
-    () => mapAgUiMessagesToJChat(agent.messages, agent.isRunning),
-    [agent.isRunning, agent.messages],
+    () =>
+      withRunError(
+        mapAgUiMessagesToJChat(agent.messages, agent.isRunning),
+        agent.isRunning ? null : runError,
+      ),
+    [agent.isRunning, agent.messages, runError],
   );
 
   useEffect(() => {
@@ -142,6 +181,7 @@ export function JChatCopilotThread({
     );
     if (!claimed) return;
 
+    setRunError(null);
     agent.addMessage({
       id: claimed.id,
       role: "user",
@@ -149,6 +189,7 @@ export function JChatCopilotThread({
     });
     void copilotkit.runAgent({ agent }).catch((error) => {
       console.error("[JChatCopilotThread] programmatic runAgent failed", error);
+      setRunError(errorText(error) || "The run failed.");
     });
   }, [
     agent,
@@ -164,6 +205,7 @@ export function JChatCopilotThread({
     const text = draft.trim();
     if (!text || agent.isRunning || disabled) return;
     setDraft("");
+    setRunError(null);
     agent.addMessage({
       id: crypto.randomUUID(),
       role: "user",
@@ -173,6 +215,7 @@ export function JChatCopilotThread({
       await copilotkit.runAgent({ agent });
     } catch (error) {
       console.error("[JChatCopilotThread] runAgent failed", error);
+      setRunError(errorText(error) || "The run failed.");
     }
   }, [agent, copilotkit, disabled, draft]);
 

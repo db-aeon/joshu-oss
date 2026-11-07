@@ -1,0 +1,39 @@
+{
+ "data": {
+  "cik": "0001045810",
+  "company_name": "NVIDIA CORP",
+  "filings": [
+   {
+    "accession_number": "0001045810-26-000078",
+    "filing_date": "2026-09-03",
+    "form_type": "8-K",
+    "index_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000078/0001045810-26-000078-index.html",
+    "primary_document": "nvda-20260902.htm",
+    "primary_document_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000078/nvda-20260902.htm",
+    "report_date": "2026-09-02"
+   },
+   {
+    "accession_number": "0001045810-26-000075",
+    "filing_date": "2026-08-26",
+    "form_type": "10-Q",
+    "index_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000075/0001045810-26-000075-index.html",
+    "primary_document": "nvda-20260726.htm",
+    "primary_document_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000075/nvda-20260726.htm",
+    "report_date": "2026-07-26"
+   },
+   {
+    "accession_number": "0001045810-26-000073",
+    "filing_date": "2026-08-26",
+    "form_type": "8-K",
+    "index_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000073/0001045810-26-000073-index.html",
+    "primary_document": "nvda-20260826.htm",
+    "primary_document_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000073/nvda-20260826.htm",
+    "report_date": "2026-08-26"
+   }
+  ],
+  "ticker": "NVDA",
+  "total_filings": 3
+ },
+ "successful": true,
+ "error": null
+}

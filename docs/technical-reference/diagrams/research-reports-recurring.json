@@ -1,0 +1,356 @@
+{
+  "schema_version": 1,
+  "diagram_type": "dataflow",
+  "meta": {
+    "title": "How a run of a recurring report finds what is new and sorts it into themes",
+    "output": ".archify/technical-reference/research-reports-recurring.html",
+    "quality_profile": "showcase",
+    "locale": "en",
+    "repository": {
+      "url": "https://github.com/db-aeon/joshu.git",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "25bd687484af3d5a89a49fa94f6176ef821625c4"
+    },
+    "viewBox": [
+      1080,
+      560
+    ],
+    "legend": {
+      "mode": "auto",
+      "entries": {
+        "emphasis": {
+          "label": "main path"
+        },
+        "security": {
+          "label": "code check"
+        },
+        "dashed": {
+          "label": "stored state"
+        }
+      }
+    }
+  },
+  "stages": [
+    {
+      "label": "Schedule"
+    },
+    {
+      "label": "Collect"
+    },
+    {
+      "label": "Stories"
+    },
+    {
+      "label": "Themes"
+    },
+    {
+      "label": "Delivery"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "cron",
+      "type": "backend",
+      "label": "Hermes cron job",
+      "sublabel": "no agent, owner timezone",
+      "stage": 0,
+      "row": 0,
+      "sources": [
+        {
+          "path": "src/research/recurring/service.ts",
+          "line": 173,
+          "end_line": 182,
+          "label": "recurringScript"
+        }
+      ],
+      "width": 130,
+      "height": 50
+    },
+    {
+      "id": "setup",
+      "type": "database",
+      "label": "setup.json",
+      "sublabel": "lanes, plans, notes",
+      "stage": 0,
+      "row": 1,
+      "sources": [
+        {
+          "path": "src/research/recurring/plan.ts",
+          "line": 96,
+          "end_line": 158,
+          "label": "planLanes"
+        }
+      ],
+      "width": 130,
+      "height": 50
+    },
+    {
+      "id": "collect",
+      "type": "external",
+      "label": "Collect",
+      "sublabel": "web, papers, social; dated",
+      "stage": 1,
+      "row": 0,
+      "sources": [
+        {
+          "path": "src/research/recurring/collect.ts",
+          "line": 134,
+          "end_line": 275,
+          "label": "collectLane"
+        },
+        {
+          "path": "src/research/social/sources.ts",
+          "line": 97,
+          "end_line": 106,
+          "label": "searchSocial"
+        }
+      ],
+      "width": 150,
+      "height": 50
+    },
+    {
+      "id": "group",
+      "type": "backend",
+      "label": "Group",
+      "sublabel": "1 call, all lanes",
+      "stage": 2,
+      "row": 0,
+      "sources": [
+        {
+          "path": "src/research/recurring/stories.ts",
+          "line": 55,
+          "end_line": 86,
+          "label": "groupStories"
+        }
+      ],
+      "width": 130,
+      "height": 50
+    },
+    {
+      "id": "compare",
+      "type": "backend",
+      "label": "Compare",
+      "sublabel": "links, then 1 call",
+      "stage": 2,
+      "row": 1,
+      "sources": [
+        {
+          "path": "src/research/recurring/stories.ts",
+          "line": 130,
+          "end_line": 235,
+          "label": "compareStories"
+        }
+      ],
+      "width": 130,
+      "height": 50
+    },
+    {
+      "id": "stories",
+      "type": "database",
+      "label": "stories.json",
+      "sublabel": "last 60 days",
+      "stage": 2,
+      "row": 2,
+      "sources": [
+        {
+          "path": "src/research/recurring/stories.ts",
+          "line": 252,
+          "end_line": 279,
+          "label": "applyRun"
+        }
+      ],
+      "width": 130,
+      "height": 50
+    },
+    {
+      "id": "write",
+      "type": "backend",
+      "label": "Themes",
+      "sublabel": "sort, read, facts, write",
+      "stage": 3,
+      "row": 0,
+      "sources": [
+        {
+          "path": "src/research/themes/index.ts",
+          "line": 67,
+          "end_line": 132,
+          "label": "buildThemes"
+        },
+        {
+          "path": "src/research/themes/sort.ts",
+          "line": 82,
+          "end_line": 135,
+          "label": "sortThemes"
+        },
+        {
+          "path": "src/research/themes/write.ts",
+          "line": 84,
+          "end_line": 152,
+          "label": "writeThemes"
+        }
+      ],
+      "width": 130,
+      "height": 50
+    },
+    {
+      "id": "check",
+      "type": "security",
+      "label": "Fact + number check",
+      "sublabel": "drops sentences",
+      "stage": 3,
+      "row": 1,
+      "sources": [
+        {
+          "path": "src/research/pipeline/write.ts",
+          "line": 98,
+          "end_line": 112,
+          "label": "verifyText"
+        }
+      ],
+      "width": 130,
+      "height": 50
+    },
+    {
+      "id": "update",
+      "type": "database",
+      "label": "updates/<run>/",
+      "sublabel": "update.json, update.md",
+      "stage": 3,
+      "row": 2,
+      "sources": [
+        {
+          "path": "src/research/recurring/run.ts",
+          "line": 220,
+          "end_line": 225,
+          "label": "saveUpdate"
+        }
+      ],
+      "width": 130,
+      "height": 50
+    },
+    {
+      "id": "send",
+      "type": "frontend",
+      "label": "Owner",
+      "sublabel": "email, text, Slack, Telegram",
+      "stage": 4,
+      "row": 1,
+      "sources": [
+        {
+          "path": "src/research/recurring/delivery.ts",
+          "line": 92,
+          "end_line": 114,
+          "label": "deliver"
+        },
+        {
+          "path": "src/research/themes/text.ts",
+          "line": 61,
+          "end_line": 63,
+          "label": "themesText"
+        }
+      ],
+      "width": 140,
+      "height": 50
+    }
+  ],
+  "flows": [
+    {
+      "id": "f-cron-collect",
+      "from": "cron",
+      "to": "collect",
+      "label": "POST /run",
+      "variant": "emphasis",
+      "route": "straight"
+    },
+    {
+      "id": "f-setup-collect",
+      "from": "setup",
+      "to": "collect",
+      "label": "lane plans",
+      "variant": "dashed"
+    },
+    {
+      "id": "f-collect-group",
+      "from": "collect",
+      "to": "group",
+      "label": "items",
+      "variant": "emphasis"
+    },
+    {
+      "id": "f-group-compare",
+      "from": "group",
+      "to": "compare",
+      "label": "stories",
+      "variant": "emphasis",
+      "labelDy": 25
+    },
+    {
+      "id": "f-stories-compare",
+      "from": "stories",
+      "to": "compare",
+      "label": "earlier",
+      "variant": "dashed",
+      "labelDx": 72
+    },
+    {
+      "id": "f-compare-write",
+      "from": "compare",
+      "to": "write",
+      "label": "new + developing",
+      "variant": "emphasis"
+    },
+    {
+      "id": "f-write-check",
+      "from": "write",
+      "to": "check",
+      "label": "[F12] citations",
+      "variant": "security",
+      "labelDy": 25
+    },
+    {
+      "id": "f-check-update",
+      "from": "check",
+      "to": "update",
+      "label": "saved",
+      "variant": "emphasis",
+      "labelDy": 25
+    },
+    {
+      "id": "f-check-send",
+      "from": "check",
+      "to": "send",
+      "label": "report update",
+      "variant": "emphasis"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "How a story gets its status",
+      "items": [
+        "New: no stored story is about the same event",
+        "Developing: a stored story matches, and the run found a page or post it did not have",
+        "Quiet: a stored story matches, with nothing new; it is in no theme"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "What a failed run does",
+      "items": [
+        "Sends a short failure note and no partial report update",
+        "Leaves stories.json and the period of the next run as they were",
+        "A run that Joshu stopped is marked failed at the next start"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Limits of one run",
+      "items": [
+        "Collect 2 min, group 90 s, compare 60 s, themes about 5 min, send 60 s",
+        "At most two runs at once on one box",
+        "A run takes about 5 minutes, and at most 12.5 minutes at the limits"
+      ]
+    }
+  ]
+}

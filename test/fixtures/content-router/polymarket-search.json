@@ -1,0 +1,44 @@
+{
+  "events": [
+    {
+      "id": "31552",
+      "slug": "democratic-presidential-nominee-2028",
+      "title": "Democratic Presidential Nominee 2028",
+      "description": "This market will resolve to the person who wins the 2028 nomination of the Democratic Party for president.",
+      "startDate": "2025-01-21T17:00:00Z",
+      "endDate": "2028-08-20T00:00:00Z",
+      "volume": 412839210.52,
+      "liquidity": 9123441.1,
+      "markets": [
+        { "question": "Will Gavin Newsom win the 2028 Democratic presidential nomination?", "slug": "will-gavin-newsom-win-the-2028-democratic-presidential-nomination", "outcomes": "[\"Yes\", \"No\"]", "outcomePrices": "[\"0.36\", \"0.64\"]", "volume": "41239001.2" }
+      ]
+    },
+    {
+      "id": "31553",
+      "slug": "republican-presidential-nominee-2028",
+      "title": "Republican Presidential Nominee 2028",
+      "description": "This market will resolve to the person who wins the 2028 nomination of the Republican Party for president.",
+      "startDate": "2025-01-21T17:00:00Z",
+      "endDate": "2028-07-20T00:00:00Z",
+      "volume": 389112004.07,
+      "liquidity": 8432111.9,
+      "markets": [
+        { "question": "Will J.D. Vance win the 2028 Republican presidential nomination?", "slug": "will-jd-vance-win-the-2028-republican-presidential-nomination", "outcomes": "[\"Yes\", \"No\"]", "outcomePrices": "[\"0.52\", \"0.48\"]", "volume": "50112334.9" }
+      ]
+    },
+    {
+      "id": "40210",
+      "slug": "iowa-democratic-caucus-winner-2028",
+      "title": "Iowa Democratic caucus winner 2028",
+      "description": "This market will resolve to the winner of the 2028 Iowa Democratic caucus.",
+      "startDate": "2026-06-02T15:00:00Z",
+      "endDate": "2028-02-10T00:00:00Z",
+      "volume": 2210443.33,
+      "liquidity": 301223.4,
+      "markets": [
+        { "question": "Will Pete Buttigieg win the 2028 Iowa Democratic caucus?", "slug": "will-pete-buttigieg-win-the-2028-iowa-democratic-caucus", "outcomes": "[\"Yes\", \"No\"]", "outcomePrices": "[\"0.21\", \"0.79\"]", "volume": "402311.5" }
+      ]
+    }
+  ],
+  "pagination": { "hasMore": false, "totalResults": 3 }
+}

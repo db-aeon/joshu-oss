@@ -18,7 +18,7 @@ import {
 import { isDirectLocalhostRequest } from "./httpLocalhost.js";
 import { getFailureReport, type FailureReport } from "./instanceFailures.js";
 import { resolveJoshuIdentity } from "./joshuIdentity.js";
-import { resolveLast30DaysEngine } from "./last30days/config.js";
+import { socialSourcesHealth, type SocialSourcesHealth } from "./research/social/health.js";
 import {
   syncCompanionIdentityFromEnv,
   type CompanionIdentitySyncResult,
@@ -107,7 +107,9 @@ export interface InstanceHealthReport {
     // (a snapshot will run); `ok` = creds are usable. Surfaces a missing/broken SA key
     // BEFORE a managed update tries (and fails) to snapshot.
     snapshot: { ok: boolean; expected: boolean; reason?: string };
-    last30days: { ok: boolean; enginePresent: boolean; source: string };
+    // The key keeps its name for the fleet scripts. Since change recurring-research-reports it
+    // reports the relays and keys of the social sources; the last30days engine is gone.
+    last30days: SocialSourcesHealth;
     // Background-work failures (Kanban runs, Hermes cron). Informational: never gates health.
     failures: FailureReport | { ok: false; scanError: string };
   };
@@ -192,7 +194,6 @@ export function registerInstanceHealthRoutes(
       distStatus = { ...distStatus, ok: true, status: "updating" };
     }
 
-    const last30daysEngine = resolveLast30DaysEngine(process.cwd());
     const failures = await getFailureReport().catch((err: unknown) => ({
       ok: false as const,
       scanError: (err as Error).message,
@@ -223,11 +224,7 @@ export function registerInstanceHealthRoutes(
         expected: snapshotCred.configured,
         ...(snapshotCred.reason ? { reason: snapshotCred.reason } : {}),
       },
-      last30days: {
-        ok: last30daysEngine.present,
-        enginePresent: last30daysEngine.present,
-        source: last30daysEngine.source,
-      },
+      last30days: socialSourcesHealth(),
       failures,
     };
 
@@ -240,11 +237,7 @@ export function registerInstanceHealthRoutes(
       components.camofox.ok &&
       components.hermes.ok &&
       components.dist.ok &&
-      (!connectorsMcpRequired || components.connectorsMcp.ok) &&
-      // Fleet/Aroz boxes ship last30days; an empty gitignored bind-mount used to
-      // 400 Research while health stayed 200. Local npm start without the engine
-      // (no Aroz desktop) is unaffected.
-      (!arozosExpected || components.last30days.ok);
+      (!connectorsMcpRequired || components.connectorsMcp.ok);
     // Overall health additionally reflects the desktop + edge when the box is
     // configured to serve them, so "site down" surfaces as 503 instead of 200.
     const healthy =

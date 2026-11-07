@@ -49,7 +49,12 @@ import { syncAllAppManifestCronJobs } from "./appCronSync.js";
 import { syncBoxCronJobs } from "./onboarding/boxCronSync.js";
 import { registerHermesChatSessionListener } from "./hermesChatSessionPush.js";
 import { SSE_HEADERS, sseSend, startSseHeartbeat } from "./httpSse.js";
-import { registerLast30DaysRoutes } from "./last30days/routes.js";
+import { registerResearchRoutes } from "./research/routes.js";
+import { registerRouterMediaRoutes } from "./contentRouter/media.js";
+import { registerRecurringRoutes } from "./research/recurring/routes.js";
+import { recurringRuntime } from "./research/recurring/runtime.js";
+import { retireLast30days } from "./research/retireLast30days.js";
+import { migrateWatchOnBox } from "./research/recurring/watchMigration.js";
 import {
   handleHermesDashboardUpgrade,
   hermesDashboardPathSegment,
@@ -66,6 +71,7 @@ import { registerAppGuiActionRoutes } from "./appGuiActionApi.js";
 import { registerNylasRoutes } from "./nylas/routes.js";
 import { registerComposioRoutes } from "./composioRoutes.js";
 import { registerConnectorRoutes } from "./connectors/routes.js";
+import { registerConnectorsApiAccess } from "./connectors/apiAccess.js";
 import { registerConnectorComposioRoutes } from "./connectors/composioRoutes.js";
 import { registerEaTriageRoutes } from "./ea/triageRoutes.js";
 import { registerProactiveRoutes } from "./proactive/routes.js";
@@ -569,6 +575,8 @@ function buildAppRouter(): {
   });
 
   router.use(express.json({ limit: "12mb" }));
+  // Before any /api/connectors, /api/nylas, or /api/onboarding route (spec connectors-api-access).
+  registerConnectorsApiAccess(router);
 
   registerFilesRoutes(router);
 
@@ -595,7 +603,9 @@ function buildAppRouter(): {
   registerRealtimeGoalRoutes(router, realtimeGoalBroker);
 
   registerHermesCronRoutes(router);
-  registerLast30DaysRoutes(router, { projectRoot: PROJECT_ROOT });
+  registerResearchRoutes(router, { projectRoot: PROJECT_ROOT });
+  registerRouterMediaRoutes(router, { projectRoot: PROJECT_ROOT });
+  registerRecurringRoutes(router, { projectRoot: PROJECT_ROOT, runtime: () => recurringRuntime(PROJECT_ROOT) });
   registerNylasRoutes(router, { projectRoot: PROJECT_ROOT });
   registerComposioRoutes(router, { projectRoot: PROJECT_ROOT, runner });
   registerConnectorComposioRoutes(router, { projectRoot: PROJECT_ROOT, runner });
@@ -1290,20 +1300,13 @@ function buildAppRouter(): {
       if (setupMention) {
         turnSystemMessages.push({ role: "system", content: setupMentionInstruction(setupMention) });
       }
-      const sessionCallbackHint: HermesChatMessage = {
-        role: "system",
-        content:
-          `Hermes session callback key for async Joshu jobs: joshu-hermes-chat:${sessionId}. ` +
-          "Pass as hermesSessionKey when starting last30days research via invoke.",
-      };
-
       let activeSessionId = sessionId;
 
       const result = await runner.streamHermesChat(
         {
           sessionId,
           model: model || undefined,
-          messages: [...turnSystemMessages, sessionCallbackHint, ...messages],
+          messages: [...turnSystemMessages, ...messages],
           signal: controller.signal,
         },
         {
@@ -1531,6 +1534,12 @@ async function shutdownCloudBrowser(reason: string): Promise<void> {
   }
 }
 
+// Express 4 does not catch a rejected promise of an async route handler. Without this handler,
+// one bad request exits Node, and the restart of the stack takes the Hermes gateway down with it.
+process.on("unhandledRejection", (reason) => {
+  console.error("[joshu] unhandled promise rejection:", reason);
+});
+
 for (const signal of ["SIGTERM", "SIGINT"] as const) {
   process.on(signal, () => {
     void shutdownCloudBrowser(signal).finally(() => process.exit(0));
@@ -1569,6 +1578,15 @@ const server = app.listen(PORT, HOST, () => {
     })();
   }
   void bootstrapCamofoxStartUrl(true);
+  // A run of a recurring report that Joshu stopped (a deploy or a crash) is a failed run (change
+  // recurring-research-reports, design decision D3).
+  void (async () => {
+    const recovered = await recurringRuntime(PROJECT_ROOT)?.runner.recoverInterrupted().catch((err: Error) => {
+      console.warn(`[research-recurring] start-up check failed: ${err.message}`);
+      return [];
+    });
+    if (recovered?.length) console.info(`[research-recurring] marked interrupted runs failed: ${recovered.join(", ")}`);
+  })();
   void (async () => {
     // First pass at listen; a second pass after 20s catches Aroz volume / docker-cp overlays.
     for (const delayMs of [0, 20_000]) {
@@ -1576,6 +1594,11 @@ const server = app.listen(PORT, HOST, () => {
       try {
         const synced = await syncAllAppManifestCronJobs(PROJECT_ROOT);
         console.log(`[joshu] app manifest cron synced jobs=${synced}${delayMs ? ` (deferred ${delayMs}ms)` : ""}`);
+        // Watched topics move to a recurring report first, then the last30days leftovers go
+        // (changes recurring-research-reports and research-reports).
+        const watch = await migrateWatchOnBox(PROJECT_ROOT);
+        if (watch?.error) console.warn(`[research-recurring] Watch migration failed: ${watch.error}`);
+        await retireLast30days(PROJECT_ROOT);
       } catch (err) {
         console.warn(
           `[joshu] app manifest cron sync failed${delayMs ? ` (deferred ${delayMs}ms)` : ""}:`,

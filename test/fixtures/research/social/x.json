@@ -1,0 +1,65 @@
+{
+ "ok": true,
+ "status": 200,
+ "json": {
+  "tweets": [
+   {
+    "id": "2114662531709178306",
+    "text": "Interesting \nSo they are assuming annual production of 550k humanoids and total DRAM demand of 21.5 PB\nEven if annual production was 20X (11M), total DRAM demand will be 430 PB or 0.43 EB\nDRAM production in 2026 will be around 48EB\nSo, 21.5PB is around 0.04% of 2026 DRAM production",
+    "createdAt": "Mon Oct 26 10:16:50 +0000 2026",
+    "likeCount": 894,
+    "retweetCount": 55,
+    "replyCount": 49,
+    "quoteCount": 7,
+    "viewCount": 410419,
+    "bookmarkCount": 310,
+    "author": {
+     "username": "zephyr_z9"
+    }
+   },
+   {
+    "id": "2114772074438988256",
+    "text": "@zephyr_z9 Silly analysis. \n\nRobot RAM needs will exceed everything else on Earth, as you need the robots to be on physical substates in order to shape atoms.  \n\nSuper intelligence needs will vastly exceed that, but ~100% of SI will be deep space compute. Obviously.",
+    "createdAt": "Mon Oct 26 17:32:07 +0000 2026",
+    "likeCount": 9219,
+    "retweetCount": 682,
+    "replyCount": 432,
+    "quoteCount": 251,
+    "viewCount": 1506901,
+    "bookmarkCount": 2138,
+    "author": {
+     "username": "elonmusk"
+    }
+   },
+   {
+    "id": "2115987052470976972",
+    "text": "Looks like PokeBot is building a home humanoid--\n\ncircular wheeled base, dual arms, round head, textured torso that elevates, Sunday-style three-finger hands, warm off-white. Whole thing reads rounded and approachable…\n\nAPI is the model distribution play. They’re still building their own robot too.",
+    "createdAt": "Fri Oct 30 02:00:01 +0000 2026",
+    "likeCount": 11,
+    "retweetCount": 2,
+    "replyCount": 2,
+    "quoteCount": 2,
+    "viewCount": 740,
+    "bookmarkCount": 4,
+    "author": {
+     "username": "CyberRobooo"
+    }
+   },
+   {
+    "id": "2114903536429674976",
+    "text": "Day 366 of building Asimov 1, an open-source humanoid robot. Asimov is out in public, walking with the new locomotion policy. https://t.co/9rEFEMSDJK",
+    "createdAt": "Tue Oct 27 02:14:30 +0000 2026",
+    "likeCount": 142,
+    "retweetCount": 9,
+    "replyCount": 15,
+    "quoteCount": 4,
+    "viewCount": 11386,
+    "bookmarkCount": 19,
+    "author": {
+     "username": "asimovinc"
+    }
+   }
+  ],
+  "has_next_page": false
+ }
+}

@@ -62,7 +62,7 @@ the same owner substance other channels get:
 | --- | --- |
 | jChat / AG-UI | Last user message in the chat turn |
 | SMS | Inbound body |
-| Slack / Telegram | Gateway hook message |
+| Slack / Telegram | Gateway hook message, plus its files and chat context ([files and chat context](technical-reference/realtime-goals-theory-of-operation.md#files-and-chat-context-of-a-slack-or-telegram-message)) |
 | Voice `think` | Full structured think user message (`Intent` / `Conversation summary` / `User said`) — same string Hermes receives, **not** a thin Realtime paraphrase |
 
 Voice-realtime: [`packages/voice-realtime/src/brainThink.ts`](../packages/voice-realtime/src/brainThink.ts)
@@ -115,6 +115,9 @@ Local development falls back to `.local/realtime-goals/`. Override with
 Session threads store the last **12 turns** (default) or **48h** TTL, keyed by
 stable `sessionKey` (`sms:+1…`, `pstn:owner`, etc.). Provider `messageId`
 deduplicates owner appends on transport retry.
+Texts of the owner text channel (nudges, owner reminders, team texts) that go
+out by SMS are box turns on the `sms:` thread of the owner, so the router knows
+what an owner reply answers.
 
 Each record stores the logical goal ID, origin route, source event ID, intake
 messages, release time, Kanban task ID, task status, result summary, and delivery
@@ -159,6 +162,22 @@ acknowledgment instead of a newer goal response.
   visible transcript and the next Hermes turn includes it.
 - Slack uses `chat.postMessage` with the original channel and `thread_ts`.
 - Telegram uses `sendMessage` with the original chat and forum thread.
+- The Slack and Telegram bot tokens come from the Joshu environment or the
+  safety settings (`local-env.json`) first, and else from `~/.hermes/.env`.
+  The Hermes gateway runs with `~/.hermes/.env`, so the owner outbox can
+  answer in every chat where the gateway takes owner messages, also when the
+  token was put only in that file
+  ([`resolveMessagingBotToken`](../src/hermesMessagingEnv.ts)).
+- When the text has the report link of a Research report, the Slack and
+  Telegram senders upload its PDF with the text
+  ([`reportFilesInText`](../src/research/reportLinks.ts)). Slack uses
+  `files.getUploadURLExternal` and `files.completeUploadExternal` with the text
+  as the first comment. Telegram uses `sendDocument` with the text as the
+  caption, or sends the text first when it is longer than 1,024 characters.
+  When Slack or Telegram refuses the file, the sender sends the text alone, and
+  the text still has the report link. A link at the start of a line keeps its
+  lower-case `https://`. See
+  [technical-reference/research-reports.md](technical-reference/research-reports.md).
 - Browser voice uses the underlying jChat/app session.
 - PSTN completion starts an owner callback only during the configured proactive
   working window. The call still requires the Telephone think passphrase. Only
@@ -303,6 +322,7 @@ never enqueued twice for a goal, and new content supersedes anything unheard.
 | Owner says "call me back" (any channel) | Dial now, whatever the backoff or window |
 | SMS sent, no delivery receipt yet | Wait; no other SMS and no callback for that item (up to 10 min) |
 | SMS undelivered (Twilio `undelivered` / `failed`) | Never texted again; a phone result goes back to the callback rules, else it waits for the next call |
+| Slack or Telegram send failed twice | SMS to the owner mobile; without usable SMS, the surface |
 
 Any owner message on any channel, or unlocking a call, clears the backoff.
 
@@ -367,6 +387,16 @@ Implementation: [`outbox.ts`](../src/realtimeGoals/outbox.ts),
 [`ownerOutboxSenders.ts`](../src/realtimeGoals/ownerOutboxSenders.ts).
 Tests, including a replay of the 2026-09-26 session: `npm run test:owner-outbox`.
 
+**Report updates use the send functions, not outbox items.** A run of a recurring report
+(see [technical-reference/research-reports.md](technical-reference/research-reports.md))
+sends its report update, failure note, or "nothing new" line with `postSlackMessage` and
+`sendTelegramMessage` of [`delivery.ts`](../src/realtimeGoals/delivery.ts) to the latest
+origin of the owner on that channel in `presence.lastByChannel`, and with the owner text
+channel for a text message. It makes no outbox item, because an outbox item belongs to a
+realtime goal and carries phone callback handling that report updates do not use. When the
+Slack or Telegram origin is gone, the report update goes on the owner text channel. Code:
+[`src/research/recurring/delivery.ts`](../src/research/recurring/delivery.ts).
+
 ## Inline jobs (phone `think` with a time budget)
 
 A cheap classifier used to pick sync vs. background up front: on the canary box
@@ -406,8 +436,10 @@ recently acknowledged active goal only when unambiguous; with several jobs, the
 owner is asked to name one.
 
 The router uses thread context so bare negation answering *“Anything else?”*
-returns `ack`, not `cancel`. Only explicit cancel intent (or high-confidence
-cancel with thread/goal binding) stops work. The broker first enters a durable `cancelling` state
+returns `ack`, not `cancel`. Only an explicit cancel phrase, or a
+high-confidence cancel from the router that names a listed active goal, stops
+work. A cancel from the router without a named goal becomes `pass`, so the SMS
+turn answers it and the broker texts no cancel reply. The broker first enters a durable `cancelling` state
 and suppresses completion delivery. A pre-release goal is never created on
 Kanban. For a released goal, the bridge verifies the worker PID belongs to that
 Kanban task, terminates its process group, confirms it stopped, records an audit
@@ -420,7 +452,9 @@ stops the new worker without resurrecting the goal.
 Repo plugin `.hermes/plugins/joshu-realtime-goals/`:
 
 - intercepts already-authorized Slack/Telegram owner messages through Hermes's
-  gateway hook and calls the local broker;
+  gateway hook and calls the local broker with the text, the downloaded files
+  (`attachments`), and the thread, group DM, or reply context (`context`); a
+  message without text takes the normal Hermes turn;
 - exposes `realtime_goal_defer` when an initially synchronous Hermes turn
   discovers that the work is long;
 - blocks a Hermes `cronjob` call whose delivery target cannot reach anyone
@@ -444,6 +478,32 @@ Factory skill `realtime-goal` is force-loaded by deferred workers. It requires
 workers to re-read owner updates before consequential actions, use normal action
 guard policy, block with one question, and return a self-contained completion
 summary without sending directly.
+
+## Realtime goals done on another channel (2026-11)
+
+An owner can ask for the same thing on two channels. On one box (2026-10-22)
+a Slack realtime goal blocked with "which meeting?", the owner emailed the
+same request, mail ingress and `ea-scheduling` booked the meeting, and the
+Slack realtime goal stayed blocked for days.
+
+- **Mail ingress closes it.** The card of a mail ingress task for an email of
+  the owner lists the open realtime goals (`open_realtime_goal:` lines, at most
+  5, from [`mailIngressOpenGoalLines`](../src/realtimeGoals/doneElsewhere.ts)).
+  When the email asks for the same thing, the worker calls MCP tool
+  `realtime_goal_close_done_elsewhere(goalId, taskId, note)` (step 5c of
+  `ea-mail-ingress`), which calls `POST /api/realtime-goals/:goalId/done-elsewhere`
+  (direct localhost only). `closeDoneElsewhere` in the broker stops and
+  archives the Kanban task, cancels the open outbox items (the old question),
+  sets status `done` with `doneElsewhere: { taskId, at }`, and puts the note in
+  the owner outbox as the result, so the owner gets that one line on the
+  channel of the realtime goal.
+- **A blocked question without an answer expires.** When the owner sent no
+  answer and no other message about a blocked realtime goal for 48 hours after
+  its question (`blockedAskedAt`, else the time of its blocked outbox item), the
+  lifecycle tick cancels the realtime goal without a message and sets
+  `expiredAt`. An owner answer later starts a new request.
+
+Tests: `npm run test:realtime-goal-done-elsewhere`.
 
 ## Configuration
 
@@ -469,6 +529,9 @@ JOSHU_REALTIME_GOALS_CALLBACK_SECRET=
 
 # Twilio async answering-machine detection on callbacks (default on).
 JOSHU_REALTIME_GOALS_CALLBACK_AMD=1
+
+# Hours without an owner answer before a blocked realtime goal is cancelled (default 48).
+JOSHU_REALTIME_GOALS_BLOCKED_EXPIRY_HOURS=48
 ```
 
 The router uses the existing Day 0/OpenRouter credential path. If it is not
@@ -485,6 +548,7 @@ See also: [`realtime-goals-theory-of-operation.md`](technical-reference/realtime
 ```bash
 npm run test:realtime-goals
 npm run test:owner-outbox
+npm run test:realtime-goal-done-elsewhere
 npm run test:realtime-goals-plugin
 npm run test:kanban-bridge-max-runtime
 npm run test:sms-send

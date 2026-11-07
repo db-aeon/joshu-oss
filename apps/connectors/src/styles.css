@@ -204,6 +204,12 @@ header h1 {
   font-weight: 700;
 }
 
+.composio-router .composio-logo-fallback {
+  background: linear-gradient(135deg, #0f766e, #2563eb);
+  color: #fff;
+  font-weight: 700;
+}
+
 .provider-direct {
   display: flex;
   flex-direction: column;

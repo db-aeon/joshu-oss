@@ -6,11 +6,12 @@
  */
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { mock } from "node:test";
 
+import { resolveMessagingBotToken } from "../src/hermesMessagingEnv.ts";
 import { RealtimeGoalBroker } from "../src/realtimeGoals/broker.ts";
 import { OwnerOutbox } from "../src/realtimeGoals/outbox.ts";
 import { ownerTextForItem } from "../src/realtimeGoals/outboxDispatcher.ts";
@@ -44,6 +45,23 @@ await mkdir(path.join(temp, "aroz", "files", "users", "owner", "Desktop", "joshu
 const iso = (ms) => new Date(ms).toISOString();
 
 try {
+  // ---- Bot token for Slack and Telegram sends ----
+  // A token that only the Hermes gateway has (~/.hermes/.env) still reaches the outbox.
+  process.env.HERMES_HOME = path.join(temp, "hermes");
+  delete process.env.TELEGRAM_BOT_TOKEN;
+  delete process.env.SLACK_BOT_TOKEN;
+  await mkdir(process.env.HERMES_HOME, { recursive: true });
+  assert.equal(resolveMessagingBotToken("TELEGRAM_BOT_TOKEN"), "");
+  await writeFile(
+    path.join(process.env.HERMES_HOME, ".env"),
+    'TELEGRAM_BOT_TOKEN=123:abc\nTELEGRAM_BOT_TOKEN=123:abc\nSLACK_BOT_TOKEN="xoxb-1 2"\n',
+  );
+  assert.equal(resolveMessagingBotToken("TELEGRAM_BOT_TOKEN"), "123:abc");
+  assert.equal(resolveMessagingBotToken("SLACK_BOT_TOKEN"), "xoxb-1 2");
+  process.env.TELEGRAM_BOT_TOKEN = "999:env";
+  assert.equal(resolveMessagingBotToken("TELEGRAM_BOT_TOKEN"), "999:env");
+  delete process.env.TELEGRAM_BOT_TOKEN;
+
   // ---- Policy table ----
   const T0 = Date.parse("2026-09-26T23:00:00Z");
   const phoneOrigin = { channel: "pstn_voice", sessionKey: "pstn:owner" };
@@ -157,6 +175,17 @@ try {
   const slack = plan([item("k", { origin: { channel: "slack", sessionKey: "slack:x", replyAddress: "C1", threadId: "1.2" } })])[0];
   assert.equal(slack.route, "slack");
   assert.equal(slack.address.threadId, "1.2");
+  // A Telegram send that failed twice → SMS; without SMS → the surface (rule 10).
+  const telegramOrigin = { channel: "telegram", sessionKey: "telegram:x", replyAddress: "42" };
+  const tgFail = { at: iso(T0), route: "telegram", outcome: "failed", detail: "Telegram delivery is not configured" };
+  assert.equal(plan([item("t", { origin: telegramOrigin, attempts: [tgFail] })])[0].route, "telegram");
+  const tgFallback = plan([item("t", { origin: telegramOrigin, attempts: [tgFail, tgFail] })])[0];
+  assert.equal(tgFallback.type, "text");
+  assert.equal(tgFallback.route, "sms");
+  assert.equal(tgFallback.reason, "telegram_failing");
+  const tgSurface = plan([item("t", { origin: telegramOrigin, attempts: [tgFail, tgFail] })], undefined, { caps: { sms: false } })[0];
+  assert.equal(tgSurface.type, "surface");
+  assert.equal(tgSurface.reason, "telegram_failing");
   // On a live call beats "texting a few minutes ago".
   assert.equal(plan([item("a")], { ...texting, activeCall: onCall.activeCall })[0].reason, "owner_on_call");
   // Owner texting overrides a jChat surface? No — surfaces stay on their surface.

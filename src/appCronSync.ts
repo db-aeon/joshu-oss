@@ -3,7 +3,7 @@
  *
  * Manifest `cron.jobs[]` is registered at Joshu boot. no-agent scripts are
  * written into ~/.hermes/scripts/ (Hermes cron cwd) so a declared job actually
- * exists — last30days Watching depends on this.
+ * exists.
  */
 
 import fs from "node:fs";

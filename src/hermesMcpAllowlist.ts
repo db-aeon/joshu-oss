@@ -1,7 +1,7 @@
 /**
  * Strip untrusted Hermes MCP servers from config.yaml.
  *
- * Joshu upserts HTTP MCPs it owns (gbrain, joshu_connectors, composio, fal_ai, aeon).
+ * Joshu upserts HTTP MCPs it owns (gbrain, joshu_connectors, composio, fal_ai, joshu_router, aeon).
  * Owners may add extra **HTTP** MCPs (e.g. known_quantity). Stdio servers
  * (`command` / `args`) are an RCE vector — a public Hermes Admin UI or
  * `hermes mcp add --command python3 --args -c …` can persist a miner dropper
@@ -13,6 +13,7 @@ export const JOSHU_MANAGED_MCP_SERVER_NAMES = [
   "joshu_connectors",
   "composio",
   "fal_ai",
+  "joshu_router",
   "aeon",
 ] as const;
 

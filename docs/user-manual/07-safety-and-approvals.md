@@ -52,6 +52,6 @@ The page shows what your companion needs, a live picture of the website, and nor
 
 ## Multiplayer safety
 
-Teams in Multiplayer have extra protections. See [Safety in Multiplayer](08-boss-mode.md#safety).
+Teams in Multiplayer have extra protections. See [Safety in Multiplayer](08-multiplayer.md#safety).
 
-Next: [How to use Multiplayer](08-boss-mode.md).
+Next: [How to use Multiplayer](08-multiplayer.md).

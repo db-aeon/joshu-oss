@@ -14,4 +14,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Install ripgrep
+        run: |
+          # check-oss-boundaries.sh needs ripgrep, which the runner image does not include.
+          command -v rg >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq ripgrep; }
       - run: npm run check:oss-boundaries

@@ -117,6 +117,7 @@ Default **on** when unset. Enforced in the Composio MCP guard (also when the act
 | Rule | Blocked | Use instead |
 |------|---------|-------------|
 | Outbound mail via Composio Gmail | `GMAIL_SEND_*`, `GMAIL_REPLY_*`, send heuristics | `mcp_joshu_connectors_nylas_send_message` |
+| Gmail draft changes via Composio | `GMAIL_UPDATE_DRAFT`, `GMAIL_SEND_DRAFT`, `GMAIL_DELETE_DRAFT` | A new draft with `GMAIL_CREATE_EMAIL_DRAFT` (allowed, a write for the action guard). `GMAIL_LIST_DRAFTS` and `GMAIL_GET_DRAFT` are allowed. |
 | Nylas calendar writes | `nylas_create_event`, `nylas_update_event`, `nylas_delete_event` | `mcp_joshu_connectors_google_calendar_create_event` / `…_update_event` (owner Google calendar) |
 | Deletes | Composio tools matching `DELETE` / `TRASH` | — (not available to agents) |
 
@@ -475,6 +476,14 @@ New boxes: CP mints **`JOSHU_HERMES_DASHBOARD_PASSWORD`** in `instance.env` (`sa
 Decision: the Composio MCP guard turns a `COMPOSIO_MULTI_EXECUTE_TOOL` call into its list of inner tool calls, also nested ones, and it applies the hard blocks and the action guard to each inner tool call. The strictest result wins, and a call with no list of inner tool calls is refused, because the Composio MCP guard cannot tell what the call does. Before, the guard checked only the outer name, and the action guard treated each name that starts with `COMPOSIO_` as a read, so no app tool got a hard block or an owner approval. Langfuse showed calendar events that workers made this way with no owner approval.
 
 Alternatives: block `COMPOSIO_MULTI_EXECUTE_TOOL` (then workers cannot read mail or calendars through Composio), or preload the app tools in the Composio session (Composio still offers `COMPOSIO_MULTI_EXECUTE_TOOL`, so the gap stays).
+
+### 2026-10-30: The companion can create Gmail drafts but can't change or send them
+
+Decision: the Gmail hard block refuses each Composio Gmail tool whose name has `SEND`, `REPLY`, or `FORWARD`, and each Gmail tool that updates a draft. Before, it also refused each Gmail tool whose name has `DRAFT`. A draft stays in the owner's mailbox until a person sends it, so a draft create can't deliver mail, and owners ask the companion for drafts that they review and send themselves. Composio `GMAIL_UPDATE_DRAFT` sent three drafts to their recipients on a box, so a draft update counts as a send. `GMAIL_SEND_DRAFT` matches `SEND`, and `GMAIL_DELETE_DRAFT` matches the delete pattern. To change a draft, the companion makes a new draft, and a person removes the old one.
+
+The action guard doesn't change. Its name heuristic treats `GMAIL_CREATE_EMAIL_DRAFT` as a write (`_CREATE_`), so a box with the action guard on in mode `external_writes` asks the owner before each draft.
+
+Alternatives: an allow list for `GMAIL_CREATE_EMAIL_DRAFT` (the policy has no allow list, and the draft read tools would need entries too), or every draft tool except `GMAIL_SEND_DRAFT` (a draft update can deliver mail).
 
 ### 2026-10-20: One denial stops a whole multi execute call
 

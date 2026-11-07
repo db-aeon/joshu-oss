@@ -58,6 +58,8 @@ def _task_summary(task: Any, *, include_body: bool = False) -> Dict[str, Any]:
         "idempotency_key": getattr(task, "idempotency_key", None),
         # Block kind (see openspec/glossary.md). "needs_input" marks an owner question.
         "block_kind": getattr(task, "block_kind", None),
+        # Skills that Hermes preloads for the worker (hermes --skills).
+        "skills": getattr(task, "skills", None),
     }
     created = getattr(task, "created_at", None)
     if created is not None:
@@ -789,6 +791,27 @@ def _dispatch(payload: Dict[str, Any]) -> Dict[str, Any]:
             "task": _task_summary(refreshed, include_body=True) if refreshed else {"task_id": task_id},
         }
 
+    if action == "set_skills":
+        # Replace the preloaded skills of a task (change mail-worker-skills): a track
+        # created before the split of ea-playbook gets the mail track skills.
+        task_id = str(payload.get("task_id") or "").strip()
+        skills = _parse_skills(payload.get("skills"))
+        if not task_id:
+            return {"success": False, "error": "task_id is required"}
+        if not skills:
+            return {"success": False, "error": "skills is required"}
+        task = kanban_db.get_task(conn, task_id)
+        if not task:
+            return {"success": False, "error": f"task {task_id} not found"}
+        conn.execute("UPDATE tasks SET skills = ? WHERE id = ?", (json.dumps(skills), task_id))
+        conn.commit()
+        refreshed = kanban_db.get_task(conn, task_id)
+        return {
+            "success": True,
+            "task_id": task_id,
+            "task": _task_summary(refreshed) if refreshed else {"task_id": task_id},
+        }
+
     if action == "set_body":
         # Replace the body of a setup card when the how-to of its setup step changed
         # (change owner-setup-board). Only the setup board allows it: on other boards
@@ -947,7 +970,6 @@ def _dispatch(payload: Dict[str, Any]) -> Dict[str, Any]:
         refreshed = kanban_db.get_task(conn, task_id)
         # Drop pending browser handoffs tied to this task so cloud idle stop can run.
         try:
-            import json
             import urllib.request
 
             base = os.environ.get("JOSHU_CONNECTORS_API_BASE", "http://127.0.0.1:8788/joshu").strip().rstrip("/")

@@ -25,8 +25,18 @@ Patches:
      (Mina box, track t_a5afaa50, 2026-10-08).
      Boards named team-<slug> (Multiplayer team boards, change box-teams-standup)
      stay blocked too, and they have no auto-decompose.
+  3) hermes_cli/kanban_db.py — on every board, a dependency block
+     (kind="dependency") on a task with no open parent task takes the normal
+     block path with no block kind. Hermes sends a dependency block to "todo",
+     and recompute_ready promotes the task when all its parent tasks are done.
+     With no parent task, that check is true at once, so the dispatcher ran
+     the worker again within a minute (clara, t_d89569aa, 2026-10-15; issue
+     #141). The normal block path sets status "blocked" and writes a
+     "blocked" event, so the task stays blocked until a handoff unblocks it.
+     A dependency block on a task with an open parent task is unchanged.
 
-Markers: _joshu_ea_kanban_no_autodecompose, _joshu_keep_blocked_sticky
+Markers: _joshu_ea_kanban_no_autodecompose, _joshu_keep_blocked_sticky,
+_joshu_dependency_needs_open_parent
 """
 from __future__ import annotations
 
@@ -37,6 +47,7 @@ from pathlib import Path
 HERMES_DIR = Path(os.environ.get("HERMES_DIR", "/opt/hermes-agent")).resolve()
 MARKER = "_joshu_ea_kanban_no_autodecompose"
 STICKY_MARKER = "_joshu_keep_blocked_sticky"
+DEPENDENCY_MARKER = "_joshu_dependency_needs_open_parent"
 
 WATCHERS = HERMES_DIR / "gateway/kanban_watchers.py"
 KANBAN_DB = HERMES_DIR / "hermes_cli/kanban_db.py"
@@ -83,6 +94,21 @@ STICKY_BLOCKED_EVENT = f"""            if _joshu_ea_keep_blocked:
                     }},
                     run_id=run_id,
                 )
+"""
+# Start of the dependency branch of block_task (pinned Hermes 3c27eb62).
+DEPENDENCY_BRANCH = """        if kind == "dependency":
+            cur = conn.execute(
+"""
+DEPENDENCY_NO_OPEN_PARENT = f"""        # Joshu ({DEPENDENCY_MARKER}): a dependency block waits in "todo"
+        # until recompute_ready finds all parent tasks done. With no open
+        # parent task that check is true at once, so the dispatcher ran the
+        # worker again within a minute. Take the normal block path instead.
+        if kind == "dependency" and conn.execute(
+            "SELECT 1 FROM task_links l JOIN tasks t ON t.id = l.parent_id "
+            "WHERE l.child_id = ? AND t.status NOT IN ('done', 'archived') LIMIT 1",
+            (task_id,),
+        ).fetchone() is None:
+            kind = None
 """
 
 
@@ -132,7 +158,7 @@ def _patch_watchers(text: str) -> str:
 
 def _patch_kanban_db(text: str) -> str:
     if not (MARKER in text and "joshu_ea_keep_blocked" in text):
-        return _add_sticky_blocked_event(_add_keep_blocked(text))
+        return _add_dependency_needs_open_parent(_add_sticky_blocked_event(_add_keep_blocked(text)))
     upgraded = False
     if '"realtime-goals"' not in text:
         text = text.replace(LEGACY_EA_BOARDS_LITERAL, EA_BOARDS_LITERAL)
@@ -152,6 +178,10 @@ def _patch_kanban_db(text: str) -> str:
         text = _add_sticky_blocked_event(text)
         print("[hermes-ea-kanban-no-autodecompose] kanban_db: kept-blocked tasks stay sticky")
         upgraded = True
+    if DEPENDENCY_MARKER not in text:
+        text = _add_dependency_needs_open_parent(text)
+        print("[hermes-ea-kanban-no-autodecompose] kanban_db: dependency block needs an open parent")
+        upgraded = True
     if not upgraded:
         print("[hermes-ea-kanban-no-autodecompose] kanban_db: already applied")
     return text
@@ -163,6 +193,14 @@ def _add_sticky_blocked_event(text: str) -> str:
     if text.count(LOOP_EVENT_END) != 1:
         _die("kanban_db: block_loop_detected event of the keep-blocked patch not found")
     return text.replace(LOOP_EVENT_END, LOOP_EVENT_END + STICKY_BLOCKED_EVENT, 1)
+
+
+def _add_dependency_needs_open_parent(text: str) -> str:
+    if DEPENDENCY_MARKER in text:
+        return text
+    if text.count(DEPENDENCY_BRANCH) != 1:
+        _die("kanban_db: dependency branch of block_task not found")
+    return text.replace(DEPENDENCY_BRANCH, DEPENDENCY_NO_OPEN_PARENT + DEPENDENCY_BRANCH, 1)
 
 
 def _add_keep_blocked(text: str) -> str:

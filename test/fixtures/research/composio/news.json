@@ -1,0 +1,52 @@
+{
+ "data": {
+  "has_results": true,
+  "news_results": [
+   {
+    "date": "3 weeks ago",
+    "link": "https://billypenn.com/2026/09/30/indego-ebikes-philadelphia-bike-share-electric-vs-regular-bikes/",
+    "published_at": "2026-09-30 07:00:00 UTC",
+    "snippet": "Indego e-bikes now make up about 70% of Philadelphia's bike-share fleet, raising concerns among some riders about cost and classic bike availability.",
+    "source": "Billy Penn at WHYY",
+    "title": "Indego e-bikes dominate Philadelphia bike-share fleet"
+   },
+   {
+    "date": "1 day ago",
+    "link": "https://www.bike-eu.com/53420/germanys-shared-bike-fleet-grows-to-102550-as-subscriptions-slip-2",
+    "published_at": "2026-10-20 13:14:00 UTC",
+    "snippet": "Germany's bike-sharing fleet grew 1.5% year-on-year to 102550 bikes, while private bike subscriptions fell 2% to 98000. That is the finding of the second...",
+    "source": "Bike Europe",
+    "title": "Germany's shared bike fleet grows to 102,550 as subscriptions slip 2%"
+   },
+   {
+    "date": "3 weeks ago",
+    "link": "https://www.benningtonbanner.com/local-news/bennington-to-develop-e-bike-regulation-plan/4696038",
+    "published_at": "2026-09-29 07:00:00 UTC",
+    "snippet": "BENNINGTON — After hearing a report on regulation options for e-bikes and similar vehicles, the Select Board on Monday created a three-person subcommittee...",
+    "source": "Bennington banner",
+    "title": "Bennington to develop e-bike regulation plan"
+   },
+   {
+    "date": "1 week ago",
+    "link": "https://en.sedaily.com/society/2026/10/14/none-of-five-e-bike-subscription-services-warn-before-auto",
+    "published_at": "2026-10-14 04:57:20 UTC",
+    "snippet": "None of five major Korean shared e-bike operators notify users before auto-billing, the Korea Consumer Agency said, as complaints jumped 148% last year.",
+    "source": "Seoul Economic Daily",
+    "title": "None of Five E-Bike Subscription Services Warn Before Auto-Billing"
+   },
+   {
+    "date": "3 weeks ago",
+    "link": "https://cyclingindustry.news/lime-partners-with-bhn-extras-to-offer-ebike-subscriptions-through-cycle-to-work/",
+    "published_at": "2026-10-01 08:49:15 UTC",
+    "snippet": "The Lime Annual Subscription, which includes a 500-minute monthly allowance, costs £635 per year (£52.92 per month) before tax savings.",
+    "source": "Cycling Industry News",
+    "title": "Lime partners with BHN Extras to offer eBike subscriptions through Cycle to Work"
+   }
+  ],
+  "no_results_message": null,
+  "query": "e-bike subscription",
+  "total_results": 106000
+ },
+ "successful": true,
+ "error": null
+}

@@ -99,6 +99,7 @@ Applied automatically via `npm run prepare`.
 | **Joshu brand pack** (paper-shell, icons) | **JDL** — private `joshu-design` repo; not in public OSS tree |
 | **Tango PNG library** | Public domain |
 | **`arozos/icons/telephone.png`** (Telephone app) | **CC BY-SA 3.0 US** — `call-start` from the [GNOME icon theme](https://github.com/GNOME/adwaita-icon-theme), © GNOME Project ([source](https://commons.wikimedia.org/wiki/File:Gnome-call-start.svg)). Tango has no handset glyph. |
+| **Newsreader**, **Work Sans**, and **Silkscreen** fonts (Research reports, `src/research/fonts.ts`) | **SIL Open Font License 1.1**. The Latin font files come from the npm packages `@fontsource-variable/newsreader`, `@fontsource/work-sans`, and `@fontsource/silkscreen`, and each Research report embeds them. |
 
 ---
 

@@ -38,6 +38,17 @@ assert(list.includes("<li") && list.includes("First") && list.includes("Second")
 const ordered = plainTextToSimpleEmailHtml("1. Alpha\n2. Beta");
 assert(ordered.includes("<ol"), "ordered list");
 
+// Blank lines between numbered items split the list into blocks; numbering must continue.
+const spaced = plainTextToSimpleEmailHtml("Two things:\n\n1. Tagging.\n\n2. Context.");
+assert(spaced.includes('<ol start="2"'), "second numbered block starts at 2");
+assert((spaced.match(/start="/g) ?? []).length === 1, "first numbered block has no start attribute");
+
+const repeated = plainTextToSimpleEmailHtml("1. One\n\n1. Two\n\n1. Three");
+assert(repeated.includes('<ol start="2"') && repeated.includes('<ol start="3"'), "repeated 1. items keep counting");
+
+const restarted = plainTextToSimpleEmailHtml("1. A\n\nA paragraph.\n\n1. B");
+assert(!restarted.includes("start="), "a paragraph between lists restarts the count");
+
 const heading = plainTextToSimpleEmailHtml("# Morning brief");
 assert(heading.includes("font-weight:600"), "heading weight");
 assert(heading.includes("Morning brief"), "heading text");

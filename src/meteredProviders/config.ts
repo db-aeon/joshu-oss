@@ -1,5 +1,6 @@
 /**
- * Metered provider config (fal.ai first) — OSS direct keys vs fleet CP relay.
+ * Metered provider config: the fleet relay of the control plane, or a key of the owner (self-hosted box).
+ * Each provider is one definition in METERED_PROVIDER_DEFINITIONS; the functions below take a definition.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -12,11 +13,35 @@ export type MeteredProviderDefinition = {
   id: string;
   displayName: string;
   description: string;
+  /** Key that the owner of a self-hosted box saves in Connectors, for example FAL_KEY. */
   ossEnvKey: string;
+  /** One sentence for the owner of a self-hosted box: where to get the key. */
+  ossKeyHint: string;
+  /** Other process env names of the key on a self-hosted box. */
+  ossEnvKeyAliases: string[];
+  /** MCP URL of the provider for a self-hosted box. Hermes sends `Authorization: Bearer <key>`. */
   ossMcpUrl: string;
   localMcpPort: number;
+  /** Env name that overrides the base URL of the local metered MCP relay. */
   localMcpEnvUrl: string;
+  /** Instance env names that the control plane writes for the fleet relay. */
+  modeEnv: string;
+  relayUrlEnv: string;
+  usageSummaryUrlEnv: string;
+  /** Owner switch in `.joshu/connectors-providers.env`. */
+  userEnabledKey: string;
+  hermesServerName: string;
+  hermesToolset: string;
 };
+
+/**
+ * MCP servers and toolsets of metered providers that a release removed. The gateway sync deletes
+ * them, because the local port of a removed provider can now serve another provider. Change
+ * content-router replaced provider `treg` with provider `router` on port 8798.
+ */
+export const RETIRED_METERED_PROVIDERS: ReadonlyArray<{ hermesServerName: string; hermesToolset: string }> = [
+  { hermesServerName: "treg", hermesToolset: "mcp-treg" },
+];
 
 export const METERED_PROVIDER_DEFINITIONS: MeteredProviderDefinition[] = [
   {
@@ -24,9 +49,36 @@ export const METERED_PROVIDER_DEFINITIONS: MeteredProviderDefinition[] = [
     displayName: "fal.ai",
     description: "Generate images, video, audio, and 3D via fal MCP tools.",
     ossEnvKey: "FAL_KEY",
+    ossKeyHint: "Create a key in your fal.ai dashboard.",
+    ossEnvKeyAliases: ["FAL_API_KEY"],
     ossMcpUrl: "https://mcp.fal.ai/mcp",
     localMcpPort: 8797,
     localMcpEnvUrl: "JOSHU_FAL_MCP_HTTP_URL",
+    modeEnv: "JOSHU_FAL_MODE",
+    relayUrlEnv: "JOSHU_FAL_RELAY_URL",
+    usageSummaryUrlEnv: "JOSHU_FAL_USAGE_SUMMARY_URL",
+    userEnabledKey: "FAL_MCP_USER_ENABLED",
+    hermesServerName: "fal_ai",
+    hermesToolset: "mcp-fal",
+  },
+  {
+    id: "router",
+    displayName: "Content router",
+    description:
+      "Read social posts, transcripts, comments, prediction markets, and other data, and make images and videos, through the Joshu content router.",
+    ossEnvKey: "JOSHU_ROUTER_API_KEY",
+    ossKeyHint:
+      "Create a router API key in your account on hello.joshu.me. Each call takes the provider price plus the router markup from your usage wallet.",
+    ossEnvKeyAliases: [],
+    ossMcpUrl: "https://hello.joshu.me/api/router/mcp",
+    localMcpPort: 8798,
+    localMcpEnvUrl: "JOSHU_ROUTER_MCP_HTTP_URL",
+    modeEnv: "JOSHU_ROUTER_MODE",
+    relayUrlEnv: "JOSHU_ROUTER_RELAY_URL",
+    usageSummaryUrlEnv: "JOSHU_ROUTER_USAGE_SUMMARY_URL",
+    userEnabledKey: "ROUTER_MCP_USER_ENABLED",
+    hermesServerName: "joshu_router",
+    hermesToolset: "mcp-joshu-router",
   },
 ];
 
@@ -99,57 +151,90 @@ export function getMeteredProviderDefinition(id: string): MeteredProviderDefinit
   return METERED_PROVIDER_DEFINITIONS.find((p) => p.id === id.trim().toLowerCase()) ?? null;
 }
 
-export function resolveFalMode(): MeteredProviderMode {
-  const fromProvision = (provisionEnvTrim("JOSHU_FAL_MODE") || "").toLowerCase();
-  if (fromProvision === "relay" || fromProvision === "direct" || fromProvision === "off") {
-    return fromProvision;
-  }
-  const fromProcess = envTrim("JOSHU_FAL_MODE").toLowerCase();
-  if (fromProcess === "relay" || fromProcess === "direct" || fromProcess === "off") {
-    return fromProcess;
-  }
-  return "direct";
+/** Provision env first (the instance agent updates it at runtime), then the process env. */
+function provisionOrProcess(name: string, env: NodeJS.ProcessEnv = process.env): string {
+  return provisionEnvTrim(name) || env[name]?.trim() || "";
 }
 
-export function resolveFalUserEnabled(projectRoot = process.cwd()): boolean {
-  const mode = resolveFalMode();
+/**
+ * A fleet box: the control plane provisioned it, so it has the control plane URL and its agent
+ * token. A fleet box reaches every metered provider through the relay of the control plane with no
+ * setting of its own.
+ */
+export function isFleetBox(env: NodeJS.ProcessEnv = process.env): boolean {
+  return Boolean(provisionOrProcess("CONTROL_PLANE_URL", env) && provisionOrProcess("INSTANCE_AGENT_TOKEN", env));
+}
+
+/**
+ * Mode of a metered provider. `JOSHU_<ID>_MODE` (relay, direct, off) wins when it is set. Else a
+ * fleet box uses the relay, and a self-hosted box uses its own key (direct).
+ */
+export function resolveMeteredProviderMode(def: MeteredProviderDefinition): MeteredProviderMode {
+  for (const raw of [provisionEnvTrim(def.modeEnv), envTrim(def.modeEnv)]) {
+    const mode = (raw || "").toLowerCase();
+    if (mode === "relay" || mode === "direct" || mode === "off") return mode;
+  }
+  return isFleetBox() ? "relay" : "direct";
+}
+
+export function resolveMeteredProviderUserEnabled(
+  def: MeteredProviderDefinition,
+  projectRoot = process.cwd(),
+): boolean {
+  const mode = resolveMeteredProviderMode(def);
   if (mode === "off") return false;
-  const raw = readMeteredProviderConfig(projectRoot).FAL_MCP_USER_ENABLED?.trim().toLowerCase();
+  const raw = readMeteredProviderConfig(projectRoot)[def.userEnabledKey]?.trim().toLowerCase();
   if (raw === "false" || raw === "0" || raw === "off" || raw === "no") return false;
   if (raw === "true" || raw === "1" || raw === "on" || raw === "yes") return true;
   // Fleet relay: enabled by default; OSS direct follows key presence.
   if (mode === "relay") return true;
-  return Boolean(resolveFalApiKey(projectRoot));
+  return Boolean(resolveMeteredProviderApiKey(def, projectRoot));
 }
 
-export function setFalUserEnabled(enabled: boolean, projectRoot = process.cwd()): void {
-  writeMeteredProviderConfig(
-    { FAL_MCP_USER_ENABLED: enabled ? "true" : "false" },
-    projectRoot,
-  );
+export function setMeteredProviderUserEnabled(
+  def: MeteredProviderDefinition,
+  enabled: boolean,
+  projectRoot = process.cwd(),
+): void {
+  writeMeteredProviderConfig({ [def.userEnabledKey]: enabled ? "true" : "false" }, projectRoot);
 }
 
-export function falRelayConfigured(): boolean {
-  if (resolveFalMode() !== "relay") return false;
-  return Boolean(
-    provisionEnvTrim("JOSHU_FAL_RELAY_URL") || envTrim("JOSHU_FAL_RELAY_URL"),
-  );
+export function meteredProviderRelayConfigured(def: MeteredProviderDefinition): boolean {
+  if (resolveMeteredProviderMode(def) !== "relay") return false;
+  // The relay URL comes from JOSHU_<ID>_RELAY_URL, else from the control plane URL.
+  return Boolean(provisionOrProcess(def.relayUrlEnv) || provisionOrProcess("CONTROL_PLANE_URL"));
 }
 
-export function resolveFalApiKey(projectRoot = process.cwd()): string {
-  const mode = resolveFalMode();
-  // Fleet relay: never read FAL_KEY from provision env or local overrides.
+/** True when at least one metered provider uses the fleet relay of the control plane. */
+export function anyMeteredProviderRelayConfigured(): boolean {
+  return METERED_PROVIDER_DEFINITIONS.some(meteredProviderRelayConfigured);
+}
+
+export function resolveMeteredProviderApiKey(
+  def: MeteredProviderDefinition,
+  projectRoot = process.cwd(),
+): string {
+  const mode = resolveMeteredProviderMode(def);
+  // Fleet relay: never read the provider key from provision env or local overrides.
   if (mode === "relay" || mode === "off") return "";
 
   // OSS direct: user-pasted key in Connectors config, then local process env only.
-  const fromFile = readMeteredProviderConfig(projectRoot).FAL_KEY?.trim();
+  const fromFile = readMeteredProviderConfig(projectRoot)[def.ossEnvKey]?.trim();
   if (fromFile) return fromFile;
-  return envTrim("FAL_KEY") || envTrim("FAL_API_KEY");
+  for (const name of [def.ossEnvKey, ...def.ossEnvKeyAliases]) {
+    const value = envTrim(name);
+    if (value) return value;
+  }
+  return "";
 }
 
-export function resolveFalMcpHttpUrl(): string {
-  const base = envTrim("JOSHU_FAL_MCP_HTTP_URL", "http://127.0.0.1:8797").replace(/\/+$/, "");
-  return `${base}/mcp`;
+/** Base URL of the local metered MCP relay of one provider, for example http://127.0.0.1:8797. */
+export function resolveMeteredProviderLocalBaseUrl(def: MeteredProviderDefinition): string {
+  return envTrim(def.localMcpEnvUrl, `http://127.0.0.1:${def.localMcpPort}`).replace(/\/+$/, "");
+}
+
+export function resolveMeteredProviderMcpHttpUrl(def: MeteredProviderDefinition): string {
+  return `${resolveMeteredProviderLocalBaseUrl(def)}/mcp`;
 }
 
 export function instanceAgentBearerToken(env: NodeJS.ProcessEnv = process.env): string {
@@ -168,23 +253,21 @@ export function meteredProviderRelayUrl(
   providerId: string,
   env: NodeJS.ProcessEnv = process.env,
 ): string {
-  if (providerId === "fal") {
-    const explicit =
-      provisionEnvTrim("JOSHU_FAL_RELAY_URL") || env.JOSHU_FAL_RELAY_URL?.trim() || "";
-    if (explicit) return explicit.replace(/\/+$/, "");
-  }
-  const cp = provisionEnvTrim("CONTROL_PLANE_URL") || env.CONTROL_PLANE_URL?.trim() || "";
+  const def = getMeteredProviderDefinition(providerId);
+  const explicit = def ? provisionOrProcess(def.relayUrlEnv, env) : "";
+  if (explicit) return explicit.replace(/\/+$/, "");
+  const cp = provisionOrProcess("CONTROL_PLANE_URL", env);
   if (!cp) throw new Error("CONTROL_PLANE_URL is not set (metered provider relay mode)");
   return `${cp.replace(/\/+$/, "")}/api/instances/providers/${providerId}/mcp`;
 }
 
+/** One usage summary serves each provider: the first usage summary URL that is set wins. */
 export function usageSummaryUrl(env: NodeJS.ProcessEnv = process.env): string {
-  const explicit =
-    provisionEnvTrim("JOSHU_FAL_USAGE_SUMMARY_URL") ||
-    env.JOSHU_FAL_USAGE_SUMMARY_URL?.trim() ||
-    "";
-  if (explicit) return explicit.replace(/\/+$/, "");
-  const cp = provisionEnvTrim("CONTROL_PLANE_URL") || env.CONTROL_PLANE_URL?.trim() || "";
+  for (const def of METERED_PROVIDER_DEFINITIONS) {
+    const explicit = provisionOrProcess(def.usageSummaryUrlEnv, env);
+    if (explicit) return explicit.replace(/\/+$/, "");
+  }
+  const cp = provisionOrProcess("CONTROL_PLANE_URL", env);
   if (!cp) throw new Error("CONTROL_PLANE_URL is not set");
   return `${cp.replace(/\/+$/, "")}/api/instances/usage/summary`;
 }
@@ -204,7 +287,7 @@ let cachedUsageSummary: { at: number; value: UsageSummarySnapshot | null } = {
 export async function fetchUsageSummaryFromCp(
   opts: { ttlMs?: number; timeoutMs?: number; fetchImpl?: typeof fetch } = {},
 ): Promise<UsageSummarySnapshot | null> {
-  if (!falRelayConfigured()) return null;
+  if (!anyMeteredProviderRelayConfigured()) return null;
   const ttlMs = opts.ttlMs ?? 15_000;
   const now = Date.now();
   if (cachedUsageSummary.value && now - cachedUsageSummary.at < ttlMs) {
@@ -228,25 +311,26 @@ export async function fetchUsageSummaryFromCp(
   }
 }
 
-export function falMcpEnabled(projectRoot = process.cwd()): boolean {
-  const mode = resolveFalMode();
+export function meteredProviderMcpEnabled(
+  def: MeteredProviderDefinition,
+  projectRoot = process.cwd(),
+): boolean {
+  const mode = resolveMeteredProviderMode(def);
   if (mode === "off") return false;
-  if (!resolveFalUserEnabled(projectRoot)) return false;
+  if (!resolveMeteredProviderUserEnabled(def, projectRoot)) return false;
   if (mode === "relay") {
-    if (!falRelayConfigured()) return false;
+    if (!meteredProviderRelayConfigured(def)) return false;
     const cached = cachedUsageSummary.value;
     if (cached) return cached.balanceUsd > 0;
     // Before first poll, assume disabled until balance confirmed.
     return false;
   }
-  return Boolean(resolveFalApiKey(projectRoot));
+  return Boolean(resolveMeteredProviderApiKey(def, projectRoot));
 }
 
-export async function refreshFalMcpEnabled(projectRoot = process.cwd()): Promise<boolean> {
-  if (resolveFalMode() === "relay") {
-    await fetchUsageSummaryFromCp();
-  }
-  return falMcpEnabled(projectRoot);
+/** Clear the cached usage summary. Tests use this. */
+export function clearUsageSummaryCache(): void {
+  cachedUsageSummary = { at: 0, value: null };
 }
 
 export function controlPlaneUsageDashboardUrl(): string {

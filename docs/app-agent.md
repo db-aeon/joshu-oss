@@ -438,9 +438,11 @@ Plugin reference: [hermes-integration — joshu-app-gui](hermes-integration.md#j
 | **Voice** | `jmail:owner@example.com` | (voice WebSocket — separate) |
 | jChat | UUID session id | `joshu-hermes-chat:{sessionId}` |
 
+The Hermes session id of an embedded chat is the thread id, encoded by `toHermesSessionId` in `src/agUiAppContext.ts` when Hermes would reject it. Hermes uses the session id as a file name, so it rejects `/`, `\`, `..`, a drive prefix, control characters, and ids over 256 characters. jNotes puts the path of the file in the thread id, so `md-editor:Notes/plan.md:chat:1` goes to Hermes as `md-editor:Notes%2Fplan.md:chat:1`. A thread id that Hermes accepts stays the same. The session key keeps the thread id as it is.
+
 Chat revision (`:chat:{rev}`) is managed by **`useAppAgentChatSession`** (`sessionStorage` key `${appId}-agent-chat-rev`). **New chat** in the panel:
 
-1. `DELETE /joshu/api/ag-ui/session?threadId=…` (localhost only)
+1. `DELETE /joshu/api/ag-ui/session?threadId=…` (localhost only). The route encodes the thread id the same way before it removes the Hermes transcript.
 2. Bumps revision → remounts CopilotKit with a fresh thread
 3. Langfuse groups under a new session id
 
@@ -567,6 +569,7 @@ After changing `src/agUiApi.ts`, `.hermes/plugins/joshu-app-gui/`, or `@joshu/ap
 | SSE: `CUSTOM` `app_action` | AG-UI drain OK | Session key mismatch (see [Session IDs](#session-ids-chat-vs-voice)); queue empty and tool-result fallback failed |
 | SSE: `TOOL_CALL` `openCompose` | Synthesized client tool OK | Missing `tools` in CopilotKit request |
 | Compose pane opens | End-to-end OK | `guiRef` / handler not wired |
+| Chat panel shows "Sorry, this message was not answered" | Failed run is visible | The Joshu API sent `RUN_ERROR`. The reason follows the text, and the stack log has `[ag-ui] run failed`. Before the fix, Hermes answered 400 "Invalid session ID" for a thread id with `/`. |
 
 ### Rebuild and restart
 

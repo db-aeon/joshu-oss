@@ -9,7 +9,10 @@ Patches:
   1) tools/kanban_tools.py — after successful kanban_complete/kanban_block from
      a dispatcher worker, arm a short os._exit backstop.
   2) hermes_cli/kanban_db.py — terminate foreign worker_pid on complete_task /
-     block_task; reap orphan CLI processes on each dispatch tick.
+     block_task; reap orphan CLI processes on each dispatch tick. The worker of
+     the caller is never foreign: `hermes kanban complete|block` run by a
+     worker through its terminal tool must not kill that worker (joshua and
+     clara, 2026-10-25: exit 130, run recorded as a protocol violation).
 
 Marker: _joshu_kanban_worker_terminate_on_complete
 """
@@ -24,6 +27,75 @@ MARKER = "_joshu_kanban_worker_terminate_on_complete"
 
 KANBAN_TOOLS = HERMES_DIR / "tools/kanban_tools.py"
 KANBAN_DB = HERMES_DIR / "hermes_cli/kanban_db.py"
+
+# Marker of the self-worker guard in _joshu_terminate_foreign_worker_for_task.
+SELF_MARKER = "_joshu_pid_is_ancestor"
+
+# The first version of the helper. It killed the worker when the worker ran
+# `hermes kanban complete|block` on its own task through its terminal tool:
+# the CLI is a child of the worker, so worker_pid is never os.getpid() there.
+OLD_FOREIGN_HELPER = '''def _joshu_terminate_foreign_worker_for_task(
+    conn: sqlite3.Connection,
+    task_id: str,
+) -> None:
+    """Joshu ({MARKER}): SIGTERM foreign worker before clearing worker_pid."""
+    row = conn.execute(
+        "SELECT status, worker_pid, claim_lock FROM tasks WHERE id = ?",
+        (task_id,),
+    ).fetchone()
+    if not row or not row["worker_pid"] or row["status"] != "running":
+        return
+    try:
+        pid = int(row["worker_pid"])
+    except (TypeError, ValueError):
+        return
+    if pid <= 0 or pid == os.getpid():
+        return
+    _terminate_reclaimed_worker(pid, row["claim_lock"])'''.replace("{MARKER}", MARKER)
+
+FOREIGN_HELPER = f'''def _joshu_pid_is_ancestor(pid: int) -> bool:
+    """Joshu ({MARKER}): True when pid is the parent, grandparent, ... of this process."""
+    cur = os.getppid()
+    for _ in range(64):
+        if cur == pid:
+            return True
+        if cur <= 1:
+            return False
+        try:
+            stat = Path(f"/proc/{{cur}}/stat").read_text(encoding="utf-8", errors="ignore")
+            cur = int(stat.rsplit(")", 1)[1].split()[1])
+        except (OSError, IndexError, ValueError):
+            return False
+    return False
+
+
+def _joshu_terminate_foreign_worker_for_task(
+    conn: sqlite3.Connection,
+    task_id: str,
+) -> None:
+    """Joshu ({MARKER}): SIGTERM foreign worker before clearing worker_pid.
+
+    Never kill the worker of this process. A worker that runs
+    `hermes kanban complete|block` on its own task through its terminal tool
+    runs the CLI as its child: HERMES_KANBAN_TASK is the task id and
+    worker_pid is an ancestor of the CLI.
+    """
+    if (os.environ.get("HERMES_KANBAN_TASK") or "").strip() == task_id:
+        return
+    row = conn.execute(
+        "SELECT status, worker_pid, claim_lock FROM tasks WHERE id = ?",
+        (task_id,),
+    ).fetchone()
+    if not row or not row["worker_pid"] or row["status"] != "running":
+        return
+    try:
+        pid = int(row["worker_pid"])
+    except (TypeError, ValueError):
+        return
+    if pid <= 0 or pid == os.getpid() or _joshu_pid_is_ancestor(pid):
+        return
+    _terminate_reclaimed_worker(pid, row["claim_lock"])
+'''
 
 
 def _die(msg: str) -> None:
@@ -105,33 +177,23 @@ def _joshu_request_worker_stop_after_terminal() -> None:
 
 def _patch_kanban_db(text: str) -> str:
     if MARKER in text and "_joshu_reap_orphan_kanban_workers" in text:
-        print("[hermes-kanban-worker-terminate] kanban_db: already applied")
-        return text
+        if SELF_MARKER in text:
+            print("[hermes-kanban-worker-terminate] kanban_db: already applied")
+            return text
+        if OLD_FOREIGN_HELPER not in text:
+            _die("kanban_db: old foreign-worker helper not found for upgrade")
+        print(
+            "[hermes-kanban-worker-terminate] kanban_db: upgrade — "
+            "complete/block no longer kill the caller's own worker"
+        )
+        return text.replace(OLD_FOREIGN_HELPER, FOREIGN_HELPER.rstrip("\n"), 1)
 
     helper_anchor = "def _terminate_reclaimed_worker("
     if helper_anchor not in text:
         _die("kanban_db: _terminate_reclaimed_worker anchor not found")
 
     helper = f'''
-def _joshu_terminate_foreign_worker_for_task(
-    conn: sqlite3.Connection,
-    task_id: str,
-) -> None:
-    """Joshu ({MARKER}): SIGTERM foreign worker before clearing worker_pid."""
-    row = conn.execute(
-        "SELECT status, worker_pid, claim_lock FROM tasks WHERE id = ?",
-        (task_id,),
-    ).fetchone()
-    if not row or not row["worker_pid"] or row["status"] != "running":
-        return
-    try:
-        pid = int(row["worker_pid"])
-    except (TypeError, ValueError):
-        return
-    if pid <= 0 or pid == os.getpid():
-        return
-    _terminate_reclaimed_worker(pid, row["claim_lock"])
-
+{FOREIGN_HELPER}
 
 def _joshu_reap_orphan_kanban_workers(
     conn: sqlite3.Connection,

@@ -98,7 +98,7 @@ pipes `/devtools/*` WebSockets to it, waking the browser first
 (`ensureLiveCloudBrowser()`). When the session changes, the relay closes client
 sockets (1012) and bumps `generation`; `/api/browser/ensure` returns
 `{ cdpUrl: <relay>, generation }` and the patched `browser_tool.py`
-(`joshu_cloud_browser_ensure_v3`) drops cached CDP sessions on a new generation.
+(`joshu_cloud_browser_ensure_v4`) drops cached CDP sessions on a new generation.
 After an idle stop, the first ensure also returns `restarted` (the restart
 notice), and the patched tool returns the error `browser_restarted` once; see
 [session lifetime](technical-reference/shared-browser.md#session-lifetime-on-browser-use-cloud).
@@ -135,7 +135,7 @@ Fixes from the same canary-box session (AA passenger-details checkout, 2026-09-2
 | More headroom for long runs | Raise **`CLOUD_BROWSER_IDLE_TIMEOUT_MS`** on the box (e.g. 600000–900000). Fleet default matches `BROWSER_IDLE_TIMEOUT_MS=300000` from control-plane provision. |
 | Force stop now | Inside `joshu-stack`: `stopCloudBrowser("shutdown")` (CP POST stop). Clear pending handoffs; close visible jWeb browser panes. |
 | Verify CP state | CP GET `/api/instances/browser-use/browsers` → `404 browser_not_running` when stopped. |
-| Patch drift | `bash scripts/hotpatch-realtime-goals.sh <slug>` copies the current browser + terminal patch scripts into the container, applies them, `py_compile`s both tools, and reloads the gateway. Manually: `docker cp` the script in, `node patch-hermes-browser-cdp-guards.mjs /opt/hermes-agent/tools/browser_tool.py`, reload gateway. Check: `grep joshu_cloud_browser_ensure_v3 /opt/hermes-agent/tools/browser_tool.py`. |
+| Patch drift | `bash scripts/hotpatch-realtime-goals.sh <slug>` copies the current browser + terminal patch scripts into the container, applies them, `py_compile`s both tools, and reloads the gateway. Manually: `docker cp` the script in, `node patch-hermes-browser-cdp-guards.mjs /opt/hermes-agent/tools/browser_tool.py`, reload gateway. Check: `grep -c 'joshu_cloud_browser_ensure_v4\|joshu_bot_check_advice_v1' /opt/hermes-agent/tools/browser_tool.py` prints 2 or more. |
 | Tests | `npm run test:cloud-browser-lifecycle`, `npm run test:browser-handoff`, `npm run test:hermes-tool-patches`, `npm run test:cdp-relay` |
 
 #### Possible follow-ups (not implemented)

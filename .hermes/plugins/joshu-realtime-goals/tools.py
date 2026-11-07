@@ -157,6 +157,44 @@ async def _send_ack_with_retry(adapter, chat_id: str, text: str, metadata) -> No
     )
 
 
+# Bounds of what the hook sends with the text (the broker checks them again).
+_MAX_ATTACHMENTS = 10
+_MAX_CONTEXT_CHARS = 6000
+
+
+def _intake_extras(event) -> dict:
+    """Files and chat context of the message, for the broker (issue #171).
+
+    The adapter downloads files to local paths (``media_urls``) and collects
+    earlier messages (``channel_context`` for a Slack thread or group DM,
+    ``reply_to_text`` for a reply). Without them a realtime goal got only the
+    text, and the worker asked the owner for what was in the screenshot.
+    """
+    extras: dict = {}
+    urls = list(getattr(event, "media_urls", None) or [])
+    types = list(getattr(event, "media_types", None) or [])
+    attachments = []
+    for index, url in enumerate(urls[:_MAX_ATTACHMENTS]):
+        path = str(url or "").strip()
+        if not path.startswith("/"):
+            continue
+        media_type = str(types[index]) if index < len(types) and types[index] else ""
+        attachments.append({"path": path, **({"mediaType": media_type} if media_type else {})})
+    if attachments:
+        extras["attachments"] = attachments
+    parts = []
+    reply_to = str(getattr(event, "reply_to_text", "") or "").strip()
+    if reply_to:
+        parts.append(f'[The owner replied to: "{reply_to[:1000]}"]')
+    channel_context = str(getattr(event, "channel_context", "") or "").strip()
+    if channel_context:
+        parts.append(channel_context)
+    context = "\n\n".join(parts)
+    if context:
+        extras["context"] = context[-_MAX_CONTEXT_CHARS:]
+    return extras
+
+
 def pre_gateway_dispatch(event, gateway, **_kwargs):
     """Conservatively admit authenticated Slack/Telegram owner messages."""
     source = getattr(event, "source", None)
@@ -165,6 +203,10 @@ def pre_gateway_dispatch(event, gateway, **_kwargs):
         return {"action": "allow"}
     event_text = str(getattr(event, "text", "") or "")
     if event_text.lstrip().startswith(("/", "!")):
+        return {"action": "allow"}
+    # A message with no text (a voice note before transcription, a photo
+    # without a caption) gives the router nothing to classify.
+    if not event_text.strip():
         return {"action": "allow"}
     try:
         # The upstream hook runs before auth. Reuse the gateway's canonical
@@ -185,7 +227,7 @@ def pre_gateway_dispatch(event, gateway, **_kwargs):
         }
         result = _post(
             "/api/realtime-goals/route",
-            {"origin": origin, "text": event_text},
+            {"origin": origin, "text": event_text, **_intake_extras(event)},
         )
         if result.get("action") != "reply" or not result.get("text"):
             return {"action": "allow"}

@@ -20,3 +20,14 @@ facts:
       Composio calendar writes run as one calendar account only. Other calendars answer 404 or "calendar not
       found", so calendar events must be made, moved, or deleted in the browser on calendar.google.com, for
       example with a calendar/render?action=TEMPLATE link.
+  - id: gmail-drafts-create-allowed
+    introducedIn: "0.1.60"
+    fact: >-
+      The companion can create Gmail drafts in a Gmail mailbox of the owner with Composio
+      GMAIL_CREATE_EMAIL_DRAFT, also inside COMPOSIO_MULTI_EXECUTE_TOOL, and it can list and read drafts with
+      GMAIL_LIST_DRAFTS and GMAIL_GET_DRAFT. Gmail send, reply, forward, GMAIL_UPDATE_DRAFT, GMAIL_SEND_DRAFT,
+      and GMAIL_DELETE_DRAFT stay blocked. To change a draft, create a new draft.
+    wasBelieved: >-
+      The Joshu MCP policy hard-blocks every Gmail draft tool for agents ("Principal Gmail mail send is
+      disabled for agents"), so the companion can't put drafts in the owner's Gmail and must write the emails
+      to files that a person pastes into Gmail.

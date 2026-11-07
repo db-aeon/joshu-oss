@@ -1,0 +1,167 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "How a box reaches a metered provider",
+    "output": ".archify/technical-reference/metered-providers.html",
+    "quality_profile": "showcase",
+    "locale": "en",
+    "repository": {
+      "url": "https://github.com/db-aeon/joshu.git",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "54cb46db2f74600f80af2e544e5d139d705f9140"
+    }
+  },
+  "components": [
+    {
+      "id": "owner",
+      "type": "external",
+      "label": "Owner",
+      "sublabel": "post link, picture",
+      "pos": [40, 300],
+      "size": [130, 60]
+    },
+    {
+      "id": "hermes",
+      "type": "backend",
+      "label": "Hermes",
+      "sublabel": "skill joshu-social-posts",
+      "tag": "mcp-joshu-router · mcp-fal",
+      "pos": [300, 300],
+      "size": [170, 64],
+      "sources": [
+        {"path": "integrations/hermes/skills/research/joshu-social-posts/SKILL.md", "line": 16, "end_line": 34, "label": "router tools, route cache"},
+        {"path": "integrations/hermes/skills/research/joshu-content-router/SKILL.md", "line": 23, "end_line": 39, "label": "router call rules"}
+      ]
+    },
+    {
+      "id": "relay",
+      "type": "backend",
+      "label": "Metered MCP relay",
+      "sublabel": ":8798 router · :8797 fal",
+      "pos": [580, 300],
+      "size": [170, 64],
+      "sources": [
+        {"path": "scripts/lib/metered-mcp-relay.mjs", "line": 42, "end_line": 60, "label": "forward to control plane"},
+        {"path": "scripts/start-metered-mcp-relay.sh", "line": 1, "end_line": 58, "label": "start script"},
+        {"path": "src/meteredProviders/config.ts", "line": 64, "end_line": 82, "label": "router definition"}
+      ]
+    },
+    {
+      "id": "cp",
+      "type": "cloud",
+      "label": "Control plane",
+      "sublabel": "router call · usage wallet",
+      "pos": [880, 300],
+      "size": [180, 64]
+    },
+    {
+      "id": "router",
+      "type": "cloud",
+      "label": "Content router",
+      "sublabel": "treg · fal · Composio · direct",
+      "pos": [1200, 300],
+      "size": [190, 64],
+      "sources": [
+        {"path": "integrations/hermes/skills/research/joshu-content-router/SKILL.md", "line": 10, "end_line": 12, "label": "one catalog, one call"},
+        {"path": "src/contentRouter/client.ts", "line": 26, "end_line": 40, "label": "router failures"}
+      ]
+    },
+    {
+      "id": "joshuapi",
+      "type": "backend",
+      "label": "Joshu API",
+      "sublabel": "gateway sync",
+      "pos": [300, 110],
+      "size": [170, 60],
+      "sources": [
+        {"path": "src/meteredProviders/hermesConfig.ts", "line": 42, "end_line": 86, "label": "MCP server + toolset"},
+        {"path": "src/meteredProviders/hermesConfig.ts", "line": 107, "end_line": 144, "label": "syncMediaBackend"},
+        {"path": "src/hermesApi.ts", "line": 2236, "end_line": 2291, "label": "gateway sync"}
+      ]
+    },
+    {
+      "id": "connectors",
+      "type": "frontend",
+      "label": "Connectors",
+      "sublabel": "AI providers card",
+      "pos": [40, 110],
+      "size": [130, 60],
+      "sources": [
+        {"path": "apps/connectors/src/main.tsx", "line": 567, "end_line": 612, "label": "provider cards"},
+        {"path": "src/connectors/meteredProviderRoutes.ts", "line": 74, "end_line": 84, "label": "provider routes"}
+      ]
+    },
+    {
+      "id": "browser",
+      "type": "frontend",
+      "label": "Shared browser",
+      "sublabel": "when the router has no data",
+      "pos": [40, 490],
+      "size": [170, 60],
+      "sources": [
+        {"path": "integrations/hermes/skills/research/joshu-social-posts/SKILL.md", "line": 52, "end_line": 62, "label": "fallback rule"}
+      ]
+    },
+    {
+      "id": "media",
+      "type": "backend",
+      "label": "joshu-media plugin",
+      "sublabel": "image and video provider joshu",
+      "pos": [300, 490],
+      "size": [170, 60],
+      "sources": [
+        {"path": ".hermes/plugins/joshu-media/providers.py", "line": 52, "end_line": 72, "label": "post to media route"},
+        {"path": ".hermes/plugins/joshu-media/providers.py", "line": 218, "end_line": 221, "label": "register providers"}
+      ]
+    },
+    {
+      "id": "supervisor",
+      "type": "backend",
+      "label": "MCP supervisor",
+      "sublabel": "probes /health",
+      "pos": [580, 490],
+      "size": [170, 60],
+      "sources": [
+        {"path": "src/mcpSupervisor.ts", "line": 20, "end_line": 31, "label": "start script per provider"},
+        {"path": "src/mcpDependencyHealth.ts", "line": 109, "end_line": 116, "label": "relay health"}
+      ]
+    },
+    {
+      "id": "client",
+      "type": "backend",
+      "label": "Router client",
+      "sublabel": "social sources · media route",
+      "pos": [880, 490],
+      "size": [180, 60],
+      "sources": [
+        {"path": "src/contentRouter/client.ts", "line": 169, "end_line": 182, "label": "HTTP 402: wallet empty"},
+        {"path": "src/contentRouter/goals.ts", "line": 219, "end_line": 271, "label": "resolveGoal"},
+        {"path": "src/contentRouter/media.ts", "line": 83, "end_line": 170, "label": "media route, save on Desktop"}
+      ]
+    }
+  ],
+  "boundaries": [
+    {"kind": "security-group", "label": "Holds the provider keys", "wraps": ["cp", "router"]}
+  ],
+  "connections": [
+    {"id": "owner-asks", "from": "owner", "to": "hermes", "label": "request", "variant": "emphasis"},
+    {"id": "hermes-calls-relay", "from": "hermes", "to": "relay", "label": "MCP call", "variant": "emphasis"},
+    {"id": "relay-to-cp", "from": "relay", "to": "cp", "label": "agent token", "variant": "emphasis"},
+    {"id": "cp-to-router", "from": "cp", "to": "router", "label": "cost + markup", "variant": "security"},
+    {"id": "sync-writes-config", "from": "joshuapi", "to": "hermes", "label": "toolset, media backend", "fromSide": "bottom", "toSide": "top"},
+    {"id": "sync-reads-balance", "from": "joshuapi", "to": "cp", "label": "usage summary", "variant": "dashed", "fromSide": "right", "toSide": "top"},
+    {"id": "owner-switch", "from": "connectors", "to": "joshuapi", "label": "on or off"},
+    {"id": "hermes-fallback", "from": "hermes", "to": "browser", "label": "fallback", "variant": "dashed", "fromSide": "left", "toSide": "top"},
+    {"id": "hermes-media", "from": "hermes", "to": "media", "label": "image_generate", "fromSide": "bottom", "toSide": "top"},
+    {"id": "media-to-client", "from": "media", "to": "client", "label": "POST /api/router/media", "fromSide": "bottom", "toSide": "bottom", "via": [[385, 610], [970, 610]]},
+    {"id": "supervisor-restarts", "from": "supervisor", "to": "relay", "label": "restart", "fromSide": "top", "toSide": "bottom"},
+    {"id": "client-to-cp", "from": "client", "to": "cp", "label": "402: wallet empty", "fromSide": "top", "toSide": "bottom"}
+  ],
+  "cards": [
+    {"dot": "emerald", "title": "When a toolset is on", "items": ["Mode is relay or direct, not off", "Owner switch is on in Connectors", "Relay: last usage summary balance above $0", "Media provider joshu is on only with mcp-joshu-router"]},
+    {"dot": "cyan", "title": "Self-hosted box", "items": ["Mode direct: Hermes calls hello.joshu.me/api/router/mcp", "Bearer JOSHU_ROUTER_API_KEY, the router API key of the owner", "Each call takes money from the usage wallet of the owner"]},
+    {"dot": "rose", "title": "Control plane limits", "items": ["Content router picks a channel: treg, fal, Composio Instant, or a direct key", "Balance checked before each call", "Owner pays the cost plus the router markup"]}
+  ]
+}

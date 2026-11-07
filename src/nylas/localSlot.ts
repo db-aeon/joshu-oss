@@ -125,6 +125,35 @@ export function localDateDayBounds(
   };
 }
 
+const RELATIVE_DAYS: Record<string, number> = { yesterday: -1, today: 0, tomorrow: 1 };
+
+/** `today`, `tomorrow`, or `yesterday` as YYYY-MM-DD in `timeZone`. Any other value comes back trimmed. */
+export function resolveRelativeDate(
+  date: string,
+  timeZone: string,
+  now: Temporal.Instant = Temporal.Now.instant(),
+): string {
+  const offset = RELATIVE_DAYS[date.trim().toLowerCase()];
+  if (offset === undefined) return date.trim();
+  return now.toZonedDateTimeISO(timeZone).toPlainDate().add({ days: offset }).toString();
+}
+
+/**
+ * Day bounds of a `date` query parameter, or the message for a 400 answer.
+ * Routes use it so that a bad date or time zone never throws out of an async handler.
+ */
+export function queryDayBounds(
+  date: string,
+  timeZone: string,
+  now?: Temporal.Instant,
+): { start: number; end: number } | { error: string } {
+  try {
+    return localDateDayBounds(resolveRelativeDate(date, timeZone, now), timeZone);
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 /**
  * Resolve event start/end from either Unix epochs or `{ date, startLocal, endLocal, timezone }`.
  * Epoch fields win when both are supplied.

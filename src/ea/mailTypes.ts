@@ -2,6 +2,14 @@
 
 export const EA_MAIL_INGRESS_BOARD = "ea-mail-ingress";
 export const EA_PLAYBOOK_SKILL = "ea-playbook";
+/** Skill of the mail ingress worker (the ingress sections of the old ea-playbook). */
+export const EA_MAIL_INGRESS_SKILL = "ea-mail-ingress";
+/** Skill of the mail track worker and the project filing rules. */
+export const EA_MAIL_TRACK_SKILL = "ea-mail-track";
+/** Skills that Hermes preloads for the worker of a mail ingress task. */
+export const MAIL_INGRESS_TASK_SKILLS = [EA_MAIL_INGRESS_SKILL, EA_MAIL_TRACK_SKILL];
+/** Skills that Hermes preloads for the worker of a mail track task. */
+export const MAIL_TRACK_TASK_SKILLS = [EA_MAIL_TRACK_SKILL];
 
 export type MailDisposition = "noise" | "info" | "scheduling" | "track";
 
