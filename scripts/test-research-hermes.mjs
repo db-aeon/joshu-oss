@@ -149,8 +149,9 @@ async function testHintsReachPlan() {
   const res = { json(v) { this.body = v; return this; }, status() { return this; } };
   await handlers["POST /api/research/reports"]({ body: { topic: "2028 primaries", hints: ["Polymarket for prediction market odds", 7] } }, res);
   assert.deepEqual(made[0].opts.request, { hints: ["Polymarket for prediction market odds"] });
-  // The web search provider (change research-web-provider): Exa by default, You.com when named, 400 for others.
-  assert.equal(made[0].opts.webProvider, "exa");
+  // The web provider (changes research-web-provider and you-web-provider): the box chooses when
+  // the request names none, You.com or Exa when named, 400 for others.
+  assert.equal(made[0].opts.webProvider, undefined);
   await handlers["POST /api/research/reports"]({ body: { topic: "Heat pumps", web_provider: "you.com" } }, res);
   assert.equal(made[1].opts.webProvider, "you.com");
   const bad = { json(v) { this.body = v; return this; }, status(c) { this.code = c; return this; } };

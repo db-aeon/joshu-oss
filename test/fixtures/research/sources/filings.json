@@ -1,0 +1,31 @@
+{
+  "filings": [
+    {
+      "cik": "1045810",
+      "accession_number": "0001045810-26-000078",
+      "filing_type": "8-K",
+      "report_date": "2026-09-02",
+      "filing_date": "2026-09-03",
+      "ticker": "NVDA",
+      "url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000078/nvda-20260902.htm"
+    },
+    {
+      "cik": "1045810",
+      "accession_number": "0001045810-26-000075",
+      "filing_type": "10-Q",
+      "report_date": "2026-07-26",
+      "filing_date": "2026-08-26",
+      "ticker": "NVDA",
+      "url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000075/nvda-20260726.htm"
+    },
+    {
+      "cik": "1045810",
+      "accession_number": "0001045810-26-000073",
+      "filing_type": "8-K",
+      "report_date": "2026-08-26",
+      "filing_date": "2026-08-26",
+      "ticker": "NVDA",
+      "url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000073/nvda-20260826.htm"
+    }
+  ]
+}

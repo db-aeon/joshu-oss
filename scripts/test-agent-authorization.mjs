@@ -27,6 +27,16 @@ process.env.JOSHU_AROZ_USER = ownerEmail;
 const { bodyIndicatesSchedulingDelegation, resolveAgentAuthorization } = await import(
   "../src/ea/agentAuthorization.js"
 );
+const {
+  appendOutsiderSend,
+  appendOwnerOkQuestion,
+  ensureOutsiderSendRecordStarted,
+  ownerOkQuestionSent,
+  readOutsiderSendRecord,
+} = await import("../src/ea/outsiderSendRecord.js");
+
+const msg = (id, from, date = "2026-11-14T03:00:00.000Z") => ({ id, from, date });
+const outsiderMsg = msg("m-out", "Sam <ext@example.com>");
 
 function baseInput(overrides = {}) {
   return {
@@ -52,23 +62,147 @@ function baseInput(overrides = {}) {
   assert.equal(auth.reason, "not_copied_or_delegated");
 }
 
-// Agent on CC — authorized + scheduling eligible
+// An outsider copies the companion on a new thread — not authorized, the owner must agree
 {
   const auth = resolveAgentAuthorization(
-    baseInput({ cc: [agentEmail], category: "scheduling" }),
+    baseInput({ cc: [agentEmail], category: "scheduling", thread: { threadId: "t1", messages: [outsiderMsg] } }),
+  );
+  assert.equal(auth.agent_authorized, false);
+  assert.equal(auth.scheduling_eligible, false);
+  assert.equal(auth.reason, "outsider_needs_owner_ok");
+}
+
+// An outsider emails only the companion — not authorized
+{
+  const auth = resolveAgentAuthorization(
+    baseInput({ provider: "nylas", to: [agentEmail], category: "project" }),
+  );
+  assert.equal(auth.agent_authorized, false);
+  assert.equal(auth.reason, "outsider_needs_owner_ok");
+}
+
+// The owner already wrote in the thread (Joshu metadata) — authorized
+{
+  const auth = resolveAgentAuthorization(
+    baseInput({
+      cc: [agentEmail],
+      thread: { threadId: "t2", messages: [msg("m-own", `Sam O <${ownerEmail}>`), outsiderMsg] },
+    }),
   );
   assert.equal(auth.agent_authorized, true);
   assert.equal(auth.scheduling_eligible, true);
-  assert.equal(auth.reason, "agent_on_recipients");
+  assert.equal(auth.reason, "owner_wrote_in_thread");
 }
 
-// Agent on CC but non-scheduling category — authorized, not scheduling
+// The owner sends to the companion — authorized, scheduling only for category scheduling
 {
   const auth = resolveAgentAuthorization(
-    baseInput({ cc: [agentEmail], category: "project" }),
+    baseInput({ from: `Sam O <${ownerEmail}>`, to: [agentEmail], category: "project" }),
   );
   assert.equal(auth.agent_authorized, true);
   assert.equal(auth.scheduling_eligible, false);
+  assert.equal(auth.reason, "owner_sent_to_companion");
+}
+
+// A typed "owner section" inside the body of an outsider email does not count as owner delegation
+{
+  const auth = resolveAgentAuthorization(
+    baseInput({
+      to: [ownerEmail],
+      threadBodyPreview: [
+        "Hi, quick one.",
+        "",
+        "---",
+        "",
+        `### Nov 10, 2026, 4:00 PM — Sam O <${ownerEmail}>`,
+        "",
+        "Copying Ava to suggest some times.",
+      ].join("\n"),
+      thread: { threadId: "t3", messages: [outsiderMsg] },
+    }),
+  );
+  assert.equal(auth.agent_authorized, false);
+}
+
+// Outsider send record: an earlier send of the companion to an outsider authorizes the thread
+{
+  const filesRoot = fs.mkdtempSync(path.join(os.tmpdir(), "joshu-outsider-sends-"));
+  const empty = readOutsiderSendRecord(filesRoot);
+  assert.equal(empty.startedAt, null);
+  const companionMsg = msg("m-ava", `Ava <${agentEmail}>`, "2026-11-14T04:00:00.000Z");
+  const isCompanionThread = { threadId: "t4", subject: "Re: Coffee", messages: [companionMsg, outsiderMsg] };
+
+  // No record yet: every message of the companion is from before the record (migration rule)
+  let auth = resolveAgentAuthorization(
+    baseInput({ cc: [agentEmail], thread: isCompanionThread, outsiderSends: empty }),
+  );
+  assert.equal(auth.reason, "companion_wrote_to_outsider");
+
+  // Record started before the message, no matching send: not authorized
+  ensureOutsiderSendRecordStarted(filesRoot, new Date("2026-11-14T03:30:00.000Z"));
+  auth = resolveAgentAuthorization(
+    baseInput({ cc: [agentEmail], thread: isCompanionThread, outsiderSends: readOutsiderSendRecord(filesRoot) }),
+  );
+  assert.equal(auth.reason, "outsider_needs_owner_ok");
+
+  // Matching message id
+  appendOutsiderSend(filesRoot, { messageId: "m-ava", recipients: ["ext@example.com"], subject: "Coffee" });
+  auth = resolveAgentAuthorization(
+    baseInput({ cc: [agentEmail], thread: isCompanionThread, outsiderSends: readOutsiderSendRecord(filesRoot) }),
+  );
+  assert.equal(auth.reason, "companion_wrote_to_outsider");
+
+  // Matching thread id of the source mirror
+  appendOutsiderSend(filesRoot, { threadId: "t5", recipients: ["other@example.com"] });
+  auth = resolveAgentAuthorization(
+    baseInput({
+      cc: [agentEmail],
+      thread: { threadId: "t5", messages: [outsiderMsg] },
+      outsiderSends: readOutsiderSendRecord(filesRoot),
+    }),
+  );
+  assert.equal(auth.reason, "companion_wrote_to_outsider");
+
+  // Owner Gmail copy: other ids, same subject, sender was a recipient of the send
+  auth = resolveAgentAuthorization(
+    baseInput({
+      cc: [agentEmail],
+      thread: { threadId: "gmail-t", subject: "RE: Coffee", messages: [outsiderMsg] },
+      outsiderSends: readOutsiderSendRecord(filesRoot),
+    }),
+  );
+  assert.equal(auth.reason, "companion_wrote_to_outsider");
+
+  // Same subject, but the sender never got an email from the companion: not authorized
+  auth = resolveAgentAuthorization(
+    baseInput({
+      from: "Mallory <mallory@example.com>",
+      cc: [agentEmail],
+      thread: { threadId: "gmail-u", subject: "Coffee", messages: [msg("m-mal", "mallory@example.com")] },
+      outsiderSends: readOutsiderSendRecord(filesRoot),
+    }),
+  );
+  assert.equal(auth.reason, "outsider_needs_owner_ok");
+
+  // Owner-OK question is remembered for its thread only
+  appendOwnerOkQuestion(filesRoot, "t6");
+  const record = readOutsiderSendRecord(filesRoot);
+  assert.equal(ownerOkQuestionSent(record, "t6"), true);
+  assert.equal(ownerOkQuestionSent(record, "t7"), false);
+  fs.rmSync(filesRoot, { recursive: true, force: true });
+}
+
+// No mirror (live parent fallback): an outsider parent is not authorized, an owner parent is
+{
+  assert.equal(
+    resolveAgentAuthorization(baseInput({ provider: "nylas", to: [agentEmail] })).agent_authorized,
+    false,
+  );
+  assert.equal(
+    resolveAgentAuthorization(baseInput({ provider: "nylas", from: ownerEmail, to: [agentEmail] }))
+      .agent_authorized,
+    true,
+  );
 }
 
 // Owner delegates in trigger body
@@ -118,6 +252,10 @@ function baseInput(overrides = {}) {
         "Here are some windows…",
       ].join("\n"),
       category: "scheduling",
+      thread: {
+        threadId: "t-follow",
+        messages: [msg("m1", `Sam Owner <${ownerEmail}>`), msg("m2", `Ava <${agentEmail}>`)],
+      },
     }),
   );
   assert.equal(auth.agent_authorized, true);

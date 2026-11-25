@@ -14,9 +14,17 @@ import { removeAgentReplaceHelper, replaceAgentContainer, startInstanceAgent } f
 import { ensureRegistryLoginForUpdate, persistGhcrSecretsFile, probeRegistryAuthOk } from "./registryAuth.js";
 import { defaultDiagnosticsDeps, runDiagnostics } from "./diagnostics.js";
 import { evaluateSnapshotCredStatus, type SnapshotCredStatus } from "./snapshotCreds.js";
-import { releaseEnvUpdates } from "./releaseEnv.js";
+import { releaseEnvRemovals, releaseEnvUpdates } from "./releaseEnv.js";
 import { finishReleaseUpdate } from "./releaseFinish.js";
 import { getRuntimeDrift } from "./runtimeDrift.js";
+import { runHeartbeatLoop } from "./heartbeat.js";
+import { assertCommandSupported, IN_PLACE_RESTART_COMMANDS, singleContainerMode } from "./singleContainer.js";
+import {
+  finishPendingRestart,
+  hasPendingRestart,
+  requestRestart,
+  type RestartDeps,
+} from "./inPlaceRestart.js";
 import { carryOverJoshuState } from "./stateCarryOver.js";
 import { voiceImageRefFromSandbox } from "./voiceImageRef.js";
 
@@ -668,7 +676,8 @@ async function applyCompanionIdentitySync(payload: Record<string, unknown>): Pro
 }
 
 /** Deliver a CP-authored owner email via the box Nylas agent mailbox (action-guard bypass). */
-async function applySetArozPassword(payload: Record<string, unknown>): Promise<void> {
+/** The desktop user and the new password hash of a set_aroz_password command, checked. */
+async function arozPasswordTarget(payload: Record<string, unknown>): Promise<{ user: string; hash: string }> {
   const passwordHash =
     typeof payload.passwordHash === "string" ? payload.passwordHash.trim().toLowerCase() : "";
   if (!/^[0-9a-f]{128}$/.test(passwordHash)) {
@@ -686,7 +695,11 @@ async function applySetArozPassword(payload: Record<string, unknown>): Promise<v
   if (expected && expected.toLowerCase() !== arozUser.toLowerCase()) {
     throw new Error("set_aroz_password: username does not match JOSHU_AROZ_USER");
   }
+  return { user: arozUser, hash: passwordHash };
+}
 
+async function applySetArozPassword(payload: Record<string, unknown>): Promise<void> {
+  const { user: arozUser, hash: passwordHash } = await arozPasswordTarget(payload);
   const script = path.join(INSTALL_DIR, "scripts/arozos-reset-password.sh");
   await execFileAsync("bash", [script, arozUser], {
     timeout: 300_000,
@@ -777,6 +790,33 @@ async function applySendOwnerEmail(payload: Record<string, unknown>): Promise<Re
   };
 }
 
+/** Remove keys from instance.env (same in-place write as updateEnvFile). */
+async function removeEnvFileKeys(keys: string[]): Promise<void> {
+  if (keys.length === 0) return;
+  try {
+    await access(PATCH_INSTANCE_ENV_SCRIPT);
+    const args = [PATCH_INSTANCE_ENV_SCRIPT, "--file", COMPOSE_ENV_FILE];
+    for (const key of keys) args.push("--unset", key);
+    await execFileAsync("node", args, { timeout: 30_000 });
+  } catch {
+    // Fall back when the patch script is missing (local dev).
+    let envText = "";
+    try {
+      envText = await readFile(COMPOSE_ENV_FILE, "utf8");
+    } catch {
+      return;
+    }
+    const drop = new Set(keys);
+    const nextLines = envText.split(/\r?\n/).filter((line) => {
+      const match = /^([A-Z0-9_]+)=/.exec(line);
+      return !match || !drop.has(match[1]);
+    });
+    await writeFile(COMPOSE_ENV_FILE, `${nextLines.join("\n").trimEnd()}\n`, { mode: 0o600 });
+  }
+  for (const key of keys) delete process.env[key];
+  console.info(`[instance-agent] instance.env removed: ${keys.join(", ")}`);
+}
+
 async function applyReleaseEnvUpdates(envUpdates: Record<string, string>): Promise<void> {
   if (Object.keys(envUpdates).length === 0) return;
   await updateEnvFile(envUpdates);
@@ -821,6 +861,9 @@ async function applyReleaseUpdate(payload: Record<string, unknown>): Promise<voi
     // If we pull first, a deleted previous tag (e.g. *-hermes-canary) fails the whole update
     // even when payload.imageRef points at a valid GHCR tag.
     await applyReleaseEnvUpdates(envUpdates);
+    // The release owns the Hermes model: drop a model that the control plane wrote at provision,
+    // before the stack and voice containers are recreated with this instance.env.
+    await removeEnvFileKeys(releaseEnvRemovals(await readEnvFileKeys()));
 
     const pullServices = UPDATE_RECREATE_SERVICES.length > 0 ? UPDATE_RECREATE_SERVICES : ["joshu-stack"];
     await runCompose(["pull", ...pullServices]);
@@ -852,7 +895,76 @@ async function applyReleaseUpdate(payload: Record<string, unknown>): Promise<voi
   }
 }
 
+const restartDeps: RestartDeps = {
+  exists: async (p) => access(p).then(
+    () => true,
+    () => false,
+  ),
+  readText: async (p) => readFile(p, "utf8").catch(() => null),
+  writePrivate: async (p, text) => {
+    await mkdir(path.dirname(p), { recursive: true });
+    await writeFile(p, text, { mode: 0o600 });
+  },
+  remove: async (p) => {
+    await unlink(p).catch(() => {});
+  },
+  signalRestart: () => {
+    process.kill(1, "SIGUSR1");
+  },
+  sleep: (ms) => new Promise((done) => setTimeout(done, ms)),
+  now: () => new Date(),
+};
+
+/**
+ * Single-container mode: restart, rotate_secrets, and set_aroz_password run with a restart of
+ * the box in place (change sandbox-box-commands). The call does not return: process 1 stops
+ * this agent, and the agent of the new start acknowledges the command.
+ */
+async function runWithRestartInPlace(cmd: Command): Promise<never> {
+  const payload = cmd.payload ?? {};
+  // Check the password target first, so a wrong user changes nothing.
+  const password = cmd.type === "set_aroz_password" ? await arozPasswordTarget(payload) : undefined;
+  const secrets = cmd.type === "rotate_secrets" && payload.secrets && typeof payload.secrets === "object" ? (payload.secrets as Record<string, string>) : null;
+  console.info(`[instance-agent] ${cmd.type} (${cmd.id}): restart of the box in place`);
+  return requestRestart(cmd, restartDeps, {
+    waitMs: HEALTH_WAIT_MS,
+    password,
+    before: secrets ? () => applySecretUpdates(secrets) : undefined,
+  });
+}
+
+/**
+ * Write the new secrets of a rotate_secrets command to the instance config, and reload the
+ * signing secret of the commands. On a Compose host, also log in to the registry with a new
+ * read token; a box on a sandbox pulls no image.
+ */
+async function applySecretUpdates(map: Record<string, string>): Promise<void> {
+  await updateEnvFile(map);
+  // Keep HMAC verifier in sync when CP issues a new per-box signing secret.
+  // Without this, subsequent commands signed with the new secret fail until
+  // the agent container is manually recreated.
+  if (Object.prototype.hasOwnProperty.call(map, "INSTANCE_AGENT_SIGNING_SECRET")) {
+    const next = String(map.INSTANCE_AGENT_SIGNING_SECRET ?? "").trim();
+    signingSecret = next;
+    process.env.INSTANCE_AGENT_SIGNING_SECRET = next;
+    console.log(`[instance-agent] reloaded INSTANCE_AGENT_SIGNING_SECRET (len=${next.length})`);
+  }
+  const user = map.GHCR_READ_USER?.trim();
+  const token = map.GHCR_READ_TOKEN?.trim();
+  if (user && token) {
+    const auth = {
+      host: map.GHCR_REGISTRY?.trim() || "ghcr.io",
+      username: user,
+      token,
+    };
+    await persistGhcrSecretsFile(auth);
+    if (!singleContainerMode()) await ensureRegistryLoginForUpdate({ registryAuth: auth });
+  }
+}
+
 async function executeCommand(cmd: Command): Promise<Record<string, unknown> | void> {
+  assertCommandSupported(cmd.type);
+  if (singleContainerMode() && IN_PLACE_RESTART_COMMANDS.has(cmd.type)) return runWithRestartInPlace(cmd);
   const payload = cmd.payload ?? {};
   switch (cmd.type) {
     case "update":
@@ -897,30 +1009,7 @@ async function executeCommand(cmd: Command): Promise<Record<string, unknown> | v
     case "rotate_secrets": {
       const secrets = payload.secrets;
       if (secrets && typeof secrets === "object") {
-        const map = secrets as Record<string, string>;
-        await updateEnvFile(map);
-        // Keep HMAC verifier in sync when CP issues a new per-box signing secret.
-        // Without this, subsequent commands signed with the new secret fail until
-        // the agent container is manually recreated.
-        if (Object.prototype.hasOwnProperty.call(map, "INSTANCE_AGENT_SIGNING_SECRET")) {
-          const next = String(map.INSTANCE_AGENT_SIGNING_SECRET ?? "").trim();
-          signingSecret = next;
-          process.env.INSTANCE_AGENT_SIGNING_SECRET = next;
-          console.log(
-            `[instance-agent] reloaded INSTANCE_AGENT_SIGNING_SECRET (len=${next.length})`,
-          );
-        }
-        const user = map.GHCR_READ_USER?.trim();
-        const token = map.GHCR_READ_TOKEN?.trim();
-        if (user && token) {
-          const auth = {
-            host: map.GHCR_REGISTRY?.trim() || "ghcr.io",
-            username: user,
-            token,
-          };
-          await persistGhcrSecretsFile(auth);
-          await ensureRegistryLoginForUpdate({ registryAuth: auth });
-        }
+        await applySecretUpdates(secrets as Record<string, string>);
       }
       await carryOverStackState(["joshu-stack"]);
       await runCompose(["up", "-d", "--force-recreate", "joshu-stack"]);
@@ -940,27 +1029,31 @@ async function executeCommand(cmd: Command): Promise<Record<string, unknown> | v
   }
 }
 
-async function heartbeatLoop(): Promise<void> {
+/** One heartbeat round. Returns the delay in milliseconds before the next round. */
+async function heartbeatRound(): Promise<number> {
   const health = await fetchJoshuHealth();
   const registryAuthOk = await probeRegistryAuthOk();
   const snapshotAuthOk = (await resolveSnapshotCredStatus()).ok;
   const fileEnv = await readEnvFileKeys();
-  const runtimeDrift = await getRuntimeDrift({
-    installDir: INSTALL_DIR,
-    releaseVersion: fileEnv.JOSHU_RELEASE_VERSION || env("JOSHU_RELEASE_VERSION"),
-  }).catch((err: unknown) => ({
-    ok: false,
-    checkedAt: new Date().toISOString(),
-    items: [],
-    scanError: err instanceof Error ? err.message : String(err),
-  }));
+  // Single-container mode has no Docker, and the runtime drift check reads docker inspect.
+  const runtimeDrift = singleContainerMode()
+    ? undefined
+    : await getRuntimeDrift({
+        installDir: INSTALL_DIR,
+        releaseVersion: fileEnv.JOSHU_RELEASE_VERSION || env("JOSHU_RELEASE_VERSION"),
+      }).catch((err: unknown) => ({
+        ok: false,
+        checkedAt: new Date().toISOString(),
+        items: [],
+        scanError: err instanceof Error ? err.message : String(err),
+      }));
   const res = await postJson("/api/instances/heartbeat", {
     instanceId: INSTANCE_ID,
     reportedAt: new Date().toISOString(),
     releaseVersion: health.releaseVersion,
     healthy: health.healthy,
     // runtimeDrift is informational, like `failures`: it never gates health.
-    components: { ...health.components, runtimeDrift },
+    components: runtimeDrift ? { ...health.components, runtimeDrift } : health.components,
     host: {
       uptimeSec: os.uptime(),
       memUsedPct: Math.round((1 - os.freemem() / os.totalmem()) * 100),
@@ -974,14 +1067,17 @@ async function heartbeatLoop(): Promise<void> {
   });
 
   if (!res.ok) {
-    console.warn(`[instance-agent] heartbeat failed: ${res.status}`);
-    return;
+    throw new Error(`control plane answered ${res.status}`);
   }
 
   const data = (await res.json()) as { commands?: Command[]; pollIntervalSec?: number };
   const intervalMs = (data.pollIntervalSec ?? POLL_INTERVAL_SEC) * 1000;
 
-  for (const cmd of data.commands ?? []) {
+  // A restart in place stops this agent, so in single-container mode those commands run after the others.
+  const commands = [...(data.commands ?? [])].sort(
+    (a, b) => Number(singleContainerMode() && IN_PLACE_RESTART_COMMANDS.has(a.type)) - Number(singleContainerMode() && IN_PLACE_RESTART_COMMANDS.has(b.type)),
+  );
+  for (const cmd of commands) {
     const skewMs = Math.abs(Date.now() - new Date(cmd.issuedAt).getTime());
     if (skewMs > 5 * 60 * 1000) {
       console.warn(`[instance-agent] skipping stale command ${cmd.id}`);
@@ -1002,10 +1098,39 @@ async function heartbeatLoop(): Promise<void> {
     }
   }
 
-  setTimeout(() => void heartbeatLoop(), intervalMs);
+  return intervalMs;
+}
+
+function heartbeatLoop(): Promise<void> {
+  return runHeartbeatLoop({
+    round: heartbeatRound,
+    fallbackMs: POLL_INTERVAL_SEC * 1000,
+    schedule: (fn, ms) => void setTimeout(fn, ms),
+    warn: (message) => console.warn(message),
+  });
+}
+
+/** Single-container mode: acknowledge the command that a restart in place ran (change sandbox-box-commands). */
+async function resumePendingRestart(): Promise<void> {
+  const outcome = await finishPendingRestart(
+    restartDeps,
+    async () => {
+      const fileEnv = await readEnvFileKeys();
+      const version = fileEnv.JOSHU_RELEASE_VERSION?.trim() || env("JOSHU_RELEASE_VERSION", "0.0.0-dev");
+      await waitForHealthyAfterUpdate(version, Date.now());
+    },
+    { waitMs: HEALTH_WAIT_MS },
+  );
+  if (!outcome) return;
+  console.info(`[instance-agent] ${outcome.commandType} (${outcome.commandId}) after the restart in place: ${outcome.status}${outcome.error ? `: ${outcome.error}` : ""}`);
+  await ackCommand(outcome.commandId, outcome.status, outcome.error);
 }
 
 async function resumePendingUpdate(): Promise<void> {
+  if (await hasPendingRestart(restartDeps)) {
+    await resumePendingRestart();
+    return;
+  }
   const pending = await readPendingUpdate();
   if (!pending) return;
   await clearPendingUpdate();
@@ -1053,13 +1178,15 @@ async function main(): Promise<void> {
 
   await startInstanceAgent({
     hasPendingUpdate: async () => {
-      const pending = (await readPendingUpdate()) !== null;
+      const pending = (await readPendingUpdate()) !== null || (await hasPendingRestart(restartDeps));
       if (pending) console.info("[instance-agent] pending update file found; skipping register");
       return pending;
     },
     register: async () => registerOnce((await fetchJoshuHealth()).releaseVersion),
     resumePendingUpdate,
-    removeHelper: () => removeAgentReplaceHelper(agentReplaceDeps, false),
+    removeHelper: singleContainerMode()
+      ? async () => {}
+      : () => removeAgentReplaceHelper(agentReplaceDeps, false),
     startHeartbeat: heartbeatLoop,
   });
 }

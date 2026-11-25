@@ -47,6 +47,17 @@ sync, and drops the retired `joshu-last30days`. Skill `research-report` tells th
 companion how to answer on each channel; see
 [`docs/hermes-customizations.md`](../../docs/hermes-customizations.md#joshu-research-plugin).
 
+## joshu-web-you
+
+Web backend `you` for the Hermes tools `web_search` and `web_extract` (change you-web-provider).
+The plugin holds no key. It posts each call to `POST /api/web/search` or `POST /api/web/extract`
+of the Joshu API on localhost. The Joshu API runs the call with You.com, through the proxy of the
+control plane or with the own key of a self-hosted box, and uses Exa when You.com fails. When the
+Joshu API does not answer and the box has an Exa key, the plugin calls the Exa backend of Hermes.
+The gateway sync sets `web.backend` to `you` and enables the plugin while the box can reach
+You.com. See [`docs/hermes-integration.md`](../../docs/hermes-integration.md#the-web-provider-of-a-box).
+Test: `npm run test:joshu-web-you`.
+
 ## joshu-media
 
 Image provider and video provider `joshu` for the Hermes tools `image_generate` and
@@ -66,6 +77,10 @@ message with the text, so a realtime goal gets them.
 
 `cron_guard.py` adds a `pre_tool_call` hook that blocks a Hermes `cronjob`
 call whose delivery target cannot reach anyone; the rules match
-`src/cronDelivery.ts`. Joshu auto-enables this plugin and its toolset during gateway config sync.
+`src/cronDelivery.ts`. `step_limit.py` adds the step-limit warning to the tool
+results of a worker on board `realtime-goals` when 15 steps or fewer are left
+(`pre_api_request`, `transform_tool_result`), and writes the last summary of a
+run that reached the step limit as a `## Step-limit note` comment on the Kanban
+task (`post_llm_call`). Joshu auto-enables this plugin and its toolset during gateway config sync.
 The durable broker and channel behavior are documented in
 [`docs/realtime-goals.md`](../../docs/realtime-goals.md).

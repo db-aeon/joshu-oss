@@ -41,6 +41,10 @@
     "build:schedules": "vite build --config apps/schedules/vite.config.ts",
     "test": "node scripts/run-unit-tests.mjs",
     "test:research-pipeline": "tsx scripts/test-research-pipeline.mjs",
+    "test:single-container": "tsx scripts/test-single-container.mjs",
+    "test:in-place-restart": "tsx scripts/test-in-place-restart.mjs",
+    "test:gbrain-desktop-git": "node scripts/test-gbrain-desktop-git.mjs",
+    "test:agent37-migration": "if [ -f proprietary/scripts/test/agent37-migration.test.mjs ]; then node proprietary/scripts/test/agent37-migration.test.mjs; fi",
     "test:research-report": "tsx scripts/test-research-report.mjs",
     "test:research-pdf": "tsx scripts/test-research-pdf.mjs",
     "test:research-hermes": "tsx scripts/test-research-hermes.mjs",
@@ -52,6 +56,8 @@
     "test:metered-providers-config": "tsx scripts/test-metered-providers-config.mjs",
     "test:content-router": "tsx scripts/test-content-router.mjs",
     "test:joshu-media": "python3 scripts/test-joshu-media.py",
+    "test:joshu-web-you": "python3 scripts/test-joshu-web-you.py",
+    "test:hermes-web-backend": "tsx scripts/test-hermes-web-backend.mjs",
     "test:research-watch-migration": "tsx scripts/test-research-watch-migration.mjs",
     "build:movie-editor": "vite build --config apps/movie-editor/vite.config.ts",
     "build:jmail": "vite build --config apps/jmail/vite.config.ts",
@@ -76,6 +82,7 @@
     "test:owner-local-time": "npm run build && node scripts/check-owner-local-time.mjs",
     "test:ea-cron-timezone": "npm run build && node scripts/check-ea-cron-timezone.mjs",
     "test:hermes-cron-timezone-realign": "python3 scripts/test-hermes-cron-timezone-realign.py",
+    "test:hermes-cron-unpin-models": "python3 scripts/test-hermes-cron-unpin-models.py",
     "test:mail-dedup": "npm run build && node scripts/check-mail-dedup.mjs",
     "test:mail-classifier-routing": "npm run build && node scripts/check-mail-classifier-routing.mjs",
     "test:owner-reply": "tsx scripts/test-owner-reply.mjs",
@@ -87,9 +94,13 @@
     "test:release-facts": "tsx scripts/test-release-facts.mjs",
     "test:release-facts-hermes": "python3 scripts/test-release-facts-hermes.py",
     "test:instance-failures": "tsx scripts/test-instance-failures.mjs",
+    "test:feature-checks": "tsx scripts/test-feature-checks.mjs",
     "test:scripts-root": "tsx scripts/test-scripts-root.mjs",
     "test:hindsight-reranker-key": "tsx scripts/test-hindsight-reranker-key.mjs",
+    "test:hindsight-health": "tsx scripts/test-hindsight-health.mjs",
+    "test:release-hermes-model": "tsx scripts/test-release-hermes-model.mjs",
     "test:instance-agent-release": "tsx scripts/test-instance-agent-release.mjs",
+    "test:instance-agent-heartbeat": "tsx scripts/test-instance-agent-heartbeat.mjs",
     "test:prune-release-images": "node scripts/test-prune-release-images.mjs",
     "test:joshu-state-dir": "tsx scripts/test-joshu-state-dir.mjs",
     "test:box-diagnostics": "tsx scripts/test-box-diagnostics.mjs",
@@ -100,7 +111,11 @@
     "test:desktop-open-file": "tsx scripts/test-desktop-open-file.mjs",
     "test:ag-ui-session-id": "tsx scripts/test-ag-ui-session-id.mjs",
     "test:arozos-subservices": "node scripts/test-arozos-subservices.mjs",
+    "test:arozos-settings-overlay": "node scripts/test-arozos-settings-overlay.mjs",
+    "test:arozos-theme-patch": "python3 scripts/test-arozos-theme-patch.py",
+    "test:hermes-session-prune": "python3 scripts/test-hermes-session-prune.py",
     "test:hermes-context-file": "tsx scripts/test-hermes-context-file.mjs",
+    "test:hermes-memory-limits": "tsx scripts/test-hermes-memory-limits.mjs",
     "test:mail-track-thread-match": "tsx scripts/test-mail-track-thread-match.mjs",
     "test:mail-track-handoff": "tsx scripts/test-mail-track-handoff.mjs",
     "test:mail-worker-skills": "tsx scripts/test-mail-worker-skills.mjs",
@@ -150,6 +165,8 @@
     "test:scheduling-ingress": "tsx scripts/test-scheduling-ingress.mjs",
     "test:local-slot": "tsx scripts/test-local-slot.mjs",
     "test:nylas-recipients": "tsx scripts/test-nylas-recipients.mjs",
+    "test:agent-authorization": "tsx scripts/test-agent-authorization.mjs",
+    "test:companion-send-authorization": "tsx scripts/test-companion-send-authorization.mjs",
     "test:nylas-mode": "tsx scripts/test-nylas-mode.mjs",
     "test:nylas-attachments": "tsx scripts/test-nylas-attachments.mjs",
     "test:gmail-attachments": "tsx scripts/test-gmail-attachments.mjs",
@@ -270,12 +287,12 @@
     "vite": "^8.0.11",
     "vite-plugin-svgr": "^4.5.0"
   },
-  "packageManager": "pnpm@10.33.2+sha512.a90faf6feeab71ad6c6e57f94e0fe1a12f5dcc22cd754db40ae9593eb6a3e0b6b12e3540218bb37ae083404b1f2ce6db2a4121e979829b4aff94b99f49da1cf8",
   "overrides": {
     "lodash-es": "^4.18.1",
     "nanoid": "^3.3.12",
     "@excalidraw/mermaid-to-excalidraw": {
       "nanoid": "^5.1.11"
-    }
+    },
+    "qs": "^6.16.1"
   }
 }

@@ -1,0 +1,7 @@
+name: joshu-web-you
+version: 1.0.0
+description: Web backend "you" for the Hermes tools web_search and web_extract. Each call goes to the Joshu API on localhost, which runs it with You.com (through the control plane proxy, or the own key of a self-hosted box) and uses Exa when You.com fails. The plugin holds no key.
+author: Joshu
+kind: backend
+provides_web_providers:
+  - you

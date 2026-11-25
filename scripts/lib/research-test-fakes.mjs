@@ -1,18 +1,43 @@
 /**
  * Fakes for the tests of Research reports (change research-reports, promise change P7): an Exa
- * client, a Composio Search client (change research-report-sources), an OpenRouter fetch that
+ * client, a source search client (change research-router-sources), an OpenRouter fetch that
  * answers each pipeline step, social posts, and a PDF writer. No network.
  */
 import fs from "node:fs";
 import path from "node:path";
-import { companyFilings, newsHits, scholarHits, stockPrices } from "../../src/research/pipeline/composioSearch.ts";
+import { stockPrices } from "../../src/research/pipeline/sourceSearch.ts";
 import { learnAnswer } from "./content-router-fakes.mjs";
 
-const COMPOSIO_FIXTURES = path.join(path.dirname(new URL(import.meta.url).pathname), "..", "..", "test", "fixtures", "research", "composio");
+const SOURCE_FIXTURES = path.join(path.dirname(new URL(import.meta.url).pathname), "..", "..", "test", "fixtures", "research", "sources");
 
-/** One saved answer of the Composio tools API (`news`, `scholar`, `finance`, `sec-filings`, `failed`). */
-export function composioFixture(name) {
-  return JSON.parse(fs.readFileSync(path.join(COMPOSIO_FIXTURES, `${name}.json`), "utf8"));
+/**
+ * One saved test answer of the source search (`news`, `scholar`, `prices`, `company-name`,
+ * `filings`). `prices` and `company-name` have the shape of the replies of the price source. The
+ * other three are lists of results that the fake turns into hits.
+ */
+export function sourceFixture(name) {
+  return JSON.parse(fs.readFileSync(path.join(SOURCE_FIXTURES, `${name}.json`), "utf8"));
+}
+
+/** The news hits of the saved answer, as the source search returns them. */
+export function fixtureNews() {
+  return sourceFixture("news").news.map((r) => ({ url: r.link, title: r.title, publishedDate: r.date, highlights: r.snippet ? [r.snippet] : [] }));
+}
+
+/** The paper hits of the saved answer. */
+export function fixturePapers() {
+  return sourceFixture("scholar").organic.map((a) => {
+    const about = [`Authors: ${a.publicationInfo.split(" - ")[0]}.`, a.year ? `Year: ${a.year}.` : "", a.citedBy ? `Cited by ${a.citedBy}.` : ""].filter(Boolean).join(" ");
+    return { url: a.link, title: a.title, highlights: [a.snippet, about].filter(Boolean) };
+  });
+}
+
+/** The filings of the saved answer, newest first. */
+export function fixtureFilings(companyName) {
+  const filings = sourceFixture("filings")
+    .filings.map((f) => ({ form: f.filing_type, filedAt: f.filing_date, reportDate: f.report_date || undefined, url: f.url }))
+    .sort((a, b) => b.filedAt.localeCompare(a.filedAt));
+  return { companyName, filings };
 }
 
 /**
@@ -60,24 +85,24 @@ export function fakeExa(opts = {}) {
 }
 
 /**
- * A Composio Search client that answers from the saved answers of 2026-10-21. `opts.fail` lists
- * the calls that throw (`news`, `scholar`, `prices`, `filings`), and `opts.hang` the calls that
- * never answer.
+ * A source search client that answers from the saved replies. `opts.fail` lists the calls that
+ * throw (`news`, `scholar`, `prices`, `filings`), and `opts.hang` the calls that never answer.
  */
-export function fakeComposio(opts = {}) {
+export function fakeSourceSearch(opts = {}) {
   const calls = { news: [], scholar: [], prices: [], filings: [] };
+  const name = sourceFixture("company-name").name;
   const answer = (kind, arg, value) => {
     calls[kind].push(arg);
     if (opts.hang?.includes(kind)) return new Promise(() => {});
-    if (opts.fail?.includes(kind)) return Promise.reject(new Error(`Composio ${kind} answered 500`));
+    if (opts.fail?.includes(kind)) return Promise.reject(new Error(opts.failReason ?? `router call ${kind}: the provider answered 500`));
     return Promise.resolve(value());
   };
   return {
     calls,
-    news: (query) => answer("news", query, () => newsHits(composioFixture("news").data)),
-    scholar: (query) => answer("scholar", query, () => scholarHits(composioFixture("scholar").data)),
-    prices: (symbol) => answer("prices", symbol, () => stockPrices(composioFixture("finance").data, symbol)),
-    filings: (ticker) => answer("filings", ticker, () => (opts.noFilings ? { companyName: "", filings: [] } : companyFilings(composioFixture("sec-filings").data))),
+    news: (query) => answer("news", query, () => fixtureNews()),
+    scholar: (query) => answer("scholar", query, () => fixturePapers()),
+    prices: (symbol) => answer("prices", symbol, () => stockPrices(sourceFixture("prices"), symbol, name)),
+    filings: (ticker) => answer("filings", ticker, () => (opts.noFilings ? { companyName: "", filings: [] } : fixtureFilings(name))),
   };
 }
 
@@ -222,7 +247,7 @@ export function fakeDeps(roots, overrides = {}) {
       day: "2026-11-02",
       identity: { companionName: "Mina", ownerDisplayName: "Maya Ross" },
       exa,
-      composio: overrides.composio ?? null,
+      sourceSearch: overrides.sourceSearch ?? null,
       llm: { fetchImpl: model.fetchImpl, apiKey: "sk-test", model: "test/model" },
       social: async () => FAKE_SOCIAL,
       pictureFetch: fakePictureFetch(),

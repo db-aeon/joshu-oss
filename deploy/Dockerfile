@@ -10,7 +10,7 @@ FROM ${BASE_IMAGE} AS builder
 ARG HERMES_AGENT_REPO=https://github.com/NousResearch/hermes-agent.git
 # v2026.8.3 → Hermes Agent v0.20.0 (synced from deploy/RELEASE.json)
 ARG HERMES_AGENT_REF=3c27eb6234bf91b8ceee9e9071591b31e9b148cb
-ARG GO_VERSION=1.24.1
+ARG GO_VERSION=1.26.11
 ARG PGVECTOR_REPO=https://github.com/pgvector/pgvector.git
 ARG PGVECTOR_REF=v0.8.1
 ARG POSTGRES_VERSION=17
@@ -61,8 +61,10 @@ RUN rm -rf /usr/local/go \
 # so Hindsight is constrained to it), brotlicffi 1.2.1.0 (GHSA-9v8h-qqgm-4m35, a
 # critical write out of bounds in the Brotli decoder, Hermes pins 1.2.0.1), PyNaCl
 # 1.6.2 (discord.py 2.7.1 caps it at <1.6, and Hermes overrides that cap in uv, which
-# pip ignores). filelock stays on 3.x: its fix (4.2.1) is outside the <4.0 cap of
-# litellm, and its advisories need another local account on the box.
+# pip ignores).
+# Security release 0.1.66 (Trivy scan of 0.1.65): pyasn1 0.6.5, tornado 6.6.1, litellm
+# 1.108.10 (GHSA-2rwg-2wh4-7c4f, fixed in 1.108.6), and filelock 4.2.10. litellm 1.108.6
+# and later allow filelock <5, so the old <4.0 cap no longer holds filelock on 3.x.
 RUN git init "${HERMES_DIR}" \
     && cd "${HERMES_DIR}" \
     && git remote add origin "${HERMES_AGENT_REPO}" \
@@ -76,8 +78,9 @@ RUN git init "${HERMES_DIR}" \
     && venv/bin/pip install --no-cache-dir -c /tmp/hermes-core-pins.txt 'hindsight-api-slim[embedded-db]==0.7.2' 'hindsight-client==0.7.2' langfuse \
     && venv/bin/pip install --no-cache-dir -c /tmp/hermes-core-pins.txt 'cryptography==50.0.2' 'Pillow==13.0.0' 'PyJWT[crypto]==2.15.1' \
        'brotlicffi==1.2.1.0' 'PyNaCl==1.6.2' \
+       'pyasn1==0.6.5' 'tornado==6.6.1' 'litellm==1.108.10' 'filelock==4.2.10' \
     && venv/bin/python -c 'import PIL, jwt, cryptography; assert (PIL.__version__, jwt.__version__, cryptography.__version__) == ("13.0.0", "2.15.1", "50.0.2")' \
-    && venv/bin/python -c 'import importlib.metadata as m; v = {p: m.version(p) for p in ("mcp", "brotlicffi", "PyNaCl")}; print(v); assert v == {"mcp": "1.30.0", "brotlicffi": "1.2.1.0", "PyNaCl": "1.6.2"}' \
+    && venv/bin/python -c 'import importlib.metadata as m; v = {p: m.version(p) for p in ("mcp", "brotlicffi", "PyNaCl", "pyasn1", "tornado", "litellm", "filelock")}; print(v); assert v == {"mcp": "1.30.0", "brotlicffi": "1.2.1.0", "PyNaCl": "1.6.2", "pyasn1": "0.6.5", "tornado": "6.6.1", "litellm": "1.108.10", "filelock": "4.2.10"}' \
     && venv/bin/python -c 'import brotlicffi, nacl.secret; assert brotlicffi.decompress(brotlicffi.compress(b"joshu")) == b"joshu"' \
     && venv/bin/python -c 'from mcp.client.streamable_http import streamablehttp_client' \
     && rm -f /tmp/hermes-core-pins.txt \
@@ -173,8 +176,19 @@ RUN if [ "${JOSHU_REQUIRE_DESIGN_PACK}" = "1" ]; then \
         || (echo "JOSHU_REQUIRE_DESIGN_PACK=1 but aroz-paper-shell.css missing under /opt/joshu-design" >&2; exit 1); \
     fi
 
+# The ArozOS password helper, for a desktop password reset in single-container mode, where no
+# Docker can run it with `go run` (change sandbox-box-commands).
+RUN cd ${APP_DIR}/scripts/arozos-reset-password \
+    && go build -o /opt/joshu-tools/arozos-reset-password . \
+    && test -x /opt/joshu-tools/arozos-reset-password
+
+# Go modules of ArozOS above its go.mod, for the Trivy findings of 0.1.65 (x/crypto,
+# x/net, x/image, x/text). go get also raises what they need. The vendor/arozos pin
+# e3819d1 already has go-git v5.19.2, go-billy v5.9.0, and compress v1.18.7, so those
+# three are not in the list any more. Drop a version here when the pin reaches it.
 RUN bash ${APP_DIR}/scripts/apply-arozos-patches.sh \
     && cd ${APP_DIR}/vendor/arozos/src \
+    && go get golang.org/x/net@v0.62.0 golang.org/x/image@v0.45.0 \
     && go mod download \
     && go build -o ${AROZ_TEMPLATE}/arozos . \
     && mkdir -p ${AROZ_TEMPLATE}/web ${AROZ_TEMPLATE}/system ${AROZ_TEMPLATE}/subservice \
@@ -251,6 +265,7 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
 
 COPY --from=builder /opt/hermes-agent /opt/hermes-agent
 COPY --from=builder /opt/arozos-template /opt/arozos-template
+COPY --from=builder /opt/joshu-tools /opt/joshu-tools
 COPY --from=builder /opt/joshu-design /opt/joshu-design
 COPY --from=builder /usr/lib/postgresql/${POSTGRES_VERSION}/lib/vector.so /usr/lib/postgresql/${POSTGRES_VERSION}/lib/vector.so
 COPY --from=builder /usr/share/postgresql/${POSTGRES_VERSION}/extension/vector* /usr/share/postgresql/${POSTGRES_VERSION}/extension/
@@ -336,6 +351,8 @@ RUN mkdir -p /opt/joshu/.image \
     && cp -a ${APP_DIR}/scripts /opt/joshu/.image/scripts \
     && chmod +x /opt/joshu/.image/scripts/vps-start.sh \
     && test -f /opt/joshu/.image/scripts/vps-start.sh \
+    && test -f /opt/joshu/.image/scripts/drop-control-plane-models.mjs \
+    && test -f ${APP_DIR}/dist/joshuOpenRouterDefaults.js \
     && test -f /opt/joshu/.image/scripts/lib/arozos-desktop-shortcuts.sh
 
 # Host bundle (change image-owned-box-runtime): the files that the host needs to start
@@ -358,6 +375,30 @@ RUN chmod +x /opt/joshu/.image/host/deploy/scripts/*.sh \
     && test -x /opt/joshu/.image/host/deploy/scripts/carry-over-joshu-state.sh \
     && test -x /opt/joshu/.image/host/deploy/scripts/prune-release-images.sh \
     && test -f /opt/joshu/.image/host/scripts/arozos-reset-password.sh
+
+# Single-container mode (change single-container-mode): on a host with no Docker, the
+# stack container also runs Caddy, cloudflared, the voice service, and the instance agent
+# as processes. A Compose box does not start them and uses its own containers.
+ARG CLOUDFLARED_VERSION=2026.10.7
+ARG CLOUDFLARED_SHA256=1f99fb518b83dec2ba8d870a7cc991d82a77e6196295a3d2754ba17ab9f91872
+COPY --from=caddy:2-alpine /usr/bin/caddy /usr/local/bin/caddy
+RUN curl -fsSL -o /usr/local/bin/cloudflared \
+      "https://github.com/cloudflare/cloudflared/releases/download/${CLOUDFLARED_VERSION}/cloudflared-linux-amd64" \
+    && echo "${CLOUDFLARED_SHA256}  /usr/local/bin/cloudflared" | sha256sum -c - \
+    && chmod +x /usr/local/bin/cloudflared \
+    && caddy version \
+    && cloudflared --version
+COPY packages/voice-realtime/ ${APP_DIR}/packages/voice-realtime/
+COPY packages/instance-agent/ ${APP_DIR}/packages/instance-agent/
+RUN cd ${APP_DIR}/packages/voice-realtime && npm install --no-audit --no-fund && npm run build && npm prune --omit=dev \
+    && cd ${APP_DIR}/packages/instance-agent && npm install --no-audit --no-fund && npm run build && npm prune --omit=dev \
+    && npm cache clean --force \
+    && test -f ${APP_DIR}/packages/voice-realtime/dist/index.js \
+    && test -f ${APP_DIR}/packages/instance-agent/dist/index.js \
+    && JOSHU_DATA_ROOT=/data CADDYFILE_OUT=/tmp/Caddyfile.single \
+       sh /opt/joshu/.image/host/deploy/scripts/render-caddyfile.sh /nonexistent \
+    && caddy validate --config /tmp/Caddyfile.single --adapter caddyfile \
+    && rm -f /tmp/Caddyfile.single
 
 # Release provenance of dist/ comes from the image. No host sync writes it any more.
 RUN node -e 'const fs = require("fs"); \

@@ -201,7 +201,7 @@ button {
 }
 
 .milkdown-host {
-  width: min(100% - 48px, 880px);
+  width: calc(100% - 48px);
   min-height: calc(100vh - 120px);
   margin: 28px auto 64px;
   border: 1px solid rgba(13, 13, 13, 0.08);
@@ -240,17 +240,11 @@ button {
 
 .milkdown-host .ProseMirror {
   min-height: calc(100vh - 190px);
-  padding: 64px clamp(40px, 8vw, 92px) 120px;
+  padding: 64px clamp(32px, 5vw, 72px) 120px;
   outline: none;
   color: #181716;
   font-size: 17px;
   line-height: 1.72;
-}
-
-.milkdown-host .ProseMirror > * {
-  max-width: 680px;
-  margin-right: auto;
-  margin-left: auto;
 }
 
 .milkdown-host .ProseMirror h1 {
@@ -321,10 +315,10 @@ button {
 }
 
 .editor-skeleton {
-  width: min(100% - 48px, 880px);
+  width: calc(100% - 48px);
   min-height: calc(100vh - 170px);
   margin: 28px auto;
-  padding: 72px clamp(40px, 8vw, 92px);
+  padding: 72px clamp(32px, 5vw, 72px);
   border: 1px solid rgba(13, 13, 13, 0.08);
   background: white;
 }

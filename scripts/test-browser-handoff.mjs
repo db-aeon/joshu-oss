@@ -8,6 +8,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { browserHandoffLockStub } from "../src/browserHandoff/lock.ts";
+import { HANDOFF_VIEWPORT } from "../src/browserHandoff/routes.ts";
 import {
   cancelHandoff,
   completeHandoff,
@@ -509,5 +510,18 @@ const handoffSkill = fs.readFileSync(
 );
 assert.match(handoffSkill, /### Never ask the owner to send a secret/);
 assert.match(handoffSkill, /password, passcode, PIN, recovery code, or one-time code/);
+
+// Pinch to zoom on a phone (change handoff-pinch-zoom): the viewport sets no largest scale, and
+// the live view area lets two fingers zoom the page while one finger goes to the remote page.
+assert.ok(!/maximum-scale|user-scalable\s*=\s*(no|0)/.test(HANDOFF_VIEWPORT), "the handoff viewport does not block zoom");
+{
+  const routes = fs.readFileSync(new URL("../src/browserHandoff/routes.ts", import.meta.url), "utf8");
+  assert.equal((routes.match(/<meta name="viewport"/g) ?? []).length, 2);
+  assert.equal((routes.match(/<meta name="viewport" content="\$\{HANDOFF_VIEWPORT\}" \/>/g) ?? []).length, 2, "both handoff pages use the shared viewport");
+  const css = fs.readFileSync(new URL("../public/handoff-shell.css", import.meta.url), "utf8");
+  const screen = css.slice(css.indexOf("#vnc-screen {"), css.indexOf("}", css.indexOf("#vnc-screen {")));
+  assert.match(screen, /touch-action:\s*pinch-zoom/);
+  assert.doesNotMatch(css, /touch-action:\s*none/);
+}
 
 console.log("browser-handoff fixtures: ok");

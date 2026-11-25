@@ -3,9 +3,9 @@
  * Unit tests: owner calendar across all calendar accounts (merge of FreeBusy and events,
  * choice of the calendar account for a write or a read, denied writes, Meet links, one event,
  * end time zone of a write).
- * Spec: openspec/changes/calendar-all-accounts/specs/owner-calendar/spec.md and
- * openspec/changes/calendar-meet-and-event-tools/specs/owner-calendar/spec.md and
- * openspec/changes/calendar-event-end-timezone/specs/owner-calendar/spec.md
+ * Spec: openspec/changes/archive/2026-11-18-calendar-all-accounts/specs/owner-calendar/spec.md and
+ * openspec/changes/archive/2026-11-18-calendar-meet-and-event-tools/specs/owner-calendar/spec.md and
+ * openspec/changes/archive/2026-11-18-calendar-event-end-timezone/specs/owner-calendar/spec.md
  *
  * Usage: npm run test:owner-calendar
  */

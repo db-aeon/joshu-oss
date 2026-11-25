@@ -29,7 +29,7 @@ Shortcut format: [`arozos-desktop-shortcuts.md`](arozos-desktop-shortcuts.md).
 
 | Topic | Doc |
 |-------|-----|
-| Self-host (standalone Docker) | [`self-host.md`](self-host.md) |
+| Self-host (one container, single-container mode) | [`self-host.md`](self-host.md) |
 | **User manual** (a guide for the owner of a self-hosted box: what to say to your companion and what it sends back) | [`user-manual/README.md`](user-manual/README.md) |
 | **Technical reference** (how each subsystem works and why: architecture, theory of operation, design decisions) | [`technical-reference/README.md`](technical-reference/README.md) |
 | **System overview** (how a box is built end to end and why the main boundaries exist; read first) | [`technical-reference/system-overview.md`](technical-reference/system-overview.md) |
@@ -43,7 +43,7 @@ Shortcut format: [`arozos-desktop-shortcuts.md`](arozos-desktop-shortcuts.md).
 | Local dev install | [`local-installation.md`](local-installation.md) |
 | Hermes integration (skills, gateway, env) | [`hermes-integration.md`](hermes-integration.md) |
 | Connectors (mail, calendar, MCP) | [`connectors.md`](connectors.md) |
-| **Metered providers** (fal.ai and the content router; self-host: paste your own key) | [`technical-reference/metered-providers.md`](technical-reference/metered-providers.md) · [`connectors-arozos-app.md`](connectors-arozos-app.md) |
+| **Metered providers** (fal.ai and Data Bodega, the content router; self-host: paste your own key) | [`technical-reference/metered-providers.md`](technical-reference/metered-providers.md) · [`connectors-arozos-app.md`](connectors-arozos-app.md) |
 | File index + search (gbrain) | [`file-brain.md`](file-brain.md) |
 | Chat with shared files | [`share-chat.md`](share-chat.md) |
 | **Runtime assets** (HTML/PNG the API reads — must land in `dist/`) | [`runtime-assets.md`](runtime-assets.md) |

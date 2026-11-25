@@ -13,7 +13,7 @@ import path from "node:path";
 import { Temporal } from "@js-temporal/polyfill";
 import { resolveOwnerTimezone } from "../../ownerLocalTime.js";
 import { ResearchStepError, type ResearchStep } from "../errors.js";
-import type { ComposioSearchClient } from "../pipeline/composioSearch.js";
+import type { SourceSearchClient } from "../pipeline/sourceSearch.js";
 import type { ExaClient } from "../pipeline/exa.js";
 import type { SocialDeps } from "../social/sources.js";
 import { collectRun, type CollectPeriod } from "./collect.js";
@@ -53,8 +53,11 @@ const DAY_MS = 86_400_000;
 
 export type RunDeps = {
   projectRoot: string;
+  /** The web client of the box: You.com or Exa (change you-web-provider). Null: the box has no web search key. */
   exa: ExaClient | null;
-  composio: ComposioSearchClient | null;
+  /** The label of the web source in the source list, for example "Web (You.com)". Default: "Web (Exa)". */
+  webLabel?: string;
+  sourceSearch: SourceSearchClient | null;
   social?: SocialDeps;
   llm?: Llm;
   senders: DeliverySenders;

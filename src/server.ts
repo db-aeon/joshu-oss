@@ -23,6 +23,7 @@ import YAML from "yaml";
 import { getCamofoxStatus } from "./camofox.js";
 import { CamofoxSessionCoordinator } from "./camofoxSession.js";
 import { DockerSupervisor } from "./docker.js";
+import { probeHindsightHealth } from "./hindsightHealth.js";
 import { HermesApiRunner, buildBrowserSyncSystemMessage, buildTurnSystemMessages, getJoshuHermesModel } from "./hermesApi.js";
 import {
   browserSyncModeFromEnv,
@@ -34,6 +35,10 @@ import { registerMovieEditorRoutes } from "./movieEditorApi.js";
 import type { HermesChatMessage } from "./hermesApi.js";
 import { getHermesHomeDir, spawnHermesPython } from "./hermesVoiceRuntime.js";
 import { registerInstanceHealthRoutes } from "./instanceHealth.js";
+import { FeatureCheckRunner, boxFeatureChecks, hermesConfigPath } from "./featureChecks.js";
+import { exaApiKey } from "./research/pipeline/exa.js";
+import { socialSourcesHealth } from "./research/social/health.js";
+import { hermesHome } from "./proactive/boards.js";
 import { registerInstanceOwnerEmailRoutes } from "./instanceOwnerEmail.js";
 import { registerDesktopLoginRoutes } from "./desktopLogin.js";
 import { readHermesGatewayPreference, writeHermesGatewayPreference } from "./hermesGatewayPreference.js";
@@ -46,11 +51,13 @@ import { setupMentionInstruction, takeSetupMention } from "./onboarding/setupMen
 import { registerDay0Routes } from "./day0/day0Api.js";
 import { registerHermesCronRoutes } from "./hermesCronApi.js";
 import { syncAllAppManifestCronJobs } from "./appCronSync.js";
+import { unpinCronJobsFromControlPlaneModels } from "./hermesReleaseModel.js";
 import { syncBoxCronJobs } from "./onboarding/boxCronSync.js";
 import { registerHermesChatSessionListener } from "./hermesChatSessionPush.js";
 import { SSE_HEADERS, sseSend, startSseHeartbeat } from "./httpSse.js";
 import { registerResearchRoutes } from "./research/routes.js";
 import { registerRouterMediaRoutes } from "./contentRouter/media.js";
+import { registerWebProviderRoutes } from "./webProvider/routes.js";
 import { registerRecurringRoutes } from "./research/recurring/routes.js";
 import { recurringRuntime } from "./research/recurring/runtime.js";
 import { retireLast30days } from "./research/retireLast30days.js";
@@ -480,6 +487,21 @@ function buildAppRouter(): {
   // Share-chat JSON routes register after express.json() below.
   // files routes (incl. POST /write) also need express.json() — see below.
 
+  const featureChecks = new FeatureCheckRunner(
+    boxFeatureChecks({
+      fetch,
+      hermesConfigPath: hermesConfigPath(hermesHome()),
+      exaKey: exaApiKey,
+      hindsight: {
+        enabled: () => envOr("JOSHU_HINDSIGHT_ENABLED", "auto") !== "false",
+        apiUrl: HINDSIGHT_API_URL,
+        bankId: HINDSIGHT_BANK_ID,
+        headers: hindsightHeaders,
+      },
+      socialSourcesHealth: () => socialSourcesHealth(),
+    }),
+  );
+  featureChecks.start();
   registerInstanceHealthRoutes(router, {
     probeHermes: async () => {
       const running = await runner.probeGatewayHealth();
@@ -498,16 +520,7 @@ function buildAppRouter(): {
         return { reachable: false };
       }
     },
-    probeHindsight: async () => {
-      if (envOr("JOSHU_HINDSIGHT_ENABLED", "auto") === "false") return { ok: true };
-      try {
-        const url = new URL("/health", `${HINDSIGHT_API_URL}/`);
-        const res = await fetch(url, { signal: AbortSignal.timeout(3_000) });
-        return { ok: res.ok };
-      } catch {
-        return { ok: false };
-      }
-    },
+    probeHindsight: () => probeHindsightHealth(HINDSIGHT_API_URL),
     probeGbrain: probeGbrainHealth,
     probeConnectorsMcp: async () => {
       const ok = await probeMcpHttpHealth(resolveConnectorsMcpHealthUrl());
@@ -519,6 +532,7 @@ function buildAppRouter(): {
       const available = await runner.probeGatewayHealth();
       return { ok: available };
     },
+    capabilities: () => featureChecks.report(),
   });
 
   // Raw body routes must register before express.json().
@@ -605,6 +619,7 @@ function buildAppRouter(): {
   registerHermesCronRoutes(router);
   registerResearchRoutes(router, { projectRoot: PROJECT_ROOT });
   registerRouterMediaRoutes(router, { projectRoot: PROJECT_ROOT });
+  registerWebProviderRoutes(router, { projectRoot: PROJECT_ROOT });
   registerRecurringRoutes(router, { projectRoot: PROJECT_ROOT, runtime: () => recurringRuntime(PROJECT_ROOT) });
   registerNylasRoutes(router, { projectRoot: PROJECT_ROOT });
   registerComposioRoutes(router, { projectRoot: PROJECT_ROOT, runner });
@@ -1607,6 +1622,13 @@ const server = app.listen(PORT, HOST, () => {
       }
       // Boxes that finished setup on an older release, or never finished it, lack these jobs.
       await syncBoxCronJobs(PROJECT_ROOT, `[joshu]${delayMs ? ` (deferred ${delayMs}ms)` : ""}`);
+    }
+    // Cron jobs pinned to an old control plane model follow the model of the release again.
+    try {
+      const { unpinned } = await unpinCronJobsFromControlPlaneModels();
+      if (unpinned > 0) console.info(`[joshu] unpinned ${unpinned} cron job(s) from old control plane models`);
+    } catch (err) {
+      console.warn("[joshu] cron model unpin failed:", err instanceof Error ? err.message : String(err));
     }
   })();
   void import("./shareChat/triggerSubscribe.js")

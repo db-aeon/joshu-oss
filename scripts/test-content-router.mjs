@@ -3,7 +3,9 @@
  * client of the router call route and its authentication, the box skill `joshu-content-cache` and
  * its seed, the recipe reader, learning a route and a recipe, dropping a route, the check of the
  * recipe output, the default social goals of skill `joshu-content-router`, and the media route.
- * No network: fake fetch, fake router, fake model.
+ * Also the route cache with no wait (change route-cache-no-wait): no "no route" record, one new
+ * route in the same report after the third fault, and the query input of a learned route. No
+ * network: fake fetch, fake router, fake model.
  */
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
@@ -11,7 +13,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { fakeRouter, learnModel, POLY_ENDPOINT, polymarketReply, POLY_RECIPE, tempHermesHome } from "./lib/content-router-fakes.mjs";
+import { fakeRouter, learnModel, POLY_ENDPOINT, polymarketReply, POLY_RECIPE, routeCandidateIds, tempHermesHome, VALYU_ENDPOINT } from "./lib/content-router-fakes.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "joshu-router-state-"));
@@ -220,26 +222,35 @@ async function testLearning() {
     assert.equal(third.items.length, 3);
     assert.equal(store.readShapes(home).shapes[POLY_ENDPOINT.id].list, "data.results");
 
-    // Three failures in a row drop the route.
+    // The first and the second fault in a row keep the route, with no model call. The third fault
+    // removes it, and the box learns one new route without the provider endpoint that failed.
+    // Faults count once for each hour, so each of the three reports is one hour later.
     const failing = fakeRouter({ fail: { [POLY_ENDPOINT.id]: "provider error" } });
     for (let i = 1; i <= 3; i++) {
-      const r = await resolveGoal(POLY_GOAL, SEARCH, { ...deps, client: failing.client, llm: relearn.llm });
-      assert.deepEqual([r.state.state, r.state.engineStatus], ["could not be reached", "provider error"]);
+      const r = await resolveGoal(POLY_GOAL, SEARCH, { ...deps, client: failing.client, llm: relearn.llm, now: () => new Date(NOW().getTime() + i * 3_600_000) });
+      // The third report shows the fault of the new route, for which the fake router has no reply.
+      assert.deepEqual([r.state.state, r.state.engineStatus], ["could not be reached", i < 3 ? "provider error" : "unknown endpoint"]);
       const left = store.readRoutes(home).routes["prediction market odds"];
-      if (i < 3) assert.equal(left.failures, i);
-      else assert.equal(left, undefined, "dropped after three failures");
+      if (i < 3) {
+        assert.equal(left.failures, i);
+        assert.equal(relearn.requests.length, 1, "no route model call before the third fault");
+      } else assert.equal(left, undefined, "removed after three faults, and the new route that failed is not kept");
     }
-    // An empty usage wallet is not a failure of the provider endpoint.
+    assert.equal(relearn.requests.length, 2, "one route model call at the third fault");
+    assert.deepEqual(routeCandidateIds(relearn.requests[1].messages[1].content), [VALYU_ENDPOINT.id], "the failed provider endpoint is not a candidate");
+    assert.deepEqual(failing.calls.map((c) => c.endpoint), [POLY_ENDPOINT.id, POLY_ENDPOINT.id, POLY_ENDPOINT.id, VALYU_ENDPOINT.id], "one more router call, for the new route");
+    // An empty usage wallet is not a fault of the provider endpoint.
     store.updateRoute("reddit posts", (r) => r, home);
     const empty = fakeRouter({ failAll: "usage wallet empty" });
     const reddit = { id: "reddit", kind: "Reddit posts", label: "Reddit", query: "humanoid robots" };
     for (let i = 0; i < 3; i++) await resolveGoal(reddit, SEARCH, { ...deps, client: empty.client });
     assert.equal(store.readRoutes(home).routes["reddit posts"].failures, 0);
+    assert.equal(model.requests.length, 2, "no route model call for an empty usage wallet");
 
     // Without a client, the goal says why.
     const none = await resolveGoal(reddit, SEARCH, { client: null, unavailable: "no router API key", home });
     assert.deepEqual([none.state.state, none.state.engineStatus], ["could not be reached", "no router API key"]);
-    console.log("ok learning: route and recipe learned once, no model call the second time, relearn on a new shape, route dropped after three failures");
+    console.log("ok learning: route and recipe learned once, no model call the second time, relearn on a new shape, route removed after three faults");
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
   }
@@ -347,36 +358,157 @@ async function testCostLimits() {
   console.log("ok cost limits: data endpoints at a fixed price under the cap, inputs checked against the schema, at most five goal sources");
 }
 
-/** Security review, issue 1: a new route that gives no items is remembered, so the next report does not pay again. */
-async function testRememberedFailure() {
+/** The route cache is a plain cache (change route-cache-no-wait): no "no route" record and no wait. */
+async function testNoWait() {
   const home = tempHermesHome();
+  const routesFile = path.join(home, "skills", "joshu-content-cache", "references", "routes.json");
   try {
+    // A learned route that gives no items is not kept, and the next use learns again.
     const router = fakeRouter({ replies: { [POLY_ENDPOINT.id]: () => ({ events: [] }) } });
     const model = learnModel();
     const deps = { client: router.client, llm: model.llm, home, now: NOW };
     const first = await resolveGoal(POLY_GOAL, SEARCH, deps);
     assert.equal(first.state.state, "returned no items");
-    const entry = store.readRoutes(home).routes["prediction market odds"];
-    assert.equal(entry.reason, "returned no items");
-    assert.equal(entry.retryAfter, "2026-11-08T12:00:00.000Z", "blocked for seven days");
-    const [learnCalls, routerCalls] = [model.requests.length, router.calls.length];
+    assert.equal(store.readRoutes(home).routes["prediction market odds"], undefined, "no entry for a route with no items");
+    assert.deepEqual([model.requests.length, router.calls.length], [1, 1]);
     const second = await resolveGoal(POLY_GOAL, SEARCH, deps);
-    assert.deepEqual([second.state.state, second.state.engineStatus], ["could not be reached", goals.NO_ROUTE]);
-    assert.deepEqual([model.requests.length, router.calls.length], [learnCalls, routerCalls], "no model call and no router call while blocked");
-    // After seven days the box learns again.
-    await resolveGoal(POLY_GOAL, SEARCH, { ...deps, now: () => new Date("2026-11-09T12:00:00.000Z") });
-    assert.equal(model.requests.length, learnCalls + 1);
+    assert.equal(second.state.state, "returned no items");
+    assert.deepEqual([model.requests.length, router.calls.length], [2, 2], "the next use searches and learns again, with no wait");
 
-    // A model answer that fails the schema check is remembered too.
+    // No provider endpoint in the router catalog: no record, and the next use searches again.
     store.updateRoute("x posts", () => undefined, home);
     const empty = fakeRouter({ catalog: [] });
-    const none = await resolveGoal({ id: "x", kind: "X posts", label: "X", query: "q" }, SEARCH, { ...deps, client: empty.client });
-    assert.equal(none.state.engineStatus, goals.NO_ROUTE);
-    assert.ok(store.readRoutes(home).routes["x posts"].retryAfter);
+    const x = { id: "x", kind: "X posts", label: "X", query: "q" };
+    for (const searches of [1, 2]) {
+      const none = await resolveGoal(x, SEARCH, { ...deps, client: empty.client });
+      assert.deepEqual([none.state.state, none.state.engineStatus], ["could not be reached", goals.NO_ROUTE]);
+      assert.equal(empty.searches.length, searches);
+    }
+    assert.equal(store.readRoutes(home).routes["x posts"], undefined);
+    assert.doesNotMatch(fs.readFileSync(routesFile, "utf8"), /retryAfter|"reason"/);
+
+    // The records that an older release wrote on a box (2026-11-20) are removed, and the other entries stay.
+    const old = store.readRoutes(home);
+    const record = (endpoint) => ({ endpoint, queryInput: "", fixedInputs: {}, origin: "learned", learnedAt: "2026-11-18T08:00:00.000Z", failures: 0, retryAfter: "2099-01-01T00:00:00.000Z", reason: "returned no items" });
+    old.routes["youtube videos"] = record("youtube.x.youtube-activities-list");
+    old.routes["instagram reels"] = record("crawl4ai.instagram.user.reels");
+    old.routes["x posts"] = record("anyapi.instagram.user_reposts");
+    store.writeJsonAtomic(routesFile, old);
+    store.ensureContentCache(home);
+    const healed = JSON.parse(fs.readFileSync(routesFile, "utf8")).routes;
+    assert.deepEqual(["youtube videos", "instagram reels", "x posts"].map((k) => healed[k]), [undefined, undefined, undefined]);
+    assert.equal(healed["reddit posts"].endpoint, "scrapecreators.reddit.search.posts", "the other entries stay");
+    assert.equal(Object.keys(healed).length, 17);
+
+    // The goal kind of a removed record is learned at the next use.
+    const youtubeSearch = { ...POLY_ENDPOINT, id: "scrapecreators.x.v1-youtube-search", provider: "ScrapeCreators", provider_slug: "scrapecreators", title: "Search YouTube videos" };
+    const tube = fakeRouter({ catalog: [youtubeSearch] });
+    const tubeModel = learnModel();
+    const videos = await resolveGoal({ id: "youtube", kind: "YouTube videos", label: "YouTube", query: "humanoid robots" }, SEARCH, { ...deps, client: tube.client, llm: tubeModel.llm });
+    assert.equal(tubeModel.requests.length, 1, "one route model call at that use");
+    assert.equal(tube.calls[0].endpoint, youtubeSearch.id);
+    assert.equal(videos.state.state, "returned items");
+    assert.deepEqual([store.readRoutes(home).routes["youtube videos"].endpoint, store.readRoutes(home).routes["youtube videos"].queryInput], [youtubeSearch.id, "q"]);
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
   }
-  console.log("ok a route with no items is remembered for seven days, with no new learning and no new call");
+  console.log("ok no wait: a route with no items is not kept, old 'no route' records are removed, and each use learns again");
+}
+
+/** The third fault in a row removes a cached route, and the same report gets one new route (change route-cache-no-wait). */
+async function testRemovedRouteIsReplaced() {
+  const home = tempHermesHome();
+  try {
+    const goal = { id: "goal:prediction market odds", kind: "prediction market odds", label: "Prediction market odds", query: "2028 primaries" };
+    store.updateRoute(goal.kind, () => ({ endpoint: POLY_ENDPOINT.id, queryInput: "q", fixedInputs: {}, origin: "learned", learnedAt: "t", failures: 2 }), home);
+    const router = fakeRouter({ fail: { [POLY_ENDPOINT.id]: "provider error" }, replies: { [VALYU_ENDPOINT.id]: () => polymarketReply() } });
+    const model = learnModel();
+    const deps = { client: router.client, llm: model.llm, home, now: NOW };
+    const result = await resolveGoal(goal, SEARCH, deps);
+    assert.deepEqual([result.state.state, result.endpoint, result.items.length], ["returned items", VALYU_ENDPOINT.id, 3], "the same report has the items of the new route");
+    assert.deepEqual(router.calls.map((c) => c.endpoint), [POLY_ENDPOINT.id, VALYU_ENDPOINT.id], "one more router call");
+    assert.equal(model.requests.length, 2, "one route model call and the recipe model call of the new provider endpoint");
+    assert.deepEqual(routeCandidateIds(model.requests[0].messages[1].content), [VALYU_ENDPOINT.id], "the failed provider endpoint is not a candidate");
+    const kept = store.readRoutes(home).routes[goal.kind];
+    assert.deepEqual([kept.endpoint, kept.queryInput, kept.origin, kept.failures], [VALYU_ENDPOINT.id, "q", "learned", 0]);
+    // The next report uses the new route with no model call.
+    await resolveGoal(goal, SEARCH, deps);
+    assert.equal(model.requests.length, 2);
+
+    // A goal learns at most one route: a goal with no entry whose new route fails does not learn a second one.
+    store.updateRoute(goal.kind, () => undefined, home);
+    const broken = fakeRouter({ fail: { [POLY_ENDPOINT.id]: "provider error", [VALYU_ENDPOINT.id]: "provider error" } });
+    const once = learnModel();
+    const failed = await resolveGoal(goal, SEARCH, { ...deps, client: broken.client, llm: once.llm });
+    assert.deepEqual([failed.state.state, failed.state.engineStatus], ["could not be reached", "provider error"]);
+    assert.deepEqual([once.requests.length, broken.calls.length], [1, 1], "one route model call and one router call");
+    assert.equal(store.readRoutes(home).routes[goal.kind], undefined);
+
+    // The new route cannot be learned (the router catalog has only the failed provider endpoint): the goal keeps the fault of the cached route.
+    store.updateRoute(goal.kind, () => ({ endpoint: POLY_ENDPOINT.id, queryInput: "q", fixedInputs: {}, origin: "learned", learnedAt: "t", failures: 2 }), home);
+    const alone = fakeRouter({ catalog: [POLY_ENDPOINT], fail: { [POLY_ENDPOINT.id]: "timed out" } });
+    const none = await resolveGoal(goal, SEARCH, { ...deps, client: alone.client, llm: once.llm });
+    assert.deepEqual([none.state.state, none.state.engineStatus, none.endpoint], ["could not be reached", "timed out", POLY_ENDPOINT.id]);
+    assert.deepEqual([once.requests.length, alone.calls.length, alone.searches.length], [1, 1, 1], "a catalog search, no model call, no second router call");
+    assert.equal(store.readRoutes(home).routes[goal.kind], undefined);
+
+    // The topics of one recurring report call the same provider endpoint at the same time: their
+    // faults count as one, so one passing fault does not remove a route that works.
+    store.updateRoute(goal.kind, () => ({ endpoint: POLY_ENDPOINT.id, queryInput: "q", fixedInputs: {}, origin: "learned", learnedAt: "t", failures: 0 }), home);
+    const blip = fakeRouter({ fail: { [POLY_ENDPOINT.id]: "provider error" } });
+    const idle = learnModel();
+    await Promise.all([1, 2, 3, 4].map((n) => resolveGoal({ ...goal, query: `topic ${n}` }, SEARCH, { ...deps, client: blip.client, llm: idle.llm })));
+    const counted = store.readRoutes(home).routes[goal.kind];
+    assert.deepEqual([counted.endpoint, counted.failures, counted.lastFailureAt], [POLY_ENDPOINT.id, 1, NOW().toISOString()], "four faults at the same time count as one");
+    assert.equal(idle.requests.length, 0);
+    // A call that returns items sets the count back to zero.
+    await resolveGoal(goal, SEARCH, { ...deps, client: fakeRouter().client, llm: idle.llm });
+    assert.deepEqual([store.readRoutes(home).routes[goal.kind].failures, store.readRoutes(home).routes[goal.kind].lastFailureAt], [0, undefined]);
+
+    // A fault does not count against an entry of another provider endpoint that another report wrote.
+    store.updateRoute(goal.kind, () => ({ endpoint: POLY_ENDPOINT.id, queryInput: "q", fixedInputs: {}, origin: "learned", learnedAt: "t", failures: 2 }), home);
+    const swap = fakeRouter({
+      fail: {
+        [POLY_ENDPOINT.id]: () => {
+          store.updateRoute(goal.kind, () => ({ endpoint: VALYU_ENDPOINT.id, queryInput: "q", fixedInputs: {}, origin: "learned", learnedAt: "t", failures: 0 }), home);
+          return "provider error";
+        },
+      },
+    });
+    const quiet = learnModel();
+    await resolveGoal(goal, SEARCH, { ...deps, client: swap.client, llm: quiet.llm });
+    assert.deepEqual([store.readRoutes(home).routes[goal.kind].endpoint, store.readRoutes(home).routes[goal.kind].failures], [VALYU_ENDPOINT.id, 0]);
+    assert.equal(quiet.requests.length, 0);
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+  console.log("ok a removed route: one new route in the same report, without the failed provider endpoint, and at most one new route for a goal");
+}
+
+/** A learned route is valid only when its query input is an input of the provider endpoint (change route-cache-no-wait). */
+async function testQueryInput() {
+  const detail = { id: "ok.search", inputs: { type: "object", properties: { query: {}, limit: {} } } };
+  const details = new Map([["ok.search", detail]]);
+  assert.equal(learn.checkRouteAnswer({ endpoint: "ok.search", query_input: "", fixed_inputs: {} }, details), null, "an empty query input");
+  assert.equal(learn.checkRouteAnswer({ endpoint: "ok.search", fixed_inputs: {} }, details), null, "no query input");
+  assert.equal(learn.checkRouteAnswer({ endpoint: "ok.search", query_input: "keywords", fixed_inputs: {} }, details), null, "a name that the JSON Schema does not have");
+  assert.deepEqual(learn.checkRouteAnswer({ endpoint: "ok.search", query_input: " query ", fixed_inputs: {} }, details), { endpoint: "ok.search", queryInput: "query", fixedInputs: {} });
+  assert.equal(goals.usableRoute({ endpoint: "ok.search", queryInput: "", fixedInputs: {}, failures: 0 }), null, "a cached entry with an empty query input is not called");
+
+  const home = tempHermesHome();
+  try {
+    for (const query_input of ["", "keywords"]) {
+      const router = fakeRouter();
+      const model = learnModel({ route: { query_input } });
+      const result = await resolveGoal(POLY_GOAL, SEARCH, { client: router.client, llm: model.llm, home, now: NOW });
+      assert.deepEqual([result.state.state, result.state.engineStatus], ["could not be reached", goals.NO_ROUTE]);
+      assert.equal(router.calls.length, 0, `no router call for query input "${query_input}"`);
+      assert.equal(store.readRoutes(home).routes["prediction market odds"], undefined);
+    }
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+  console.log("ok query input: an empty or unknown query input gives no router call and no entry");
 }
 
 /** Security review, issue 2: recipes are strict paths, and only the link can be an https template. */
@@ -553,7 +685,9 @@ await testLearning();
 await testRecipeCheck();
 testDefaultGoals();
 await testCostLimits();
-await testRememberedFailure();
+await testNoWait();
+await testRemovedRouteIsReplaced();
+await testQueryInput();
 testStrictRecipes();
 testEmptyListFields();
 await testMedia();

@@ -6,6 +6,7 @@
 # introducedIn: the first release with the step. A step added in a new release shows up after the upgrade.
 # why, steps, mistakes: the how-to on the card. mention: the one sentence of the setup mention.
 # Order matters: the setup mention names the first open required setup step.
+# retired: ids of setup steps that a release removed. The reconcile completes their open cards.
 schemaVersion: 1
 prompts:
   - id: owner-profile
@@ -92,7 +93,7 @@ prompts:
     introducedIn: "0.1.50"
     deepLink: Connectors
     showWhen: anyGoogleAccountConnected
-    completeWhen: workAccountConnected
+    completeWhen: workAccountSettled
     idempotencyKey: onboarding:tip-connect-work-account
     why: >-
       None of the Google accounts in Connectors has your work email. If your work mail and meetings are on your
@@ -102,7 +103,7 @@ prompts:
       - For Gmail and for Google Calendar, select "Connect another account".
       - Sign in with the account of your work email.
     mistakes:
-      - Ignore this tip if your work mail is not on Google (for example Microsoft 365). Move the card to done.
+      - Connecting a personal account instead of the work account. If your work mail is not on Google (for example Microsoft 365), skip this tip; Joshu sees that and closes it.
 
   - id: tip-voice-pin
     type: tip
@@ -120,23 +121,6 @@ prompts:
     mistakes:
       - A PIN that is easy to guess, such as 1234 or your birth year.
 
-  - id: tip-save-box-number
-    type: tip
-    title: "Tip: save Joshu's phone number as a contact"
-    introducedIn: "0.1.50"
-    deepLink: Telephone
-    completeWhen: manual
-    idempotencyKey: onboarding:tip-save-box-number
-    why: >-
-      When Joshu calls you back or texts you, your phone shows the name instead of an unknown number, so you
-      answer the call.
-    steps:
-      - Open Telephone on the desktop and find the box number in "Phone number".
-      - Save that number as a contact on your phone, with Joshu's name.
-      - Move this card to done.
-    mistakes:
-      - Blocking or silencing unknown numbers on your phone before you save the contact. Joshu's callbacks then go to voicemail.
-
   - id: tip-first-phone-request
     type: tip
     title: "Tip: ask Joshu something by phone"
@@ -148,18 +132,20 @@ prompts:
       You can call Joshu like an assistant: ask about your day, dictate a note, or start a longer task, such as
       a flight search. Joshu does the long work in the background and tells you the result.
     steps:
-      - Call the box number in Telephone, "Phone number".
+      - Find the box number in Telephone, "Phone number", and save it as a contact on your phone, with Joshu's name. Your phone then shows the name when Joshu calls or texts you back.
+      - Call the box number.
       - Unlock the call with your passphrase or your keypad PIN.
       - Ask a question, for example "What's on my calendar tomorrow?"
     mistakes:
       - Calling before your mobile is set. Joshu can then answer during the call, but cannot call or text you back later.
+      - Blocking or silencing unknown numbers on your phone before you save the contact. Joshu's callbacks then go to voicemail.
 
   - id: tip-email-a-request
     type: tip
     title: "Tip: send Joshu a request by email"
     introducedIn: "0.1.50"
     deepLink: Welcome
-    completeWhen: manual
+    completeWhen: ownerEmailedBox
     idempotencyKey: onboarding:tip-email-a-request
     why: >-
       Joshu has its own email address. You can email a request to Joshu, or forward a thread with a short note,
@@ -167,6 +153,8 @@ prompts:
     steps:
       - Find Joshu's email address in Welcome ("Agent mailbox"), or on the first email that Joshu sent you.
       - Send Joshu a short request, for example "Find a time next week for a call with Sam".
-      - Move this card to done.
     mistakes:
       - Sending from an address that Joshu does not know. Use your work email, so Joshu knows that the request comes from you.
+
+retired:
+  - tip-save-box-number

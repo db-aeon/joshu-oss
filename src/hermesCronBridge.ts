@@ -10,7 +10,8 @@ export type CronBridgeAction =
   | "resume"
   | "run"
   | "remove"
-  | "realign_timezone";
+  | "realign_timezone"
+  | "unpin_models";
 
 export type CronBridgePayload = Record<string, unknown> & { action: CronBridgeAction };
 

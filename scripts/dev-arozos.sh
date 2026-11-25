@@ -36,6 +36,10 @@ resolve_joshu_design_pack
 LOCAL_DIR="${ROOT_DIR}/.local"
 VENDORED_AROZOS_SOURCE="${ROOT_DIR}/vendor/arozos"
 AROZOS_REPO="${AROZOS_REPO:-https://github.com/tobychui/arozos.git}"
+# The bootstrap clone uses the commit that patches/arozos/joshu-core.patch is built for.
+if [[ -z "${AROZOS_REF:-}" && -f "${ROOT_DIR}/patches/arozos/UPSTREAM_REF" ]]; then
+  AROZOS_REF="$(sed -n 's/^AROZOS_UPSTREAM_REF=//p' "${ROOT_DIR}/patches/arozos/UPSTREAM_REF" | tr -d '[:space:]')"
+fi
 AROZOS_REF="${AROZOS_REF:-master}"
 if [[ -z "${AROZOS_SOURCE_DIR:-}" ]]; then
   if [[ -d "${VENDORED_AROZOS_SOURCE}/src" ]]; then
@@ -309,7 +313,7 @@ prepare_arozos_template() {
   require_command rsync
 
   mkdir -p "${LOCAL_DIR}"
-  if [[ ! -d "${AROZOS_SOURCE_DIR}/.git" ]]; then
+  if [[ ! -e "${AROZOS_SOURCE_DIR}/.git" ]]; then
     echo "[dev-arozos] ArozOS source not found at ${AROZOS_SOURCE_DIR}"
     echo "[dev-arozos] cloning bootstrap source ${AROZOS_REPO} (${AROZOS_REF}) into ${AROZOS_SOURCE_DIR}"
     echo "[dev-arozos] for product work, add your private ArozOS mirror as vendor/arozos"
@@ -520,6 +524,8 @@ echo "[dev-arozos] starting ArozOS on http://127.0.0.1:${PUBLIC_AROZ_PORT}"
   exec "${AROZ_TEMPLATE}/arozos" \
     -port="${PUBLIC_AROZ_PORT}" \
     -disable_ip_resolver=true \
+    -enable_docker=false \
+    -arozcast_turn=false \
     -hostname="${AROZ_HOSTNAME:-Joshu-HITL-Local}" \
     -tmp="${AROZ_DATA}" \
     -root="${AROZ_DATA}/files"

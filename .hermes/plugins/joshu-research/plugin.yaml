@@ -1,5 +1,5 @@
 name: joshu-research
-version: 1.3.2
+version: 1.3.3
 description: Research reports, recurring reports, and report updates. Make a Research report about a topic or find an earlier one, follow topics on a schedule, and make a report update. Skill research-report tells how to answer on each channel.
 provides_tools:
   - research_report_make

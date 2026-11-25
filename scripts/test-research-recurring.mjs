@@ -266,7 +266,7 @@ async function testOldIds() {
     const router = fakeRouter();
     const exa = { async search() { return [{ url: "https://news.example/a", title: "Robots news", publishedDate: "2026-10-29T08:00:00.000Z", highlights: ["robots"] }]; }, async contents() { return []; } };
     const period = { from: "2026-01-01T00:00:00.000Z", fromDay: "2026-01-01", to: "2026-10-30T14:00:00.000Z", days: 300 };
-    const run = await collectRun([{ lane: saved.lanes[0], sources, period }], Date.now() + 10_000, { exa, composio: null, social: { client: router.client, home } });
+    const run = await collectRun([{ lane: saved.lanes[0], sources, period }], Date.now() + 10_000, { exa, sourceSearch: null, social: { client: router.client, home } });
     assert.deepEqual(router.calls.map((c) => c.endpoint).sort(), ["anyapi.x.search.posts", "scrapecreators.reddit.search.posts", "scrapecreators.x.v1-youtube-search"]);
     assert.ok(router.calls.every((c) => c.params.query === "humanoid robots"), "the social query of the lane plan");
     for (const id of ["reddit", "x", "youtube"]) {
@@ -279,7 +279,7 @@ async function testOldIds() {
     assert.deepEqual(withWebAndNews(["goal:a", "reddit", "goal:a"]), ["web", "reddit", "goal:a"]);
     const lane = { ...saved.lanes[0], plan: { ...saved.lanes[0].plan, extraGoals: [{ kind: "prediction market odds", query: "2028 primaries", prefer: "Polymarket" }] } };
     const withGoal = await collectRun([{ lane, sources: ["web"], period }], Date.now() + 10_000, {
-      exa, composio: null,
+      exa, sourceSearch: null,
       social: { client: router.client, home, llm: { fetchImpl: async (_u, init) => {
         const body = JSON.parse(init.body);
         const system = body.messages[0].content;

@@ -68,20 +68,33 @@ export function formatOwnerCompletion(raw: string, handoffUrls: string[]): strin
   return text.trim();
 }
 
+// A sentence ends at . ! or ? before a capital or a digit, but not after a
+// short abbreviation: "Est. 1636" and "8 a.m. Tuesday" stay on one line.
+const SENTENCE_END_RE =
+  /(?<!\b(?:Mr|Mrs|Ms|Dr|St|Mt|Jr|Sr|Est|No|Inc|Co|Ave|vs|etc|[ap]\.m|U\.S))([.!?])(\s+)(?=[A-Z0-9"“(])/g;
+
+/** A break keeps the blank line between paragraphs when the worker wrote one. */
+function lineBreak(space: string): string {
+  return /\n[ \t]*\n/.test(space) ? "\n\n" : "\n";
+}
+
 /** One fact per line so SMS stays readable after GSM folding. */
 function layoutOwnerLines(raw: string): string {
   let text = raw.replace(/[ \t]+/g, " ").trim();
-  text = text.replace(/\s*;\s*/g, "\n");
-  text = text.replace(/\s+(?=Out\b)/, "\n");
-  text = text.replace(/\s+(?=back\b)/i, "\n");
-  text = text.replace(/([.!?])\s+/g, "$1\n");
-  return text
+  text = text.replace(/\s*;\s*/g, lineBreak);
+  text = text.replace(/\s+(?=Out\b)/, lineBreak);
+  text = text.replace(/\s+(?=back\b)/i, lineBreak);
+  text = text.replace(SENTENCE_END_RE, (_match, mark: string, space: string) => mark + lineBreak(space));
+  const lines = text
     .split("\n")
-    .map((line) => line.replace(/\s{2,}/g, " ").replace(/\s+([,.;])/g, "$1").trim())
-    .filter(Boolean)
+    // A space goes only before a mark that ends a word: ".png" keeps its space.
+    .map((line) => line.replace(/\s{2,}/g, " ").replace(/\s+([,.;])(?!\w)/g, "$1").trim())
     // A link stays as it is: "Https://" is not the same text as the link.
-    .map((line) => (/^https?:\/\//i.test(line) ? line : line.charAt(0).toUpperCase() + line.slice(1)))
-    .join("\n");
+    .map((line) => (/^https?:\/\//i.test(line) ? line : line.charAt(0).toUpperCase() + line.slice(1)));
+  return lines
+    .filter((line, index) => line || (index > 0 && lines[index - 1]))
+    .join("\n")
+    .trim();
 }
 
 function pushUrls(text: string, into: string[]): void {

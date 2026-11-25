@@ -52,8 +52,9 @@ RESEARCH_REPORT_MAKE_SCHEMA = {
                 "type": "string",
                 "enum": ["exa", "you.com"],
                 "description": (
-                    "The web search of the report: 'exa' (the default) or 'you.com'. Only when the "
-                    "owner asks for You.com web search in so many words. Leave out otherwise."
+                    "The web search of the report: 'you.com' or 'exa'. Only when the owner asks "
+                    "for one of the two in so many words. Leave out otherwise: the box then "
+                    "uses You.com when it can reach You.com, or else Exa."
                 ),
             },
         },

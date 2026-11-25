@@ -14,7 +14,7 @@
   [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
   [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
-  [Website](https://www.joshu.me) | [Self-host guide](docs/vps-sandbox/hetzner-quickstart.md) | [User manual](docs/user-manual/README.md) | [Documentation](docs/README.md)
+  [Website](https://joshu.me) | [Self-host guide](docs/vps-sandbox/hetzner-quickstart.md) | [User manual](docs/user-manual/README.md) | [Documentation](docs/README.md)
 
   <br>
 
@@ -22,7 +22,7 @@
 </div>
 
 > [!NOTE]
-> Joshu is early. The self-hosted stack runs, but expect rough edges and breaking changes. The code is provided as is, with no warranty. If you would rather not run a server, [joshu.me](https://www.joshu.me) hosts a box for you with a 14-day free trial.
+> Joshu is early. The self-hosted stack runs, but expect rough edges and breaking changes. The code is provided as is, with no warranty. If you would rather not run a server, [joshu.me](https://joshu.me) hosts a box for you with a 14-day free trial.
 
 ## Why Joshu
 
@@ -125,28 +125,33 @@ On a self-hosted box, approvals are off until you turn them on in the Safety app
 
 ## Run your own box
 
-You need an Ubuntu server with 8 GB of RAM (for example on Hetzner or DigitalOcean), a domain name, and an [OpenRouter](https://openrouter.ai/keys) API key. The [VPS quickstart](docs/vps-sandbox/hetzner-quickstart.md) has the full walkthrough.
+A box runs as one container. You need a Linux machine with Docker and 8 GB of RAM, a domain name in a Cloudflare account, and an [OpenRouter](https://openrouter.ai/keys) API key. The [self-host guide](docs/self-host.md) has the full steps, and it also tells how to use a reverse proxy of your own instead of Cloudflare.
 
-1. Create the server, and point a DNS record for your domain (for example `mybox.example.com`) at its IP address.
-2. On the server, as root, clone Joshu and make the settings file:
+1. In the Cloudflare dashboard, make a Cloudflare Tunnel for your hostname (for example `mybox.example.com`), with one public hostname rule to `http://127.0.0.1:8080`, and copy the token of the tunnel.
+2. Make the settings file:
 
    ```bash
-   git clone --depth 1 --branch main https://github.com/db-aeon/joshu-oss.git /opt/joshu
-   mkdir -p /etc/joshu/secrets
-   cp /opt/joshu/deploy/.env.vps.example /etc/joshu/instance.env
-   nano /etc/joshu/instance.env
+   git clone --depth 1 --branch main https://github.com/db-aeon/joshu-oss.git
+   sudo mkdir -p /srv/joshu/secrets
+   sudo cp joshu-oss/deploy/.env.vps.example /srv/joshu/secrets/instance.env
+   sudo nano /srv/joshu/secrets/instance.env
    ```
 
-   Set `CUSTOMER_DOMAIN`, `VPS_IPV4`, `ACME_EMAIL`, and `JOSHU_AROZ_USER`, and copy the image version from [`deploy/RELEASE.json`](deploy/RELEASE.json).
-3. Run the bootstrap script. The first run takes 10 to 20 minutes.
+   Set `CUSTOMER_DOMAIN` to your hostname, and set `JOSHU_AROZ_USER`.
+3. Start the box. The first start, with the download of the image, takes 10 to 20 minutes.
 
    ```bash
-   cd /opt/joshu && ENV_FILE=/etc/joshu/instance.env bash deploy/scripts/bootstrap-vps.sh
+   sudo docker run -d --name joshu --restart unless-stopped \
+     -v /srv/joshu:/data \
+     -e JOSHU_DATA_ROOT=/data \
+     -e CLOUDFLARE_TUNNEL_TOKEN=<token> \
+     ghcr.io/db-aeon/joshu-oss:0.1.68 \
+     bash /opt/joshu/.image/scripts/vps-start.sh
    ```
 
 4. Open `https://mybox.example.com` in your browser, and create your account with the same username as `JOSHU_AROZ_USER`. The Welcome app opens and asks for your OpenRouter key. You can also paste a Gemini key, which turns on voice in jChat and on phone calls.
 
-Other ways to install, e.g., Docker Compose, are in the [self-host guide](docs/self-host.md).
+A box that runs with Docker Compose keeps working, but Docker Compose is deprecated. The self-host guide tells how to move such a box to one container.
 
 Some tools use a paid service with your own key. In Connectors, section **AI providers**, you can paste a [fal.ai](https://fal.ai) key for images, video, and audio, and a router API key of the Joshu content router, which you create in your account on [hello.joshu.me](https://hello.joshu.me). With the content router, Research reports get posts from Reddit, YouTube, TikTok, Instagram, and X, the companion can read the caption, the transcript, and the comments of a social post from its link, and the companion can make images and videos. Each call takes the provider price plus the router markup from your usage wallet. How the box uses these keys is in [the technical reference on metered providers](docs/technical-reference/metered-providers.md).
 
@@ -168,7 +173,7 @@ The [user manual](docs/user-manual/README.md) explains each feature, and each ch
 
 ## Run it on your laptop
 
-For development, you need Node.js 22 or later, npm, Docker, and Go 1.24 or later.
+For development, you need Node.js 22 or later, npm, Docker, and Go 1.25 or later.
 
 ```bash
 git clone https://github.com/db-aeon/joshu-oss.git
@@ -185,7 +190,7 @@ The last command starts the shared Chromium browser, builds the desktop when nee
 | Topic | Document |
 |-------|----------|
 | How to use your companion | [User manual](docs/user-manual/README.md) |
-| Install a box on a server | [VPS quickstart](docs/vps-sandbox/hetzner-quickstart.md) and [self-host guide](docs/self-host.md) |
+| Install a box on a server | [Self-host guide](docs/self-host.md) |
 | Install for development | [local-installation.md](docs/local-installation.md) |
 | How the platform is built | [platform-architecture.md](docs/platform-architecture.md) |
 | Build a desktop app | [app-sdk.md](docs/app-sdk.md) and [app-agent.md](docs/app-agent.md) |

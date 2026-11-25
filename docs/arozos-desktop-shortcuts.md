@@ -17,6 +17,12 @@ Joshu does **not** expose a set of stock ArozOS apps in the start menu / Module 
 
 Browser, Clock, Image Paste, IoT Hub, Management Gateway, Manga, **MDEditor** and **NotepadA** (Joshu **jNotes** owns `.md` / `.txt`), Memo, Music, Photo, Serverless, Speedtest, Tasks Scheduler, Timer, Unit Tester, Video (Media web app — not Video Player), Web Builder, Web Downloader.
 
+The list also holds the stock apps that upstream added between the pins `8894ffe` and `e3819d1`, so that the upstream update did not change the apps the owner sees:
+
+AGI Forge, AI Chat, Arozcast, Audio Studio, Calculator, Calendar, Chatspace, Cine Studio, CronDemo, Dashboard, Docker Manager, Docs, FFmpeg Factory, GitApp, MeetRoom, Movie, Musicify, Notes, OTP Authenticator, PDF Tool, Pixel Studio, Productivity, Raw Editor, Reminders, SQLite Admin, Sheets, Slides, Terminal, Text, Zip File Manager.
+
+To show one of these apps, remove its line from `HiddenModules` and rebuild the patch ([`patches/arozos/README.md`](../patches/arozos/README.md)).
+
 Assets stay on disk; they simply never register. Use Joshu **Schedules** instead of stock Tasks Scheduler.
 
 Joshu-owned apps update **both** `moduleInfo.json` and shortcuts. Subservice directory names (`joshu/`, `hermes-chat/`, …) stay unchanged; only the registered `"Name"` and shortcut content change.

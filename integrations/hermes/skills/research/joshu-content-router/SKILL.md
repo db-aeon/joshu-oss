@@ -4,12 +4,12 @@ description: Use the Joshu content router (toolset mcp-joshu-router) to get soci
 metadata:
   hermes:
     category: research
-    version: "1.0.0"
+    version: "1.0.1"
 ---
 
 # Content router
 
-The content router is a service of Joshu. It has one catalog of the data and media that the box can ask for, and one call that picks the cheapest working way to reach each provider endpoint. Each call takes the provider price plus the router markup from the usage wallet of the owner. The Exa web search and Composio Search are base sources: they do not go through the content router and cost the owner nothing.
+The content router is a service of Joshu. It has one catalog of the data and media that the box can ask for, and one call that picks the cheapest working way to reach each provider endpoint. Each call takes the provider price plus the router markup from the usage wallet of the owner. The web search of the box (You.com or Exa) is a base source: it does not go through the content router and costs the owner nothing. News, research papers, stock prices, and SEC filings of a Research report go through the content router.
 
 Use this skill when:
 

@@ -168,7 +168,7 @@ function deps(over = {}) {
   return {
     projectRoot: "/unused",
     exa: over.exa,
-    composio: null,
+    sourceSearch: null,
     social: NO_SOCIAL,
     llm: { fetchImpl: (over.model ?? runModel()).fetchImpl, apiKey: "k", model: "m" },
     senders: fakeSenders(log, over.senders),
@@ -821,24 +821,52 @@ async function testSearchTerms() {
   const exaCalls = [];
   const exa = fakeExa({ "EvolutionIQ": [page("https://news.example/eiq", "eiq")], "CLARA Analytics": [page("https://news.example/clara", "clara")] }, exaCalls);
   const newsCalls = [];
-  const composio = {
+  const sourceSearch = {
     async news(query) {
       newsCalls.push(query);
-      if (query === "EvolutionIQ") throw new Error("Composio down");
+      if (query === "EvolutionIQ") throw new Error("source search down");
       return [{ url: `https://press.example/${query.replace(/\W/g, "")}`, title: query, publishedDate: "2026-10-29", highlights: [] }];
     },
   };
   const lane = { id: "l1", topic: "CLARA Analytics", addedAt: "2026-10-01", plan: { picks: ["web"], reason: "", webQueries: ["clara analytics claims AI"], newsQuery: "CLARA Analytics", socialQuery: "", scholarQuery: "", madeAt: "2026-10-01" } };
   const period = { from: "2026-10-23T00:00:00.000Z", fromDay: "2026-10-23", to: "2026-10-30T00:00:00.000Z", days: 7 };
-  const out = await collectLane(lane, ["web"], period, Date.now() + 5000, { exa, composio, social: NO_SOCIAL }, ["CLARA Analytics", "EvolutionIQ"]);
+  const out = await collectLane(lane, ["web"], period, Date.now() + 5000, { exa, sourceSearch, social: NO_SOCIAL }, ["CLARA Analytics", "EvolutionIQ"]);
   assert.deepEqual(exaCalls.map((c) => [c.query, c.numResults]), [["clara analytics claims AI", 8], ["CLARA Analytics", 5], ["EvolutionIQ", 5]], "one Exa search for each term, with fewer results");
   assert.deepEqual(newsCalls, ["CLARA Analytics", "EvolutionIQ"], "a term that repeats the news query is searched once");
   assert.equal(out.webSearches, 3);
   assert.ok(out.items.some((i) => i.url === "https://news.example/eiq"));
+  // The source list names the web search provider of the box (change you-web-provider).
+  assert.equal(out.sources.find((s) => s.name === "web").label, "Web (Exa)", "Exa when the run gives no label");
+  const withYou = await collectLane(lane, ["web"], period, Date.now() + 5000, { exa, sourceSearch, social: NO_SOCIAL, webLabel: "Web (You.com)" }, ["CLARA Analytics"]);
+  assert.equal(withYou.sources.find((s) => s.name === "web").label, "Web (You.com)", "a box with a You.com key names You.com");
+  const noKey = await collectLane(lane, ["web"], period, Date.now() + 5000, { exa: null, sourceSearch, social: NO_SOCIAL }, []);
+  assert.equal(noKey.sources.find((s) => s.name === "web").engineStatus, "no web search key");
   const news = out.sources.find((s) => s.name === "news");
   assert.equal(news.state, "returned items", "one failed news search does not fail Google News");
   assert.equal(news.engineStatus, "1 of 2 searches failed");
-  console.log("ok search terms: named terms always, expanded terms in turn up to the limit, one Exa and one Google News search each");
+  // An empty usage wallet fails each news search for the same reason, and the source state keeps the reason.
+  const weekCalls = [];
+  const emptyWallet = {
+    async news(query, _deadline, when) {
+      weekCalls.push(when);
+      throw new Error("usage wallet empty");
+    },
+  };
+  const broke = await collectLane(lane, ["web"], period, Date.now() + 5000, { exa, sourceSearch: emptyWallet, social: NO_SOCIAL }, ["CLARA Analytics", "EvolutionIQ"]);
+  const brokeNews = broke.sources.find((s) => s.name === "news");
+  assert.deepEqual([brokeNews.state, brokeNews.engineStatus], ["could not be reached", "usage wallet empty"], "the reason that links to the usage billing page");
+  assert.deepEqual(weekCalls, ["w", "w"], "a period of 7 days asks Google News for the last week");
+  // A box that cannot call the content router lists Google News with that reason.
+  const noRouter = await collectLane(lane, ["web"], period, Date.now() + 5000, { exa, sourceSearch: null, social: NO_SOCIAL }, []);
+  assert.deepEqual([noRouter.sources.find((s) => s.name === "news").state, noRouter.sources.find((s) => s.name === "news").engineStatus], ["could not be reached", "no content router access"]);
+  // With the sources Research papers and Company data, each of them is listed with the same reason.
+  const companyLane = { ...lane, plan: { ...lane.plan, company: { name: "CLARA Analytics", ticker: "CLRA", exchange: "NASDAQ" }, scholarQuery: "claims AI" } };
+  const noRouterAll = await collectLane(companyLane, ["web", "papers", "company"], period, Date.now() + 5000, { exa, sourceSearch: null, social: NO_SOCIAL }, []);
+  assert.deepEqual(
+    ["news", "scholar", "prices", "filings"].map((name) => noRouterAll.sources.find((s) => s.name === name)?.engineStatus),
+    ["no content router access", "no content router access", "no content router access", "no content router access"],
+  );
+  console.log("ok search terms: named terms always, expanded terms in turn up to the limit, one Exa and one Google News search each, an empty usage wallet");
 }
 
 /** A meaning model: answers the call for what the topics of old lane plans mean, and passes the rest on. */

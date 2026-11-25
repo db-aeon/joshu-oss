@@ -2,14 +2,14 @@
  * Search and rank steps of the research pipeline: two Exa searches for each sub-question (recent
  * and evergreen), duplicate removal, at most two pages for each site, a content-farm deny list,
  * and the full text and images of the best pages. Design decision D1. Each search term of a
- * sub-question adds one recent Exa search (change research-keyword-expansion). With Composio Search, the
+ * sub-question adds one recent Exa search (change research-keyword-expansion). With source search, the
  * news, the papers, and the company pages join the pages (change research-report-sources, D3 to D7).
  */
 
 import { ResearchStepError } from "../errors.js";
 import type { PageSource, ResearchPlan, SourceState, WebPage } from "../types.js";
 import { collectCompany } from "./company.js";
-import type { ComposioSearchClient } from "./composioSearch.js";
+import type { SourceSearchClient } from "./sourceSearch.js";
 import { resultPictures, searchAll, type ExaClient, type ExaResult } from "./exa.js";
 import { mapLimit, withDeadline } from "./llm.js";
 
@@ -146,8 +146,8 @@ function extraState(name: string, label: string, answers: { results: ExaResult[]
 }
 
 /**
- * Search the web for each sub-question and read the best pages in full. With Composio Search, the
- * news, paper, and company calls run at the same time as the Exa searches, and a failed Composio
+ * Search the web for each sub-question and read the best pages in full. With source search, the
+ * news, paper, and company calls run at the same time as the Exa searches, and a failed source search
  * call only gives fewer pages (D6). Throws `ResearchStepError` ("search") when every Exa search
  * fails, because the facts come from the web.
  */
@@ -156,7 +156,7 @@ export async function searchWeb(
   plan: ResearchPlan,
   day: string,
   deadline: number,
-  composio: ComposioSearchClient | null = null,
+  sourceSearch: SourceSearchClient | null = null,
 ): Promise<{ pages: WebPage[]; failed: number; total: number; extraSources: SourceState[] }> {
   const requests = plan.subQuestions.flatMap((q) => [
     { subQuestionId: q.id, req: { query: q.recentQuery, startPublishedDate: startDate(day), excludeDomains: EXCLUDED_DOMAINS, highlightsQuery: q.question } },
@@ -167,10 +167,10 @@ export async function searchWeb(
       req: { query, numResults: TERM_RESULTS, startPublishedDate: startDate(day), excludeDomains: EXCLUDED_DOMAINS, highlightsQuery: q.question },
     })),
   ]);
-  const extras: ExtraSearch[] = composio
+  const extras: ExtraSearch[] = sourceSearch
     ? plan.subQuestions.flatMap((q) => [
-        { subQuestionId: q.id, via: "news" as const, run: () => composio.news(q.recentQuery, deadline) },
-        ...(q.scholarQuery ? [{ subQuestionId: q.id, via: "scholar" as const, run: () => composio.scholar(q.scholarQuery!, deadline) }] : []),
+        { subQuestionId: q.id, via: "news" as const, run: () => sourceSearch.news(q.recentQuery, deadline) },
+        ...(q.scholarQuery ? [{ subQuestionId: q.id, via: "scholar" as const, run: () => sourceSearch.scholar(q.scholarQuery!, deadline) }] : []),
       ])
     : [];
   const readPassages = async (urls: string[]) => {
@@ -193,13 +193,13 @@ export async function searchWeb(
         return { results: [] as ExaResult[], error: (err as Error).message };
       }
     }),
-    composio && plan.company ? collectCompany(composio, plan.company, readPassages, deadline) : null,
+    sourceSearch && plan.company ? collectCompany(sourceSearch, plan.company, readPassages, deadline) : null,
   ]);
   const failed = answers.filter((a) => a.error).length;
   if (failed === answers.length) {
     throw new ResearchStepError("search", answers[0]?.error ?? "the web search failed");
   }
-  // The Exa pages are chosen from the Exa results alone, exactly as without Composio Search, so
+  // The Exa pages are chosen from the Exa results alone, exactly as without source search, so
   // news and papers add pages and never take the place of an Exa page (D3).
   const webFound = answers.map((a, i) => ({ subQuestionId: requests[i]!.subQuestionId, results: a.results }));
   const extraFound = extraAnswers.map((a, i) => ({ subQuestionId: extras[i]!.subQuestionId, via: extras[i]!.via, results: a.results }));
@@ -210,7 +210,7 @@ export async function searchWeb(
   const notWeb = (p: WebPage) => !webKeys.has(normalizeUrl(p.url));
   const newsPages = merged.filter((p) => notWeb(p) && p.foundVia.includes("news")).slice(0, NEWS_PAGES_KEPT);
 
-  // The top paper of each Google Scholar search is read in full, because the snippet of a paper is
+  // The top paper of each search for research papers is read in full, because the snippet of a paper is
   // too short for facts (D3). Other papers are left out.
   const topPaperKeys = new Set(
     extraAnswers.flatMap((a, i) => (extras[i]!.via === "scholar" && a.results[0]?.url ? [normalizeUrl(a.results[0].url)] : [])),
@@ -247,8 +247,8 @@ export async function searchWeb(
   const extraSources: SourceState[] = [];
   const news = extraAnswers.filter((_, i) => extras[i]!.via === "news");
   const papers = extraAnswers.filter((_, i) => extras[i]!.via === "scholar");
-  if (news.length) extraSources.push(extraState("news", "News (Google News)", news));
-  if (papers.length) extraSources.push(extraState("scholar", "Research papers (Google Scholar)", papers));
+  if (news.length) extraSources.push(extraState("news", "News", news));
+  if (papers.length) extraSources.push(extraState("scholar", "Research papers", papers));
   if (company) extraSources.push(...company.sources);
   return { pages: numbered, failed, total: answers.length, extraSources };
 }

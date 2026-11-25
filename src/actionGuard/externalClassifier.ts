@@ -1,5 +1,6 @@
 import { day0ChatCompletion } from "../day0/llm.js";
 import { resolveActionExposure } from "./classify.js";
+import { JOSHU_OPENROUTER_CLASSIFIER_MODEL } from "../joshuOpenRouterDefaults.js";
 
 export type ExternalActionClassification = {
   needsApproval: boolean;
@@ -11,7 +12,7 @@ function resolveClassifierModel(): string {
   return (
     process.env.JOSHU_ACTION_GUARD_CLASSIFIER_MODEL?.trim() ||
     process.env.JOSHU_DAY0_MODEL?.trim() ||
-    "openai/gpt-5.4-nano"
+    JOSHU_OPENROUTER_CLASSIFIER_MODEL
   );
 }
 

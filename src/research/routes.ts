@@ -84,12 +84,14 @@ export function registerResearchRoutes(router: Router, deps: ResearchRouteDeps):
       return;
     }
     const make = deps.make ?? ((t: string, opts?: Pick<MakeDeps, "sources" | "request" | "webProvider">) => makeResearchReport(deps.projectRoot, t, opts));
-    // The web search provider of this report (change research-web-provider): Exa unless the request names You.com.
-    const webProvider = parseWebProvider(req.body?.web_provider);
-    if (!webProvider) {
+    // The web provider of this report: the one that the request names, or else the box chooses
+    // (changes research-web-provider and you-web-provider).
+    const parsedProvider = parseWebProvider(req.body?.web_provider);
+    if (!parsedProvider) {
       res.status(400).json({ ok: false, error: `web_provider must be one of: ${WEB_PROVIDERS.join(", ")}` });
       return;
     }
+    const webProvider = parsedProvider === "default" ? undefined : parsedProvider;
     // What the owner said about the topic and the sections that the owner wants (D14 and D15), and
     // the hints that the companion took from its skills (change content-router, D8).
     const request = {

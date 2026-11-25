@@ -327,7 +327,8 @@ body {
   overflow: hidden;
   position: relative;
   overscroll-behavior: contain;
-  touch-action: none;
+  /* One finger goes to the remote page. Two fingers zoom the handoff page (change handoff-pinch-zoom). */
+  touch-action: pinch-zoom;
 }
 
 #vnc-screen > div {

@@ -1,11 +1,67 @@
-/** Fixed OpenRouter model id for Joshu Hermes boxes (not openrouter/auto). */
-export const JOSHU_OPENROUTER_DEFAULT_MODEL = "deepseek/deepseek-v4.1-flash";
+/**
+ * Hermes model of this release (OpenRouter model id, not openrouter/auto). The release owns the
+ * model: a box runs this model unless JOSHU_HERMES_MODEL in /etc/joshu/instance.env overrides it
+ * on purpose. Change the model here, in the release (change release-hermes-model).
+ * scripts/test-release-hermes-model.mjs checks that the fallbacks in the shell scripts and in the
+ * voice service name the same model.
+ */
+export const JOSHU_OPENROUTER_DEFAULT_MODEL = "deepseek/deepseek-v4.1-flash-1017";
+
+/**
+ * Hermes models that the control plane wrote into JOSHU_HERMES_MODEL of instance.env at
+ * provision, before the release owned the model. A JOSHU_HERMES_MODEL value or a cron job pin
+ * with one of these models is not a choice of the owner, so the box drops it and follows the
+ * release. packages/instance-agent/src/releaseEnv.ts has the same list; the test compares them.
+ */
+export const CONTROL_PLANE_HERMES_MODELS: readonly string[] = [
+  "deepseek/deepseek-v4-flash",
+  "deepseek/deepseek-v4-flash-0731",
+  "deepseek/deepseek-v4.1-flash",
+];
 
 /** OpenRouter model for Hermes session_search per-session summarization (auxiliary task). */
-export const JOSHU_OPENROUTER_SESSION_SEARCH_MODEL = "google/gemini-3.1-flash-lite";
+export const JOSHU_OPENROUTER_SESSION_SEARCH_MODEL = "google/gemini-3.5-flash-lite";
 
-/** OpenRouter model for Hindsight retain / reflect / consolidation (LLM task). */
-export const JOSHU_OPENROUTER_HINDSIGHT_LLM_MODEL = "google/gemini-3.1-flash-lite";
+/**
+ * Hindsight model of this release (OpenRouter model id) for retain, reflect, and consolidation.
+ * A box whose Hindsight uses OpenRouter runs this model unless HINDSIGHT_API_LLM_MODEL in
+ * /etc/joshu/instance.env overrides it on purpose (change release-hindsight-model).
+ * scripts/start-hindsight.sh has the same model as its fallback; the test compares them.
+ */
+export const JOSHU_OPENROUTER_HINDSIGHT_LLM_MODEL = "google/gemini-3.5-flash-lite";
+
+/**
+ * Hindsight models that the control plane wrote into HINDSIGHT_API_LLM_MODEL of instance.env at
+ * provision, before the release owned the model. The box drops such a value and follows the
+ * release. packages/instance-agent/src/releaseEnv.ts has the same list; the test compares them.
+ */
+export const CONTROL_PLANE_HINDSIGHT_LLM_MODELS: readonly string[] = ["google/gemini-3.1-flash-lite"];
+
+/**
+ * OpenRouter model for the small classifiers: mail triage, the action guard, the realtime goal
+ * router, and Day 0. Each caller has its own env override (for example JOSHU_EA_CLASSIFIER_MODEL).
+ */
+export const JOSHU_OPENROUTER_CLASSIFIER_MODEL = "anthropic/claude-haiku-5.5";
+
+/**
+ * instance.env keys that a box drops because the control plane wrote their value: a Hermes model
+ * or a Hindsight model from before the release owned it. Another value is a deliberate override
+ * and stays. The instance agent runs the same rule in a release update
+ * (packages/instance-agent/src/releaseEnv.ts, releaseEnvRemovals); the test compares the two.
+ */
+export function controlPlaneEnvRemovals(current: Record<string, string | undefined>): string[] {
+  const removals: string[] = [];
+  const hermes = (current.JOSHU_HERMES_MODEL ?? "").trim().toLowerCase();
+  if (hermes && CONTROL_PLANE_HERMES_MODELS.includes(hermes)) removals.push("JOSHU_HERMES_MODEL");
+  // Only for OpenRouter: the release Hindsight model is an OpenRouter model id, and the start
+  // script of Hindsight has a fallback only for that provider.
+  const hindsight = (current.HINDSIGHT_API_LLM_MODEL ?? "").trim().toLowerCase();
+  const hindsightProvider = (current.HINDSIGHT_API_LLM_PROVIDER ?? "").trim().toLowerCase();
+  if (hindsight && hindsightProvider === "openrouter" && CONTROL_PLANE_HINDSIGHT_LLM_MODELS.includes(hindsight)) {
+    removals.push("HINDSIGHT_API_LLM_MODEL");
+  }
+  return removals;
+}
 
 export const JOSHU_OPENROUTER_HINDSIGHT_LLM_PROVIDER = "openrouter";
 

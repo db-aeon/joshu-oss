@@ -4,7 +4,7 @@
  * joshu app repo or per-Desktop nested repos).
  */
 import { execFile } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
 
@@ -88,6 +88,24 @@ export function resolveGbrainGitRoot(desktopOrUsersRoot) {
 }
 
 /**
+ * True when two paths name the same folder. In single-container mode the data folders are
+ * links to the data root (`/var/lib/arozos` → `/data/arozos`), and `git rev-parse
+ * --show-toplevel` prints the path behind the link. A plain text compare then called each
+ * repository invalid, and each sync deleted `.git` and made a new one (box of Dan, 2026-11-15).
+ *
+ * @param {string | null} a
+ * @param {string} b
+ */
+function isSameFolder(a, b) {
+  if (!a) return false;
+  try {
+    return realpathSync(a) === realpathSync(b);
+  } catch {
+    return path.resolve(a) === path.resolve(b);
+  }
+}
+
+/**
  * @param {string} gitRoot
  * @returns {Promise<string | null>}
  */
@@ -110,7 +128,7 @@ async function hasValidOwnGitRepo(gitRoot) {
   const resolved = path.resolve(gitRoot);
   if (!existsSync(path.join(resolved, ".git"))) return false;
   const toplevel = await gitToplevel(resolved);
-  return toplevel === resolved;
+  return isSameFolder(toplevel, resolved);
 }
 
 /**
@@ -136,7 +154,7 @@ async function repairBrokenGitRoot(gitRoot) {
 async function assertOwnGitRoot(gitRoot) {
   const resolved = path.resolve(gitRoot);
   const toplevel = await gitToplevel(resolved);
-  if (toplevel !== resolved) {
+  if (!isSameFolder(toplevel, resolved)) {
     throw new Error(
       `[gbrain-desktop-git] refusing git at ${resolved}: nested repo missing (inside ${toplevel ?? "unknown"})`,
     );
@@ -384,7 +402,7 @@ export async function ensureGbrainGitRepo(desktopOrUsersRoot) {
   const hasOwnGit = await hasValidOwnGitRepo(gitRoot);
   const toplevel = await gitToplevel(gitRoot);
 
-  if (toplevel === gitRoot && !hasOwnGit) {
+  if (isSameFolder(toplevel, gitRoot) && !hasOwnGit) {
     await ensureBaselineCommit(gitRoot);
     return;
   }
@@ -394,7 +412,7 @@ export async function ensureGbrainGitRepo(desktopOrUsersRoot) {
     return;
   }
 
-  if (toplevel && toplevel !== gitRoot) {
+  if (toplevel && !isSameFolder(toplevel, gitRoot)) {
     console.warn(
       `[gbrain-desktop-git] files/users inside ${toplevel}; initializing nested git at ${gitRoot}`,
     );

@@ -1,11 +1,11 @@
 {
-  "version": "0.1.65",
+  "version": "0.1.68",
   "channel": "stable",
-  "imageRef": "ghcr.io/db-aeon/joshu-oss:0.1.65",
-  "voiceImageRef": "ghcr.io/db-aeon/joshu-oss-voice-realtime:0.1.65",
-  "instanceAgentImageRef": "ghcr.io/db-aeon/joshu-oss-instance-agent:0.1.65",
+  "imageRef": "ghcr.io/db-aeon/joshu-oss:0.1.68",
+  "voiceImageRef": "ghcr.io/db-aeon/joshu-oss-voice-realtime:0.1.68",
+  "instanceAgentImageRef": "ghcr.io/db-aeon/joshu-oss-instance-agent:0.1.68",
   "hermesRef": "3c27eb6234bf91b8ceee9e9071591b31e9b148cb",
   "gbrainRef": "fa2c7a6990a7a57b251979ef6e1988ff09529021",
-  "builtAt": "2026-11-07T00:02:01.563Z",
-  "notes": "0.1.65 — Research reports can use You.com in place of Exa for the web search (new argument web_provider); the content router accepts an empty list as no field in a shape recipe and logs the reason of \"could not be read\"; three OpenSpec changes archived."
+  "builtAt": "2026-11-21T00:27:12.734Z",
+  "notes": "0.1.68 — Research reports get news, research papers, and SEC filings through content goals of the content router, and stock prices through a fixed Tiingo endpoint, after Composio retired its search toolkit; the route cache of the content router has no wait of one week after a failed route, and a removed route is replaced in the same report; a box on a sandbox runs restart, secret changes, and desktop password resets by a restart in place, and the fleet stage rebuilds it."
 }

@@ -123,8 +123,39 @@ function clean(text: string, max: number): string {
   return decodeEntities(text).replace(/\s+/g, " ").trim().slice(0, max);
 }
 
-/** `YYYY-MM-DD` (UTC) from a date in `format`, or undefined. `text` also reads the X form `Mon Oct 26 10:16:50 +0000 2026`. */
-export function dayOf(value: unknown, format: DateFormat = "text"): string | undefined {
+const DAY_MS = 86_400_000;
+
+/** The milliseconds of a unit of a relative date: a word, or a short form such as `h`, `hrs`, `mo`, or `w`. */
+function relativeUnitMs(unit: string): number {
+  const u = unit.toLowerCase();
+  if (u.startsWith("s")) return 1000;
+  if (u.startsWith("mo")) return 30 * DAY_MS;
+  if (u.startsWith("m")) return 60_000;
+  if (u.startsWith("h")) return 3_600_000;
+  if (u.startsWith("d")) return DAY_MS;
+  if (u.startsWith("w")) return 7 * DAY_MS;
+  return 365 * DAY_MS;
+}
+
+/**
+ * The time of a relative date, or null: `4 days ago`, `2 hrs ago`, `an hour ago`, `3h ago`,
+ * `45 seconds ago`, or `yesterday`.
+ */
+export function relativeDate(value: string, now: Date = new Date()): Date | null {
+  const text = value.trim();
+  if (/^yesterday$/i.test(text)) return new Date(now.getTime() - DAY_MS);
+  const m = text.match(/^(an?|\d+)\s*(seconds?|secs?|s|minutes?|mins?|m|hours?|hrs?|h|days?|d|weeks?|wks?|w|months?|mos?|years?|yrs?|y)\s+ago$/i);
+  if (!m) return null;
+  const count = /^an?$/i.test(m[1]!) ? 1 : Number(m[1]);
+  return new Date(now.getTime() - count * relativeUnitMs(m[2]!));
+}
+
+/**
+ * `YYYY-MM-DD` (UTC) from a date in `format`, or undefined. `text` also reads the X form
+ * `Mon Oct 26 10:16:50 +0000 2026` and a relative date such as `4 days ago`, which search results
+ * of news often have.
+ */
+export function dayOf(value: unknown, format: DateFormat = "text", now: Date = new Date()): string | undefined {
   let d: Date | null = null;
   const n = typeof value === "number" ? value : typeof value === "string" && /^\d+(\.\d+)?$/.test(value.trim()) ? Number(value) : NaN;
   if (format === "epoch_s" && Number.isFinite(n)) d = new Date(n * 1000);
@@ -133,7 +164,7 @@ export function dayOf(value: unknown, format: DateFormat = "text"): string | und
     const iso = value.match(/^(\d{4}-\d{2}-\d{2})/);
     if (iso) return iso[1];
     const x = value.match(/^\w{3} (\w{3}) (\d{1,2}) (\d{2}:\d{2}:\d{2}) ([+-]\d{4}) (\d{4})$/);
-    d = x ? new Date(`${x[1]} ${x[2]}, ${x[5]} ${x[3]} GMT${x[4]}`) : format === "text" ? new Date(value) : null;
+    d = x ? new Date(`${x[1]} ${x[2]}, ${x[5]} ${x[3]} GMT${x[4]}`) : relativeDate(value, now) ?? (format === "text" ? new Date(value) : null);
   } else if (Number.isFinite(n)) {
     // A number with format iso or text: seconds when it is small enough, else milliseconds.
     d = new Date(n < 1e11 ? n * 1000 : n);

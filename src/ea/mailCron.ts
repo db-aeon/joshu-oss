@@ -27,7 +27,8 @@ import {
   mailTrackTaskIdempotencyKey,
 } from "./mailDedup.js";
 import type { MailAgentAuthorization } from "./agentAuthorization.js";
-import { resolveOwnerEmails } from "./agentAuthorization.js";
+import { OUTSIDER_NEEDS_OWNER_OK, resolveOwnerEmails } from "./agentAuthorization.js";
+import { ownerOkQuestionSent, readOutsiderSendRecord } from "./outsiderSendRecord.js";
 import { resolveJoshuAgentEmails } from "./ingestFilters.js";
 import { mailIngressOpenGoalLines } from "../realtimeGoals/doneElsewhere.js";
 import { RealtimeGoalStore } from "../realtimeGoals/store.js";
@@ -112,7 +113,13 @@ export async function buildMailIngressTaskBody(
     ownerEmails: resolveOwnerEmails(projectRoot, input.accountEmail),
     provider: input.provider,
   });
-  const schedulingPathA = schedulingHint && !directAgentAsk;
+  // The owner answering an owner-OK question mails the companion directly, but it is a
+  // scheduling decision for the outsider's thread, not an owner-reply ask.
+  const outsiderSends = readOutsiderSendRecord(input.filesRoot);
+  const ownerOkAnswer =
+    Boolean(fromEmail && resolveOwnerEmails(projectRoot, input.accountEmail).has(fromEmail.toLowerCase())) &&
+    ownerOkQuestionSent(outsiderSends, input.threadId?.trim());
+  const schedulingPathA = schedulingHint && (!directAgentAsk || ownerOkAnswer);
 
   let hasMeetingNegotiation = false;
   let hasOwnerDeliverable = false;
@@ -182,11 +189,18 @@ export async function buildMailIngressTaskBody(
   const schedulingEligible =
     schedulingHint && !ownerReplyEligible && !hasOwnerDeliverable;
   const schedulingHandoffOnly = hasMeetingNegotiation && schedulingHint;
+  // An outsider asks for a meeting on a thread that is not authorized: ask the owner once.
+  const ownerOkNeeded =
+    auth.reason === OUTSIDER_NEEDS_OWNER_OK &&
+    input.classification.category === "scheduling" &&
+    !ownerOkQuestionSent(outsiderSends, threadId);
   const allowedActions = schedulingEligible
     ? "file,schedule"
     : ownerReplyEligible
       ? "file,reply"
-      : "file";
+      : ownerOkNeeded
+        ? "file,ask_owner"
+        : "file";
   const lines = [
     "kind: mail_ingress",
     `board: ${EA_MAIL_INGRESS_BOARD}`,
@@ -205,6 +219,7 @@ export async function buildMailIngressTaskBody(
     `scheduling_eligible: ${schedulingEligible}`,
     `owner_reply_eligible: ${ownerReplyEligible}`,
     `allowed_actions: ${allowedActions}`,
+    ...(ownerOkNeeded ? ["owner_ok_needed: true"] : []),
     `authorization_reason: ${JSON.stringify(auth.reason)}`,
     ...(coordinationScopeId ? [`coordination_scope_id: ${coordinationScopeId}`] : []),
     ...(hasMeetingNegotiation
@@ -220,8 +235,20 @@ export async function buildMailIngressTaskBody(
     ...(auth.agent_authorized
       ? []
       : [
-          "NOT authorized to act: the companion was not copied on this message and owner did not delegate. File project docs only — no scheduling child, no outbound mail.",
+          auth.reason === OUTSIDER_NEEDS_OWNER_OK
+            ? "NOT authorized to act: an outsider wrote and the owner has not agreed on this thread. No scheduling child, no find_free_slots, no mail to the outsider."
+            : "NOT authorized to act: the companion was not copied on this message and owner did not delegate. File project docs only — no scheduling child, no outbound mail.",
         ]),
+    ...(ownerOkAnswer
+      ? [
+          "owner_ok_answer: true — the owner answered the owner-OK question on this thread. Take path A only if the owner agreed; if the owner declined or is unclear, file only (path C).",
+        ]
+      : []),
+    ...(ownerOkNeeded
+      ? [
+          "After filing: send ONE owner-OK question with nylas_send_message — reply on this thread (replyToMessageId, exact parent subject, sourcePath) to the owner only. Say who wrote, what they asked, and that you offer no times until the owner replies on this thread.",
+        ]
+      : []),
     ...(auth.owner_on_thread === false
       ? [
           "Owner was not on prior thread messages — external replies must CC owner (API enforced); include brief context in outreach.",

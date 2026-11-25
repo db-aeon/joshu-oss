@@ -13,7 +13,7 @@ metadata:
 
 Two types of card:
 - **Required setup step** (`type: required`): blocked, block kind `needs_input` (an owner question). Gets the daily nudge and the setup mention.
-- **Setup tip** (`type: tip`): blocked with reason `optional setup tip` and no block kind. No nudge, no setup mention. The owner may ignore it or move it to done. Setup tips: `tip-connect-work-account` (only when no connected Google account has the work email), `tip-voice-pin`, `tip-save-box-number`, `tip-first-phone-request`, `tip-email-a-request`.
+- **Setup tip** (`type: tip`): blocked with reason `optional setup tip` and no block kind. No nudge, no setup mention. The owner may ignore it; Joshu closes it when its check passes. Setup tips: `tip-connect-work-account` (shows when no connected Google account has the work email; closes when the work account is connected or when the work mail is not on Google), `tip-voice-pin`, `tip-first-phone-request` (closes after the first owner call), `tip-email-a-request` (closes after the first owner email to the box).
 
 Used when:
 - Proactive resolve runs on an `ea-onboarding` blocked card (`proactive:resolve:<taskId>`)
@@ -36,7 +36,7 @@ When Joshu routes an owner reply to this skill:
 5. If not done → guide the owner with the **Steps** and **Common mistakes** of the card body. Do not invent other steps.
 6. Owner says **later** → comment on card; do not complete.
 7. Owner says **skip** on a **required** setup step → acknowledge; explain why it is needed (section "Why" of the card); keep card blocked until the step is done.
-8. **Setup tip** card → help if asked. If the owner does not want the tip, or did it in a way the box cannot see (for example saving Joshu's number as a contact), `kanban_complete` the card.
+8. **Setup tip** card → help if asked. If the owner does not want the tip, `kanban_complete` the card. A tip that the owner did closes by itself at the next reconcile, because every setup tip has a check.
 9. Reply in first person — what you checked, what to do next. No board slugs in SMS.
 
 ## Forbidden

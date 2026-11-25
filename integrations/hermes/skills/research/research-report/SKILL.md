@@ -4,7 +4,7 @@ description: Make or resend a Research report, set up and change a recurring rep
 metadata:
   hermes:
     category: productivity
-    version: "1.3.1"
+    version: "1.3.2"
 ---
 
 # Research report
@@ -41,7 +41,7 @@ Also send these fields when the owner gave them:
 - `notes`: what the owner said about the topic, in the words of the owner: what it means, what it is not, and what to look at, for example "CLARA Analytics, the claims AI company, not the Clara agent of Hippo". When you asked which meaning the owner wants (section 1), put the answer here. Section 7 tells what does not go in the notes.
 - `sections`: only when the owner asks for a fixed structure in so many words, for example "make it with sections on funding, product launches, and competitors" is `["funding", "product launches", "competitors"]`. At most 6, in order and in the owner's words. Most requests give guidance, not a structure: "cover this space", "be exhaustive", "start with those 4 points", or a list of things to look at. Then leave `sections` out and put the guidance in `notes`, and the box picks the themes from what it finds. When in doubt, leave `sections` out. Do not ask for sections.
 - When the owner points at something you said, for example "those 4 bullet points", write those points into `notes` as what the owner asked to cover.
-- `web_provider`: only when the owner asks for You.com web search in so many words, send `"you.com"`. Leave it out otherwise, and the box searches the web with Exa.
+- `web_provider`: only when the owner asks for You.com or for Exa web search in so many words, send `"you.com"` or `"exa"`. Leave it out otherwise, and the box searches the web with You.com when it can reach You.com, or else with Exa.
 
 The result has:
 

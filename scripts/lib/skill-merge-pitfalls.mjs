@@ -4,7 +4,7 @@
  * A box pitfall is a paragraph of a box skill that starts with "**Pitfall". The LLM merge
  * must keep each box pitfall, or name it in the list of dropped box pitfalls with a reason.
  * keepBoxPitfalls adds each box pitfall back that the merge left out without a reason.
- * Spec: openspec/changes/skills-seed-keep-pitfalls/specs/hermes-skills-seed/spec.md
+ * Spec: openspec/changes/archive/2026-11-18-skills-seed-keep-pitfalls/specs/hermes-skills-seed/spec.md
  */
 
 /** The line between the merged SKILL.md and the list of dropped box pitfalls. */

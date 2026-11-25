@@ -1,5 +1,7 @@
 # Ubuntu VPS quickstart (Hetzner / DigitalOcean)
 
+Docker Compose is deprecated. The supported way to run a box is single-container mode, as [`self-host.md`](../self-host.md) tells, and a later release removes Docker Compose. A box on a Compose host keeps working until then. This quickstart sets up a Compose host.
+
 Step-by-step: create an Ubuntu VPS, download Joshu from GitHub, set your hostname, run the installer, open the desktop. **API keys** (OpenRouter) are added in the **Welcome** app after first login — not on the command line.
 
 No proprietary control plane — this is **standalone self-host** only. Control-plane managed boxes skip Welcome's Connect AI step (keys are provisioned automatically).
@@ -15,7 +17,7 @@ No proprietary control plane — this is **standalone self-host** only. Control-
 | --- | --- |
 | VPS public IP | `203.0.113.50` |
 | Hostname | `mybox.example.com` |
-| Release image | `ghcr.io/db-aeon/joshu-oss:0.1.65` (see [`deploy/RELEASE.json`](../../deploy/RELEASE.json)) |
+| Release image | `ghcr.io/db-aeon/joshu-oss:0.1.59` (see [`deploy/RELEASE.json`](../../deploy/RELEASE.json)) |
 
 ---
 
@@ -119,9 +121,9 @@ ACME_EMAIL=you@example.com
 # Same username you will type on the first-visit "Create account" page:
 JOSHU_AROZ_USER=yourname
 
-JOSHU_RELEASE_VERSION=0.1.65
-JOSHU_IMAGE_REF=ghcr.io/db-aeon/joshu-oss:0.1.65
-JOSHU_VOICE_IMAGE_REF=ghcr.io/db-aeon/joshu-oss-voice-realtime:0.1.65
+JOSHU_RELEASE_VERSION=0.1.59
+JOSHU_IMAGE_REF=ghcr.io/db-aeon/joshu-oss:0.1.59
+JOSHU_VOICE_IMAGE_REF=ghcr.io/db-aeon/joshu-oss-voice-realtime:0.1.59
 ```
 
 Save: **Ctrl+O** Enter, **Ctrl+X**.
@@ -167,7 +169,7 @@ Health check (laptop):
 curl -sS https://mybox.example.com/joshu/api/instance/health
 ```
 
-Before Connect AI, overall `"healthy": false` is normal (`hermes` / `hindsight` / `gbrain` wait on keys). `curl -fsS` (fail on HTTP 503) is the wrong check at this stage. Expect `components.joshu.ok` and `components.arozos.ok` to be `true`. After OpenRouter + Gemini in Welcome, re-check until `"healthy": true`.
+Before Connect AI, overall `"healthy": false` is normal (`hermes` and `gbrain` wait on keys; `hindsight` also waits on keys, but it is not part of `healthy`). `curl -fsS` (fail on HTTP 503) is the wrong check at this stage. Expect `components.joshu.ok` and `components.arozos.ok` to be `true`. After OpenRouter + Gemini in Welcome, re-check until `"healthy": true`.
 
 ---
 

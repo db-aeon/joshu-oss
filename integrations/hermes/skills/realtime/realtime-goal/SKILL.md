@@ -4,7 +4,7 @@ description: Finish one deferred owner request; block or summarize.
 metadata:
   hermes:
     category: productivity
-    version: "2.3.0"
+    version: "2.4.0"
 ---
 
 # Realtime Goal
@@ -56,6 +56,21 @@ Exiting without either (crash, giving up, running out of ideas) is a failure:
 Hermes parks the card with no question, and Joshu restarts it with a
 **`Joshu recovery`** note. When you see that note, continue from where the last
 run stopped and end properly this time.
+
+### Step limit
+
+Each run has a fixed number of steps (the step limit, 90 by default).
+
+- **Step-limit warning.** When a tool result ends with
+  `[Joshu step-limit warning]`, stop the current work at once. Do not start a
+  new action. End the run with `kanban_complete` when you have the result, or
+  with `kanban_block` and one question that says what you found (for example:
+  "Saturday is sold out at the airport office. Keep Sunday, or try the
+  downtown office?").
+- **Step-limit note.** A comment that starts with `## Step-limit note` holds
+  the last summary of a run that used all its steps. Read it first. Use what
+  it found, do not repeat its work (the same website flow will stop the same
+  way), and end this run early with the result or one question.
 
 ### Asking the owner (`kanban_block`)
 

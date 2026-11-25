@@ -1,13 +1,21 @@
 /**
- * Deterministic "may the companion act on this mail?" — copied on thread or owner delegated.
- * Filing/observing is allowed without authorization; scheduling + outbound mail are not.
+ * Deterministic "may the companion act on this mail?". Filing is allowed without
+ * authorization; scheduling and outbound mail are not. Being a recipient is not enough on
+ * its own: the owner must have written in the thread (or sent the email), the owner must have
+ * delegated the thread, or the outsider send record must prove that the companion already
+ * wrote to an outsider on the thread. Otherwise an outsider could make the companion act.
  */
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import YAML from "yaml";
 import { readMirrorBodyPreview } from "../connectors/mirrorBodyPreview.js";
 import { parseGmailThreadMirrorSections } from "../connectors/composio/gmailMirrorFormat.js";
 import type { MailThreadFrontmatter } from "../connectors/mirror.js";
+import {
+  companionWroteToOutsider,
+  readOutsiderSendRecord,
+  type MailThreadFacts,
+  type OutsiderSendRecord,
+} from "./outsiderSendRecord.js";
 import { resolveJoshuAgentEmails, isFromJoshuAgent } from "./ingestFilters.js";
 import { parseEmailAddress } from "./schedulingTypes.js";
 import { readAgentProfile } from "../nylas/profile.js";
@@ -44,7 +52,14 @@ export type ResolveAgentAuthorizationInput = {
    * `from` the agent. Used when re-evaluating a thread whose tip is our send.
    */
   skipAgentSentGuard?: boolean;
+  /** Joshu metadata of the mail mirror (thread id, subject, `thread_messages`). */
+  thread?: MailThreadFacts;
+  /** Outsider send record of the box; without it, no earlier send of the companion counts. */
+  outsiderSends?: OutsiderSendRecord;
 };
+
+/** Reason when an outsider copied or emailed the companion and the owner has not agreed yet. */
+export const OUTSIDER_NEEDS_OWNER_OK = "outsider_needs_owner_ok";
 
 const ASSISTANT_DELEGATION_PATTERNS = [
   /\bcopy(?:ing)?\s+(?:my\s+)?assistant\b/i,
@@ -124,16 +139,54 @@ export function bodyIndicatesSchedulingDelegation(body: string, assistantNames: 
   return bodyIndicatesDelegation(body, assistantNames) && SCHEDULING_INTENT.test(body);
 }
 
-function ownerDelegatedInThread(threadBody: string, ownerEmails: Set<string>, assistantNames: string[]): boolean {
+/** True when Joshu metadata (`thread_messages`, written from mail headers) holds a message of the owner. */
+function ownerWroteInThread(thread: MailThreadFacts | undefined, ownerEmails: Set<string>): boolean {
+  return (thread?.messages ?? []).some((m) => {
+    const addr = parseEmailAddress(m.from);
+    return Boolean(addr && ownerEmails.has(addr));
+  });
+}
+
+/**
+ * Owner delegation in an earlier owner message. The body sections of a mail mirror are only
+ * text, so an outsider can type a fake owner section into an email; count a section only
+ * when Joshu metadata shows a real message from that owner address in the thread.
+ */
+function ownerDelegatedInThread(
+  threadBody: string,
+  ownerEmails: Set<string>,
+  assistantNames: string[],
+  thread: MailThreadFacts | undefined,
+): boolean {
   if (!threadBody.trim()) return false;
+  const ownerSenders = new Set(
+    (thread?.messages ?? [])
+      .map((m) => parseEmailAddress(m.from))
+      .filter((addr): addr is string => Boolean(addr && ownerEmails.has(addr))),
+  );
+  if (ownerSenders.size === 0) return false;
   const sections = parseGmailThreadMirrorSections(threadBody);
   for (let i = sections.length - 1; i >= 0; i--) {
     const section = sections[i]!;
     const fromAddr = parseEmailAddress(section.from);
-    if (!fromAddr || !ownerEmails.has(fromAddr)) continue;
+    if (!fromAddr || !ownerSenders.has(fromAddr)) continue;
     if (bodyIndicatesDelegation(section.body, assistantNames)) return true;
   }
   return false;
+}
+
+/** True when the outsider send record proves an earlier send of the companion to an outsider. */
+function companionAlreadyWroteToOutsider(
+  input: ResolveAgentAuthorizationInput,
+  projectRoot: string,
+): boolean {
+  if (!input.outsiderSends || !input.thread) return false;
+  return companionWroteToOutsider({
+    record: input.outsiderSends,
+    thread: input.thread,
+    triggerFrom: input.from,
+    isCompanion: (from) => isFromJoshuAgent(from, projectRoot),
+  });
 }
 
 /** Core authorization from headers + thread context. */
@@ -157,29 +210,32 @@ export function resolveAgentAuthorization(input: ResolveAgentAuthorizationInput)
     };
   }
 
-  if (input.agentInbox || input.provider === "nylas") {
-    if (recipientIncludesAgent(allRecipients, agentEmails)) {
-      return authorized("agent_on_recipients", input.category);
+  const fromAddr = parseEmailAddress(input.from);
+  const ownerSent = Boolean(fromAddr && ownerEmails.has(fromAddr));
+  const companionIsRecipient = recipientIncludesAgent(allRecipients, agentEmails);
+
+  if (companionIsRecipient) {
+    if (ownerSent) return authorized("owner_sent_to_companion", input.category);
+    if (ownerWroteInThread(input.thread, ownerEmails)) {
+      return authorized("owner_wrote_in_thread", input.category);
+    }
+    if (companionAlreadyWroteToOutsider(input, projectRoot)) {
+      return authorized("companion_wrote_to_outsider", input.category);
     }
   }
 
-  if (recipientIncludesAgent(allRecipients, agentEmails)) {
-    return authorized("agent_on_recipients", input.category);
-  }
-
-  const fromAddr = parseEmailAddress(input.from);
-  if (fromAddr && ownerEmails.has(fromAddr) && bodyIndicatesDelegation(input.triggerBodyPreview ?? "", assistantNames)) {
+  if (ownerSent && bodyIndicatesDelegation(input.triggerBodyPreview ?? "", assistantNames)) {
     return authorized("owner_delegated_trigger", input.category);
   }
 
-  if (ownerDelegatedInThread(input.threadBodyPreview ?? "", ownerEmails, assistantNames)) {
+  if (ownerDelegatedInThread(input.threadBodyPreview ?? "", ownerEmails, assistantNames, input.thread)) {
     return authorized("owner_delegated_thread", input.category);
   }
 
   return {
     agent_authorized: false,
     scheduling_eligible: false,
-    reason: "not_copied_or_delegated",
+    reason: companionIsRecipient ? OUTSIDER_NEEDS_OWNER_OK : "not_copied_or_delegated",
   };
 }
 
@@ -190,17 +246,6 @@ function authorized(reason: string, category?: string): MailAgentAuthorization {
     scheduling_eligible: scheduling,
     reason,
   };
-}
-
-function stripMirrorFrontmatter(raw: string): { fm: MailThreadFrontmatter | null; body: string } {
-  const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/u.exec(raw);
-  if (!match) return { fm: null, body: raw };
-  try {
-    const fm = YAML.parse(match[1]!) as MailThreadFrontmatter;
-    return { fm, body: match[2] ?? "" };
-  } catch {
-    return { fm: null, body: match[2] ?? "" };
-  }
 }
 
 /**
@@ -219,6 +264,29 @@ function latestNonAgentFrom(
   return undefined;
 }
 
+/** Front matter of a mail mirror under the files root, or null when it cannot be read. */
+export async function readMailMirrorFrontmatter(
+  filesRoot: string,
+  sourcePath: string,
+): Promise<MailThreadFrontmatter | null> {
+  const rel = sourcePath.trim().replace(/^\/+/, "");
+  if (!rel) return null;
+  try {
+    return stripMailThreadMirror(await readFile(path.join(filesRoot, rel), "utf8")).fm;
+  } catch {
+    return null;
+  }
+}
+
+/** Joshu metadata of a mail mirror that the authorization rule reads. */
+export function mailThreadFacts(fm: MailThreadFrontmatter): MailThreadFacts {
+  return {
+    threadId: fm.thread_id,
+    subject: fm.subject,
+    messages: Array.isArray(fm.thread_messages) ? fm.thread_messages : [],
+  };
+}
+
 /** Recompute authorization from a mirrored thread file (API gates, outbound send). */
 export async function resolveAuthorizationFromSourcePath(opts: {
   filesRoot: string;
@@ -228,8 +296,8 @@ export async function resolveAuthorizationFromSourcePath(opts: {
   /**
    * Outbound send path: if the mirror tip is our own prior message, do not hard-fail
    * with `agent_sent_message` (that rule is for ingest loop prevention). Re-evaluate
-   * against the prior non-agent message + thread body; if still ambiguous, treat a
-   * prior agent send on the thread as proof we were already authorized.
+   * against the prior non-agent message + thread body. The companion wrote the tip, so it
+   * counts as on the thread; the rule still needs the owner or the outsider send record.
    */
   forOutbound?: boolean;
 }): Promise<MailAgentAuthorization | null> {
@@ -242,21 +310,24 @@ export async function resolveAuthorizationFromSourcePath(opts: {
   } catch {
     return null;
   }
-  const { fm, body } = stripMirrorFrontmatter(raw);
+  const { fm, body } = stripMailThreadMirror(raw);
   if (!fm) return null;
   const projectRoot = opts.projectRoot ?? process.cwd();
   const provider: TriageProvider = fm.source?.includes("nylas") ? "nylas" : "gmail";
   const threadPreview = body.trim().slice(0, 8000);
   const tipIsAgent = isFromJoshuAgent(fm.from, projectRoot);
+  const thread = mailThreadFacts(fm);
+  const outsiderSends = readOutsiderSendRecord(opts.filesRoot);
 
   // Outbound follow-up on a thread where we already sent: skip the ingest-only
   // "agent_sent_message" short-circuit and evaluate prior context instead.
   if (opts.forOutbound && tipIsAgent) {
     const priorFrom = latestNonAgentFrom(fm, projectRoot);
-    const auth = resolveAgentAuthorization({
+    return resolveAgentAuthorization({
       provider,
       from: priorFrom ?? fm.from,
-      to: fm.to,
+      // The tip is a message of the companion, so the companion is on this thread.
+      to: [...(fm.to ?? []), ...resolveJoshuAgentEmails(projectRoot)],
       cc: fm.cc,
       bcc: fm.bcc,
       triggerBodyPreview: threadPreview.slice(-2000),
@@ -267,10 +338,9 @@ export async function resolveAuthorizationFromSourcePath(opts: {
       category: opts.category,
       // Force-skip agent_sent when priorFrom is missing (still tip=agent).
       skipAgentSentGuard: !priorFrom,
+      thread,
+      outsiderSends,
     });
-    if (auth.agent_authorized) return auth;
-    // We already mailed on this thread (passed this gate + owner approval once).
-    return authorized("prior_agent_send_on_thread", opts.category);
   }
 
   return resolveAgentAuthorization({
@@ -285,6 +355,8 @@ export async function resolveAuthorizationFromSourcePath(opts: {
     accountEmail: fm.account_email,
     agentInbox: provider === "nylas",
     category: opts.category,
+    thread,
+    outsiderSends,
   });
 }
 
@@ -377,6 +449,17 @@ export async function resolveAgentAuthorizationForMirror(opts: {
   projectRoot?: string;
 }): Promise<MailAgentAuthorization> {
   const threadBodyPreview = await readMirrorBodyPreview(opts.filesRoot, opts.sourcePath, 8000);
+  const projectRoot = opts.projectRoot ?? process.cwd();
+
+  let fm: MailThreadFrontmatter | null = null;
+  let body = "";
+  try {
+    const rel = opts.sourcePath.trim().replace(/^\/+/, "");
+    if (rel) ({ fm, body } = stripMailThreadMirror(await readFile(path.join(opts.filesRoot, rel), "utf8")));
+  } catch {
+    /* a missing mirror leaves only the header facts */
+  }
+
   const auth = resolveAgentAuthorization({
     provider: opts.provider,
     from: opts.from,
@@ -388,24 +471,13 @@ export async function resolveAgentAuthorizationForMirror(opts: {
     accountEmail: opts.accountEmail,
     agentInbox: opts.provider === "nylas",
     category: opts.category,
-    projectRoot: opts.projectRoot,
+    projectRoot,
+    ...(fm ? { thread: mailThreadFacts(fm), outsiderSends: readOutsiderSendRecord(opts.filesRoot) } : {}),
   });
 
   let owner_on_thread: boolean | undefined;
   try {
-    const rel = opts.sourcePath.trim().replace(/^\/+/, "");
-    if (rel) {
-      const full = path.join(opts.filesRoot, rel);
-      const raw = await readFile(full, "utf8");
-      const { fm, body } = stripMailThreadMirror(raw);
-      if (fm) {
-        owner_on_thread = ownerVisibleOnThreadMirror(
-          fm,
-          body,
-          opts.projectRoot ?? process.cwd(),
-        ).ownerOnThread;
-      }
-    }
+    if (fm) owner_on_thread = ownerVisibleOnThreadMirror(fm, body, projectRoot).ownerOnThread;
   } catch {
     /* visibility scan is best-effort at ingress */
   }

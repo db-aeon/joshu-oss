@@ -1,8 +1,8 @@
 /**
  * Owner calendar across all calendar accounts: owner availability, owner calendar events,
  * one event with its guests, and writes with the calendar account that can write the target calendar.
- * Spec: openspec/changes/calendar-all-accounts/specs/owner-calendar/spec.md,
- * openspec/changes/calendar-meet-and-event-tools/specs/owner-calendar/spec.md, and
+ * Spec: openspec/changes/archive/2026-11-18-calendar-all-accounts/specs/owner-calendar/spec.md,
+ * openspec/changes/archive/2026-11-18-calendar-meet-and-event-tools/specs/owner-calendar/spec.md, and
  * openspec/changes/calendar-owner-on-guest-list/specs/owner-calendar/spec.md
  */
 import { Temporal } from "@js-temporal/polyfill";

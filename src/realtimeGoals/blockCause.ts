@@ -10,16 +10,26 @@ import type { KanbanTaskSummary } from "../hermesKanbanBridge.js";
  *   block carries no reason, or the worker flagged infrastructure with a
  *   `system:` reason (e.g. "system: browser unavailable" from the browser skill).
  *   There is nothing to ask; paging the owner with a placeholder only invites
- *   the voice model to invent a question.
+ *   the voice model to invent a question. `stepLimit` is true when the newest
+ *   run reached the step limit, so the recovery note can say so.
  */
 export type RealtimeGoalBlockCause =
   | { kind: "owner_question"; question: string }
-  | { kind: "system"; detail: string };
+  | { kind: "system"; detail: string; stepLimit: boolean };
 
 /** Minimum substance for a worker block reason to be treated as a question. */
 const MIN_QUESTION_CHARS = 8;
 /** Worker-declared infrastructure failure — skills use `kanban_block("system: …")`. */
 const SYSTEM_REASON_RE = /^system\s*:/i;
+/** Start of the error that Hermes writes when a worker reaches the step limit. */
+const STEP_LIMIT_ERROR_PREFIX = "Iteration budget exhausted";
+
+/** True when the block cause or the newest run says the worker reached the step limit. */
+function reachedStepLimit(task: KanbanTaskSummary): boolean {
+  return [task.block_cause?.error, task.latest_run?.error].some((error) =>
+    error?.trim().startsWith(STEP_LIMIT_ERROR_PREFIX),
+  );
+}
 
 /** A worker reason that is a real question for the owner (not a placeholder or system flag). */
 function ownerQuestion(reason: string): boolean {
@@ -33,14 +43,14 @@ export function classifyBlockCause(task: KanbanTaskSummary): RealtimeGoalBlockCa
     if (cause.source === "worker" && ownerQuestion(reason)) {
       return { kind: "owner_question", question: reason };
     }
-    return { kind: "system", detail: systemDetail(cause, task, reason) };
+    return { kind: "system", detail: systemDetail(cause, task, reason), stepLimit: reachedStepLimit(task) };
   }
   // Older bridge without block_cause: fall back to the legacy reason field.
   const legacy = task.block_reason?.trim() ?? "";
   if (ownerQuestion(legacy)) {
     return { kind: "owner_question", question: legacy };
   }
-  return { kind: "system", detail: systemDetail(undefined, task, legacy) };
+  return { kind: "system", detail: systemDetail(undefined, task, legacy), stepLimit: reachedStepLimit(task) };
 }
 
 function systemDetail(
@@ -71,6 +81,8 @@ export function autoRecoveryKanbanAppend(input: {
   maxAttempts: number;
   why: string;
   ownerAnswer?: { question?: string; answer: string };
+  /** The last run reached the step limit (see the step-limit note on the card). */
+  stepLimit?: boolean;
 }): string {
   const lines = [
     `\n## Joshu recovery (${input.at}) — attempt ${input.attempt} of ${input.maxAttempts}`,
@@ -79,6 +91,14 @@ export function autoRecoveryKanbanAppend(input: {
   if (input.ownerAnswer) {
     if (input.ownerAnswer.question) lines.push(`You asked: ${input.ownerAnswer.question}`);
     lines.push(`The owner already answered: ${input.ownerAnswer.answer}`);
+  }
+  if (input.stepLimit) {
+    lines.push(
+      "The last run reached the step limit before it called kanban_complete or kanban_block.",
+      "Read the newest comment that starts with \"## Step-limit note\" first: it says what that run found.",
+      "Do not repeat the work that the step-limit note describes. End this run within its first",
+      "few steps with the result, or with one question that says what the last run found.",
+    );
   }
   lines.push(
     "",

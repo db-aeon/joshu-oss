@@ -5,10 +5,11 @@
  * answers as the command result. The agent never runs a command, path, or URL from the payload.
  */
 import { execFile } from "node:child_process";
-import { readFile } from "node:fs/promises";
+import { readFile, readdir, readlink } from "node:fs/promises";
 import { promisify } from "node:util";
 
 import { DIAGNOSTICS_PROBE } from "./diagnosticsProbe.js";
+import { singleContainerMode } from "./singleContainer.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -28,7 +29,8 @@ export const DIAGNOSTIC_QUERIES = [
 export type DiagnosticQueryName = (typeof DIAGNOSTIC_QUERIES)[number];
 
 /** Docker services of deploy/docker-compose.yml, and Hermes log files in the stack container. */
-const CONTAINER_LOG_SOURCES = ["joshu-stack", "voice-realtime", "instance-agent", "caddy"] as const;
+// `cloudflared` runs only in single-container mode. On a Compose host that source has no container, and the query answers with an error.
+const CONTAINER_LOG_SOURCES = ["joshu-stack", "voice-realtime", "instance-agent", "caddy", "cloudflared"] as const;
 const HERMES_LOG_SOURCES = ["hermes-agent", "hermes-errors", "gateway-starts"] as const;
 
 /** GET paths of the Joshu API that the joshu_api query may read. Each path is read-only. */
@@ -168,6 +170,62 @@ export interface DiagnosticsDeps {
   docker: (args: string[]) => Promise<string>;
   fetchText: (url: string) => Promise<{ status: number; text: string }>;
   readText: (path: string) => Promise<string>;
+  /**
+   * Set in single-container mode (change single-container-mode). The box has no Docker: the
+   * probe runs in this container, the logs are files, and the services are processes.
+   */
+  singleContainer?: SingleContainerDiagnostics;
+}
+
+export interface SingleContainerDiagnostics {
+  /** Folder of the log files that the start script writes: `<data root>/logs/<source>.log`. */
+  logDir: string;
+  run: (command: string, args: string[]) => Promise<string>;
+  listProcesses: () => Promise<Array<{ name: string; pid: number }>>;
+}
+
+/**
+ * Name of a service of the box for a process, or null. `cwd` is read only for the two
+ * services that both run as `node dist/index.js`.
+ */
+export function serviceOfProcess(pid: number, cmdline: string, cwd: string | null): string | null {
+  if (pid === 1) return "joshu-stack";
+  if (cmdline.startsWith("caddy run")) return "caddy";
+  if (cmdline.startsWith("cloudflared tunnel")) return "cloudflared";
+  if (cmdline === "node dist/index.js" && cwd?.endsWith("/packages/voice-realtime")) return "voice-realtime";
+  if (cmdline === "node dist/index.js" && cwd?.endsWith("/packages/instance-agent")) return "instance-agent";
+  return null;
+}
+
+async function listServiceProcesses(): Promise<Array<{ name: string; pid: number }>> {
+  const found: Array<{ name: string; pid: number }> = [];
+  for (const entry of await readdir("/proc")) {
+    if (!/^\d+$/.test(entry)) continue;
+    try {
+      const cmdline = (await readFile(`/proc/${entry}/cmdline`, "utf8")).replace(/\0/g, " ").trim();
+      const cwd = cmdline === "node dist/index.js" ? await readlink(`/proc/${entry}/cwd`) : null;
+      const name = serviceOfProcess(Number(entry), cmdline, cwd);
+      if (name) found.push({ name, pid: Number(entry) });
+    } catch {
+      // The process ended between the list and the read.
+    }
+  }
+  return found.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/**
+ * The lines from the first line whose timestamp is inside the window `since` ("90m", "24h").
+ * Each line of a log file of the start script begins with a UTC timestamp. A line without a
+ * timestamp (an old file) stays with the lines around it.
+ */
+export function linesSince(lines: string[], since: string, nowMs: number): string[] {
+  const amount = Number(since.slice(0, -1));
+  const cutoff = nowMs - amount * (since.endsWith("h") ? 3_600_000 : 60_000);
+  const first = lines.findIndex((line) => {
+    const at = Date.parse(line.slice(0, 20));
+    return Number.isFinite(at) && at >= cutoff;
+  });
+  return first < 0 ? [] : lines.slice(first);
 }
 
 export function defaultDiagnosticsDeps(input: {
@@ -193,6 +251,14 @@ export function defaultDiagnosticsDeps(input: {
       return { status: res.status, text: await res.text() };
     },
     readText: (path) => readFile(path, "utf8"),
+    singleContainer: singleContainerMode()
+      ? {
+          logDir: `${process.env.JOSHU_DATA_ROOT?.trim() || "/data"}/logs`,
+          run: async (command, args) =>
+            (await execFileAsync(command, args, { timeout: 60_000, maxBuffer: 32 * 1024 * 1024 })).stdout,
+          listProcesses: listServiceProcesses,
+        }
+      : undefined,
   };
 }
 
@@ -211,6 +277,11 @@ function filterLines(lines: string[], grep: string | number | undefined, tail: n
 }
 
 async function probe(deps: DiagnosticsDeps, query: string, args: string[] = []): Promise<unknown> {
+  if (deps.singleContainer) {
+    // The agent runs inside the stack container, so the probe needs no docker exec.
+    const direct = await deps.singleContainer.run("python3", ["-c", DIAGNOSTICS_PROBE, query, ...args]);
+    return parseJson(direct.trim());
+  }
   const stack = `${deps.composeProject}-joshu-stack-1`;
   const out = await deps.docker(["exec", stack, "python3", "-c", DIAGNOSTICS_PROBE, query, ...args]);
   return parseJson(out.trim());
@@ -243,6 +314,9 @@ async function answerQuery(deps: DiagnosticsDeps, q: DiagnosticQuery): Promise<u
       return { status: res.status, body: parseJson(res.text) };
     }
     case "containers": {
+      if (deps.singleContainer) {
+        return { containers: [], singleContainer: true, processes: await deps.singleContainer.listProcesses() };
+      }
       const prefix = `${deps.composeProject}-`;
       const names = (await deps.docker(["ps", "-a", "--format", "{{.Names}}"]))
         .split("\n")
@@ -267,6 +341,16 @@ async function answerQuery(deps: DiagnosticsDeps, q: DiagnosticQuery): Promise<u
         const read = q.args.grep ? 20_000 : tail;
         const data = (await probe(deps, "log_file", [source, String(read)])) as { lines?: string[] };
         return { source, lines: filterLines(data.lines ?? [], q.args.grep, tail) };
+      }
+      if (deps.singleContainer) {
+        // No docker logs: the start script keeps the output of each service in a file.
+        // Right after a rotation the recent lines are in "<service>.log.1", so read both files, older first.
+        const file = `${deps.singleContainer.logDir}/${source}.log`;
+        const older = await deps.readText(`${file}.1`).catch(() => "");
+        const newer = await deps.readText(file).catch(() => "");
+        const all = `${older}\n${newer}`.split("\n").filter((line) => line.length > 0);
+        const recent = q.args.since ? linesSince(all, String(q.args.since), Date.now()) : all;
+        return { source, lines: filterLines(recent, q.args.grep, tail) };
       }
       const container = `${deps.composeProject}-${source}-1`;
       const args = ["logs", "--timestamps"];

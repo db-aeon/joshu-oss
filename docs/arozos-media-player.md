@@ -24,7 +24,7 @@ Users can also set a **default opener** per extension in ArozOS (stored per user
 When a file is opened with input files attached, the **Video** full app redirects
 to embedded mode:
 
-```159:163:vendor/arozos/src/web/Video/index.html
+```160:163:vendor/arozos/src/web/Video/index.html
             var infile = ao_module_loadInputFiles();
             if (infile != null){
                 window.location.href = "embedded.html" + window.location.hash;

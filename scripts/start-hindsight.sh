@@ -26,6 +26,13 @@ if [[ -z "${HINDSIGHT_API_LLM_API_KEY:-}" && "${HINDSIGHT_API_LLM_PROVIDER:-open
   export HINDSIGHT_API_LLM_API_KEY="${OPENROUTER_API_KEY}"
 fi
 
+# Release Hindsight model (change release-hindsight-model): a box whose Hindsight uses OpenRouter
+# runs the model of its release, unless HINDSIGHT_API_LLM_MODEL in instance.env overrides it.
+# The same model is JOSHU_OPENROUTER_HINDSIGHT_LLM_MODEL in src/joshuOpenRouterDefaults.ts.
+if [[ -z "${HINDSIGHT_API_LLM_MODEL:-}" && "${HINDSIGHT_API_LLM_PROVIDER:-}" == "openrouter" ]]; then
+  export HINDSIGHT_API_LLM_MODEL="google/gemini-3.5-flash-lite"
+fi
+
 # No-training routing (openspec/glossary.md) for retain, reflect, and consolidation.
 # Merge provider.data_collection=deny into the JSON object of the operator, if any.
 # Only for OpenRouter: other LLM providers reject field "provider".

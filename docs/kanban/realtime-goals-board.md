@@ -20,7 +20,7 @@ jChat and the app chat never create goals: they are answered in the chat itself.
 On each tick the broker reads the task with the bridge `show`:
 
 - **Blocked by the worker with a question** (kind `needs_input`): the broker sends the question to the owner. When the owner answers, it appends `## Owner answer` to the body and unblocks the task, so a new run continues from the answer.
-- **Stopped by the system** (a crash or two failures): the broker appends `## Joshu recovery` and unblocks it, up to two times, then tells the owner it could not finish.
+- **Stopped by the system** (a crash or two failures): the broker appends `## Joshu recovery` and unblocks it, up to two times, then tells the owner it could not finish. When the last run reached the step limit, the recovery note says so and points to the `## Step-limit note` comment that plugin `joshu-realtime-goals` wrote on the task ([realtime-goals.md](../realtime-goals.md#blocked-goals-owner-questions-vs-system-stalls-2026-09-24)).
 - **Done:** the broker takes the run summary, rewrites it for the owner, adds a browser handoff link if there is one, and sends it.
 - **Archived** without a cancel: the goal is marked failed and the owner is told.
 

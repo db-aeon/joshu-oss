@@ -36,7 +36,7 @@ export type ExaResult = {
 export type ExaClient = {
   search(req: ExaSearchRequest, deadline: number): Promise<ExaResult[]>;
   /** Full text and images, or only the passages that match `highlightsQuery` when it is set. */
-  contents(urls: string[], deadline: number, opts?: { highlightsQuery?: string }): Promise<ExaResult[]>;
+  contents(urls: string[], deadline: number, opts?: { highlightsQuery?: string; maxCharacters?: number }): Promise<ExaResult[]>;
 };
 
 export class ExaError extends Error {
@@ -102,7 +102,7 @@ export function makeExaClient(apiKey: string, fetchImpl: typeof fetch = fetch): 
       if (!urls.length) return [];
       const body = opts.highlightsQuery
         ? { urls, highlights: { query: opts.highlightsQuery, maxCharacters: 3000 } }
-        : { urls, text: { maxCharacters: 12_000 }, extras: { richImageLinks: 8 } };
+        : { urls, text: { maxCharacters: opts.maxCharacters ?? 12_000 }, extras: { richImageLinks: 8 } };
       return post("/contents", body, deadline);
     },
   };

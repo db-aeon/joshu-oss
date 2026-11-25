@@ -24,6 +24,139 @@ assert GUARD_SPEC and GUARD_SPEC.loader
 GUARD = importlib.util.module_from_spec(GUARD_SPEC)
 GUARD_SPEC.loader.exec_module(GUARD)
 
+STEP_PATH = ROOT / ".hermes/plugins/joshu-realtime-goals/step_limit.py"
+STEP_SPEC = importlib.util.spec_from_file_location("joshu_realtime_goals_step_limit", STEP_PATH)
+assert STEP_SPEC and STEP_SPEC.loader
+STEP = importlib.util.module_from_spec(STEP_SPEC)
+STEP_SPEC.loader.exec_module(STEP)
+
+
+def check_step_limit() -> None:
+    """Spec realtime-goal-worker-runs: step-limit warning and step-limit note."""
+    import sys
+    import types
+
+    # Stand-ins for Hermes modules, so the test runs without Hermes installed.
+    config = types.ModuleType("hermes_cli.config")
+    config.load_config = lambda: {"agent": {"max_turns": 90}}
+    runs: dict[int, SimpleNamespace] = {}
+    comments: list[tuple[str, str, str]] = []
+
+    class Conn:
+        def close(self) -> None:
+            pass
+
+    kanban_db = types.ModuleType("hermes_cli.kanban_db")
+    kanban_db.connect = lambda *a, **k: Conn()
+    kanban_db.get_run = lambda _conn, run_id: runs.get(run_id)
+    kanban_db.add_comment = lambda _conn, task_id, author, body: comments.append((task_id, author, body)) or 1
+    package = types.ModuleType("hermes_cli")
+    package.config = config
+    package.kanban_db = kanban_db
+    saved = {name: sys.modules.get(name) for name in ("hermes_cli", "hermes_cli.config", "hermes_cli.kanban_db", "hermes_cli.kanban_db_connect")}
+    sys.modules.update({"hermes_cli": package, "hermes_cli.config": config, "hermes_cli.kanban_db": kanban_db})
+    saved_env = {k: os.environ.get(k) for k in ("HERMES_KANBAN_TASK", "HERMES_KANBAN_BOARD", "HERMES_KANBAN_RUN_ID")}
+
+    def worker(board: str | None, run_id: str = "7") -> None:
+        STEP._state["steps"] = 0
+        for key in saved_env:
+            os.environ.pop(key, None)
+        if board:
+            os.environ.update({"HERMES_KANBAN_TASK": "t_4bab6c61", "HERMES_KANBAN_BOARD": board, "HERMES_KANBAN_RUN_ID": run_id})
+
+    try:
+        # Warning at step 75 of 90 says 15 steps are left; the tool result text before it stays.
+        worker("realtime-goals")
+        STEP.pre_api_request(api_call_count=20)
+        assert STEP.transform_tool_result(result="page text") is None
+        STEP.pre_api_request(api_call_count=75)
+        warned = STEP.transform_tool_result(result="page text")
+        assert warned.startswith("page text\n\n[Joshu step-limit warning] 15 steps are left")
+        assert "kanban_block" in warned and "kanban_complete" in warned
+        STEP.pre_api_request(api_call_count=89)
+        assert "1 step is left" in STEP.transform_tool_result(result="x")
+        # A lower count (a retried request) never moves the counter back.
+        STEP.pre_api_request(api_call_count=3)
+        assert STEP.transform_tool_result(result="x") is not None
+        # A smaller step limit from agent.max_turns.
+        config.load_config = lambda: {"agent": {"max_turns": 30}}
+        worker("realtime-goals")
+        STEP.pre_api_request(api_call_count=15)
+        assert "15 steps are left" in STEP.transform_tool_result(result="x")
+        config.load_config = lambda: {}
+        assert STEP.step_limit() == 90
+        config.load_config = lambda: {"agent": {"max_turns": 90}}
+
+        # Other boards and sessions that are not workers get no warning.
+        worker("ea-mail-ingress")
+        STEP.pre_api_request(api_call_count=85)
+        assert STEP.transform_tool_result(result="x") is None
+        worker(None)
+        STEP.pre_api_request(api_call_count=85)
+        assert STEP.transform_tool_result(result="x") is None
+
+        # Step-limit note for a run that Hermes ended at the step limit.
+        error = "Iteration budget exhausted (90/90) — task could not complete within the allowed iterations"
+        runs[7] = SimpleNamespace(outcome="timed_out", error=error)
+        worker("realtime-goals")
+        STEP.post_llm_call(assistant_response="Enterprise is sold out for a Saturday pickup at XNA.")
+        assert comments == [("t_4bab6c61", "joshu-step-limit", "## Step-limit note\n\nEnterprise is sold out for a Saturday pickup at XNA.")]
+        # A long summary is cut to 4000 characters.
+        comments.clear()
+        STEP.post_llm_call(assistant_response="a" * 9000)
+        assert comments[0][2] == "## Step-limit note\n\n" + "a" * 4000
+        # No note: empty summary, run still running, a crash, another board, no run id.
+        comments.clear()
+        STEP.post_llm_call(assistant_response="   ")
+        runs[8] = SimpleNamespace(outcome=None, error=None)
+        worker("realtime-goals", "8")
+        STEP.post_llm_call(assistant_response="Blocked with a question.")
+        runs[9] = SimpleNamespace(outcome="crashed", error="worker exited with code 1")
+        worker("realtime-goals", "9")
+        STEP.post_llm_call(assistant_response="summary")
+        worker("ea-mail-ingress")
+        STEP.post_llm_call(assistant_response="summary")
+        worker("realtime-goals", "")
+        STEP.post_llm_call(assistant_response="summary")
+        assert comments == []
+        # Hermes v0.23 opens the database with hermes_cli.kanban_db_connect.connect.
+        worker("realtime-goals")
+        newer = types.ModuleType("hermes_cli.kanban_db_connect")
+        opened: list[str] = []
+        newer.connect = lambda *a, **k: opened.append("kanban_db_connect") or Conn()
+        sys.modules["hermes_cli.kanban_db_connect"] = newer
+        package.kanban_db_connect = newer
+        STEP.post_llm_call(assistant_response="summary")
+        assert opened == ["kanban_db_connect"] and len(comments) == 1
+        del sys.modules["hermes_cli.kanban_db_connect"]
+        del package.kanban_db_connect
+        comments.clear()
+        # A failing Kanban database never raises into Hermes.
+        worker("realtime-goals")
+        kanban_db.connect = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("database is locked"))
+        assert STEP.post_llm_call(assistant_response="summary") is None
+
+        class Ctx:
+            hooks: list[str] = []
+
+            def register_hook(self, name, _callback):
+                self.hooks.append(name)
+
+        ctx = Ctx()
+        STEP.register(ctx)
+        assert ctx.hooks == ["pre_api_request", "transform_tool_result", "post_llm_call"]
+    finally:
+        for name, module in saved.items():
+            if module is None:
+                sys.modules.pop(name, None)
+            else:
+                sys.modules[name] = module
+        for key, value in saved_env.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+
 
 def check_cron_guard() -> None:
     """Spec owner-reminders: Hermes cronjob calls with an undeliverable target are blocked."""
@@ -191,4 +324,5 @@ async def main() -> None:
     print("test-realtime-goals-plugin: ok")
 
 
+check_step_limit()
 asyncio.run(main())

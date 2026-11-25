@@ -5,7 +5,7 @@
  * After the merge, keepBoxPitfalls adds back each box pitfall that the merge left out without a reason.
  *
  * Usage: node merge-hermes-factory-skill.mjs --factory <path> --box <path> [--out <path>]
- * Env: OPENROUTER_API_KEY, optional JOSHU_HERMES_SKILLS_MERGE_MODEL (default google/gemini-3.1-flash-lite)
+ * Env: OPENROUTER_API_KEY, optional JOSHU_HERMES_SKILLS_MERGE_MODEL (default google/gemini-3.5-flash-lite)
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -59,7 +59,7 @@ async function main() {
   }
 
   const model =
-    process.env.JOSHU_HERMES_SKILLS_MERGE_MODEL?.trim() || "google/gemini-3.1-flash-lite";
+    process.env.JOSHU_HERMES_SKILLS_MERGE_MODEL?.trim() || "google/gemini-3.5-flash-lite";
 
   const userContent = `FACTORY (product release):\n\n${factoryText}\n\n---\n\nBOX (current on this sandbox):\n\n${boxText}`;
 

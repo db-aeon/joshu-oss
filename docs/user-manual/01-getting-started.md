@@ -57,7 +57,7 @@ The daily reminder comes by text message when your box can send texts, and other
 
 Each step completes by itself when your companion sees that it is done. Telling your companion "done" does not complete a step, because your companion checks the real setting.
 
-Your companion also has optional **setup tips**, for example saving its phone number as a contact on your phone, or setting a keypad PIN for calls. Setup tips never send you reminders.
+Your companion also has optional **setup tips**, for example setting a keypad PIN for calls, or sending your companion a first request by email. A setup tip also completes by itself when your companion sees that you did it, and setup tips never send you reminders.
 
 ## Optional services
 

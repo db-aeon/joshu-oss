@@ -46,7 +46,7 @@ When **`ea-mail-ingress`** filing is done and the ingress task has **`scheduling
 3. **No match** → **`scheduling_create_meeting_task`** — always pass **`threadId`** + **`provider`** from the ingress body (Joshu dedupes: returns `action: existing_thread` if an open meeting already exists for that thread → then **`scheduling_handoff_meeting_task`** instead).
 4. For **owner intro handoff** ("Copying [companion] to suggest times") you may offer slots + `nylas_send_message` **without** a meeting task — see [Owner self-introduction handoff](#owner-self-introduction-handoff-companion-intro-reply). **Study the thread first** — [Study the thread before sending](#study-the-thread-before-sending).
 
-**Hard stop:** If ingress has **`agent_authorized: false`** or **`scheduling_eligible: false`** — do not create meeting tasks, do not send mail. File-only mail is not your job on that card.
+**Hard stop:** If ingress has **`agent_authorized: false`** or **`scheduling_eligible: false`** — do not create meeting tasks, do not send mail. File-only mail is not your job on that card. Being copied by an outsider is not enough: the owner must have written in the thread, or the companion must already have written to that outsider for the owner (skill `ea-mail-ingress`, step 5d). The send route refuses a reply to an outsider on any other thread (`mail_send_not_authorized`, reason `outsider_needs_owner_ok`).
 
 **One booking per coordination scope:** After a successful browser booking on a counterparty appointment link, **`kanban_complete`** immediately — never re-navigate the same URL in the same task. Preflight with **`coordination_list_active`** before create or book.
 

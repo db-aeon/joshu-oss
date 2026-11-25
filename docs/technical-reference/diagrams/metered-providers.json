@@ -59,7 +59,7 @@
     {
       "id": "router",
       "type": "cloud",
-      "label": "Content router",
+      "label": "Data Bodega",
       "sublabel": "treg · fal · Composio · direct",
       "pos": [1200, 300],
       "size": [190, 64],
@@ -97,7 +97,7 @@
       "id": "browser",
       "type": "frontend",
       "label": "Shared browser",
-      "sublabel": "when the router has no data",
+      "sublabel": "when Data Bodega has no data",
       "pos": [40, 490],
       "size": [170, 60],
       "sources": [
@@ -162,6 +162,6 @@
   "cards": [
     {"dot": "emerald", "title": "When a toolset is on", "items": ["Mode is relay or direct, not off", "Owner switch is on in Connectors", "Relay: last usage summary balance above $0", "Media provider joshu is on only with mcp-joshu-router"]},
     {"dot": "cyan", "title": "Self-hosted box", "items": ["Mode direct: Hermes calls hello.joshu.me/api/router/mcp", "Bearer JOSHU_ROUTER_API_KEY, the router API key of the owner", "Each call takes money from the usage wallet of the owner"]},
-    {"dot": "rose", "title": "Control plane limits", "items": ["Content router picks a channel: treg, fal, Composio Instant, or a direct key", "Balance checked before each call", "Owner pays the cost plus the router markup"]}
+    {"dot": "rose", "title": "Control plane limits", "items": ["Data Bodega picks a channel: treg, fal, Composio Instant, or a direct key", "Balance checked before each call", "Owner pays the cost plus the router markup"]}
   ]
 }

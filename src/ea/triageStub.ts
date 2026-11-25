@@ -30,6 +30,8 @@ import {
   shouldForceTrackOwnerAgentInbox,
 } from "./ownerAgentInboxMail.js";
 import type { AfterMirrorThreadInput, InboundMailClassification } from "./triageTypes.js";
+import { ownerOkQuestionSent, readOutsiderSendRecord } from "./outsiderSendRecord.js";
+import { parseEmailAddress } from "./schedulingTypes.js";
 export type { AfterMirrorThreadInput, TriageProvider } from "./triageTypes.js";
 export {
   archiveTriageStub,
@@ -287,7 +289,24 @@ export async function createTriageStubAfterMirror(input: AfterMirrorThreadInput)
     const ownerEmails = projectRoot ? resolveOwnerEmails(projectRoot, input.accountEmail) : new Set<string>();
     const agentEmails = projectRoot ? resolveJoshuAgentEmails(projectRoot) : new Set<string>();
     const recipients = { to: input.to, cc: input.cc, bcc: input.bcc };
+    const fromAddr = parseEmailAddress(from);
     if (
+      fromAddr &&
+      ownerEmails.has(fromAddr) &&
+      ownerOkQuestionSent(readOutsiderSendRecord(filesRoot), threadId)
+    ) {
+      // The owner answered the owner-OK question of this thread. Route it to the scheduling
+      // gate, so the ingress worker reads the answer; a short "yes" must not end as an ack.
+      classification = normalizeForIngressRouting({
+        disposition: "track",
+        confidence: 0.95,
+        category: "scheduling",
+        project_slug: null,
+        is_new_track: false,
+        reason: "Owner answered the owner-OK question of an outsider",
+      });
+      console.info(`[triage] owner-OK answer ${provider}/${threadId}`);
+    } else if (
       projectRoot &&
       shouldForceTrackOwnerAgentInbox({ provider, from, bodyPreview, ownerEmails, agentEmails, ...recipients })
     ) {

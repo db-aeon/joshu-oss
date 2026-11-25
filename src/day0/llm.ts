@@ -2,7 +2,7 @@
  * Cheap OpenRouter chat for Day 0 inference (separate from Hermes main model).
  */
 
-import { withOpenRouterDataPolicy } from "../joshuOpenRouterDefaults.js";
+import { JOSHU_OPENROUTER_CLASSIFIER_MODEL, withOpenRouterDataPolicy } from "../joshuOpenRouterDefaults.js";
 import {
   type JoshuLangfuseGenerationDetails,
   type JoshuLlmTraceOpts,
@@ -58,7 +58,7 @@ function resolveDay0ApiKey(): string {
 export function resolveDay0Model(): string {
   return (
     process.env.JOSHU_DAY0_MODEL?.trim() ||
-    "openai/gpt-5.4-nano"
+    JOSHU_OPENROUTER_CLASSIFIER_MODEL
   );
 }
 

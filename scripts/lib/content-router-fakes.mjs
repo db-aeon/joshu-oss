@@ -69,7 +69,7 @@ export const POLY_ENDPOINT = {
   calls_30d: 0,
 };
 
-const VALYU_ENDPOINT = {
+export const VALYU_ENDPOINT = {
   ...POLY_ENDPOINT,
   id: "valyu.markets.predictions.search",
   provider: "Valyu",
@@ -136,13 +136,14 @@ export function routeCandidateIds(user) {
 
 /**
  * Answer a learning call of the content goals client, or return null for another call. The route
- * call picks the Polymarket endpoint when it is a candidate; the recipe call returns `recipe`.
+ * call picks the Polymarket endpoint when it is a candidate, else the first candidate; `route`
+ * replaces fields of that answer, for example `{ query_input: "" }`. The recipe call returns `recipe`.
  */
-export function learnAnswer(system, user, recipe = POLY_RECIPE) {
+export function learnAnswer(system, user, recipe = POLY_RECIPE, route = {}) {
   if (system.startsWith("You pick one provider endpoint")) {
     const ids = routeCandidateIds(user);
     const endpoint = ids.find((id) => id.includes("polymarket")) ?? ids[0];
-    return { endpoint, query_input: "q", fixed_inputs: { limit_per_type: 5 } };
+    return { endpoint, query_input: "q", fixed_inputs: { limit_per_type: 5 }, ...route };
   }
   if (system.startsWith("You write a shape recipe")) return typeof recipe === "function" ? recipe(user) : recipe;
   return null;
@@ -154,7 +155,7 @@ export function learnModel(opts = {}) {
   const fetchImpl = async (_url, init) => {
     const body = JSON.parse(init.body);
     requests.push(body);
-    const answer = learnAnswer(body.messages[0].content, body.messages[1].content, opts.recipe);
+    const answer = learnAnswer(body.messages[0].content, body.messages[1].content, opts.recipe, opts.route);
     return { ok: true, status: 200, json: async () => ({ choices: [{ message: { content: JSON.stringify(answer ?? {}) } }] }) };
   };
   return { requests, llm: { fetchImpl, apiKey: "sk-test", model: "test/model" } };

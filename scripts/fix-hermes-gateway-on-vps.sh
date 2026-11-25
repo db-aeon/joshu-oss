@@ -37,7 +37,7 @@ echo "[3/5] verify OpenRouter key + fix config"
 docker exec deploy-joshu-stack-1 bash -lc '
   set -a; source /etc/joshu/instance.env; set +a
   cfg=/root/.hermes/config.yaml
-  model="${JOSHU_HERMES_MODEL:-deepseek/deepseek-v4.1-flash}"
+  model="${JOSHU_HERMES_MODEL:-deepseek/deepseek-v4.1-flash-1017}"
   provider="${JOSHU_HERMES_PROVIDER:-openrouter}"
   if [[ ${#OPENROUTER_API_KEY} -lt 20 ]]; then
     echo "OPENROUTER_API_KEY too short — check /etc/joshu/instance.env and /root/.hermes/.env" >&2

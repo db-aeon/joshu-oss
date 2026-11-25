@@ -15,6 +15,7 @@ import os
 import re
 import shutil
 import sys
+import textwrap
 from pathlib import Path
 
 BRANDED_THEME_FILE = "aroz-paper-shell.css"
@@ -58,7 +59,7 @@ def _resolve_theme_paths(root: Path) -> tuple[Path, str, Path, bool]:
 # Bump when Share / File Manager overlays must bust browser iframe caches.
 # Keep SHARE_DIALOG_CACHE_BUST in lockstep so File Manager / desktop Share
 # floats reload HTML whenever overlay CSS is redeployed.
-OVERLAY_VERSION = "20260822a"
+OVERLAY_VERSION = "20261119a"
 SHARE_DIALOG_CACHE_BUST = OVERLAY_VERSION
 DESKTOP_SHARE_TO_MARKER = "/* joshu-desktop-share-to */"
 FOLDER_ICON_VERSION = "2"
@@ -97,6 +98,11 @@ OLD_LINK_PATTERNS = (
 FILE_EXPLORER_TANGO_MARKER = "<!-- joshu-file-explorer-tango-icons -->"
 FILE_EXPLORER_SHARE_FLOAT_MARKER = "<!-- joshu-file-explorer-share-float -->"
 FILE_EXPLORER_SHARE_TO_MARKER = "<!-- joshu-file-explorer-share-to -->"
+# ArozOS e3819d1 and later keeps the File Manager code in js/explorer/*.js.
+FILE_EXPLORER_MODULE_DIR = ("SystemAO", "file_system", "js", "explorer")
+FILE_EXPLORER_REFRESH_HOOK_MARKER = "joshu-file-explorer-refresh-hook"
+FILE_EXPLORER_TANGO_JS_MARKER = "/* joshu-file-explorer-tango-icons */"
+SYSTEM_SETTINGS_OVERLAY_JS = "joshu-settings.js"
 DESKTOP_FOLDER_MARKER = "<!-- joshu-desktop-tango-folder-icons -->"
 FOLDER_EMPTY_PATH = f"img/joshu/folder.png?v={FOLDER_ICON_VERSION}"
 FOLDER_OPEN_PATH = f"img/joshu/folder-open.png?v={FOLDER_ICON_VERSION}"
@@ -446,6 +452,77 @@ def _joshu_share_file_function() -> str:
             }}"""
 
 
+def _joshu_share_file_function_for_module() -> str:
+    """The same shareFile() for js/explorer/share.js, where code starts at column 0."""
+    return textwrap.dedent(_joshu_share_file_function())
+
+
+def _bust_file_explorer_module_cache(web: Path, module_name: str) -> None:
+    """Add ?v=<overlay version> to one js/explorer script tag of file_explorer.html."""
+    path = web / "SystemAO" / "file_system" / "file_explorer.html"
+    if not path.is_file():
+        return
+    text = path.read_text(encoding="utf-8")
+    text2, n = re.subn(
+        rf'src="js/explorer/{re.escape(module_name)}(?:\?v=[^"]*)?"',
+        f'src="js/explorer/{module_name}?v={OVERLAY_VERSION}"',
+        text,
+    )
+    if n == 0:
+        print(
+            f"[joshu] file_explorer: script tag of {module_name} not found; no cache-bust",
+            file=sys.stderr,
+        )
+        return
+    if text2 != text:
+        path.write_text(text2, encoding="utf-8")
+
+
+def _patch_file_explorer_share_module(web: Path, share_js: Path) -> None:
+    """Share To picker for the File Manager of ArozOS e3819d1 and later.
+
+    Upstream moved shareFile() from file_explorer.html to js/explorer/share.js.
+    The files of js/explorer are classic scripts that share one global scope, so
+    the refresh hook can read `currentPath` of state.js from share.js.
+    """
+    text = share_js.read_text(encoding="utf-8")
+
+    refresh_hook = (
+        f"// {FILE_EXPLORER_REFRESH_HOOK_MARKER}\n"
+        "window.joshuRefreshFileManager = function(){\n"
+        "    listDirectory(currentPath);\n"
+        "};\n\n"
+    )
+    new_share = _joshu_share_file_function_for_module()
+    text2, n = re.subn(
+        r"^function shareFile\(\)\{.*?\n\}\n\nfunction removeSharing",
+        lambda _m: new_share + "\n\nfunction removeSharing",
+        text,
+        count=1,
+        flags=re.DOTALL | re.MULTILINE,
+    )
+    if n != 1:
+        print(
+            "[joshu] file_explorer share-to patch: shareFile function not found in js/explorer/share.js",
+            file=sys.stderr,
+        )
+        return
+    text = text2
+    if FILE_EXPLORER_REFRESH_HOOK_MARKER not in text:
+        text = text.replace("function shareFile(){", refresh_hook + "function shareFile(){", 1)
+    share_js.write_text(text, encoding="utf-8")
+
+    _bust_file_explorer_module_cache(web, "share.js")
+    html_path = web / "SystemAO" / "file_system" / "file_explorer.html"
+    if html_path.is_file():
+        html = html_path.read_text(encoding="utf-8")
+        for marker in (FILE_EXPLORER_SHARE_TO_MARKER, FILE_EXPLORER_SHARE_FLOAT_MARKER):
+            if marker not in html:
+                html = html.replace("<head>", f"<head>\n    {marker}", 1)
+        html_path.write_text(html, encoding="utf-8")
+    print(f"[joshu] patched file explorer Share -> Share To picker ({share_js})")
+
+
 def _find_companion_identity_json(web: Path) -> Path | None:
     """Locate `.joshu/identity.json` under ArozOS user files (single-owner boxes)."""
     users = web.parent / "files" / "users"
@@ -576,6 +653,12 @@ def _patch_file_explorer_share_float_window(web: Path) -> None:
     Stock ArozOS embeds file_share.html in a slide-in panel. Joshu opens share_to.html
     as a float window; destination handlers create shares only when chosen.
     """
+    share_js = web.joinpath(*FILE_EXPLORER_MODULE_DIR) / "share.js"
+    if share_js.is_file():
+        _patch_file_explorer_share_module(web, share_js)
+        return
+
+    # ArozOS before e3819d1: shareFile() is inline in file_explorer.html.
     path = web / "SystemAO" / "file_system" / "file_explorer.html"
     if not path.is_file():
         return
@@ -727,6 +810,87 @@ def _patch_desktop_share_context_menu(text: str) -> str:
     return text.replace(anchor, fn + anchor, 1)
 
 
+def _patch_system_settings_branding_modular(
+    web: Path, overlay: Path, root: Path, index_path: Path, main_js: Path
+) -> None:
+    """Joshu System Settings for ArozOS e3819d1 and later (index.html + main.js).
+
+    Upstream rewrote the page, so the text patches of the old index.html do not
+    apply. The Joshu behavior is in joshu-settings.js, which loads before main.js:
+    no Joshu group in the sidebar, a Joshu entry in About, no Vendor entry, and
+    the label "About". This function copies that file and edits the two tags and
+    the locale URL that need a cache-bust.
+    """
+    settings_dir = index_path.parent
+    rel = f"SystemAO/system_setting/{SYSTEM_SETTINGS_OVERLAY_JS}"
+    src = overlay / rel
+    if not src.is_file():
+        src = root / "arozos" / "web-overlays-vanilla" / rel
+    if not src.is_file():
+        print(f"[joshu] system settings overlay script missing: {rel}", file=sys.stderr)
+        return
+    shutil.copyfile(src, settings_dir / SYSTEM_SETTINGS_OVERLAY_JS)
+
+    marker = _system_settings_branding_marker()
+    text = index_path.read_text(encoding="utf-8")
+    text = re.sub(r"[ \t]*<!-- joshu-settings-branding-[^>]+ -->\n?", "", text)
+    if '<meta http-equiv="Cache-Control"' not in text:
+        text = text.replace(
+            "<head>",
+            '<head>\n        <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">',
+            1,
+        )
+    # The page is two folders below the web root, so the icon path needs "../../".
+    text = re.sub(r'\s*<link rel="icon" href="[^"]*"(?: type="[^"]*")?>', "", text)
+    text = text.replace(
+        "<head>",
+        f'<head>\n        <link rel="icon" href="../../{JOSHU_FAVICON_PATH}" type="image/svg+xml">',
+        1,
+    )
+
+    # Sidebar title: Joshu app icon in place of the ArozOS icon.
+    joshu_icon = f'<img src="../../{JOSHU_FAVICON_PATH}" alt=""'
+    text, n_icon = re.subn(
+        r'<img src="(?:img/small_icon\.png|\.\./\.\./img/public/joshu-icon\.svg(?:\?[^"]*)?)"(?: alt="")?',
+        joshu_icon,
+        text,
+        count=1,
+    )
+    if n_icon != 1:
+        print("[joshu] system settings: sidebar title icon not found", file=sys.stderr)
+
+    # joshu-settings.js must load before main.js, because main.js asks for the
+    # setting list as soon as the locale file arrives.
+    script_tags = (
+        f'<script type="text/javascript" src="{SYSTEM_SETTINGS_OVERLAY_JS}?v={OVERLAY_VERSION}"></script>\n'
+        f'        <script type="text/javascript" src="main.js?v={OVERLAY_VERSION}"></script>'
+    )
+    text, n_script = re.subn(
+        r'(?:<script type="text/javascript" src="joshu-settings\.js(?:\?v=[^"]*)?"></script>\s*)?'
+        r'<script type="text/javascript" src="main\.js(?:\?v=[^"]*)?"></script>',
+        lambda _m: script_tags,
+        text,
+        count=1,
+    )
+    if n_script != 1:
+        print("[joshu] system settings: main.js script tag not found; Joshu changes not loaded", file=sys.stderr)
+
+    text = text.replace("</head>", f"    <!-- {marker} -->\n    </head>", 1)
+    index_path.write_text(text, encoding="utf-8")
+
+    # Locale file cache-bust, so a new overlay version loads the merged Joshu strings.
+    js = main_js.read_text(encoding="utf-8")
+    js, n_locale = re.subn(
+        r"""applocale\.init\((['"])\.\./locale/system_settings\.json(?:\?v=[^'"]*)?\1""",
+        lambda m: f"applocale.init({m.group(1)}../locale/system_settings.json?v={OVERLAY_VERSION}{m.group(1)}",
+        js,
+        count=1,
+    )
+    if n_locale != 1:
+        print("[joshu] system settings: locale init not found in main.js; no cache-bust", file=sys.stderr)
+    main_js.write_text(js, encoding="utf-8")
+
+
 def _patch_system_settings_branding(
     web: Path, overlay: Path, root: Path, release_version: str
 ) -> None:
@@ -737,6 +901,12 @@ def _patch_system_settings_branding(
     index_path = web / "SystemAO" / "system_setting" / "index.html"
     if not index_path.is_file():
         return
+    main_js = index_path.parent / "main.js"
+    if main_js.is_file():
+        _patch_system_settings_branding_modular(web, overlay, root, index_path, main_js)
+        return
+
+    # ArozOS before e3819d1: one index.html with inline script.
     text = index_path.read_text(encoding="utf-8")
     marker = _system_settings_branding_marker()
     text = re.sub(r"<!-- joshu-settings-branding-[^>]+ -->\n?", "", text)
@@ -867,8 +1037,48 @@ def _patch_system_settings_branding(
     index_path.write_text(text, encoding="utf-8")
 
 
+def _patch_file_explorer_tango_icons_module(web: Path, render_js: Path) -> None:
+    """Tango PNGs in the File Manager of ArozOS e3819d1 and later (js/explorer/render.js).
+
+    Upstream draws each list row and details row icon with FileThumb.smallGlyph(),
+    an inline SVG. The grid tile uses d.imagePath, a PNG of the icon theme. The
+    patch makes the rows use d.imagePath too, and makes a folder use the Joshu
+    folder PNG in all three views.
+    """
+    text = render_js.read_text(encoding="utf-8")
+    folder_src = f"../../{FOLDER_EMPTY_PATH}"
+
+    folder_line = re.compile(
+        r'd\.imagePath = "\.\./\.\./img/(?:desktop/files_icon/" \+ filesIconTheme \+ "/folder\.png|joshu/folder\.png(?:\?[^"]*)?)";'
+    )
+    text, n_folder = folder_line.subn(f'd.imagePath = "{folder_src}";', text, count=1)
+    if n_folder != 1:
+        print("[joshu] file_explorer tango patch: folder image line not found in render.js", file=sys.stderr)
+
+    stock_row_icon = '<span class="fmRowIcon">${FileThumb.smallGlyph(d.filename, d.isDir)}</span>'
+    joshu_row_icon = (
+        '<span class="fmRowIcon"><img src="${d.imagePath}" alt="" draggable="false" '
+        'style="width:20px;height:20px;object-fit:contain;display:block;"></span>'
+    )
+    if stock_row_icon in text:
+        text = text.replace(stock_row_icon, joshu_row_icon)
+    elif joshu_row_icon not in text:
+        print("[joshu] file_explorer tango patch: row icon template not found in render.js", file=sys.stderr)
+
+    if FILE_EXPLORER_TANGO_JS_MARKER not in text:
+        text = FILE_EXPLORER_TANGO_JS_MARKER + "\n" + text
+    render_js.write_text(text, encoding="utf-8")
+    _bust_file_explorer_module_cache(web, "render.js")
+
+
 def _patch_file_explorer_tango_icons(web: Path) -> None:
     """Use Tango PNGs in File Manager list/details (default view), not Semantic UI glyphs."""
+    render_js = web.joinpath(*FILE_EXPLORER_MODULE_DIR) / "render.js"
+    if render_js.is_file():
+        _patch_file_explorer_tango_icons_module(web, render_js)
+        return
+
+    # ArozOS before e3819d1: the row templates are inline in file_explorer.html.
     path = web / "SystemAO" / "file_system" / "file_explorer.html"
     if not path.is_file():
         return
@@ -1087,6 +1297,42 @@ def _apply_reset_templates(web: Path, overlay: Path, root: Path, version: str) -
     print(f"[joshu] applied reset templates -> {dest_dir}")
 
 
+AO_MODULE_THEME_MARKER = "/* joshu-default-light-theme */"
+
+
+def _patch_ao_module_default_theme(web: Path) -> None:
+    """An account with no saved theme gets the light theme in each window.
+
+    The Joshu shell is light. desktop.html reads an empty theme preference as the
+    light theme. Many pages of ArozOS e3819d1 and later read it as the dark theme
+    (`color !== 'whiteTheme'`), so System Settings opened dark inside the light
+    shell. The patch makes ao_module_getSystemThemeColor() answer "whiteTheme"
+    unless the owner saved "darkTheme".
+    """
+    ao_module = web / "script" / "ao_module.js"
+    if not ao_module.is_file():
+        return
+    text = ao_module.read_text(encoding="utf-8")
+    if AO_MODULE_THEME_MARKER in text:
+        return
+    stock = re.compile(
+        r"(function ao_module_getSystemThemeColor\(callback\)\{\s*"
+        r"\$\.get\([^\n]*file_explorer/theme\",\s*function\(data\)\{\s*)callback\(data\);"
+    )
+    text, count = stock.subn(
+        lambda m: m.group(1)
+        + AO_MODULE_THEME_MARKER
+        + ' callback(data === "darkTheme" ? "darkTheme" : "whiteTheme");',
+        text,
+        count=1,
+    )
+    if count != 1:
+        print("[joshu] ao_module theme patch: ao_module_getSystemThemeColor not found", file=sys.stderr)
+        return
+    ao_module.write_text(text, encoding="utf-8")
+    print(f"[joshu] patched ao_module default theme ({ao_module})")
+
+
 def main() -> None:
     if len(sys.argv) != 2:
         print("usage: apply_arozos_joshu_theme.py <web-root>", file=sys.stderr)
@@ -1119,6 +1365,7 @@ def main() -> None:
     _replace_init_splash(web, overlay)
     _apply_auth_pages(web, overlay, root, release_version)
     _patch_system_settings_branding(web, overlay, root, release_version)
+    _patch_ao_module_default_theme(web)
     _copy_file_share_dialog(web, overlay, root)
     _copy_share_public_pages(web, overlay, root)
     _apply_reset_templates(web, overlay, root, release_version)

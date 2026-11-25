@@ -53,8 +53,8 @@ Owner profile (injected at queue — use this; do not read .joshu from disk):
 The important fields are:
 
 - `source_path`: the mail mirror of the thread.
-- `agent_authorized` and `authorization_reason`: whether the companion may act or only file.
-- `allowed_actions`: `file`, `file,schedule` (may open a meeting task), or `file,reply` (may open an owner-reply task).
+- `agent_authorized` and `authorization_reason`: whether the companion may act or only file. Reason `outsider_needs_owner_ok` means an outsider wrote to the companion and the owner has not agreed on the thread (see [Mail from an outsider](../agent-safety.md#mail-from-an-outsider)).
+- `allowed_actions`: `file`, `file,schedule` (may open a meeting task), `file,reply` (may open an owner-reply task), or `file,ask_owner` (sends one owner-OK question; the card then also has `owner_ok_needed: true`).
 - `coordination_scope_id`: groups the threads about one matter.
 
 ## The other kinds

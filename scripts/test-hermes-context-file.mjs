@@ -33,6 +33,19 @@ test("HERMES.md tells the companion to report box problems", () => {
   assert.match(section, /memory entry or a skill that tells how to get around a guard/);
 });
 
+test("HERMES.md tells where the companion saves a lesson", () => {
+  const md = buildHermesContextMarkdown({ ownerName: "Maya", assistantName: "Mina" });
+  const start = md.indexOf("## What to remember");
+  assert.ok(start > md.indexOf("## Scratch files") && start < md.indexOf("## Box problems"));
+  assert.ok(start < md.indexOf("## Operating rules"));
+  const section = md.slice(start, md.indexOf("## Box problems"));
+  assert.match(section, /rule from the owner[^\n]*target `user`/i);
+  assert.match(section, /every task of that kind/);
+  assert.match(section, /limit of a tool[^\n]*target `memory`/);
+  assert.match(section, /skill of that task/);
+  assert.match(section, /`replace`[^\n]*replaces the whole entry/);
+});
+
 test("default write safe root holds the Desktop and the scratch folder", () => {
   const prev = process.env.JOSHU_HERMES_WRITE_SAFE_ROOT;
   delete process.env.JOSHU_HERMES_WRITE_SAFE_ROOT;

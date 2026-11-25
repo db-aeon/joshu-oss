@@ -12,13 +12,13 @@ import { getOwnerTimeAnchor } from "../ownerLocalTime.js";
 import { ResearchStepError } from "./errors.js";
 import { embeddedFontCss } from "./fonts.js";
 import { renderPdf } from "./pdf.js";
-import { composioSearchClient, type ComposioSearchClient } from "./pipeline/composioSearch.js";
-import { exaClient, type ExaClient } from "./pipeline/exa.js";
+import { sourceSearchClient, type SourceSearchClient } from "./pipeline/sourceSearch.js";
+import type { ExaClient } from "./pipeline/exa.js";
 import { researchModel, type JsonCallOpts } from "./pipeline/llm.js";
 import { pickPictures, type Picture } from "./pipeline/pictures.js";
 import { cleanHints, ownerSections, planResearch } from "./pipeline/plan.js";
 import { searchWeb } from "./pipeline/search.js";
-import { webSourceLabel, youClient, type WebProvider } from "./pipeline/you.js";
+import { boxWebClient, webSourceLabel, type WebProvider } from "./pipeline/you.js";
 import { limitSentences, type ReportText } from "./pipeline/write.js";
 import { buildThemes, type ThemeLimits } from "./themes/index.js";
 import {
@@ -63,14 +63,15 @@ export type MakeDeps = {
   /** Null means the box has no Exa key. Default: the Exa key of the box. */
   exa?: ExaClient | null;
   /**
-   * The web search provider of this report (change research-web-provider). Default: Exa. With
-   * You.com, the search goes through the content router and the full text of the pages stays on Exa.
+   * The web provider that the owner asked for in the request (changes research-web-provider and
+   * you-web-provider). Default: the box chooses, see `boxWebClient`: You.com when the box can
+   * reach You.com, or else Exa.
    */
   webProvider?: WebProvider;
-  /** The You.com client (tests pass a fake; null means no content router). Default: the content router of the box. */
+  /** The You.com client (tests pass a fake; null means the box cannot call You.com). Default: the You.com access of the box (`youAccess`). */
   you?: ExaClient | null;
-  /** Null means the box has no Composio key. Default: the Composio key of the box (change research-report-sources). */
-  composio?: ComposioSearchClient | null;
+  /** Null means the box cannot call the content router. Default: the router access of the box (change research-router-sources). */
+  sourceSearch?: SourceSearchClient | null;
   /** Model calls (tests pass a fake fetch and key). */
   llm?: Pick<JsonCallOpts, "fetchImpl" | "apiKey" | "model">;
   /** The social posts of the pool. Default: the content goals of the box (`collectSocialPool`). */
@@ -191,18 +192,11 @@ export async function makeResearchReport(projectRoot: string, topic: string, dep
   const timezone = anchor?.timezone ?? "UTC";
   const llm = { ...deps.llm, projectRoot };
 
-  const exa = deps.exa === undefined ? exaClient(projectRoot) : deps.exa;
-  const webProvider: WebProvider = deps.webProvider ?? "exa";
-  // With You.com the search goes through the content router; Exa only reads the full text, when the box has a key.
-  let webClient: ExaClient;
-  if (webProvider === "you.com") {
-    const you = deps.you === undefined ? youClient(projectRoot, exa) : deps.you ? { client: deps.you } : { client: null, reason: "content router off" };
-    if (!you.client) throw new ResearchStepError("search", `You.com web search needs the content router, and this box cannot call it (${you.reason})`);
-    webClient = you.client;
-  } else {
-    if (!exa) throw new ResearchStepError("search", "the box has no Exa key for web search");
-    webClient = exa;
-  }
+  // The web client of the box (change you-web-provider): You.com when the box can reach You.com, or else Exa.
+  const web0 = boxWebClient(projectRoot, deps.webProvider, { exa: deps.exa, you: deps.you });
+  if (!web0.client) throw new ResearchStepError("search", web0.reason);
+  const webClient = web0.client;
+  const webProvider = web0.provider;
 
   const request = cleanRequest(deps.request);
   const planned = await planResearch(clean, day, Date.now() + STEP_LIMITS_MS.plan, llm, request);
@@ -225,8 +219,8 @@ export async function makeResearchReport(projectRoot: string, topic: string, dep
     day,
     goals,
   ).catch(() => null);
-  const composio = deps.composio === undefined ? composioSearchClient(projectRoot) : deps.composio;
-  const web = await searchWeb(webClient, plan, day, Date.now() + STEP_LIMITS_MS.search, composio);
+  const sourceSearch = deps.sourceSearch === undefined ? sourceSearchClient(projectRoot) : deps.sourceSearch;
+  const web = await searchWeb(webClient, plan, day, Date.now() + STEP_LIMITS_MS.search, sourceSearch);
   const social = await socialRun;
   const sources: SourceState[] = [
     {
@@ -276,7 +270,7 @@ export async function makeResearchReport(projectRoot: string, topic: string, dep
     stories,
     ...(sections.length ? { sections } : { background: plan.subQuestions.filter((q) => q.kind !== "news") }),
     pages: web.pages,
-    exa,
+    exa: webClient,
     limits: THEME_LIMITS,
     llm,
   });

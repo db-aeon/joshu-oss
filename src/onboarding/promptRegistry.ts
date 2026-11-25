@@ -15,9 +15,10 @@ export const ONBOARDING_PREDICATE_IDS = [
   "ownerMobileConfigured",
   "anyGoogleAccountConnected",
   "workAccountConnected",
+  "workAccountSettled",
   "voicePinSet",
   "ownerCalledBox",
-  "manual",
+  "ownerEmailedBox",
 ] as const;
 
 export type OnboardingPredicateId = (typeof ONBOARDING_PREDICATE_IDS)[number];
@@ -49,6 +50,8 @@ export type OnboardingPromptDefinition = {
 export type OnboardingPromptRegistry = {
   schemaVersion: number;
   prompts: OnboardingPromptDefinition[];
+  /** Ids of setup steps that a release removed. The reconcile completes their open cards. */
+  retired: string[];
 };
 
 const PREDICATE_IDS = new Set<string>(ONBOARDING_PREDICATE_IDS);
@@ -134,7 +137,7 @@ export async function readBoxReleaseVersion(projectRoot = process.cwd()): Promis
 export function loadOnboardingPromptRegistry(projectRoot = process.cwd()): OnboardingPromptRegistry {
   const file = registryPath(projectRoot);
   if (!fs.existsSync(file)) {
-    return { schemaVersion: 1, prompts: [] };
+    return { schemaVersion: 1, prompts: [], retired: [] };
   }
   const parsed = parseYaml(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
   const schemaVersion =
@@ -144,7 +147,8 @@ export function loadOnboardingPromptRegistry(projectRoot = process.cwd()): Onboa
         .map(parsePrompt)
         .filter((p): p is OnboardingPromptDefinition => p !== null)
     : [];
-  return { schemaVersion, prompts };
+  const retired = textList(parsed.retired);
+  return { schemaVersion, prompts, retired };
 }
 
 /** Prompts introduced on or before this box version. */

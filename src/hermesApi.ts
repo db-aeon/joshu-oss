@@ -12,12 +12,14 @@ import type { Readable } from "node:stream";
 import { resolveBoxSecret } from "./boxSecrets/resolve.js";
 import { pidRunsCommand } from "./pidFile.js";
 import { provisionEnvTrim } from "./provisionInstanceEnv.js";
+import { youAccess } from "./research/pipeline/you.js";
 import { promisify } from "node:util";
 import YAML from "yaml";
 import { bootstrapHermesLearning } from "./hermesLearning.js";
 import { hasActiveCronExecutions } from "./hermesCronExecutions.js";
 import { loadProductSkillsPolicy } from "./hermesSkillsConfig.js";
 import { syncHermesContextFile } from "./hermesContextFile.js";
+import { syncJoshuHermesMemoryLimits } from "./hermesMemoryLimits.js";
 import { syncBundledAppSkillsToHermes } from "./appSkillsSync.js";
 import type { RunEvent, RunRecord, RunStatus } from "./types.js";
 import {
@@ -105,6 +107,7 @@ import {
   JOSHU_OPENROUTER_SESSION_SEARCH_MODEL,
   syncJoshuOpenRouterDataPolicy,
 } from "./joshuOpenRouterDefaults.js";
+import { isJoshuHindsightEnabled } from "./hindsightHealth.js";
 
 const DEFAULT_JOSHU_HERMES_MODEL = JOSHU_OPENROUTER_DEFAULT_MODEL;
 const DEFAULT_JOSHU_HERMES_PROVIDER = "openrouter";
@@ -491,6 +494,51 @@ function syncExaWebHermesPlugin(config: ConfigRecord): boolean {
   return changed;
 }
 
+/** Joshu web backend plugin for You.com (`.hermes/plugins/joshu-web-you/`), provider name `you`. */
+export const HERMES_WEB_YOU_PLUGIN = "joshu-web-you";
+
+/**
+ * Set the web backend of Hermes (change you-web-provider): `you` when the box can reach You.com,
+ * or else `exa` with an Exa key. With both, the Exa backend stays enabled, because plugin
+ * joshu-web-you calls it when the Joshu API does not answer. With neither, the config is not
+ * changed. Returns true when the config changed.
+ */
+export function applyWebBackend(config: ConfigRecord, keys: { you: boolean; exa: string }): boolean {
+  const backend = keys.you ? "you" : keys.exa ? "exa" : "";
+  if (!backend) return false;
+  let changed = false;
+  const web = asRecord(config.web);
+  if (web.backend !== backend) {
+    web.backend = backend;
+    changed = true;
+  }
+  // Clear per-capability overrides, so search and extract both use the backend.
+  for (const key of ["search_backend", "extract_backend"] as const) {
+    if (web[key] != null && web[key] !== "" && web[key] !== backend) {
+      delete web[key];
+      changed = true;
+    }
+  }
+  config.web = web;
+  if (keys.exa && syncExaWebHermesPlugin(config)) changed = true;
+  if (keys.you) {
+    const plugins = asRecord(config.plugins);
+    const disabled = asStringArray(plugins.disabled);
+    const enabled = asStringArray(plugins.enabled);
+    if (disabled.includes(HERMES_WEB_YOU_PLUGIN)) {
+      plugins.disabled = disabled.filter((name) => name !== HERMES_WEB_YOU_PLUGIN);
+      changed = true;
+    }
+    if (!enabled.includes(HERMES_WEB_YOU_PLUGIN)) {
+      enabled.push(HERMES_WEB_YOU_PLUGIN);
+      plugins.enabled = enabled;
+      changed = true;
+    }
+    config.plugins = plugins;
+  }
+  return changed;
+}
+
 function envString(name: string, fallback = ""): string {
   const value = process.env[name]?.trim();
   return value || fallback;
@@ -549,20 +597,6 @@ function parseEnvBoolean(name: string, fallback: boolean): boolean {
   if (["1", "true", "yes", "on"].includes(value)) return true;
   if (["0", "false", "no", "off"].includes(value)) return false;
   return fallback;
-}
-
-function isJoshuHindsightEnabled(): boolean {
-  const value = process.env.JOSHU_HINDSIGHT_ENABLED?.trim().toLowerCase();
-  if (value && ["1", "true", "yes", "on"].includes(value)) return true;
-  if (value && ["0", "false", "no", "off"].includes(value)) return false;
-
-  // In auto mode, enable Hindsight only when the local API has enough LLM
-  // configuration to start. This keeps ordinary dev runs from failing.
-  return Boolean(
-    envString("HINDSIGHT_API_LLM_API_KEY") ||
-      envString("HINDSIGHT_API_LLM_PROVIDER") ||
-      envString("HINDSIGHT_API_LLM_BASE_URL"),
-  );
 }
 
 function parseToolsets(value: unknown): string[] {
@@ -2158,31 +2192,19 @@ export class HermesApiRunner extends EventEmitter {
     }
     config.browser = browser;
 
-    // Pin Exa when fleet provisioned EXA_API_KEY is present (Hermes auto-detect
-    // also prefers Tavily/Firecrawl if those keys exist — explicit backend wins).
+    // Web backend of web_search / web_extract (change you-web-provider): You.com when the box
+    // can reach You.com (relay mode, or the own key of a self-hosted box), or else Exa when the
+    // box has an Exa key. Hermes auto-detect would prefer Tavily or Firecrawl when those keys
+    // exist, so the explicit backend wins.
     // Docs: https://hermes-agent.nousresearch.com/docs/user-guide/features/web-search
-    const exaForWeb =
-      provisionEnvTrim("EXA_API_KEY") || process.env.EXA_API_KEY?.trim() || "";
-    if (exaForWeb) {
-      const web = asRecord(config.web);
-      if (web.backend !== "exa") {
-        web.backend = "exa";
-        changed = true;
-      }
-      // Clear per-capability overrides so search+extract both use Exa.
-      if (web.search_backend != null && web.search_backend !== "" && web.search_backend !== "exa") {
-        delete web.search_backend;
-        changed = true;
-      }
-      if (web.extract_backend != null && web.extract_backend !== "" && web.extract_backend !== "exa") {
-        delete web.extract_backend;
-        changed = true;
-      }
-      config.web = web;
-      if (syncExaWebHermesPlugin(config)) {
-        changed = true;
-        pluginsChanged = true;
-      }
+    if (
+      applyWebBackend(config, {
+        you: youAccess() !== null,
+        exa: provisionEnvTrim("EXA_API_KEY") || process.env.EXA_API_KEY?.trim() || "",
+      })
+    ) {
+      changed = true;
+      pluginsChanged = true;
     }
 
     const mcpServers = asRecord(config.mcp_servers);
@@ -2413,6 +2435,8 @@ export class HermesApiRunner extends EventEmitter {
       changed = true;
     }
     if (Object.keys(memory).length > 0) config.memory = memory;
+    // Room in MEMORY.md and USER.md for owner rules and box notes (spec hermes-memory).
+    if (syncJoshuHermesMemoryLimits(config)) changed = true;
 
     // Owner IANA zone — Hermes cron hour/minute are wall-clock in this zone (not VPS UTC).
     const profileTz = readAgentProfile(process.cwd())?.timezone?.trim();

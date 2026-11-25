@@ -14,6 +14,7 @@ import (
 	"log"
 	"os"
 	"strings"
+	"time"
 
 	bolt "go.etcd.io/bbolt"
 )
@@ -44,7 +45,11 @@ func main() {
 		os.Exit(2)
 	}
 
+	// AO_PW_HASH keeps the hash out of the process list (single-container mode, change sandbox-box-commands).
 	hashed := strings.ToLower(strings.TrimSpace(*hashFlag))
+	if hashed == "" {
+		hashed = strings.ToLower(strings.TrimSpace(os.Getenv("AO_PW_HASH")))
+	}
 	if hashed == "" {
 		if *password == "" {
 			fmt.Fprintln(os.Stderr, "either -password or -hash is required")
@@ -72,7 +77,8 @@ func main() {
 		log.Fatal(err)
 	}
 
-	db, err := bolt.Open(*dbPath, 0o600, nil)
+	// A running ArozOS holds the lock of ao.db. Fail after 10 seconds instead of waiting forever.
+	db, err := bolt.Open(*dbPath, 0o600, &bolt.Options{Timeout: 10 * time.Second})
 	if err != nil {
 		log.Fatal(err)
 	}

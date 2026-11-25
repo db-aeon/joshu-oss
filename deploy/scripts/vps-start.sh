@@ -25,6 +25,83 @@ IMAGE_SCRIPTS="${JOSHU_IMAGE_SCRIPTS:-${APP_DIR}/.image/scripts}"
 HOTFIX_SCRIPTS="${JOSHU_HOTFIX_SCRIPTS:-${APP_DIR}/hotfix/scripts}"
 JOSHU_SCRIPTS_ROOT="${JOSHU_SCRIPTS_ROOT:-/run/joshu-boot-scripts}"
 
+# Single-container mode (change single-container-mode): JOSHU_DATA_ROOT is the persistent
+# disk of a host with no Docker. Owner data and /etc/joshu become links to folders on it
+# before anything reads them. Without JOSHU_DATA_ROOT the box starts as before.
+JOSHU_SINGLE_CONTAINER=""
+if [[ -n "${JOSHU_DATA_ROOT:-}" ]]; then
+  JOSHU_SINGLE_CONTAINER=1
+  # shellcheck source=/dev/null
+  source "${IMAGE_SCRIPTS}/lib/data-root.sh"
+  link_data_root
+  # A rebuild keeps the data root, so an overlay there would survive an upgrade.
+  # Single-container mode has no hotfix overlay: init_joshu_boot_scripts skips the copy.
+  HOTFIX_SCRIPTS="${APP_DIR}/hotfix/scripts"
+fi
+export JOSHU_SINGLE_CONTAINER
+
+# Single-container mode: a host with no Docker has no `docker logs`. The output of the stack
+# and of each supervised process also goes to a file under the data root, with a UTC
+# timestamp at the start of each line. The diagnostics command of the instance agent reads
+# these files (source joshu-stack, voice-realtime, instance-agent, caddy).
+JOSHU_LOG_DIR=""
+# The size limit of one log file, in bytes. Only the tests set another value.
+JOSHU_LOG_MAX_BYTES="${JOSHU_LOG_MAX_BYTES:-20000000}"
+
+# Keep one older file per service: a file over the limit moves to "<name>.log.1".
+rotate_log() {
+  local file="$1" size
+  [[ -f "${file}" ]] || return 0
+  size="$(stat -c %s "${file}" 2>/dev/null || echo 0)"
+  if (( size > JOSHU_LOG_MAX_BYTES )); then
+    # A failed move must not stop a service or the box: the file then keeps growing until the move works.
+    mv -f "${file}" "${file}.1" 2>/dev/null || true
+  fi
+}
+
+# stamp_log <name> <fd>: copy stdin to the file descriptor, and append each line with a
+# timestamp to "<log dir>/<name>.log".
+stamp_log() {
+  local file="${JOSHU_LOG_DIR}/$1.log" out="$2" line count=0
+  while IFS= read -r line || [[ -n "${line}" ]]; do
+    printf '%s\n' "${line}" >&"${out}" || true
+    # A full disk must not stop the box: the line is then only in the output of the container.
+    { TZ=UTC printf '%(%Y-%m-%dT%H:%M:%SZ)T %s\n' -1 "${line}" >> "${file}"; } 2>/dev/null || true
+    count=$((count + 1))
+    if (( count % 5000 == 0 )); then
+      rotate_log "${file}"
+    fi
+  done
+}
+
+if [[ "${JOSHU_SINGLE_CONTAINER}" == "1" ]]; then
+  JOSHU_LOG_DIR="${JOSHU_DATA_ROOT}/logs"
+  mkdir -p "${JOSHU_LOG_DIR}" 2>/dev/null || true
+  for log_file in "${JOSHU_LOG_DIR}"/*.log; do
+    rotate_log "${log_file}"
+  done
+  # File descriptor 3 stays the output of the container. Supervised processes write there
+  # through their own stamp_log, so their lines are not also in the file of the stack.
+  exec 3>&1
+  exec > >(stamp_log joshu-stack 3) 2>&1
+  # The logger is a separate process. Give it a moment to pass on the last lines when the
+  # start script exits, because the container ends with process 1.
+  trap 'sleep 1' EXIT
+fi
+
+# Restart of the box in place, and the desktop password reset in it (change sandbox-box-commands).
+# shellcheck source=/dev/null
+source "${IMAGE_SCRIPTS}/lib/restart-in-place.sh"
+# Only process 1 can restart the box in place: another start script would leave process 1 and
+# its processes running. The agent refuses the commands when the ready file is missing.
+rm -f "${JOSHU_RESTART_READY}"
+if [[ "${JOSHU_SINGLE_CONTAINER}" == "1" && "$$" == "1" ]]; then
+  trap restart_in_place USR1
+  # The time of this start, so the instance agent can tell whether a restart happened after its request.
+  date +%s > /run/joshu-started-at
+  : > "${JOSHU_RESTART_READY}"
+fi
+
 init_joshu_boot_scripts() {
   mkdir -p "${JOSHU_SCRIPTS_ROOT}"
   if [[ -d "${IMAGE_SCRIPTS}" ]]; then
@@ -34,7 +111,7 @@ init_joshu_boot_scripts() {
     rsync -a "${APP_DIR}/scripts/" "${JOSHU_SCRIPTS_ROOT}/"
     echo "[vps-start] WARN: missing ${IMAGE_SCRIPTS}; seeded from ${APP_DIR}/scripts" >&2
   fi
-  if [[ -d "${HOTFIX_SCRIPTS}" ]] \
+  if [[ "${JOSHU_SINGLE_CONTAINER}" != "1" && -d "${HOTFIX_SCRIPTS}" ]] \
     && find "${HOTFIX_SCRIPTS}" -type f ! -name '.gitkeep' -print -quit | grep -q .; then
     rsync -a "${HOTFIX_SCRIPTS}/" "${JOSHU_SCRIPTS_ROOT}/"
     echo "[vps-start] boot overlay from ${HOTFIX_SCRIPTS}"
@@ -76,6 +153,15 @@ unset_safety_messaging_env() {
     SLACK_BOT_TOKEN SLACK_APP_TOKEN SLACK_ALLOWED_USERS SLACK_HOME_CHANNEL SLACK_ALLOWED_CHANNELS || true
 }
 
+# Single-container mode: a release reaches the box by a rebuild of its container, and no
+# instance agent runs a release update. So drop the model lines that the control plane wrote
+# here, before anything reads instance.env (changes release-hermes-model and
+# release-hindsight-model). On a Compose host the instance agent does this in the release update.
+if [[ -n "${JOSHU_SINGLE_CONTAINER}" && -f /etc/joshu/instance.env ]]; then
+  node "${IMAGE_SCRIPTS}/drop-control-plane-models.mjs" --file /etc/joshu/instance.env \
+    || echo "[vps-start] WARN: could not drop the control plane model lines from instance.env" >&2
+fi
+
 # instance.env (provisioned secrets) must override stale keys in the persistent Hermes volume.
 load_env_file "${HERMES_HOME}/.env"
 unset_safety_messaging_env
@@ -90,6 +176,63 @@ fi
 # Relay/off: instance.env omits NYLAS_API_KEY, but a stale Hermes/.env copy must not win.
 if [[ "${JOSHU_NYLAS_MODE:-}" == "relay" || "${JOSHU_NYLAS_MODE:-}" == "off" ]]; then
   unset NYLAS_API_KEY NYLAS_API_URI || true
+fi
+
+# Single-container mode (change single-container-mode): the services that Compose runs in
+# their own containers run here as processes. Each one starts again 5 seconds after it exits.
+# Caddy and the tunnel start now, before the long steps of the boot, so the box answers
+# (with 502 from Caddy until the Joshu API is up) and its health is visible from outside.
+# The voice service and the instance agent start a few lines below, after the box-secrets file.
+run_supervised() {
+  local name="$1"
+  shift
+  (
+    while true; do
+      if [[ -n "${JOSHU_LOG_DIR}" ]]; then
+        # stamp_log counts lines from zero at each start, so a process that restarts often
+        # would never reach the rotation inside it. Check the size before each start.
+        rotate_log "${JOSHU_LOG_DIR}/${name}.log"
+        { "$@" 2>&1 || true; } | stamp_log "${name}" 3
+      else
+        "$@" || true
+      fi
+      echo "[vps-start] ${name} exited; restarting in 5s" >&2
+      sleep 5
+    done
+  ) &
+}
+
+single_container_caddy() {
+  local caddyfile=/run/joshu-caddy/Caddyfile
+  CADDYFILE_OUT="${caddyfile}" sh "${APP_DIR}/.image/host/deploy/scripts/render-caddyfile.sh" /etc/joshu/instance.env
+  caddy run --config "${caddyfile}" --adapter caddyfile
+}
+
+single_container_tunnel() {
+  # TUNNEL_TOKEN keeps the token out of the process list.
+  TUNNEL_TOKEN="${CLOUDFLARE_TUNNEL_TOKEN}" cloudflared tunnel --no-autoupdate \
+    --metrics "127.0.0.1:${JOSHU_TUNNEL_METRICS_PORT:-20241}" run
+}
+
+single_container_voice() {
+  cd "${APP_DIR}/packages/voice-realtime" \
+    && VOICE_REALTIME_SKIP_HERMES_ENV=1 node dist/index.js
+}
+
+single_container_agent() {
+  cd "${APP_DIR}/packages/instance-agent" \
+    && JOSHU_HEALTH_URL="${JOSHU_HEALTH_URL}" \
+      JOSHU_PATCH_INSTANCE_ENV_SCRIPT="${APP_DIR}/scripts/patch-instance-env.mjs" \
+      node dist/index.js
+}
+
+if [[ "${JOSHU_SINGLE_CONTAINER}" == "1" ]]; then
+  mkdir -p /run/joshu-caddy
+  run_supervised caddy single_container_caddy
+  if [[ -n "${CLOUDFLARE_TUNNEL_TOKEN:-}" ]]; then
+    run_supervised cloudflared single_container_tunnel
+  fi
+  echo "[vps-start] single-container mode: Caddy on :8080${CLOUDFLARE_TUNNEL_TOKEN:+, Cloudflare Tunnel}"
 fi
 
 # Welcome box-secrets (standalone self-host) — first ArozOS user with a saved file.
@@ -131,6 +274,20 @@ PY
 }
 
 load_box_secrets_env
+
+# Single-container mode: the voice service and the instance agent start now, with the keys
+# of instance.env and of the box-secrets file, and do not wait for Hermes. On a Compose
+# host the two containers also run while the stack container boots. A call in the first
+# minutes of a boot reaches the voice service, and the control plane sees the heartbeat.
+if [[ "${JOSHU_SINGLE_CONTAINER}" == "1" ]]; then
+  if [[ "${JOSHU_VOICE_MODE:-legacy}" == "realtime_s2s" ]]; then
+    run_supervised voice-realtime single_container_voice
+  fi
+  # A self-hoster has no control plane, and the agent exits at once without one.
+  if [[ -n "${CONTROL_PLANE_URL:-}" && -n "${JOSHU_INSTANCE_ID:-}" ]]; then
+    run_supervised instance-agent single_container_agent
+  fi
+fi
 
 # Safety Settings browser backend — local-env overrides instance.env (user toggle wins).
 load_safety_settings_browser_env() {
@@ -185,7 +342,7 @@ export GBRAIN_BIN="${GBRAIN_BIN:-$(command -v gbrain 2>/dev/null || echo "${HOME
 ensure_hermes_runtime_config() {
   local config="${HERMES_HOME}/config.yaml"
   local dotenv="${HERMES_HOME}/.env"
-  local model="${JOSHU_HERMES_MODEL:-deepseek/deepseek-v4.1-flash}"
+  local model="${JOSHU_HERMES_MODEL:-deepseek/deepseek-v4.1-flash-1017}"
   local provider="${JOSHU_HERMES_PROVIDER:-openrouter}"
   local toolsets="${JOSHU_HERMES_TOOLSETS:-[\"mcp-gbrain\", \"mcp-joshu-connectors\", \"kanban\", \"hermes-cli\", \"browser\"]}"
 
@@ -281,6 +438,18 @@ EOF
         echo "[vps-start] WARN: Hermes plugin enable failed: ${p}" >&2
       fi
     done
+  fi
+
+  # You.com web_search / web_extract backend (plugin joshu-web-you, change you-web-provider). The
+  # plugin was copied into $HERMES_HOME/plugins above. It holds no key: it calls the Joshu API,
+  # which reaches You.com in relay mode or with the own key of a self-hosted box. The Joshu API
+  # sets web.backend to "you".
+  if [[ "${JOSHU_YOU_MODE:-}" != "off" && ( "${JOSHU_YOU_MODE:-}" == "relay" || -n "${YDC_API_KEY:-}" ) && -x "${HERMES_BIN:-}" ]]; then
+    if "${HERMES_BIN}" plugins enable joshu-web-you 2>/dev/null; then
+      echo "[vps-start] Hermes plugin enabled: joshu-web-you (You.com access present)"
+    else
+      echo "[vps-start] WARN: Hermes joshu-web-you plugin enable failed" >&2
+    fi
   fi
 
   # Exa web_search / web_extract backend (plugins/web/exa — manifest name web-exa).
@@ -474,6 +643,31 @@ clear_stale_kanban_block_kinds() {
   done
 }
 
+# Delete old Kanban and cron sessions from the Hermes session history (change
+# hermes-session-prune). The call is here because the Hermes gateway is not running yet,
+# so no other process writes state.db. The start waits for the script, so the time limit
+# must stay well under the time that an update waits for a healthy box (600 seconds).
+# A failure or a timeout does not stop the start.
+prune_hermes_session_history() {
+  local script="${JOSHU_SCRIPTS_ROOT}/hermes-session-prune.py"
+  local python="${HERMES_DIR}/venv/bin/python"
+  [[ -f "${script}" && -x "${python}" && -f "${HERMES_HOME}/state.db" ]] || return 0
+  local seconds="${JOSHU_SESSION_PRUNE_TIMEOUT_SEC:-240}"
+  local limit=()
+  if command -v timeout >/dev/null 2>&1; then
+    limit=(timeout "${seconds}")
+  fi
+  local out status=0
+  out="$(HERMES_HOME="${HERMES_HOME}" HERMES_AGENT_ROOT="${HERMES_DIR}" \
+    JOSHU_SESSION_PRUNE_TIMEOUT_SEC="${seconds}" \
+    ${limit[@]+"${limit[@]}"} "${python}" "${script}" 2>/dev/null)" || status=$?
+  if [[ "${status}" -eq 0 ]]; then
+    echo "[vps-start] hermes session prune: ${out##*$'\n'}"
+  else
+    echo "[vps-start] WARN: hermes session prune failed or ran out of time (exit ${status}): ${out##*$'\n'}" >&2
+  fi
+}
+
 apply_hermes_langfuse_patches
 apply_hermes_kanban_ws_patch
 apply_hermes_content_filter_patch
@@ -493,6 +687,7 @@ apply_hermes_browser_cdp_guards
 apply_hermes_factory_skill_background_writes
 bootstrap_hermes_learning_skills
 clear_stale_kanban_block_kinds
+prune_hermes_session_history
 ensure_hermes_runtime_config
 restart_hermes_gateway_if_running
 
@@ -856,7 +1051,13 @@ if [[ "${AROZOS_ENABLED:-false}" =~ ^(1|true|yes)$ ]]; then
     echo "[vps-start] ArozOS shell theme: vanilla (no design pack)"
   fi
   echo "[vps-start] ArozOS :${PUBLIC_AROZ_PORT} (tmp-root=${AROZ_TMP_ROOT})"
+  # A box does not use the Docker management or the Arozcast TURN relay of ArozOS.
+  # Upstream turns both on by default, and the relay opens ports 3478 and 5349.
+  if [[ "${JOSHU_SINGLE_CONTAINER}" == "1" ]]; then
+    apply_pending_aroz_password
+  fi
   ( cd "${AROZ_DATA}" && "${AROZ_TEMPLATE}/arozos" -port="${PUBLIC_AROZ_PORT}" -disable_ip_resolver=true \
+    -enable_docker=false -arozcast_turn=false \
     -hostname="${AROZ_HOSTNAME:-Joshu}" -tmp="${AROZ_TMP_ROOT}" -root="${AROZ_DATA}/files" ) &
   for _ in $(seq 1 90); do
     if curl -fsS -o /dev/null -w '' "http://127.0.0.1:${PUBLIC_AROZ_PORT}/" 2>/dev/null; then
@@ -987,4 +1188,5 @@ if [[ -f "${APP_DIR}/proprietary/scripts/vps-start-fleet.sh" ]]; then
   source "${APP_DIR}/proprietary/scripts/vps-start-fleet.sh"
 fi
 
+# In single-container mode SIGUSR1 interrupts this wait, and the handler restarts the box in place.
 wait "${JOSHU_PID}"

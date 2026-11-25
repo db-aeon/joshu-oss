@@ -22,6 +22,11 @@ import { releaseEnvUpdates } from "../packages/instance-agent/src/releaseEnv.js"
 import { finishReleaseUpdate } from "../packages/instance-agent/src/releaseFinish.js";
 import { evaluateRuntimeDrift } from "../packages/instance-agent/src/runtimeDrift.js";
 import {
+  assertCommandSupported,
+  singleContainerMode,
+  UNSUPPORTED_IN_SINGLE_CONTAINER_MODE,
+} from "../packages/instance-agent/src/singleContainer.js";
+import {
   instanceAgentImageRefFromSandbox,
   voiceImageRefFromSandbox,
 } from "../packages/instance-agent/src/voiceImageRef.js";
@@ -289,6 +294,27 @@ function fakeReplaceDeps({ states, runFails = false }) {
   calls.length = 0;
   await startInstanceAgent(steps(false));
   assert.deepEqual(calls, ["register", "heartbeat"]);
+}
+
+// Single-container mode (change single-container-mode): the commands without Docker run as on
+// a Compose host, and restart, rotate_secrets, and set_aroz_password run with a restart in
+// place (change sandbox-box-commands). The commands that need the API of the host are refused.
+{
+  const single = { JOSHU_SINGLE_CONTAINER: "1" };
+  assert.equal(singleContainerMode(single), true);
+  assert.equal(singleContainerMode({ JOSHU_SINGLE_CONTAINER: "" }), false);
+  assert.equal(singleContainerMode({}), false);
+  for (const type of ["desktop_login", "send_owner_email", "sync_companion_identity", "diagnostics", "restart", "rotate_secrets", "set_aroz_password"]) {
+    assert.doesNotThrow(() => assertCommandSupported(type, single), type);
+  }
+  for (const type of ["update", "rollback", "deprovision"]) {
+    assert.throws(
+      () => assertCommandSupported(type, single),
+      new RegExp(`^Error: ${UNSUPPORTED_IN_SINGLE_CONTAINER_MODE}: command ${type} needs the API of the host of the sandbox.*deploy-release`),
+    );
+    // A Compose box runs every command as before.
+    assert.doesNotThrow(() => assertCommandSupported(type, {}), type);
+  }
 }
 
 console.log("instance-agent-release: all tests passed");

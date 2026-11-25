@@ -2,7 +2,7 @@
 /**
  * Tests: the LLM merge of the skills seed keeps the box pitfalls (scripts/lib/skill-merge-pitfalls.mjs,
  * scripts/merge-hermes-factory-skill.mjs). The script run replaces fetch, so no network is used.
- * Spec: openspec/changes/skills-seed-keep-pitfalls/specs/hermes-skills-seed/spec.md
+ * Spec: openspec/changes/archive/2026-11-18-skills-seed-keep-pitfalls/specs/hermes-skills-seed/spec.md
  * Usage: node scripts/test-skill-merge-pitfalls.mjs
  */
 import assert from "node:assert/strict";

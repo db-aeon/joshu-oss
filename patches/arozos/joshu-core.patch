@@ -1,12 +1,3 @@
-diff --git a/.gitignore b/.gitignore
-index 0f6a7244..8f210393 100644
---- a/.gitignore
-+++ b/.gitignore
-@@ -31,3 +31,4 @@ src/system/bridge.json
- src/system/cron.json
- src/system/smtp_conf.json
- /src/web/FFmpeg Factory
-+.DS_Store
 diff --git a/src/auth_joshu.go b/src/auth_joshu.go
 new file mode 100644
 index 00000000..ca59eb71
@@ -80,16 +71,21 @@ index 00000000..ca59eb71
 +	http.Redirect(w, r, "/", http.StatusFound)
 +}
 diff --git a/src/mod/modules/module.go b/src/mod/modules/module.go
-index 6b64e1f4..8c6f6213 100644
+index f0d71f5b..2a33e372 100644
 --- a/src/mod/modules/module.go
 +++ b/src/mod/modules/module.go
-@@ -35,6 +35,31 @@ type ModuleHandler struct {
- 	tmpDirectory string
+@@ -41,6 +41,68 @@ type ModuleHandler struct {
+ 	OnModuleUninstall func(moduleName string)
  }
  
-+// Joshu: stock modules we keep on disk (AGI / Go) but do not expose in the
-+// start menu, Module List, or universal access set. Survives AGI reload because
-+// every registerModule / RegisterModule path hits this gate.
++// Joshu: stock modules that stay on disk (AGI or Go) but do not show in the
++// start menu, the Module List, or the universal access set. The gate is in
++// RegisterModule, so a hidden module stays hidden after an AGI reload.
++//
++// The first group is the list from before the upstream update. The second
++// group is the stock modules that upstream added between 8894ffe and e3819d1.
++// The second group is hidden so that the update does not change the apps the
++// owner sees. To show one of them, remove its line.
 +var HiddenModules = map[string]bool{
 +	"Browser":            true,
 +	"Clock":              true,
@@ -107,19 +103,51 @@ index 6b64e1f4..8c6f6213 100644
 +	"Tasks Scheduler":    true,
 +	"Timer":              true,
 +	"Unit Tester":        true,
-+	"Video":              true, // Media web app — not "Video Player"
++	"Video":              true, // Media web app, not "Video Player"
 +	"Web Builder":        true,
 +	"Web Downloader":     true,
++
++	// Stock modules new in upstream e3819d1.
++	"AGI Forge":         true,
++	"AI Chat":           true,
++	"Arozcast":          true,
++	"Audio Studio":      true,
++	"Calculator":        true,
++	"Calendar":          true,
++	"Chatspace":         true,
++	"Cine Studio":       true,
++	"CronDemo":          true,
++	"Dashboard":         true,
++	"Docker Manager":    true,
++	"Docs":              true,
++	"FFmpeg Factory":    true,
++	"GitApp":            true,
++	"MeetRoom":          true,
++	"Movie":             true,
++	"Musicify":          true,
++	"Notes":             true,
++	"OTP Authenticator": true,
++	"PDF Tool":          true,
++	"Pixel Studio":      true,
++	"Productivity":      true,
++	"Raw Editor":        true,
++	"Reminders":         true,
++	"SQLite Admin":      true,
++	"Sheets":            true,
++	"Slides":            true,
++	"Terminal":          true,
++	"Text":              true,
++	"Zip File Manager":  true,
 +}
 +
  func NewModuleHandler(userHandler *user.UserHandler, tmpFolderPath string) *ModuleHandler {
  	return &ModuleHandler{
- 		LoadedModule: []*ModuleInfo{},
-@@ -45,6 +70,11 @@ func NewModuleHandler(userHandler *user.UserHandler, tmpFolderPath string) *Modu
+ 		LoadedModule:    []*ModuleInfo{},
+@@ -65,6 +127,11 @@ func (m *ModuleHandler) HandleGetExtIcons(w http.ResponseWriter, r *http.Request
  
- //Register endpoint. Provide moduleInfo datastructure or unparsed json
+ // Register endpoint. Provide moduleInfo datastructure or unparsed json
  func (m *ModuleHandler) RegisterModule(module ModuleInfo) {
-+	// Joshu product surface: skip denylisted stock apps (see HiddenModules).
++	// Joshu: skip the stock apps that are in HiddenModules.
 +	if HiddenModules[module.Name] {
 +		return
 +	}
@@ -128,10 +156,10 @@ index 6b64e1f4..8c6f6213 100644
  
  	//Add the module into universal module if it is utilities or system tools
 diff --git a/src/setting.go b/src/setting.go
-index 5b6e1194..24f772f9 100644
+index 2c5c4e59..0e3f677a 100644
 --- a/src/setting.go
 +++ b/src/setting.go
-@@ -111,6 +111,12 @@ func system_setting_getSettingGroups() []settingGroup {
+@@ -123,6 +123,12 @@ func system_setting_getSettingGroups() []settingGroup {
  			IconPath: "SystemAO/system_setting/img/info.svg",
  			Desc:     "Information of the current running ArOZ Online System",
  		},
@@ -142,8 +170,8 @@ index 5b6e1194..24f772f9 100644
 +			Desc:     "Joshu box snapshots and factory profile",
 +		},
  	}
- }
  
+ 	//The "Containers" group only has content when Docker management is active
 diff --git a/src/setting_joshu.go b/src/setting_joshu.go
 new file mode 100644
 index 00000000..17a58677
@@ -175,19 +203,19 @@ index 00000000..17a58677
 +	})
 +}
 diff --git a/src/startup.go b/src/startup.go
-index 2f3b8bc9..76dce430 100644
+index 549e04da..627d54da 100644
 --- a/src/startup.go
 +++ b/src/startup.go
-@@ -96,6 +96,7 @@ func RunStartup() {
- 	SystemIDInit()            //System UUID Manager
+@@ -144,6 +144,7 @@ func RunStartup() {
+ 	SystemInfoInit()          //System Information UI
  	AuthSettingsInit()        //Authentication Settings Handler, must be start after user Handler
  	AdvanceSettingInit()      //System Advance Settings
 +	JoshuSettingInit()        //Joshu box state (snapshots / factory)
- 	StartupFlagsInit()        //System BootFlag settibg
- 	HardwarePowerInit()       //Start host power manager
- 	RegisterStorageSettings() //Storage Settings
+ 	AIModelSettingInit()      //AI Model (OpenAI / Anthropic) config, pricing, quota & usage metrics
+ 	CNNInferenceSettingInit() //CXNNAIO vision-inference server config & connectivity test
+ 	DockerServiceInit()       //Docker container/image/compose management, only if Docker detected on host
 diff --git a/src/system.go b/src/system.go
-index 18575104..46c70f37 100644
+index 3f23b9b7..de506e9c 100644
 --- a/src/system.go
 +++ b/src/system.go
 @@ -62,17 +62,6 @@ func SystemIDInit() {
@@ -209,27 +237,19 @@ index 18575104..46c70f37 100644
  
  	//Handle health check ping
 diff --git a/src/web/SystemAO/locale/system_settings.json b/src/web/SystemAO/locale/system_settings.json
-index e9d947e5..7c658a5d 100644
+index e645993f..e74bd758 100644
 --- a/src/web/SystemAO/locale/system_settings.json
 +++ b/src/web/SystemAO/locale/system_settings.json
-@@ -428,8 +428,9 @@
+@@ -379,6 +379,8 @@
                  "menu/group/Security & Auth": "Security & Auth",
                  "menu/group/Developer Options": "Developer Options",
                  "menu/group/About ArOZ": "About ArozOS",
--                
--                "tab/info/Overview": "Overview",
 +                "menu/group/Joshu": "Joshu",
-+
 +                "tab/joshu/Box State": "Box State",
-                 "tab/info/Host Info": "Host Information",
-                 "tab/info/Performance": "Performance",
-                 "tab/info/Runtime": "Runtime",
-@@ -483,10 +484,12 @@
-                 "tab/about/Open Source": "Open Source Components",
-                 "tab/about/License": "System License",
-                 "tab/about/Vendor": "Vendor",
--                
-+
+                 "menu/group/Desktop & Themes": "Desktop & Themes",
+                 "tab/desktop/Wallpaper": "Wallpaper",
+                 "tab/desktop/Sounds": "Sounds",
+@@ -433,6 +435,8 @@
                  "": ""
              },
              "titles": {
@@ -355,18 +375,21 @@ index 412a64a4..12353540 100644
  
  		function hideMenu(){
 diff --git a/src/web/Video/embedded.html b/src/web/Video/embedded.html
-index 53b6ed74..e3adfb89 100644
+index 3768e488..89a47d6d 100644
 --- a/src/web/Video/embedded.html
 +++ b/src/web/Video/embedded.html
-@@ -39,10 +39,14 @@
-             }
-            
- 
+@@ -28,12 +28,15 @@
+     <body>
+         <div id="dplayer"></div>
+         <script>
 -            //Load global vol from localStorage
 -            var defaultVol = localStorage.getItem("global_volume");
--            if (defaultVol == null || defaultVol == "" || defaultVol == undefined){
+-            if (defaultVol == null || defaultVol == "" || typeof(defaultVol) == "undefined"){
 -                defaultVol = 0.4;
-+            //Load global vol from localStorage (ignore zero — desktop used to default to 0)
+-            }else{
+-                defaultVol = parseFloat(defaultVol);
++            //Joshu: load the global volume from localStorage. A stored value of zero
++            //is ignored, because the desktop once saved zero as the default.
 +            function resolveVolume(){
 +                var raw = localStorage.getItem("global_volume");
 +                var vol = parseFloat(raw);
@@ -376,20 +399,20 @@ index 53b6ed74..e3adfb89 100644
 +                return Math.min(1, vol);
              }
  
-             function initPlayback(){
-@@ -71,8 +75,8 @@
+             //Check if there are another instant running. If yes, replace that another instance URL
+@@ -75,8 +78,8 @@
                  const dp = new DPlayer({
                      container: document.getElementById('dplayer'),
                      screenshot: true,
 -                    autoplay: true,
--                    volume: parseFloat(defaultVol),
+-                    volume: defaultVol,
 +                    autoplay: false,
 +                    volume: resolveVolume(),
                      video: {
                          url: videoURL
                      },
 diff --git a/src/web/desktop.html b/src/web/desktop.html
-index 32478b70..02e184ca 100644
+index a57cc685..2ba2db6a 100644
 --- a/src/web/desktop.html
 +++ b/src/web/desktop.html
 @@ -20,7 +20,8 @@
@@ -402,7 +425,7 @@ index 32478b70..02e184ca 100644
              width: 100%;
              height: 100%;
              overflow: hidden;
-@@ -663,6 +664,13 @@
+@@ -677,6 +678,13 @@
              width:100%;
              height: calc(100% - 28px);
              z-index:1114;
@@ -415,8 +438,8 @@ index 32478b70..02e184ca 100644
 +            pointer-events: auto;
          }
  
-         .notificationbar .content{
-@@ -703,6 +711,12 @@
+         /* Notification toast (transient popup for incoming notifications) */
+@@ -755,6 +763,12 @@
              left:0;
              width:100%;
              height: calc(100%);
@@ -429,7 +452,7 @@ index 32478b70..02e184ca 100644
              pointer-events: auto;
          }
  
-@@ -1418,6 +1432,145 @@
+@@ -1598,6 +1612,145 @@
          var isMacOS = (navigator.appVersion.indexOf("Mac")!=-1);
          var isTouchScreen = window.matchMedia("(any-pointer: coarse)").matches;
  
@@ -445,7 +468,7 @@ index 32478b70..02e184ca 100644
 +            $(".notificationbar").removeClass("jp-notifications-open").stop(true, true).hide()
 +                .css({"pointer-events": "none", "opacity": 1});
 +            $(".notificationbar .cover").hide().css({"pointer-events": "none", "display": "none", "opacity": 0});
-+            $("#fwdragpanel, #tfwdragpanel").hide().css({"pointer-events": "none"});
++            $("#fwdragpanel, #tfwdragpanel").hide().css({"pointer-events": "none", "cursor": ""});
 +            $('.floatWindow.topmost').css({"pointer-events": "auto", "opacity": 1});
 +            $(".floatWindow").find(".iframecover").hide();
 +            $("#selectionPanel").hide();
@@ -575,16 +598,16 @@ index 32478b70..02e184ca 100644
          //Check and prepare localization
          if (typeof(applocale) != "undefined"){
              //Applocale found. Do localization
-@@ -1437,6 +1590,8 @@
+@@ -1617,6 +1770,8 @@
  
  
          function initDesktop(){
 +            resetDesktopInteractionLayers();
 +            clearDesktopInitSplash();
-             //Initiation functions
-             initDesktopTheme();
-             initDesktopHostInfo();
-@@ -1461,6 +1616,8 @@
+             //Fetch module-registered extension icons once so the desktop can use them
+             $.get("system/modules/exticons", function(data) {
+                 if (typeof data === "string") { try { data = JSON.parse(data); } catch(e) {} }
+@@ -1647,6 +1802,8 @@
  
              //Activate all dropdowns
              $(".dropdown").dropdown();
@@ -593,7 +616,7 @@ index 32478b70..02e184ca 100644
          }
  
          function initFrameLoading(){
-@@ -1717,7 +1874,7 @@
+@@ -1903,7 +2060,7 @@
          }
  
          function showToolPanel(){
@@ -601,8 +624,8 @@ index 32478b70..02e184ca 100644
 +            if (listMenuShown) {
                  hideListMenu();
              }
-             $("#quickAccessPanel").fadeToggle("fast");
-@@ -1739,7 +1896,7 @@
+             updateThemeToggleBtn();
+@@ -1926,7 +2083,7 @@
                      if (currentGlobalVol != null && currentGlobalVol != undefined && currentGlobalVol != ""){
                          
                      }else{
@@ -611,7 +634,7 @@ index 32478b70..02e184ca 100644
                      }
  
                      var audio = new Audio("media?file=" + data);
-@@ -1798,7 +1955,7 @@
+@@ -1985,7 +2142,7 @@
              if (currentGlobalVol != null && currentGlobalVol != undefined && currentGlobalVol != ""){
                  $("#volumebar").css("width", currentGlobalVol * 100 + "%");
              }else{
@@ -620,7 +643,7 @@ index 32478b70..02e184ca 100644
                  localStorage.setItem("global_volume",currentGlobalVol);
              }
  
-@@ -1829,15 +1986,21 @@
+@@ -2016,15 +2173,21 @@
          }
  
          function toggleNotification(action=undefined){
@@ -647,7 +670,7 @@ index 32478b70..02e184ca 100644
                  }
              }
          }
-@@ -2081,7 +2244,7 @@
+@@ -2271,7 +2434,7 @@
                  fwmove($(this).parent(), evt);
  
                  //Add cusor change on resizble position reach
@@ -655,8 +678,8 @@ index 32478b70..02e184ca 100644
 +                let hoverOffset = [evt.pageX - $(this).offset().left, evt.pageY - $(this).offset().top];
                  if (hoverOffset[1] <= 3 && !$(this).parent().hasClass("fixedsize")){
                      $(this).addClass("resizbleCursor");
-                 }else{
-@@ -2218,26 +2381,26 @@
+                     if (hoverOffset[0] < 15) {
+@@ -2440,26 +2603,26 @@
                  if ($(object).hasClass("fixedsize")) {
                      return false;
                  }
@@ -693,7 +716,7 @@ index 32478b70..02e184ca 100644
                  }
              });
  
-@@ -2417,27 +2580,10 @@
+@@ -2639,27 +2802,10 @@
                  return false;
              }
  
@@ -723,7 +746,7 @@ index 32478b70..02e184ca 100644
  
              if (dx < 10 && dy > $(object).height() - 10) {
                  //Left Bottom Corner
-@@ -2461,6 +2607,30 @@
+@@ -2683,6 +2829,30 @@
                  $(object).find(".iframewrapper").css('cursor', 's-resize');
              }
  
@@ -754,18 +777,19 @@ index 32478b70..02e184ca 100644
              //For upper edge, see fwdown() handler
          }
  
-@@ -2519,8 +2689,8 @@
+@@ -2765,8 +2935,9 @@
          function resizeUp(object, event) {
              resizingWindow = false;
              resizingEdgeID = 0;
 -            $("#fwdragpanel").hide();
 -            $("#tfwdragpanel").hide();
-+            $("#fwdragpanel").hide().css({"pointer-events": "none"});
-+            $("#tfwdragpanel").hide().css({"pointer-events": "none"});
++            // Also clear the corner resize cursor that fwdown() sets on the drag panels.
++            $("#fwdragpanel").hide().css({"pointer-events": "none", "cursor": ""});
++            $("#tfwdragpanel").hide().css({"pointer-events": "none", "cursor": ""});
              $('.floatWindow.topmost').css("pointer-events", "auto");
              $('.floatWindow.topmost').css("opacity", 1);
  
-@@ -2536,6 +2706,7 @@
+@@ -2782,6 +2953,7 @@
              resizingWindowTarget = undefined;
  
              $(".topmost").show();
@@ -773,7 +797,7 @@ index 32478b70..02e184ca 100644
  
          }
  
-@@ -2600,17 +2771,17 @@
+@@ -2846,17 +3018,17 @@
              //Hide all contenxt menus
              hideAllContextMenus();
  
@@ -796,7 +820,7 @@ index 32478b70..02e184ca 100644
              }
              
              
-@@ -2647,7 +2818,7 @@
+@@ -2901,7 +3073,7 @@
                          height: originalSize[1],
                          left: newLeft,
                          right: "auto",
@@ -805,7 +829,7 @@ index 32478b70..02e184ca 100644
                      });
                      clickDownOffset[0] = clickRatio * originalSize[0];
                      clickDownOffset[1] = 2;
-@@ -2724,8 +2895,8 @@
+@@ -2978,8 +3150,8 @@
          function fwup(object, event) {
              event = mapEventFromTouch(event);
              if (movingWindow) {
@@ -816,15 +840,15 @@ index 32478b70..02e184ca 100644
                  $('.floatWindow.topmost').css("pointer-events", "auto");
                  $('.floatWindow.topmost').css("opacity", 1);
  
-@@ -2746,6 +2917,7 @@
+@@ -3000,6 +3172,7 @@
  
                  $("#fwdockRightIndicator").hide();
                  $("#fwdockLeftIndicator").hide();
 +                focusFloatWindowIframe(object);
-             }else if (resizingWindow && resizingEdgeID == 6){
+             }else if (resizingWindow && (resizingEdgeID == 6 || resizingEdgeID == 7 || resizingEdgeID == 8)){
+                 // Top edge (6), top-left corner (7), top-right corner (8)
                  resizeUp($(object), event);
-             }
-@@ -2933,7 +3105,7 @@
+@@ -3188,7 +3361,7 @@
              return false;
          }
  
@@ -833,7 +857,7 @@ index 32478b70..02e184ca 100644
              var windowID = $(object).attr("windowId");
              var windowZindex = $(object).css("z-index");
              //Shift down all floatWindows that has z-index higher than this window by 2
-@@ -3004,9 +3176,11 @@
+@@ -3259,9 +3432,11 @@
                  $(object).fadeIn(100);
              }
  
@@ -848,7 +872,7 @@ index 32478b70..02e184ca 100644
  
          }
  
-@@ -3330,6 +3504,7 @@
+@@ -3585,6 +3760,7 @@
  
          //Actiave background cross fade changing animation
          function initBackgroundSwitchingAnimation() {
@@ -856,7 +880,7 @@ index 32478b70..02e184ca 100644
              if (localStorage.getItem("ao/desktop/backgroundInterval") !== null && !isNaN(parseInt(localStorage.getItem("ao/desktop/backgroundInterval")))){
                  //Localstorage has interval setting that is not NaN
                  backgroundCrossfadeInterval = parseInt(localStorage.getItem("ao/desktop/backgroundInterval")) * 1000;
-@@ -3353,6 +3528,7 @@
+@@ -3608,6 +3784,7 @@
  
          //Function for changing the desktop theme
          function changeDesktopTheme(targetThemeName) {
@@ -864,7 +888,7 @@ index 32478b70..02e184ca 100644
              currentUserTheme = targetThemeName;
  
              if (currentUserTheme.includes(":/") == false){
-@@ -3374,6 +3550,7 @@
+@@ -3629,6 +3806,7 @@
                  }
                  setTimeout(function() {
                      $("#dbg0").addClass("showBackground");
@@ -872,7 +896,7 @@ index 32478b70..02e184ca 100644
                  }, 300);
  
                  if (currentBackgroundList.length == 1) {
-@@ -3404,6 +3581,7 @@
+@@ -3659,6 +3837,7 @@
                          }
                          setTimeout(function() {
                              $("#dbg0").addClass("showBackground");
@@ -880,7 +904,7 @@ index 32478b70..02e184ca 100644
                          }, 300);
  
                          if (currentBackgroundList.length == 1) {
-@@ -3650,16 +3828,22 @@
+@@ -3904,17 +4083,22 @@
                  endMultiSelection(event);
              }
  
@@ -890,6 +914,7 @@ index 32478b70..02e184ca 100644
 -                resizingEdgeID = 0;
 -                $("#fwdragpanel").hide();
 -                $("#tfwdragpanel").hide();
+-                $("#fwdragpanel, #tfwdragpanel").css("cursor", "");
 -                $('.floatWindow.topmost').css("pointer-events", "auto");
 -                $('.floatWindow.topmost').css("opacity", 1);
 -                $(resizingWindowTarget).find(".iframecover").hide();
@@ -905,15 +930,15 @@ index 32478b70..02e184ca 100644
 +                } else {
 +                    resizingWindow = false;
 +                    resizingEdgeID = 0;
-+                    $("#fwdragpanel").hide().css({"pointer-events": "none"});
-+                    $("#tfwdragpanel").hide().css({"pointer-events": "none"});
++                    $("#fwdragpanel").hide().css({"pointer-events": "none", "cursor": ""});
++                    $("#tfwdragpanel").hide().css({"pointer-events": "none", "cursor": ""});
 +                    $('.floatWindow.topmost').css("pointer-events", "auto");
 +                    $('.floatWindow.topmost').css("opacity", 1);
 +                }
              }
              
          }
-@@ -3804,9 +3988,9 @@
+@@ -4063,9 +4247,9 @@
                  //Folder objects
                  icon = "folder outline";
                  if (isEmptyDir){
@@ -925,7 +950,7 @@ index 32478b70..02e184ca 100644
                  }
                  
                  type = "folder";
-@@ -3904,7 +4088,8 @@
+@@ -4163,7 +4347,8 @@
                  if (updateObject !== undefined){
                      //Check if content identical. If yes, skip rewrite
                      if (updateObject.attr("filedata") == compressedFiledata){
@@ -935,7 +960,7 @@ index 32478b70..02e184ca 100644
                      }else{
                          //Update its contents
                          updateObject.attr("type", type);
-@@ -3915,6 +4100,7 @@
+@@ -4174,6 +4359,7 @@
                          updateObject.css("height", iheight + "px");
                          updateObject.css("left", screenX + "px");
                          updateObject.css("top", screenY + "px");
@@ -943,7 +968,7 @@ index 32478b70..02e184ca 100644
                      }
                  }else{
                      //No exists. Append to wrapper
-@@ -5031,13 +5217,7 @@
+@@ -5330,13 +5516,7 @@
                  shiftHold = true;
              }else if (keycode == "27"){
                  //Cancel all floatwindow events and key events
@@ -958,7 +983,7 @@ index 32478b70..02e184ca 100644
                  ctrlHold = false;
                  shiftHold = false;
              }else if (keycode == "46"){
-@@ -5130,6 +5310,7 @@
+@@ -5429,6 +5609,7 @@
              }else if (keycode == "27"){
                  //ESC key, stop all floatWindow operations
                  console.log("%c[Desktop] Dragging function killed. Restarting all dragging elements.", 'color: #e64747');
@@ -966,7 +991,7 @@ index 32478b70..02e184ca 100644
                  movingWindow = false;
                  resizingWindow = false;
                  event.preventDefault();
-@@ -6476,6 +6657,9 @@
+@@ -6774,6 +6955,9 @@
                  //Find the correct file in the current directory and place its image
                  let thumbData = JSON.parse(event.data);
                  $(".launchIcon").each(function(){
@@ -976,7 +1001,7 @@ index 32478b70..02e184ca 100644
                      if (thumbData[1].length > 0){
                          if ($(this).attr("filename") == thumbData[0]){
                              let imageContainer = $(this).find(".launchIconImage");
-@@ -6517,6 +6701,9 @@
+@@ -6815,6 +6999,9 @@
  
          function startFallbackThumbnailLoader(){
                  $(".launchIcon").each(function(){

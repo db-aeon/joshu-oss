@@ -1604,6 +1604,8 @@ export class RealtimeGoalBroker {
           (await this.autoRecover(
             goal,
             `the previous worker run stopped without kanban_complete or kanban_block (${cause.detail})`,
+            undefined,
+            cause.stepLimit,
           ))
         ) {
           return;
@@ -1698,6 +1700,7 @@ export class RealtimeGoalBroker {
     goal: RealtimeGoalRecord,
     why: string,
     ownerAnswer?: { question?: string; answer: string },
+    stepLimit = false,
   ): Promise<boolean> {
     const used = goal.autoRecoveries ?? 0;
     if (used >= MAX_AUTO_RECOVERIES || !goal.kanbanTaskId) {
@@ -1713,6 +1716,7 @@ export class RealtimeGoalBroker {
       maxAttempts: MAX_AUTO_RECOVERIES,
       why,
       ownerAnswer,
+      stepLimit,
     });
     const bridgeFailed = (error: unknown) => ({
       success: false,

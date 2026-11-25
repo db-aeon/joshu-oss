@@ -39,7 +39,8 @@ HERMES_API_KEY=change-me-local-dev
 HERMES_API_AUTO_START=true
 # LLM via OpenRouter (verified local default — see docs/hermes-integration.md)
 JOSHU_HERMES_PROVIDER=openrouter
-JOSHU_HERMES_MODEL=deepseek/deepseek-v4.1-flash
+# Optional: unset runs the model of the release (JOSHU_OPENROUTER_DEFAULT_MODEL).
+# JOSHU_HERMES_MODEL=deepseek/deepseek-v4.1-flash-1017
 OPENROUTER_API_KEY=sk-or-...
 ```
 

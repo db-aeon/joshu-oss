@@ -14,7 +14,7 @@ Architecture and call UX (passphrase, lock clips): [`voice-realtime.md`](voice-r
 | --- | --- |
 | Twilio account + phone number | [Twilio Console](https://console.twilio.com/) |
 | Voice webhook (HTTPS POST) | Twilio number → Joshu inbound URL |
-| Secrets + URLs | `/etc/joshu/instance.env` on the VPS |
+| Secrets + URLs | The instance config: `<data root>/secrets/instance.env` on the persistent disk, which the box reads as `/etc/joshu/instance.env` |
 | Spoken unlock passphrase | `TWILIO_THINK_PASSWORD` (or Telephone desktop app) |
 
 Joshu does **not** buy numbers for self-hosters. You buy the number; Joshu answers it.
@@ -59,7 +59,7 @@ This URL must match `TWILIO_VOICE_WEBHOOK_URL` in `instance.env` **character-for
 
 ## 4. Edit `/etc/joshu/instance.env`
 
-SSH to the box and add (or uncomment) at least:
+In single-container mode, edit the instance config under the data root, e.g. `/srv/joshu/secrets/instance.env` with the `docker run` command of [`self-host.md`](../self-host.md). On a Compose host, which is deprecated, SSH to the box and edit `/etc/joshu/instance.env`. Add (or uncomment) at least:
 
 ```bash
 # Voice stack (S2S) — required for PSTN Media Streams via voice-realtime
@@ -144,7 +144,14 @@ Call start logs `tool mode=native_async`.
 
 ## 5. Recreate the stack
 
-After editing `instance.env`:
+In single-container mode, restart the container after you edit the instance config, and check the voice service inside it:
+
+```bash
+docker restart joshu
+docker exec joshu curl -sS http://127.0.0.1:8792/health
+```
+
+On a Compose host, which is deprecated, run after editing `instance.env`:
 
 ```bash
 set -a && source /etc/joshu/instance.env && set +a

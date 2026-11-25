@@ -193,6 +193,28 @@ SMS carrier keywords (`STOP`, etc.) stay in the SMS gateway, not the router.
    system stall (crash, timeout, exit without complete/block) is restarted
    automatically, then reported plainly. PSTN callbacks are serialized per owner
    and park (one SMS nudge) on voicemail instead of redialing.
+   A worker can also reach the step limit (the number of model calls that
+   Hermes allows one run) before it calls `kanban_complete` or `kanban_block`.
+   Hermes then ends the run as `timed_out` and keeps the last summary of the
+   worker only in the worker log, so the owner hears nothing and the next run
+   repeats the same work. Three parts handle this. First, plugin
+   `joshu-realtime-goals` adds a step-limit warning to each tool result when
+   15 steps or fewer are left. The warning goes on tool results because the
+   model reads each tool result before its next step, while a hook at the start
+   of the turn fires too early and the model does not count its own steps.
+   Fifteen steps leave room to finish the current browser action and block.
+   Second, when a run reaches the step limit anyway, the plugin writes the last
+   summary as a `## Step-limit note` comment on the task. It checks the run
+   record (outcome `timed_out`, error `Iteration budget exhausted`), because
+   Hermes decides when the step limit is reached. A comment fits because each
+   worker already reads the comments of its task. Third, the recovery note of
+   the broker says that the last run reached the step limit and asks the next
+   run to use the step-limit note and end early. The broker does not text the
+   step-limit note to the owner, because it is written for the system; the next
+   run turns it into a result or one question. Both plugin parts use Hermes
+   plugin hooks, not a patch of Hermes files, so a bump of the Hermes pin does
+   not break them; a higher step limit was rejected because it only lets a
+   stuck browser flow run longer.
    Blocked delivery keeps the active pointer; true completion clears it.
    Completed text is the worker's `kanban_complete` summary after
    [`formatOwnerCompletion`](../../src/realtimeGoals/ownerDelivery.ts) (owner voice,
@@ -346,7 +368,7 @@ the action guard.
 Each SMS to the owner goes through `sendSms` ([`twilioSmsSend.ts`](../../src/twilioSmsSend.ts)), which folds the text to GSM characters (`smsGsmFold`) and splits a long text into SMS parts (`smsGsmParts`). Two kinds of text are prepared before that:
 
 - The reply of an SMS turn, of an SMS continuation, or of a proactive message turn goes through [`smsModelReplyPlaintext`](../../src/smsModelReplyPlaintext.ts). It removes markdown marks (bold, italics, inline code, code fences, headings, and quotes), changes a markdown link to `label: url`, changes each bullet to `- `, and keeps each line break.
-- The completion summary of a realtime goal goes through `formatOwnerCompletion` ([`ownerDelivery.ts`](../../src/realtimeGoals/ownerDelivery.ts)), which puts one fact on each line, keeps each line that starts with a URL as it is, and adds a missing handoff link under "Open the live browser here:".
+- The completion summary of a realtime goal goes through `formatOwnerCompletion` ([`ownerDelivery.ts`](../../src/realtimeGoals/ownerDelivery.ts)), which puts one fact on each line, keeps each line that starts with a URL as it is, and adds a missing handoff link under "Open the live browser here:". It ends a line at the end of a sentence only when the next word starts with a capital letter or a digit and the word before the period is not a short abbreviation such as "Est." or "a.m.". It keeps one blank line where the summary has a blank line, and it keeps the space before a file extension such as ".png".
 
 `smsGsmFold` drops the characters that are not GSM before it folds spaces, so a dropped emoji leaves one space. `smsGsmParts` ends each SMS part at a blank line, then at a line break, then at the end of a sentence, then at a space, so a list item stays in one SMS part.
 
@@ -354,6 +376,7 @@ Design decisions:
 
 - **2026-10-21: SMS text has its own markdown cleaner.** Before, `smsModelReplyPlaintext` used the cleaner for text to speech, which folds each line break into a space and changes each blank line to ". ". A list of nine direct messages arrived as one line of 1,596 characters in 3 SMS, with one list item cut across two SMS, and a reply read "approved.. The event page". The cleaner for text to speech also dropped the URL of each markdown link. Changing that cleaner was rejected, because text to speech must fold lines. The cleaner for text to speech had no other caller, so it was removed.
 - **2026-10-21: the completion SMS keeps links unchanged.** `layoutOwnerLines` changed the first letter of each line to upper case, so a handoff link on its own line became `Https://`, `formatOwnerCompletion` did not find it, and the owner got the link twice under "Finish and pay here:". Now a line that starts with a URL keeps its case, the check for a missing link ignores case, and the label is neutral, because most browser handoffs are a sign-in or a code. A payment label for payment tasks was rejected, because `formatOwnerCompletion` does not know the kind of the task.
+- **2026-11-02: the completion text keeps words and paragraphs whole.** On one box, a worker summary of five Zoom backgrounds reached the owner as "saved as.png" and "pick the.png", with "Est." and "1636" on two lines and no blank lines between the list and the next paragraph. `layoutOwnerLines` removed every space before a period, started a new line after every period, and dropped every empty line. Now it removes a space only before a mark that ends a word, it ends a sentence only before a capital letter or a digit and not after a short abbreviation, and it keeps one blank line between paragraphs, which also lets `smsGsmParts` split a long SMS at a paragraph. A sentence splitter library was rejected, because one regular expression with a short list of abbreviations keeps the code small.
 
 Limits: `sendSms` sends the SMS parts one after the other with no wait, and carriers do not promise the order of separate SMS. An emoji is dropped, not changed to a word.
 

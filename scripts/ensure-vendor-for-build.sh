@@ -6,8 +6,12 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${ROOT_DIR}"
 
-# Must match fleet vendor/arozos pin so patches/arozos/*.patch apply cleanly.
-AROZOS_REF="${AROZOS_REF:-8894ffe205f3078b8ead9f9591ec4ce073cc0a07}"
+# Must match the vendor/arozos pin so that patches/arozos/*.patch apply. The pin is in
+# patches/arozos/UPSTREAM_REF. The commit below is the fallback when that file is missing.
+if [[ -z "${AROZOS_REF:-}" && -f patches/arozos/UPSTREAM_REF ]]; then
+  AROZOS_REF="$(sed -n 's/^AROZOS_UPSTREAM_REF=//p' patches/arozos/UPSTREAM_REF | tr -d '[:space:]')"
+fi
+AROZOS_REF="${AROZOS_REF:-e3819d18da537109f17b8e307673b74dcd2d5749}"
 
 auth_url() {
   local url="$1"

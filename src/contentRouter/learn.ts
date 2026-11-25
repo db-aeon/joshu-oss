@@ -131,9 +131,11 @@ export function matchesPrefer(endpoint: Pick<EndpointSummary, "id" | "provider" 
 }
 
 /**
- * The provider endpoints of the router catalog for a goal kind, best match first, only those that
- * `goalEndpointAllowed` lets a goal use. With a preferred provider, its endpoints come first when
- * the router catalog has them.
+ * The provider endpoints of the router catalog for a goal kind, only those that
+ * `goalEndpointAllowed` lets a goal use, in the order of the catalog search. The content router
+ * ranks the catalog search, and the box does not change that order (change route-cache-no-wait,
+ * design decision D4). With a preferred provider, its endpoints come first when the router catalog
+ * has them.
  */
 export async function routeCandidates(client: RouterClient, kind: string, prefer: string | undefined, deadline: number): Promise<EndpointSummary[]> {
   const queries = prefer ? [`${prefer} ${kind}`, kind] : [kind];
@@ -152,7 +154,8 @@ export async function routeCandidates(client: RouterClient, kind: string, prefer
 
 /**
  * Pick a provider endpoint for a goal kind with one model call. Throws when the router catalog has
- * no candidate or the model gives no valid answer.
+ * no candidate or the model gives no valid answer. `without` is the provider endpoint that just
+ * failed for this goal kind: it is not a candidate.
  */
 export async function learnRoute(
   client: RouterClient,
@@ -160,8 +163,9 @@ export async function learnRoute(
   hints: readonly string[],
   deadline: number,
   llm: LearnLlm = {},
+  without?: string,
 ): Promise<LearnedRoute> {
-  const candidates = (await routeCandidates(client, goal.kind, goal.prefer, deadline)).slice(0, ROUTE_CANDIDATES);
+  const candidates = (await routeCandidates(client, goal.kind, goal.prefer, deadline)).filter((c) => c.id !== without).slice(0, ROUTE_CANDIDATES);
   if (!candidates.length) throw new Error(`the router catalog has no provider endpoint for "${goal.kind}"`);
   // The model sees only endpoints with a JSON Schema of their inputs, so that the box can check its answer.
   const fetched = await Promise.all(candidates.map((c) => client.endpoint(c.id, deadline).catch(() => null)));

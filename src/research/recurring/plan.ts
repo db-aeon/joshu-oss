@@ -6,8 +6,8 @@
  * the lane (change research-keyword-expansion). The call follows the notes of the owner.
  */
 
-import { exaClient } from "../pipeline/exa.js";
-import { composioSearchClient } from "../pipeline/composioSearch.js";
+import { boxWebClient } from "../pipeline/you.js";
+import { sourceSearchClient } from "../pipeline/sourceSearch.js";
 import { asString, asStringArray, callJson, type JsonCallOpts } from "../pipeline/llm.js";
 import { checkExtraGoals, checkTerms, cleanHints, termRules } from "../pipeline/plan.js";
 import { availableSocialSources, type SocialDeps } from "../social/sources.js";
@@ -19,8 +19,8 @@ export type PlanLlm = Pick<JsonCallOpts, "fetchImpl" | "apiKey" | "model" | "pro
 /** The sources that this box can use: a source with no key or no relay is left out. */
 export function availableSources(projectRoot: string, socialDeps: SocialDeps = {}): ResearchSourceId[] {
   const out: ResearchSourceId[] = [];
-  if (exaClient(projectRoot)) out.push("web");
-  if (composioSearchClient(projectRoot)) out.push("papers", "company");
+  if (boxWebClient(projectRoot).client) out.push("web");
+  if (sourceSearchClient(projectRoot)) out.push("papers", "company");
   out.push(...availableSocialSources(socialDeps));
   return out;
 }
@@ -58,9 +58,9 @@ Rules:
   When "Pick sources" is no, return ["web"].
 - reason: one plain sentence for the owner on why these sources fit the topic. Empty when "Pick sources" is no.
 - web_queries: two web search queries for news and analysis on the topic. Short keywords, no dates.
-- news_query: one Google News query. Short keywords, no dates.
+- news_query: one query for a news search. Short keywords, no dates.
 - social_query: two to four keywords that people use on Reddit, X, YouTube, TikTok, and Instagram for the topic.
-- scholar_query: a Google Scholar query when peer-reviewed studies cover the topic, else an empty string.
+- scholar_query: a query for a search of research papers when peer-reviewed studies cover the topic, else an empty string.
 - company: the company when the topic is about one public company, with its stock ticker and its exchange as Google Finance writes them. null otherwise.
 ${ABOUT_RULES}
 - Use the hints of a topic, when it has them, as search words.
@@ -130,7 +130,7 @@ export async function planLanes(
           const about = asString(e.about);
           const notAbout = asStringArray(e.not_about).slice(0, 4);
           const extraGoals = hints.length ? checkExtraGoals(e.extra_goals) : [];
-          // Company data needs one company, and Research papers need a Google Scholar query.
+          // Company data needs one company, and Research papers need a query for papers.
           const usable = (id: string) => (allowed as string[]).includes(id) && (id !== "company" || Boolean(company)) && (id !== "papers" || Boolean(scholarQuery));
           const picks = opts.pickSources ? withWebAndNews(asStringArray(e.picks).filter(usable)) : ["web" as const];
           return {

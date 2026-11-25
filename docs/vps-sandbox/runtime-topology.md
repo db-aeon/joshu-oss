@@ -1,6 +1,6 @@
 # VPS Runtime Topology
 
-How the Joshu box stack maps to a **per-customer VPS** running Docker Compose — process layout, paths, env vars, and boot order.
+How the Joshu box stack runs on a host: the processes, paths, variables, and boot order. A box runs in single-container mode: the sandbox image is the only container, the owner data is under the data root, and the stack container also runs Caddy on port 8080, `cloudflared`, the voice service, and the instance agent. Docker Compose is deprecated. The supported way to run a box is single-container mode, as [`self-host.md`](../self-host.md) tells, and a later release removes Docker Compose. A box on a Compose host keeps working until then. The tables below name the Compose service and the Compose volume of each part for a box on a Compose host.
 
 ## Process topology
 
@@ -22,15 +22,18 @@ How the Joshu box stack maps to a **per-customer VPS** running Docker Compose �
 | `/opt/joshu` | `/opt/joshu` (image) |
 | `/opt/hermes-agent` | `/opt/hermes-agent` (image) |
 | `/opt/arozos-template` | `/opt/arozos-template` (image seed) |
-| `/var/lib/arozos` | `./data/arozos` → `/var/lib/arozos` |
+| `/var/lib/arozos` | volume `joshu_arozos` |
 | `/var/lib/arozos/joshu-state` | Joshu state folder (`JOSHU_STATE_DIR`) in the ArozOS volume: team rooms and memberships, proactive state, browser handoffs, SMS sessions, metered provider keys |
-| `/root/.hermes` | `./data/hermes` → `/root/.hermes` (persistent volume; **not** developer `~/.hermes`) |
+| `/root/.hermes` | volume `joshu_hermes` (persistent; **not** developer `~/.hermes`) |
 | `/opt/joshu/.hermes/plugins` | Repo project plugins in image (`COPY .hermes`) |
 | `/opt/joshu/integrations/hermes/skills-enabled.yaml` | Product skill allowlist (Joshu computes `skills.disabled` into `/root/.hermes/config.yaml` at gateway sync) |
-| `/home/hindsight/.hindsight` | `./data/hindsight-home` |
-| `/home/hindsight/.cache/huggingface` | `./data/hindsight-cache` |
-| Postgres data dir | `./data/postgres` → **persistent** |
-| `/root/.gbrain` | `./data/gbrain` → **persistent** (file-brain PGLite index) |
+| `/home/hindsight/.hindsight` | volume `joshu_hindsight_home` |
+| `/home/hindsight/.cache/huggingface` | volume `joshu_hindsight_cache` |
+| `/var/lib/postgresql/hindsight` (Postgres data dir) | volume `joshu_postgres` (**persistent**) |
+| `/root/.gbrain` | volume `joshu_gbrain` (**persistent**, file-brain PGLite index) |
+| `/var/lib/joshu-voice` | volume `joshu_voice_clips` (voice container only) |
+
+In single-container mode (`JOSHU_DATA_ROOT` set, a host with no Docker), the same image paths, plus `/etc/joshu` and `/root/.hindsight`, are links to folders under the data root, and the stack container also runs Caddy on `:8080`, `cloudflared`, the voice service, and the instance agent. The list of folders is in `scripts/lib/data-root.sh`; the self-host steps are in [`self-host.md`](../self-host.md), section "Run a box".
 
 ## Environment variables
 
@@ -46,7 +49,9 @@ How the Joshu box stack maps to a **per-customer VPS** running Docker Compose �
 | `VNC_RESOLUTION` | `1024x768` — Xvfb screen size for local Chromium |
 | `JOSHU_HINDSIGHT_ENABLED` | `true` with external embeddings on CPU VPS |
 | `HINDSIGHT_API_DATABASE_URL` | local Postgres; **must** use volume-backed data dir |
-| `HERMES_HOME` | `./data/hermes` mount |
+| `HERMES_HOME` | `/root/.hermes` (volume `joshu_hermes`) |
+| `JOSHU_DATA_ROOT` | Unset on a Compose host. Set to the persistent disk (for example `/data`) to start in single-container mode |
+| `CLOUDFLARE_TUNNEL_TOKEN` | Single-container mode only: the token of the Cloudflare Tunnel of the box hostname |
 | `JOSHU_STATE_DIR` | `/var/lib/arozos/joshu-state` (set in the sandbox image). Without it, Joshu keeps its state in `<projectRoot>/.joshu`, which is in the writable layer of the container on a box |
 | `TWILIO_*` | Injected per customer via instance-agent / env file |
 
@@ -61,6 +66,10 @@ Order is preserved in `deploy/scripts/vps-start.sh`:
 5. Bootstrap ArozOS data from template (first boot) + refresh subservices
 6. Start ArozOS (under `supervisord` or separate container in Compose)
 7. Instance-agent registers with control plane (VPS-only)
+
+In single-container mode, Caddy, `cloudflared`, the voice service, and the instance agent start in step 1, right after the env files and the box-secrets file load. They do not wait for the Joshu API. The start script also writes the output of the stack and of each of these processes to `<data root>/logs/<service>.log`, with a UTC timestamp on each line, because a host with no Docker has no `docker logs`. A file over 20 MB moves to `<service>.log.1`.
+
+In single-container mode the start script is process 1 of the container, and it can restart the box in place: on SIGUSR1 it stops every process under it and starts itself again with the environment that the container started with. The instance agent uses it for `restart`, `rotate_secrets`, and `set_aroz_password`, because it has no Docker to recreate a container. See [`instance-agent-protocol.md`](instance-agent-protocol.md), section "Restart of the box in place".
 
 ## PID files
 
@@ -111,10 +120,6 @@ npm run vps:build-image
 | Shared browser (local Chromium supervisor) | `http://127.0.0.1:9377/health` |
 | Instance agent | `http://127.0.0.1:8790/health` |
 
-## systemd alternative
+## Box without a container
 
-For bare-metal VPS without Docker:
-
-- `joshu-stack.target` wants a shared browser service (Xvfb + Chromium supervisor), `postgres-hindsight.service`, `hindsight-api.service`, `joshu.service`, `arozos.service`, `caddy.service`, `instance-agent.service`
-- Use same env file `/etc/joshu/instance.env`
-- `vps-start.sh` logic can run from `ExecStartPre` health waits
+A box with no container, installed on the host with systemd services, is not supported. The image build installs and patches Hermes, the Python environments, Chromium, ArozOS, Bun, gbrain, Postgres, and Caddy, and an install script on the host would have to repeat each step for each operating system. [`system-overview.md`](../technical-reference/system-overview.md) gives the reasons in its design decisions.

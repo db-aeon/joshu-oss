@@ -9,7 +9,7 @@ import type { ReportSection } from "../pipeline/write.js";
 import type { ExtraGoal, Fact, PlanCompany, SourceState, WebPage } from "../types.js";
 
 /**
- * A source of a report (change content-router, design decision D5): a base source (`web`,
+ * A source of a report (change content-router, design decision D5): a source with no content goal (`web`,
  * `papers`, `company`), the id of a default social goal (`reddit`, `x`, `youtube`, `tiktok`,
  * `instagram`), or `goal:` and a goal kind, for example `goal:prediction market odds`. The social
  * ids map to content goals at read time, so a saved recurring report with the old ids keeps working.

@@ -1,9 +1,5 @@
 # Research reports
 
-> **Coming soon:** research reports come with the next update of your box. Until then, the last30days app on your desktop does research.
->
-> **Coming soon:** reports sorted into themes, as this chapter describes them, come with a later update of your box. Until then, a regular update has one part for each topic.
-
 Your companion can research a topic for you on the web and write it up as a research report. The report is a PDF that you can read on your phone and forward to your team or a client as it is.
 
 ## Ask for a research report
@@ -99,7 +95,7 @@ When you set up a regular update, your companion picks the sources that fit your
 
 Your companion keeps the same sources from one update to the next, so the updates stay comparable. It picks the sources again only when you change the topics.
 
-Web and news, research papers, and company data are free for you. Posts from Reddit, X, YouTube, TikTok, and Instagram, and other sources such as the odds of prediction markets, come through the Joshu content router, and each search takes a small amount, often less than one cent, from your usage wallet. When your usage wallet is empty, your reports still come, with web and news only, and the list of sources at the end tells you that the social sources need money in the wallet.
+Web and news, research papers, and company data are free for you. Posts from Reddit, X, YouTube, TikTok, and Instagram, and other sources such as the odds of prediction markets, come through Data Bodega, the Joshu service that sells data from many providers, and each search takes a small amount, often less than one cent, from your usage wallet. When your usage wallet is empty, your reports still come, with web and news only, and the list of sources at the end tells you that the social sources need money in the wallet.
 
 You can also tell your companion which source to use for a kind of question, for example "use Polymarket for election odds". Your companion remembers it and uses it in your next reports.
 

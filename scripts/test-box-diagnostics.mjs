@@ -12,7 +12,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { parseDiagnosticsPayload, runDiagnostics } from "../packages/instance-agent/src/diagnostics.js";
+import { linesSince, parseDiagnosticsPayload, runDiagnostics, serviceOfProcess } from "../packages/instance-agent/src/diagnostics.js";
 import { DIAGNOSTICS_PROBE } from "../packages/instance-agent/src/diagnosticsProbe.js";
 
 // Allowlist: unknown queries, unknown arguments, and paths outside the allowlist are errors.
@@ -167,6 +167,83 @@ const probeNoYaml = JSON.parse(
   }),
 );
 assert.deepEqual(probeNoYaml.config, expectedConfig, "the probe reads config.yaml with the Hermes Python");
+
+// Single-container mode (change single-container-mode): no docker. The probe runs in the
+// container, the logs are files with a timestamp on each line, and the services are processes.
+{
+  const ran = [];
+  const now = Date.now();
+  const stamp = (minutesAgo) => new Date(now - minutesAgo * 60_000).toISOString().slice(0, 19) + "Z";
+  const logFile = [
+    `${stamp(3000)} old line unknown action`,
+    `${stamp(90)} a ok`,
+    `${stamp(30)} b unknown action x`,
+    "a line with no timestamp",
+    `${stamp(1)} c ok`,
+    "",
+  ].join("\n");
+  const single = {
+    ...deps,
+    docker: async (args) => {
+      throw new Error(`docker must not run in single-container mode: ${args.join(" ")}`);
+    },
+    readText: async (path) => {
+      if (path === "/data/logs/joshu-stack.log") return logFile;
+      // After a rotation the older lines are in ".log.1".
+      if (path === "/data/logs/voice-realtime.log.1") return `${stamp(20)} before the rotation\n`;
+      if (path === "/data/logs/voice-realtime.log") return `${stamp(2)} after the rotation\n`;
+      if (path.startsWith("/data/logs/")) throw new Error("ENOENT");
+      return deps.readText(path);
+    },
+    singleContainer: {
+      logDir: "/data/logs",
+      run: async (command, args) => {
+        ran.push([command, args[0], args.slice(2)]);
+        return '{"jobs":[{"name":"EA morning"}]}';
+      },
+      listProcesses: async () => [{ name: "caddy", pid: 40 }, { name: "joshu-stack", pid: 1 }],
+    },
+  };
+  const answers = await runDiagnostics(
+    {
+      queries: [
+        { query: "containers" },
+        { query: "cron_jobs" },
+        { query: "kanban", args: { board: "ea-mail-ingress", limit: 5 } },
+        { query: "logs", args: { source: "joshu-stack", grep: "unknown action" } },
+        { query: "logs", args: { source: "joshu-stack", since: "2h", tail: 10 } },
+        { query: "logs", args: { source: "caddy" } },
+        { query: "health" },
+        { query: "logs", args: { source: "voice-realtime", grep: "rotation" } },
+        { query: "logs", args: { source: "cloudflared" } },
+      ],
+    },
+    single,
+  );
+  const byQuery = answers.answers.map((a) => a.data);
+  assert.deepEqual(byQuery[0], { containers: [], singleContainer: true, processes: [{ name: "caddy", pid: 40 }, { name: "joshu-stack", pid: 1 }] });
+  assert.deepEqual(byQuery[1], { jobs: [{ name: "EA morning" }] });
+  assert.deepEqual(ran[0], ["python3", "-c", ["cron_jobs"]]);
+  assert.deepEqual(ran[1], ["python3", "-c", ["kanban", "ea-mail-ingress", "5"]]);
+  // grep sets since=24h: the line of 50 hours ago is outside the window.
+  assert.deepEqual(byQuery[3].lines, [`${stamp(30)} b unknown action x`]);
+  assert.deepEqual(byQuery[4].lines, [`${stamp(90)} a ok`, `${stamp(30)} b unknown action x`, "a line with no timestamp", `${stamp(1)} c ok`]);
+  assert.deepEqual(byQuery[5], { source: "caddy", lines: [] }, "a missing log file is an empty answer");
+  assert.equal(byQuery[6].status, 200);
+  assert.deepEqual(byQuery[7].lines, [`${stamp(20)} before the rotation`, `${stamp(2)} after the rotation`], "the answer joins .log.1 and .log");
+  assert.deepEqual(byQuery[8], { source: "cloudflared", lines: [] }, "cloudflared is a log source");
+
+  assert.deepEqual(linesSince(["2026-11-15T10:00:00Z a", "2026-11-15T12:00:00Z b"], "30m", Date.parse("2026-11-15T12:10:00Z")), ["2026-11-15T12:00:00Z b"]);
+  assert.deepEqual(linesSince(["no timestamp"], "24h", Date.now()), []);
+
+  assert.equal(serviceOfProcess(1, "bash /opt/joshu/.image/scripts/vps-start.sh", null), "joshu-stack");
+  assert.equal(serviceOfProcess(50, "bash /opt/joshu/.image/scripts/vps-start.sh", null), null, "a subshell of the start script is not a service");
+  assert.equal(serviceOfProcess(60, "caddy run --config /run/joshu-caddy/Caddyfile --adapter caddyfile", null), "caddy");
+  assert.equal(serviceOfProcess(61, "cloudflared tunnel --no-autoupdate run", null), "cloudflared");
+  assert.equal(serviceOfProcess(62, "node dist/index.js", "/opt/joshu/packages/voice-realtime"), "voice-realtime");
+  assert.equal(serviceOfProcess(63, "node dist/index.js", "/opt/joshu/packages/instance-agent"), "instance-agent");
+  assert.equal(serviceOfProcess(64, "node dist/index.js", "/opt/joshu"), null);
+}
 
 console.log("test-box-diagnostics: ok");
 

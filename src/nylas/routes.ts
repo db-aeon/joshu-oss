@@ -24,7 +24,7 @@ import { gateNylasSendRequest, isJmailOwnerSend } from "../actionGuard/nylasSend
 import { respondNylasSendGate } from "../actionGuard/nylasSendGateResponse.js";
 import { applySchedulingSendFollowup } from "../ea/schedulingSendFollowup.js";
 import { resolveJoshuFilesPaths } from "../joshuFilesPaths.js";
-import { resolveOutboundMailAuthorization } from "../ea/agentAuthorization.js";
+import { authorizeCompanionSend, recordCompanionSend } from "./sendAuthorization.js";
 import {
   ensureOwnerCcOnExternalSend,
   resolveOwnerThreadVisibilityFromSourcePath,
@@ -176,21 +176,18 @@ export function registerNylasRoutes(router: Router, opts: { projectRoot: string 
     }
     const replyToMessageId = readString(body.replyToMessageId) || undefined;
     const sourcePath = readString(body.sourcePath) || readString(body.source_path) || undefined;
-    if (!isJmailOwnerSend(req) && (replyToMessageId || sourcePath)) {
-      const filesRoot = filesPaths?.filesRoot ?? null;
-      const auth = await resolveOutboundMailAuthorization({
-        filesRoot,
-        projectRoot: opts.projectRoot,
-        replyToMessageId,
-        sourcePath,
-      });
-      if (!auth?.agent_authorized) {
-        res.status(403).json({
-          error: "mail_send_not_authorized",
-          reason: auth?.reason ?? "not_copied_or_delegated",
-        });
-        return;
-      }
+    const filesRoot = filesPaths?.filesRoot ?? null;
+    const sendAuth = await authorizeCompanionSend({
+      projectRoot: opts.projectRoot,
+      filesRoot,
+      recipients: [...to, ...(cc ?? []), ...(bcc ?? [])].map((r) => r.email),
+      replyToMessageId,
+      sourcePath,
+      ownerSentFromJmail: isJmailOwnerSend(req),
+    });
+    if (!sendAuth.allowed) {
+      res.status(403).json({ error: "mail_send_not_authorized", reason: sendAuth.reason });
+      return;
     }
     // Fail (do not mutate) when a reply would fork Gmail threading via subject decoration.
     // Runs before action guard so the owner is not asked to approve a send that cannot thread.
@@ -237,7 +234,6 @@ export function registerNylasRoutes(router: Router, opts: { projectRoot: string 
         );
       }
       if (sourcePath) {
-        const filesRoot = filesPaths?.filesRoot ?? null;
         if (filesRoot) {
           const visibility = await resolveOwnerThreadVisibilityFromSourcePath({
             filesRoot,
@@ -279,6 +275,7 @@ export function registerNylasRoutes(router: Router, opts: { projectRoot: string 
         replyToMessageId,
         attachments,
       });
+      await recordCompanionSend({ filesRoot, sendAuth, messageId: id, replyToMessageId, sourcePath, subject });
       // After sync approval (or guard off), rewrite meeting block_reason so
       // "awaiting owner approval" does not linger once mail has left.
       void applySchedulingSendFollowup({

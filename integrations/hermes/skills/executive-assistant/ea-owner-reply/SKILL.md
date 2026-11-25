@@ -4,7 +4,7 @@ description: Do the owner's ask then reply on that Nylas thread. Board ea-owner-
 metadata:
   hermes:
     category: executive-assistant
-    version: "1.5.0"
+    version: "1.5.1"
 ---
 
 # EA Owner Reply
@@ -35,7 +35,7 @@ kanban_show()
 2. **`coordination_list_active`** with task `thread_id` + `source_path` — if open **`meeting_negotiation`** on scope, **hand off** to that task (`scheduling_handoff_meeting_task` via ingress playbook); **never** browser-book or offer slots on this card.
 3. **`kanban_show`** — `source_paths`, `thread_id`, `message_id`, `provider`, subject.
 4. **`read_file`** the mail mirror at `${JOSHU_FILES_ROOT}/<source_path>` (once).
-5. **Do the ask** — gbrain, mail mirrors, **`web_search` / Exa** when the owner asked a factual question. When the owner asks for research on what was published or said about a topic, follow skill **`research-report`**: one reply with the summary and the PDF attached. The same skill covers recurring reports: a request to follow a topic on a schedule, a change to a recurring report, and a reply to the email of a report update (subject "<name>: <date>"), for example "send me the full update". File notes under `Projects/<slug>/` if ingress already created a folder (link; do not paste mail bodies).
+5. **Do the ask** — gbrain, mail mirrors, **`web_search`** when the owner asked a factual question. When the owner asks for research on what was published or said about a topic, follow skill **`research-report`**: one reply with the summary and the PDF attached. The same skill covers recurring reports: a request to follow a topic on a schedule, a change to a recurring report, and a reply to the email of a report update (subject "<name>: <date>"), for example "send me the full update". File notes under `Projects/<slug>/` if ingress already created a folder (link; do not paste mail bodies).
    - **Reminders:** when the owner asks to be reminded, call `owner_reminder_create` (never the `cronjob` tool). When the owner replies "done" to a `Reminder: …` email (the body has `Reminder id: r_…`), or says the reminded thing is done, call `owner_reminder_stop` with that id and `ownerDone: true`. See skill `joshu-proactive`, section Owner reminders.
    - **Status / thread replies:** when the owner marks items DONE, KEEP, or gives carryover updates (common on morning/shutdown pointer threads), update the relevant project files and/or `Planning/daily-review-*.md` checkboxes, then ack in the reply. For **morning review** or **shutdown** pointer subjects, `skill_view('ea-morning-review')` or `skill_view('ea-shutdown')` and follow their interactive steps.
 6. **`nylas_send_message`** on **this thread**:

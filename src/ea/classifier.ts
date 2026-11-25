@@ -7,6 +7,7 @@ import { isPureAckOrEmptyBody } from "../connectors/emailReplyQuotes.js";
 import type { MailCategory, MailDisposition } from "./mailTypes.js";
 import { normalizeProjectSlug } from "./mailTypes.js";
 import { parseEmailAddress } from "./schedulingTypes.js";
+import { JOSHU_OPENROUTER_CLASSIFIER_MODEL } from "../joshuOpenRouterDefaults.js";
 
 export type SchedulingClassification = {
   scheduling: boolean;
@@ -26,7 +27,7 @@ export function resolveEaClassifierModel(): string {
   return (
     process.env.JOSHU_EA_CLASSIFIER_MODEL?.trim() ||
     process.env.JOSHU_DAY0_MODEL?.trim() ||
-    "openai/gpt-5.4-nano"
+    JOSHU_OPENROUTER_CLASSIFIER_MODEL
   );
 }
 

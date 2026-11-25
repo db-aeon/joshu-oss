@@ -117,6 +117,8 @@ The old touch patch inserted its call right after each `def` line — inside `br
 
 #### Cloud handoff page (phone) — live view and form overlay
 
+**Zoom on a phone.** The owner can spread two fingers to enlarge the handoff page. The viewport of the page sets no largest scale, and the live view area has `touch-action: pinch-zoom`, so one finger still goes to the remote page. On Browser Use Cloud, a pinch that starts inside the live view goes to the Browser Use viewer first.
+
 Fixes from the same canary-box session (AA passenger-details checkout, 2026-09-24):
 
 | Symptom | Cause | Fix |

@@ -202,6 +202,24 @@ Joshu enforces that the owner stays visible on counterparty mail:
 
 This is **soft policy** (no hard 403 block). Action guard remains the approval gate.
 
+### Mail from an outsider
+
+An outsider is a person who is not the owner and not the companion. An email from an outsider does not let the companion act for the owner, also when the outsider sends it to the companion mailbox or copies the companion. This rule holds in code, whether the action guard is on or off. `resolveAgentAuthorization` in `src/ea/agentAuthorization.ts` treats a thread as authorized when the owner delegated it in an email of the owner, or when the companion is a recipient and one of these is true:
+
+1. the owner sent the email;
+2. the owner sent an earlier message in the thread;
+3. the outsider send record proves that the companion already sent an email on the thread to an outsider.
+
+Otherwise the reason is `outsider_needs_owner_ok`, and the companion may only file the email.
+
+**Owner-OK question.** When the outsider asks for a meeting, the ingress card says `allowed_actions: file,ask_owner`. The worker files the email and sends one reply on the same thread to the owner only, which says who wrote and what they asked. When the owner replies on the thread, rule 2 authorizes the thread. Triage classifies that reply as scheduling mail, and its ingress card opens the scheduling path with `owner_ok_answer: true` instead of an owner-reply task, because the owner-reply worker may not schedule: a yes starts a meeting task, and a no files the reply.
+
+**Send route.** `authorizeCompanionSend` in `src/nylas/sendAuthorization.ts` always allows mail whose recipients are all addresses of the owner. A reply to an outsider (a send with `replyToMessageId` or `sourcePath`) on a thread that is not authorized gets `403 mail_send_not_authorized`. After each send, `recordCompanionSend` writes the outsider send record.
+
+**Outsider send record.** `<files>/connectors/_state/outsider-sends.jsonl` (`src/ea/outsiderSendRecord.ts`) has one line for each send to an outsider (the message id, the thread id of the source mirror, the reply id, the subject, and the outsider recipients) and one line for each owner-OK question. The first line holds the start time. A thread counts as "the companion already wrote to an outsider" when a recorded message id or thread id is in the mail mirror, or when the subject matches and the sender of the email was a recipient of the recorded send. The owner Gmail copy of a thread has other message ids than the companion mailbox, which is why the subject match exists. A message of the companion that is older than the start time also counts, so threads from before the record keep working.
+
+**Limit.** A new email of the companion that names no thread (no `replyToMessageId` and no `sourcePath`) is not checked here, because the send route cannot tell who asked for it. The skills of the mail boards forbid such sends.
+
 ### Mail during a text conversation
 
 Joshu does not hold or refuse a mail of the companion because the owner texted the box recently, or because a browser handoff that started from a text is open. The action guard is the only check of a mail of the companion, and it asks the owner in the same way whether or not the owner texts.
@@ -379,6 +397,7 @@ See [`.env.example`](../.env.example) for full list.
 | `.joshu/owner-channel/owner-channel.json` | Optional `gateMode` override (`provider` is always `sms`) |
 | `.joshu/safety-settings/local-env.json` | Hermes Slack/Telegram chat tokens, terminal guard when not in `.env` |
 | `.joshu/action-guard/audit.jsonl` | Approval audit trail |
+| `<files>/connectors/_state/outsider-sends.jsonl` | Outsider send record: sends of the companion to outsiders and owner-OK questions |
 
 **Precedence:** process `.env` overrides UI for keys present at boot. Policy file merges with env for non-env-locked fields.
 
@@ -470,6 +489,24 @@ New boxes: CP mints **`JOSHU_HERMES_DASHBOARD_PASSWORD`** in `instance.env` (`sa
 ---
 
 ## Design decisions
+
+### 2026-11-14: An outsider alone does not let the companion act
+
+Decision: being a recipient of an email no longer authorizes the companion. The owner must have sent the email or written in the thread, or the outsider send record must prove an earlier send of the companion to an outsider. Before, the companion as a recipient was enough. An outsider who copied the companion got free times of the owner with no owner input, and a test with phishing emails was refused only by the judgment of the model. The rule does not depend on the action guard, because the action guard asks before every external email and most owners leave it off.
+
+Alternatives: a contact allowlist (rejected: it blocks a new person who answers an email that the companion sent for the owner, and the box has no reliable contact list); turning the action guard on for every box (rejected: one text for every external email).
+
+### 2026-11-14: The owner gives the OK by replying on the thread
+
+Decision: the companion asks the owner with one email on the same thread, to the owner only, and the reply of the owner on that thread authorizes it. Code can trust the reply because it comes from an owner address in the headers of the mail. Alternatives: a text message or a chat answer (rejected for now: the Joshu API cannot tell a tool call of the chat session of the owner from a tool call of a worker, so a worker that read the email of the outsider could grant the OK itself); a proactive nudge of a blocked Kanban task (rejected: at most one nudge a day, and the answer comes back in a chat session).
+
+### 2026-11-14: Authorization reads mail headers, not the text of the thread
+
+Decision: "the owner wrote in the thread" comes from `thread_messages[].from` in the front matter of the mail mirror, which Joshu writes from the mail headers. Owner delegation in an earlier message counts only when `thread_messages` holds a message from that owner address. The body of a mail mirror is text, and an outsider can type a line that looks like the heading of an owner message into an email.
+
+### 2026-11-14: A record of sends, not the thread, proves an earlier send to an outsider
+
+Decision: the send route writes the outsider send record, and authorization reads it. Before, any earlier message of the companion in the thread counted, also a message to the owner only, so the owner-OK question would have authorized its own thread. Alternatives: read the recipients of each earlier message from Nylas at check time (rejected: one API call for each message on each send, and it fails when Nylas is slow); a flag in the mail mirror (rejected: the next sync rewrites the mail mirror).
 
 ### 2026-10-20: The Composio MCP guard checks each inner tool call
 

@@ -1,6 +1,6 @@
 # Joshu VPS Deploy
 
-Production packaging for **one VPS per customer**. Replaces VPS for always-on sandboxes.
+Production packaging for one box per owner. A box runs the sandbox image as its only container in single-container mode, on a sandbox or on any host that can run one container ([`docs/self-host.md`](../docs/self-host.md)). Docker Compose is deprecated, and a later release removes it. The sections on Compose, the hotfix overlay, and upgrades over SSH apply only to a box on a Compose host.
 
 ## Prerequisites
 
@@ -147,6 +147,8 @@ The release images are the only source of code on a box:
 
 The host keeps only configuration (`/etc/joshu`), the Docker volumes, the host bundle, the hotfix overlay, and backups. Compose mounts **no host code** into `joshu-stack`. The one exception is the hotfix overlay `/opt/joshu/hotfix/scripts/`: at boot, `vps-start.sh` copies those files over the image scripts (`bash scripts/hotpatch-boot.sh root@host <path>`). Each upgrade empties the hotfix overlay.
 
+A host with no Docker runs the sandbox image as its only container in single-container mode (`JOSHU_DATA_ROOT` set). The stack container then also runs Caddy on plain HTTP port 8080, `cloudflared`, the voice service, and the instance agent from the same image, and it keeps the owner data and `/etc/joshu` under the data root. See [`docs/self-host.md`](../docs/self-host.md), section "Run a box".
+
 The host bundle is in the sandbox image at `/opt/joshu/.image/host/`: `deploy/docker-compose.yml`, `deploy/.env.vps.example`, the Caddy scripts, `install-host-bundle.sh`, `ensure-instance-env-secrets.sh`, and `scripts/arozos-reset-password*`. `/opt/joshu/deploy/.host-bundle.json` records its release. The compose file sets the project name `deploy`, so the volume names stay `deploy_joshu_*` and `deploy_caddy_*`.
 
 | You changed | Update path |
@@ -155,7 +157,7 @@ The host bundle is in the sandbox image at `/opt/joshu/.image/host/`: `deploy/do
 | One boot or bridge script, urgent | `bash scripts/hotpatch-boot.sh root@host <path>` (hotfix overlay), then the next release |
 | New Hermes crons (e.g. proactive tick) | **`bash scripts/repair-fleet-ea-cron-timezone.sh`** after upgrade — crons are not in the image |
 
-Upgrade one box over SSH (also the first upgrade of a box that still has a git clone at `/opt/joshu`):
+On a Compose host, upgrade one box over SSH (also the first upgrade of a box that still has a git clone at `/opt/joshu`). A box in single-container mode updates by a new container from the new image instead ([`docs/self-host.md`](../docs/self-host.md), section "Update the box"):
 
 ```bash
 bash scripts/upgrade-fleet-box-image.sh root@host <version>
@@ -187,7 +189,7 @@ Expect **200** and HTML (not `Invalid Host header`). Caddy rewrites upstream `Ho
 
 ## Architecture docs
 
-- [docs/self-host.md](../docs/self-host.md) — standalone bootstrap
+- [docs/self-host.md](../docs/self-host.md): run a box in single-container mode
 - [docs/vps-sandbox/README.md](../docs/vps-sandbox/README.md) — VPS / Docker index
 - [docs/vps-sandbox/runtime-topology.md](../docs/vps-sandbox/runtime-topology.md) — process layout, paths, boot order
 - [docs/vps-sandbox/instance-agent-protocol.md](../docs/vps-sandbox/instance-agent-protocol.md) — optional fleet sidecar (heartbeats, release updates)

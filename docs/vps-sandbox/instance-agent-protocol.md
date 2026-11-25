@@ -93,6 +93,8 @@ Returned inline from heartbeat response (max 1 in-flight per type):
 
 ### Command types
 
+The column "Agent behavior" tells what the agent does on a Compose host, which is deprecated. In single-container mode the agent refuses `update`, `rollback`, and `deprovision`, and it runs `restart`, `rotate_secrets`, and `set_aroz_password` with a restart of the box in place (section "Single-container mode" below).
+
 | type | Payload | Agent behavior |
 | --- | --- | --- |
 | `update` | `{ imageRef, version, voiceImageRef?, instanceAgentImageRef?, hermesRef?, requiresSnap? }` | Two steps (see [Release update steps](#release-update-steps)): prepare (host bundle + agent image, restart the agent), then apply (optional GCS snap, patch `instance.env`, `pull` + `up -d --force-recreate` for `joshu-stack`, and for `voice-realtime` when `JOSHU_VOICE_MODE=realtime_s2s`; wait for `/joshu/api/instance/health`). The agent ignores the old fields `hostGitRequired`, `repoRef`, and `syncDistFromImage`. |
@@ -188,6 +190,29 @@ Cloud-init runs `docker login ghcr.io` on the **host** (`/root/.docker/config.js
 
 **Mitigation:** Heartbeat reconciles `deployedImageRef` from `host.imageRef` when the box is healthy and no update job is in flight.
 
+## Single-container mode
+
+In single-container mode (`JOSHU_DATA_ROOT` set, a host with no Docker, see [`runtime-topology.md`](runtime-topology.md)), the instance agent differs in four ways:
+
+- It runs as a process in the stack container, from the build in the sandbox image, and not from the agent image.
+- It sends no `runtimeDrift` in the heartbeat, because the drift check reads `docker inspect`.
+- It runs the commands that need no Docker as on a Compose host: `desktop_login`, `send_owner_email`, `sync_companion_identity`, and `diagnostics`.
+- It runs `restart`, `rotate_secrets`, and `set_aroz_password` with a restart of the box in place (see below).
+- It answers `update`, `rollback`, and `deprovision` with error `unsupported_in_single_container_mode` and changes nothing on the box. These commands need the API of the host of the sandbox, which the box has no key for. The operator updates such a box by a rebuild of the sandbox from the new image, with `scripts/deploy-release.mjs` in the canary stage and in the fleet stage.
+- It answers the `diagnostics` command with no Docker. It runs the read-only probe directly. For query `logs` with a service source (`joshu-stack`, `voice-realtime`, `instance-agent`, `caddy`, `cloudflared`), it reads `<data root>/logs/<service>.log.1` and then `<data root>/logs/<service>.log`, which the start script writes with a UTC timestamp on each line. For query `containers`, it answers `{"containers": [], "singleContainer": true, "processes": [...]}` with the service processes that run.
+
+### Restart of the box in place
+
+A box on a sandbox has no Docker, so the agent cannot recreate a container for `restart`, `rotate_secrets`, or `set_aroz_password`. Process 1 of the container is the start script (`deploy/scripts/vps-start.sh`), and it restarts the box in place:
+
+1. The agent does the part of the command that writes files. For `rotate_secrets` it writes the new secrets to the instance config. For `set_aroz_password` it checks the user and the hash and writes them to `/etc/joshu/secrets/pending-aroz-password.json`, with mode 600.
+2. The agent writes the command to `/etc/joshu/secrets/pending-restart-command.json` and sends SIGUSR1 to process 1. `/etc/joshu` is a link to the data root, so both files survive the restart.
+3. The start script stops every process under it: SIGTERM, up to 30 seconds, then SIGKILL. Then it starts itself again (`exec`) with the environment that the container started with, so the new start reads the instance config again. Process 1 keeps its process id, so the container does not stop.
+4. Before ArozOS starts, the new start writes a pending password into the ArozOS database with the helper `/opt/joshu-tools/arozos-reset-password`, which also rotates the session key, so the old desktop sessions end. It writes the result to `/etc/joshu/secrets/aroz-password-result.json` and removes the pending password.
+5. The new agent finds the pending command, waits until the box is healthy (up to `INSTANCE_AGENT_HEALTH_WAIT_MS`, default 600 seconds), reads the password result for `set_aroz_password`, and acknowledges the command.
+
+The start script makes `/run/joshu-restart-ready` when it can restart in place: it is process 1 and has the SIGUSR1 handler. The agent checks the file before it changes anything; without it, the agent refuses the command and the box keeps its state. Bash runs the handler when the current step of the start script ends. When the agent still runs 600 seconds after the signal, it cancels: it removes the pending files and acknowledges the command as failed, and the handler ignores a late signal with no pending command. The start script writes the time of each start to `/run/joshu-started-at`, so an agent that started again before the restart (after a crash) waits for it and does not acknowledge the command early. The agent sends no heartbeat between the signal and the health of the new start, and it runs the restart commands of one poll after the others. A `restart` restarts the whole box; field `services` of the payload does not apply. Code: `packages/instance-agent/src/inPlaceRestart.ts` and `scripts/lib/restart-in-place.sh`.
+
 ## Joshu instance health API
 
 Joshu exposes deep health for the agent (no auth on localhost; agent only):
@@ -195,7 +220,7 @@ Joshu exposes deep health for the agent (no auth on localhost; agent only):
 | Method | Path | Notes |
 | --- | --- | --- |
 | `GET` | `/api/instance/health` | Version, component booleans, update readiness |
-| `GET` | `/api/instance/version` | `{ version, hermesRef, imageRef, channel }` |
+| `GET` | `/api/instance/version` | `{ instanceId, releaseVersion, releaseChannel, imageRef, hermesRef, runtime }`. `runtime` is `single-container` or `compose`. |
 
 Mounted under `PUBLIC_BASE_PATH` (e.g. `/joshu/api/instance/health`).
 
@@ -211,6 +236,8 @@ every POLL_INTERVAL_SEC (default 30):
     POST control-plane /instances/commands/:id/ack { status, error? }
 ```
 
+The interval is `pollIntervalSec` from the heartbeat response, or `POLL_INTERVAL_SEC` when the response has none. A round that fails does not end the loop: when the control plane can't be reached or answers with an error status, the agent logs `heartbeat round failed: …` and tries again after `POLL_INTERVAL_SEC`. Code: `packages/instance-agent/src/heartbeat.ts`.
+
 ## First-boot registration
 
 Cloud-init sets `JOSHU_INSTANCE_ID` and `INSTANCE_AGENT_TOKEN` in `/etc/joshu/instance.env`. Agent calls `register` once at each start, except a start that resumes a pending release update; control plane marks instance `bootstrapping` → `active` when first healthy heartbeat arrives.
@@ -220,6 +247,7 @@ Cloud-init sets `JOSHU_INSTANCE_ID` and `INSTANCE_AGENT_TOKEN` in `/etc/joshu/in
 | Symptom | Control plane action |
 | --- | --- |
 | No heartbeat 5 min | Alert + mark `degraded` |
+| Agent log has `heartbeat round failed: …` | The control plane could not be reached or answered with an error status. The agent tries again after `POLL_INTERVAL_SEC`, so a short outage needs no action. An agent without this fix exited on a network error (Docker restarted it) and stopped its heartbeats after an error status until the next restart |
 | Update ack failed | Rollback command auto-queued |
 | Health 503 + `components.dist.status=drift` during/after update | `JOSHU_RELEASE_VERSION` in `instance.env` is not the release of the running sandbox image — align the release pins in `instance.env` and recreate `joshu-stack` |
 | `runtimeDrift.ok` false | Read `runtimeDrift.items`. `hotfix_file`: put the fix in a release, then upgrade (the upgrade empties the hotfix overlay). `host_mount`, `host_checkout`, `host_bundle_version`: upgrade the box with `scripts/upgrade-fleet-box-image.sh` |

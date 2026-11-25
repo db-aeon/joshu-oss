@@ -4,14 +4,14 @@
  * the theme step reads the best pages of each theme later (change research-report-topics, D6). A
  * web or news page without a publication date is left out, because the box cannot tell whether it
  * is new, and an item of the content router without a date gets the day of the run (D4). Each lane
- * also searches its search terms by name on Exa and Google News, with a limit for each run (change
+ * also searches its search terms by name on Exa and in the news, with a limit for each run (change
  * research-keyword-expansion). The lanes run in parallel, with at most four Exa
  * searches at once on the box. Web search is the one source that fails the run: when every Exa
  * search fails, the run has no pages to report from. Every other source only gets its state.
  */
 
 import { ResearchStepError } from "../errors.js";
-import type { ComposioSearchClient } from "../pipeline/composioSearch.js";
+import type { SourceSearchClient } from "../pipeline/sourceSearch.js";
 import { EXA_CONCURRENCY, type ExaClient, type ExaResult } from "../pipeline/exa.js";
 import { limiter, withDeadline } from "../pipeline/llm.js";
 import { EXCLUDED_DOMAINS, TERM_RESULTS } from "../pipeline/search.js";
@@ -39,7 +39,9 @@ export type CollectPeriod = { from: string; fromDay: string; to: string; days: n
 
 export type CollectDeps = {
   exa: ExaClient | null;
-  composio: ComposioSearchClient | null;
+  /** The label of the web source, for example "Web (You.com)". Default: "Web (Exa)". */
+  webLabel?: string;
+  sourceSearch: SourceSearchClient | null;
   social?: SocialDeps;
   /** Tests pass a fake fetch for the redirects of Google News. */
   fetchImpl?: typeof fetch;
@@ -179,7 +181,7 @@ export async function collectLane(
   let webSearches = 0;
   let webFailed = 0;
 
-  // Web pages from Exa, and Google News, both part of "Web and news".
+  // Web pages from Exa, and news articles, both part of "Web and news".
   const webQueries = withTerms(plan?.webQueries.length ? plan.webQueries : [lane.topic], terms);
   if (deps.exa) {
     const exa = deps.exa;
@@ -198,42 +200,45 @@ export async function collectLane(
         // A page without a date cannot be shown to be new (spec `research-report-updates`).
         const pages = results.flatMap((r) => r.value ?? []).filter((p) => !isIndexPage(p.url) && p.publishedDate);
         items.push(...pages.map((p) => pageItem(p, "web", "Web")));
-        states.push(state("web", "Web (Exa)", webFailed < webSearches, pages.length, webFailed ? `${webFailed} of ${webSearches} searches failed` : "ok"));
+        states.push(state("web", deps.webLabel ?? "Web (Exa)", webFailed < webSearches, pages.length, webFailed ? `${webFailed} of ${webSearches} searches failed` : "ok"));
       })(),
     );
   } else {
     webSearches = webQueries.length;
     webFailed = webQueries.length;
-    states.push(state("web", "Web (Exa)", false, 0, "no Exa key"));
+    states.push(state("web", deps.webLabel ?? "Web (Exa)", false, 0, "no web search key"));
   }
 
-  const composio = deps.composio;
-  if (composio) {
+  const sourceSearch = deps.sourceSearch;
+  if (sourceSearch) {
     jobs.push(
       (async () => {
         const searches = await Promise.all(
-          withTerms([plan?.newsQuery || lane.topic], terms).map(({ query }) => attempt(() => composio.news(query, deadline, newsWhen(period.days)), deadline)),
+          withTerms([plan?.newsQuery || lane.topic], terms).map(({ query }) => attempt(() => sourceSearch.news(query, deadline, newsWhen(period.days)), deadline)),
         );
         const failed = searches.filter((n) => n.error);
         const dated = searches.flatMap((n) => n.value ?? []).filter((h) => h.publishedDate && h.publishedDate.slice(0, 10) >= period.fromDay);
         const hits = await Promise.all(dated.map(async (h) => ({ ...h, url: await resolveRedirect(h.url, deadline, deps.fetchImpl) })));
-        const status = !failed.length ? "ok" : searches.length === 1 ? failed[0]!.error! : `${failed.length} of ${searches.length} searches failed`;
-        items.push(...hits.map((h) => pageItem(h, "news", host(h.url) || "Google News")));
-        states.push(state("news", "Google News", failed.length < searches.length, hits.length, status));
+        // When each search failed for the same reason, the source list shows that reason (an empty
+        // usage wallet gets the link to the usage billing page).
+        const oneReason = failed.length === searches.length && new Set(failed.map((n) => n.error)).size === 1;
+        const status = !failed.length ? "ok" : oneReason ? failed[0]!.error! : `${failed.length} of ${searches.length} searches failed`;
+        items.push(...hits.map((h) => pageItem(h, "news", host(h.url) || "News")));
+        states.push(state("news", "News", failed.length < searches.length, hits.length, status));
       })(),
     );
   } else {
-    states.push(state("news", "Google News", false, 0, "no Composio key"));
+    states.push(state("news", "News", false, 0, "no content router access"));
   }
 
   if (sources.includes("papers")) {
     jobs.push(
       (async () => {
-        if (!composio) return void states.push(state("scholar", "Google Scholar", false, 0, "no Composio key"));
-        const papers = await attempt(() => composio.scholar(plan?.scholarQuery || lane.topic, deadline), deadline);
+        if (!sourceSearch) return void states.push(state("scholar", "Research papers", false, 0, "no content router access"));
+        const papers = await attempt(() => sourceSearch.scholar(plan?.scholarQuery || lane.topic, deadline), deadline);
         const hits = (papers.value ?? []).slice(0, WEB_RESULTS);
-        items.push(...hits.map((h) => pageItem(h, "papers", "Google Scholar")));
-        states.push(state("scholar", "Google Scholar", !papers.error, hits.length, papers.error ?? "ok"));
+        items.push(...hits.map((h) => pageItem(h, "papers", "Research papers")));
+        states.push(state("scholar", "Research papers", !papers.error, hits.length, papers.error ?? "ok"));
       })(),
     );
   }
@@ -242,10 +247,14 @@ export async function collectLane(
     const company = plan.company;
     jobs.push(
       (async () => {
-        if (!composio) return void states.push(state("prices", "Stock prices", false, 0, "no Composio key"));
+        if (!sourceSearch) {
+          states.push(state("prices", "Stock prices", false, 0, "no content router access"));
+          states.push(state("filings", "SEC filings", false, 0, "no content router access"));
+          return;
+        }
         const [prices, filings] = await Promise.all([
-          attempt(() => composio.prices(`${company.ticker}:${company.exchange}`, deadline), deadline),
-          attempt(() => composio.filings(company.ticker, deadline), deadline),
+          attempt(() => sourceSearch.prices(`${company.ticker}:${company.exchange}`, deadline), deadline),
+          attempt(() => sourceSearch.filings(company.ticker, deadline), deadline),
         ]);
         const closes = (prices.value?.points ?? []).filter((p) => p.close && p.day >= period.fromDay);
         const first = closes[0];
@@ -260,7 +269,7 @@ export async function collectLane(
               // The day in the link keeps each price move its own item.
               url: `https://www.google.com/finance/quote/${prices.value!.symbol}#${last.day}`,
               source: "company",
-              sourceLabel: "Google Finance",
+              sourceLabel: "Stock prices",
               title: `${company.name} (${company.ticker}) stock ${change > 0 ? "up" : "down"} ${Math.abs(change).toFixed(1)}% since ${first.day}`,
               text: `${company.name} closed at ${first.price.toFixed(2)} ${c} on ${first.day} and at ${last.price.toFixed(2)} ${c} on ${last.day}, a change of ${change >= 0 ? "+" : ""}${change.toFixed(1)}%.`,
               publishedAt: last.day,

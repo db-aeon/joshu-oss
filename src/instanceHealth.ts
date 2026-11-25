@@ -15,7 +15,9 @@ import {
   readDistProvenance,
   type DistProvenanceStatus,
 } from "./distProvenance.js";
+import { edgeCheckPlan, probeEdge } from "./edgeHealth.js";
 import { isDirectLocalhostRequest } from "./httpLocalhost.js";
+import type { CapabilitiesComponent } from "./featureChecks.js";
 import { getFailureReport, type FailureReport } from "./instanceFailures.js";
 import { resolveJoshuIdentity } from "./joshuIdentity.js";
 import { socialSourcesHealth, type SocialSourcesHealth } from "./research/social/health.js";
@@ -26,6 +28,7 @@ import {
 import { setLocalhostCors } from "./localCors.js";
 import { provisionEnvTrim } from "./provisionInstanceEnv.js";
 import { evaluateSnapshotCredStatus } from "@joshu/box-state";
+import type { HindsightHealth } from "./hindsightHealth.js";
 
 function envTrim(name: string, fallback = ""): string {
   return process.env[name]?.trim() || fallback;
@@ -63,7 +66,22 @@ function probeHttpLocal(port: number, pathname = "/", timeoutMs = 2500): Promise
   });
 }
 
-/** TCP-connect to a loopback port; ok if something is listening (Caddy on :443). */
+/** GET a URL; ok only on status 200 (the ready endpoint of cloudflared). */
+function probeHttp200(url: string, timeoutMs = 2500): Promise<boolean> {
+  return new Promise((resolve) => {
+    const req = http.get(url, { timeout: timeoutMs }, (res) => {
+      res.resume();
+      resolve(res.statusCode === 200);
+    });
+    req.on("error", () => resolve(false));
+    req.on("timeout", () => {
+      req.destroy();
+      resolve(false);
+    });
+  });
+}
+
+/** TCP-connect to a loopback port; ok if something is listening (Caddy on :443 or :8080). */
 function probeTcpLocal(port: number, timeoutMs = 2500): Promise<boolean> {
   return new Promise((resolve) => {
     const socket = net.connect({ host: "127.0.0.1", port });
@@ -94,7 +112,9 @@ export interface InstanceHealthReport {
     joshu: { ok: boolean };
     camofox: { ok: boolean };
     hermes: { ok: boolean };
-    hindsight: { ok: boolean };
+    // Real Hindsight state: disabled or unreachable is ok=false (see src/hindsightHealth.ts).
+    // Informational: it does not change `healthy` or `readyForUpdate`.
+    hindsight: HindsightHealth;
     gbrain: { ok: boolean; indexed_ok?: boolean; page_count?: number; disk_markdown?: number };
     connectorsMcp: { ok: boolean };
     twilio: { ok: boolean };
@@ -112,6 +132,8 @@ export interface InstanceHealthReport {
     last30days: SocialSourcesHealth;
     // Background-work failures (Kanban runs, Hermes cron). Informational: never gates health.
     failures: FailureReport | { ok: false; scanError: string };
+    // Feature checks (change box-capability-checks). Informational: never gates health.
+    capabilities?: CapabilitiesComponent;
   };
   uptimeSec: number;
 }
@@ -123,7 +145,7 @@ export function registerInstanceHealthRoutes(
   deps: {
     probeHermes: () => Promise<{ available: boolean }>;
     probeCamofox: () => Promise<{ reachable: boolean }>;
-    probeHindsight: () => Promise<{ ok: boolean }>;
+    probeHindsight: () => Promise<HindsightHealth>;
     probeGbrain: () => Promise<{
       ok: boolean;
       indexed_ok?: boolean;
@@ -133,6 +155,8 @@ export function registerInstanceHealthRoutes(
     probeConnectorsMcp: () => Promise<{ ok: boolean }>;
     probeTwilio: () => Promise<{ ok: boolean }>;
     connectorsMcpRequired?: boolean;
+    /** Component `capabilities`: answers from config and stored results, never calls a service. */
+    capabilities?: () => CapabilitiesComponent;
   },
 ): void {
   router.get("/api/instance/version", (_req: Request, res: Response) => {
@@ -142,6 +166,9 @@ export function registerInstanceHealthRoutes(
       releaseChannel: instanceEnvTrim("JOSHU_RELEASE_CHANNEL", "stable"),
       imageRef: instanceEnvTrim("JOSHU_IMAGE_REF", "local"),
       hermesRef: instanceEnvTrim("HERMES_AGENT_REF", "unknown"),
+      // Fleet scripts read this: a box in single-container mode updates by a rebuild of its
+      // sandbox, and not by a release update of the instance agent.
+      runtime: envTrim("JOSHU_DATA_ROOT") ? "single-container" : "compose",
     });
   });
 
@@ -159,10 +186,12 @@ export function registerInstanceHealthRoutes(
     // where ArozOS or Caddy was dead while the Joshu API stayed green.
     const arozosExpected = isTruthyEnv("AROZOS_ENABLED");
     const arozPort = Number(instanceEnvTrim("PUBLIC_AROZ_PORT", "8787")) || 8787;
-    const edgeExpected = Boolean(instanceEnvTrim("CUSTOMER_DOMAIN", ""));
+    // Caddy on :443, or Caddy on :8080 and the Cloudflare Tunnel in single-container mode.
+    const edgePlan = edgeCheckPlan((name) => instanceEnvTrim(name, ""));
+    const edgeExpected = edgePlan.expected;
     const [arozosOk, edgeOk] = await Promise.all([
       arozosExpected ? probeHttpLocal(arozPort) : Promise.resolve(true),
-      edgeExpected ? probeTcpLocal(443) : Promise.resolve(true),
+      probeEdge(edgePlan, { tcp: probeTcpLocal, http200: probeHttp200 }),
     ]);
 
     // Prefer instance.env (agent patches it pre-recreate) then process env, matching
@@ -204,7 +233,7 @@ export function registerInstanceHealthRoutes(
       // Cloud boxes have no local Chromium on :9377. The shared browser is Browser Use.
       camofox: { ok: cloudBrowserEnabled() || camofox.reachable },
       hermes: { ok: hermes.available },
-      hindsight: { ok: hindsight.ok },
+      hindsight,
       gbrain: {
         ok: gbrain.ok,
         ...(gbrain.indexed_ok !== undefined ? { indexed_ok: gbrain.indexed_ok } : {}),
@@ -226,6 +255,7 @@ export function registerInstanceHealthRoutes(
       },
       last30days: socialSourcesHealth(),
       failures,
+      ...(deps.capabilities ? { capabilities: deps.capabilities() } : {}),
     };
 
     const connectorsMcpRequired = deps.connectorsMcpRequired !== false;

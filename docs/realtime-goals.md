@@ -141,7 +141,8 @@ acknowledgment instead of a newer goal response.
 - SMS uses the existing carrier-safe `sendSms` helper. Completion text is the
   Kanban run summary (`latest_run.summary`, else `completion_summary`, else the
   last comment). [`formatOwnerCompletion`](../src/realtimeGoals/ownerDelivery.ts)
-  rewrites that before send: second person, one fact per line, CAPTCHA and
+  rewrites that before send: second person, one fact per line with the blank
+  lines between paragraphs kept, CAPTCHA and
   "this run" notes removed. A line that starts with a URL keeps its case. If
   the summary mentions a handoff and does not include a URL, the broker
   appends the pending handoff link under "Open the live browser here:" (same
@@ -205,6 +206,31 @@ classifies it:
 | --- | --- | --- |
 | **Owner question** | Worker `kanban_block(reason)` | Deliver the question on the origin channel |
 | **System stall** | Hermes circuit breaker (`gave_up`: crashes, timeouts, spawn failures, or clean exits without `kanban_complete`/`kanban_block`), or a reasonless block | Never page the owner. Append a `Joshu recovery` note and unblock, up to 2 times. Then send one honest message: couldn't finish, say “try again” or “cancel”. |
+
+**Step limit (2026-11).** Hermes allows each worker run a fixed number of model
+calls (the step limit, `agent.max_turns`, 90 by default). A worker that reaches
+it ends with outcome `timed_out` and the error `Iteration budget exhausted …`,
+and after 2 such runs Hermes gives up with `gave_up`. Three things keep the
+answer of such a run from being lost
+([`step_limit.py`](../.hermes/plugins/joshu-realtime-goals/step_limit.py),
+`classifyBlockCause` and `autoRecoveryKanbanAppend` in
+[`blockCause.ts`](../src/realtimeGoals/blockCause.ts)):
+
+- **Step-limit warning.** When 15 steps or fewer are left, plugin
+  `joshu-realtime-goals` adds `[Joshu step-limit warning]` to the end of each
+  tool result of a worker on board `realtime-goals`, so the worker ends the run
+  with `kanban_complete` or `kanban_block` while it still can.
+- **Step-limit note.** When the run reached the step limit anyway, the plugin
+  adds the last summary of the worker (at most 4000 characters) as a comment
+  `## Step-limit note` (author `joshu-step-limit`) on the Kanban task. The next
+  run reads it, so it does not repeat the same work.
+- **Recovery note.** When the newest run reached the step limit, the
+  `Joshu recovery` note says so, points to the step-limit note, and asks for a
+  short run. The restart budget stays at 2.
+
+On a box on 2026-11-14, a worker found that the rental office was sold out on
+the asked day, used all 90 steps in the browser, and never blocked; 4 runs
+repeated the same flow and the owner heard only "still working".
 
 There is no generic “I need more information” fallback any more: with nothing
 concrete to ask, the voice model invented a question (fleet box 2026-09-24, flight
@@ -461,6 +487,10 @@ Repo plugin `.hermes/plugins/joshu-realtime-goals/`:
   (`cron_guard.py`), for example a reminder made in an SMS turn without
   `deliver`. Reminders to the owner use `owner_reminder_create`
   ([executive-assistant.md — Owner reminders](executive-assistant.md#owner-reminders-2026-10)).
+- adds the step-limit warning to the tool results of a worker on board
+  `realtime-goals` near the step limit, and writes the step-limit note when the
+  run reached it (`step_limit.py`, see
+  [Blocked goals](#blocked-goals-owner-questions-vs-system-stalls-2026-09-24)).
 
 The SMS gateway also defers an SMS turn that its deadline stopped, with the
 owner text and a note about partial work as the objective
@@ -515,7 +545,7 @@ JOSHU_REALTIME_GOALS_RELEASE_SECONDS=60
 JOSHU_REALTIME_GOALS_POLL_MS=5000
 
 # Optional cheap router override.
-JOSHU_REALTIME_GOALS_CLASSIFIER_MODEL=openai/gpt-5.4-nano
+JOSHU_REALTIME_GOALS_CLASSIFIER_MODEL=anthropic/claude-haiku-5.5
 
 # Session thread bounds (defaults: 12 turns, 48h).
 JOSHU_REALTIME_GOALS_THREAD_MAX_TURNS=12

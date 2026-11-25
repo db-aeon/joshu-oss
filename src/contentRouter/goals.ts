@@ -5,12 +5,15 @@
  * 1. Look up the goal kind in the route cache.
  * 2. On a miss, search the router catalog, pick a provider endpoint with one model call, and keep
  *    the choice when the call returns items.
- * 3. Call the provider endpoint.
+ * 3. Call the provider endpoint. When the third fault in a row removes a cached route, learn one
+ *    new route without the provider endpoint that failed, and call it (change route-cache-no-wait).
  * 4. Look up the shape recipe of the provider endpoint.
  * 5. On a miss, or when the recipe fails its check on a reply with a list, learn the recipe with
  *    one model call, and keep it. A recipe that fails again gives the state "could not be read".
  * 6. Return the items.
  * A goal never throws: a failure gives its source the state "could not be reached" with the reason.
+ * The route cache is a plain cache: it holds only routes that the box can call, and a goal kind
+ * with no usable entry is learned at each use, with no wait.
  */
 
 import fs from "node:fs";
@@ -21,7 +24,7 @@ import type { SourceState } from "../research/types.js";
 import { RouterError, type RouterClient, type RouterFailure, type RouterUnavailable } from "./client.js";
 import { cleanFixedInputs, ENDPOINT_ID_PATTERN, INPUT_NAME_PATTERN, learnRecipe, learnRoute, matchesPrefer, type LearnLlm } from "./learn.js";
 import { applyRecipe, checkItems, checkRecipe, longestList, type RecipeItem, type ShapeRecipe } from "./recipe.js";
-import { goalKey, MAX_ROUTE_FAILURES, NO_ROUTE_RETRY_DAYS, readRoutes, readShapes, saveShape, updateRoute, type RouteEntry } from "./store.js";
+import { goalKey, MAX_ROUTE_FAILURES, readRoutes, ROUTE_FAULT_GAP_MS, readShapes, saveShape, updateRoute, type RouteEntry } from "./store.js";
 
 /** A content goal of one source of a report. */
 export type ContentGoal = {
@@ -94,7 +97,7 @@ export function customGoalId(kind: string): string {
 /**
  * The goal of a source id, at read time (design D5): a default goal id (also the five old ids of
  * the social sources, `reddit`, `x`, `youtube`, `tiktok`, `instagram`), or `goal:<kind>`. Null for
- * a base source (`web`, `papers`, `company`) or an unknown id.
+ * a source that is not a social goal (`web`, `papers`, `company`) or an unknown id.
  */
 export function goalOfSource(id: string, defaults: readonly GoalKind[] = BUILT_IN_SOCIAL_GOALS): GoalKind | null {
   const known = defaults.find((g) => g.id === id) ?? BUILT_IN_SOCIAL_GOALS.find((g) => g.id === id);
@@ -141,16 +144,16 @@ export type GoalResult = { items: GoalItem[]; state: SourceState; endpoint?: str
 
 /** Engine status of a goal whose recipe failed its check twice (risk 2 of design.md). */
 export const COULD_NOT_BE_READ = "could not be read";
-/** Engine status of a goal with no working provider endpoint, also while a failed entry blocks a new learning. */
+/** Engine status of a goal for which the box could not learn a route: the router catalog has no provider endpoint, or the model gave no valid answer. */
 export const NO_ROUTE = "no route";
 /** The most `goal:` sources (goals that are not default goals) of one report or one run. */
 export const MAX_GOAL_SOURCES = 5;
 /** Engine status of a `goal:` source over the limit. */
 export const TOO_MANY_GOALS = `more than ${MAX_GOAL_SOURCES} goal sources`;
-/** Failures that do not say anything about the provider endpoint, so the box does not remember them. */
-const PASSING_FAULTS: ReadonlySet<string> = new Set<RouterFailure>(["usage wallet empty", "rate limited", "unauthorized", "no channel available"]);
-
-/** Failures that count against a cached route. An empty usage wallet or a rate limit is not the fault of the provider endpoint. */
+/**
+ * Failures that count against a cached route. An empty usage wallet, a rate limit, an unauthorized
+ * answer, or no channel is not the fault of the provider endpoint.
+ */
 const ROUTE_FAULTS: ReadonlySet<string> = new Set<RouterFailure | typeof COULD_NOT_BE_READ>(["error", "unknown endpoint", "provider error", "timed out", COULD_NOT_BE_READ]);
 
 /** One box sends at most four router calls at once. */
@@ -174,18 +177,31 @@ function asItem(goal: ContentGoal, item: RecipeItem): GoalItem {
   };
 }
 
-function noteFailure(goal: ContentGoal, kind: string, home: string, fresh: boolean): void {
-  if (fresh || !ROUTE_FAULTS.has(kind)) return;
+/**
+ * Count a fault against the cached route of a goal kind. The third fault in a row removes the
+ * entry. Returns true when the route cache has no entry for the goal kind after the count. A fault
+ * does not count against an entry of another provider endpoint, which another report wrote in
+ * the meantime, and a fault within `ROUTE_FAULT_GAP_MS` of the last counted fault does not count again.
+ */
+function noteFault(goal: ContentGoal, endpoint: string, now: Date, home: string): boolean {
+  let gone = false;
   updateRoute(
     goal.kind,
     (cur) => {
-      if (!cur) return cur;
-      const failures = cur.failures + 1;
-      // Three failures in a row: drop the route, so the next report learns it again.
-      return failures >= MAX_ROUTE_FAILURES ? undefined : { ...cur, failures };
+      if (!cur) {
+        gone = true;
+        return cur;
+      }
+      if (cur.endpoint !== endpoint) return cur;
+      const last = Date.parse(cur.lastFailureAt ?? "");
+      if (Number.isFinite(last) && Math.abs(now.getTime() - last) < ROUTE_FAULT_GAP_MS) return cur;
+      const failures = (Number(cur.failures) || 0) + 1;
+      gone = failures >= MAX_ROUTE_FAILURES;
+      return gone ? undefined : { ...cur, failures, lastFailureAt: now.toISOString() };
     },
     home,
   );
+  return gone;
 }
 
 /**
@@ -193,20 +209,10 @@ function noteFailure(goal: ContentGoal, kind: string, home: string, fresh: boole
  * the companion can edit, so the box checks each value again before a paid call.
  */
 export function usableRoute(entry: RouteEntry | undefined): RouteEntry | null {
-  if (!entry || entry.retryAfter) return null;
+  if (!entry) return null;
   if (typeof entry.endpoint !== "string" || !ENDPOINT_ID_PATTERN.test(entry.endpoint) || entry.endpoint.startsWith("treg.")) return null;
   if (typeof entry.queryInput !== "string" || !INPUT_NAME_PATTERN.test(entry.queryInput)) return null;
   return { ...entry, fixedInputs: cleanFixedInputs(entry.fixedInputs), failures: Number(entry.failures) || 0 };
-}
-
-/** Remember that a goal kind has no working provider endpoint, so the next report neither learns nor pays again for a while. */
-function rememberNoRoute(goal: ContentGoal, endpoint: string, reason: string, now: Date, home: string): void {
-  const retryAfter = new Date(now.getTime() + NO_ROUTE_RETRY_DAYS * 86_400_000).toISOString();
-  updateRoute(
-    goal.kind,
-    () => ({ endpoint, queryInput: "", fixedInputs: {}, ...(goal.prefer ? { prefer: goal.prefer } : {}), origin: "learned", learnedAt: now.toISOString(), failures: 0, retryAfter, reason }),
-    home,
-  );
 }
 
 /** Keep the default goals and the first five `goal:` sources; the others get a source row that says why. */
@@ -257,13 +263,56 @@ async function readItems(
   return { items, dated: Boolean(recipe.publishedAt) };
 }
 
-/** Resolve one content goal. Never throws. */
+type GoalRead = { items: RecipeItem[]; dated: boolean };
+
+/** Call the provider endpoint of a route and read its items. A failure comes back as `fault`, never as a throw. */
+async function callRoute(
+  goal: ContentGoal,
+  route: RouteEntry,
+  client: RouterClient,
+  search: GoalSearch,
+  today: string,
+  deps: GoalDeps,
+  home: string,
+): Promise<GoalRead | { fault: string }> {
+  const params = { ...route.fixedInputs, [route.queryInput]: goal.query };
+  let body: unknown;
+  try {
+    body = (await routerSlots(() => client.call({ endpoint: route.endpoint, params }, search.deadline))).body;
+  } catch (err) {
+    return { fault: err instanceof RouterError ? err.kind : "error" };
+  }
+  const read = await readItems(goal, route.endpoint, body, today, search.deadline, deps, home);
+  if ("unreadable" in read) {
+    // The state shows only "could not be read"; the reason goes to the log for diagnosis.
+    console.warn(`[content-router] goal ${goal.kind}: ${route.endpoint} could not be read: ${read.unreadable}`);
+    return { fault: COULD_NOT_BE_READ };
+  }
+  return read;
+}
+
+/** Resolve one content goal. Never throws. Learns at most one route. */
 export async function resolveGoal(goal: ContentGoal, search: GoalSearch, deps: GoalDeps): Promise<GoalResult> {
   if (!deps.client) return { items: [], state: state(goal, "could not be reached", deps.unavailable ?? "content router off") };
   const client = deps.client;
   const home = deps.home ?? hermesHome();
   const now = (deps.now ?? (() => new Date()))();
   const today = search.today ?? now.toISOString().slice(0, 10);
+  const unreachable = (fault: string, endpoint?: string): GoalResult => ({
+    items: [],
+    state: state(goal, "could not be reached", fault),
+    ...(endpoint ? { endpoint } : {}),
+  });
+
+  /** Learn a route with one model call. `without` is the provider endpoint that just failed. */
+  const learn = async (without?: string): Promise<RouteEntry | { fault: string }> => {
+    try {
+      const learned = await learnRoute(client, goal, deps.hints ?? [], search.deadline, deps.llm, without);
+      return { ...learned, ...(goal.prefer ? { prefer: goal.prefer } : {}), origin: "learned", learnedAt: now.toISOString(), failures: 0 };
+    } catch (err) {
+      return { fault: err instanceof RouterError ? err.kind : NO_ROUTE };
+    }
+  };
 
   let cached: RouteEntry | undefined;
   try {
@@ -271,57 +320,39 @@ export async function resolveGoal(goal: ContentGoal, search: GoalSearch, deps: G
   } catch {
     cached = undefined;
   }
-  // A failed entry blocks a new learning until its time, unless a hint names another provider.
-  if (cached?.retryAfter && cached.retryAfter > now.toISOString() && (cached.prefer ?? "") === (goal.prefer ?? "")) {
-    return { items: [], state: state(goal, "could not be reached", NO_ROUTE) };
-  }
   let route: RouteEntry | null = usableRoute(cached);
   // A hint that names another provider makes the box look again (spec content-goals, "Hints").
   if (route && goal.prefer && !matchesPrefer(route.endpoint, goal.prefer)) route = null;
+  // True when this call learned `route`. The box keeps such a route only when it returns items.
   let fresh = false;
   if (!route) {
-    try {
-      const learned = await learnRoute(client, goal, deps.hints ?? [], search.deadline, deps.llm);
-      route = { ...learned, ...(goal.prefer ? { prefer: goal.prefer } : {}), origin: "learned", learnedAt: now.toISOString(), failures: 0 };
-      fresh = true;
-    } catch (err) {
-      const kind = err instanceof RouterError ? err.kind : NO_ROUTE;
-      if (!PASSING_FAULTS.has(kind)) rememberNoRoute(goal, "", `${kind}: ${(err as Error).message}`.slice(0, 200), now, home);
-      return { items: [], state: state(goal, "could not be reached", kind) };
-    }
+    const learned = await learn();
+    if ("fault" in learned) return unreachable(learned.fault);
+    route = learned;
+    fresh = true;
   }
 
-  const params = { ...route.fixedInputs, [route.queryInput]: goal.query };
-  let body: unknown;
-  try {
-    body = (await routerSlots(() => client.call({ endpoint: route!.endpoint, params }, search.deadline))).body;
-  } catch (err) {
-    const kind = err instanceof RouterError ? err.kind : "error";
-    noteFailure(goal, kind, home, fresh);
-    if (fresh && !PASSING_FAULTS.has(kind)) rememberNoRoute(goal, route.endpoint, kind, now, home);
-    return { items: [], state: state(goal, "could not be reached", kind), endpoint: route.endpoint };
+  let read = await callRoute(goal, route, client, search, today, deps, home);
+  if ("fault" in read && !fresh && ROUTE_FAULTS.has(read.fault) && noteFault(goal, route.endpoint, now, home)) {
+    // The third fault in a row removed the cached route. Learn one new route for this report,
+    // without the provider endpoint that failed. When there is none, the goal keeps the fault.
+    const learned = await learn(route.endpoint);
+    if ("fault" in learned) return unreachable(read.fault, route.endpoint);
+    route = learned;
+    fresh = true;
+    read = await callRoute(goal, route, client, search, today, deps, home);
   }
+  if ("fault" in read) return unreachable(read.fault, route.endpoint);
 
-  const read = await readItems(goal, route.endpoint, body, today, search.deadline, deps, home);
-  if ("unreadable" in read) {
-    // The state shows only "could not be read"; the reason goes to the log for diagnosis.
-    console.warn(`[content-router] goal ${goal.kind}: ${route.endpoint} could not be read: ${read.unreadable}`);
-    noteFailure(goal, COULD_NOT_BE_READ, home, fresh);
-    if (fresh) rememberNoRoute(goal, route.endpoint, COULD_NOT_BE_READ, now, home);
-    return { items: [], state: state(goal, "could not be reached", COULD_NOT_BE_READ), endpoint: route.endpoint };
-  }
   if (read.items.length) {
-    const ok = route;
+    const { lastFailureAt: _counted, ...ok } = route;
     updateRoute(goal.kind, () => ({ ...ok, failures: 0, lastSuccessAt: now.toISOString() }), home);
-  } else if (fresh) {
-    // A new route whose first reply gives no items is remembered as failed, so the next report
-    // does not learn and pay again for the same goal kind.
-    rememberNoRoute(goal, route.endpoint, "returned no items", now, home);
   }
   // When the provider endpoint has dates, an item with no date cannot be placed in the period, so
   // it is left out. Items of a provider endpoint with no dates (for example markets) all count.
+  const dated = read.dated;
   const items = read.items
-    .filter((i) => i.title && (!read.dated || (i.publishedAt && i.publishedAt >= search.sinceDay)))
+    .filter((i) => i.title && (!dated || (i.publishedAt && i.publishedAt >= search.sinceDay)))
     .map((i) => asItem(goal, i));
   return { items, state: state(goal, items.length ? "returned items" : "returned no items", "ok"), endpoint: route.endpoint };
 }

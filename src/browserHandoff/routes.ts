@@ -85,6 +85,14 @@ function verifyHandoffAccess(
   return verifyOwnerHandoffSession(req, id, link.exp);
 }
 
+/**
+ * The viewport of the two handoff pages. It sets no `maximum-scale`, so the owner can pinch to
+ * zoom on a phone (change handoff-pinch-zoom). In cloud mode the live view is a fixed 1024 by
+ * 768 screen that the page scales down to the width of the phone, and its text is too small
+ * to read without zoom.
+ */
+export const HANDOFF_VIEWPORT = "width=device-width, initial-scale=1, viewport-fit=cover";
+
 function escapeHtml(value: string): string {
   return value
     .replace(/&/g, "&amp;")
@@ -111,7 +119,7 @@ function sendHandoffLoginPage(
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
+  <meta name="viewport" content="${HANDOFF_VIEWPORT}" />
   <title>Sign in — Joshu</title>
   <base href="../" />
   <link rel="icon" href="joshu-mark.svg" type="image/svg+xml" />
@@ -633,7 +641,7 @@ export function registerBrowserHandoffRoutes(
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
+  <meta name="viewport" content="${HANDOFF_VIEWPORT}" />
   <title>Joshu browser handoff</title>
   <base href="../" />
   <link rel="icon" href="joshu-mark.svg" type="image/svg+xml" />

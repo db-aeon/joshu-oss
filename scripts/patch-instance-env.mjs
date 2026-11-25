@@ -19,10 +19,15 @@ function formatEnvValue(value) {
 function parseArgs(argv) {
   let file = "/etc/joshu/instance.env";
   const updates = {};
+  const unset = [];
   for (let i = 2; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === "--file" && argv[i + 1]) {
       file = argv[++i];
+      continue;
+    }
+    if (arg === "--unset" && argv[i + 1]) {
+      unset.push(argv[++i]);
       continue;
     }
     const eq = arg.indexOf("=");
@@ -31,14 +36,14 @@ function parseArgs(argv) {
     }
     updates[arg.slice(0, eq)] = arg.slice(eq + 1);
   }
-  if (Object.keys(updates).length === 0) {
-    throw new Error("usage: patch-instance-env.mjs [--file path] KEY=value ...");
+  if (Object.keys(updates).length === 0 && unset.length === 0) {
+    throw new Error("usage: patch-instance-env.mjs [--file path] [--unset KEY ...] KEY=value ...");
   }
-  return { file, updates };
+  return { file, updates, unset };
 }
 
 async function main() {
-  const { file, updates } = parseArgs(process.argv);
+  const { file, updates, unset } = parseArgs(process.argv);
   let envText = "";
   try {
     envText = await readFile(file, "utf8");
@@ -46,7 +51,7 @@ async function main() {
     envText = "";
   }
 
-  const keysToUpdate = new Set(Object.keys(updates));
+  const keysToUpdate = new Set([...Object.keys(updates), ...unset]);
   const nextLines = envText.split(/\r?\n/).filter((line) => {
     const match = /^([A-Z0-9_]+)=/.exec(line);
     if (!match) return true;

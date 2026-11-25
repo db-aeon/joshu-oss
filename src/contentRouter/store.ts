@@ -25,15 +25,10 @@ export type RouteEntry = {
   origin: "seed" | "learned";
   learnedAt: string;
   lastSuccessAt?: string;
-  /** Failures in a row. The box drops the entry at three. */
+  /** Faults in a row. The box removes the entry at three. */
   failures: number;
-  /**
-   * Set on a failed entry: the box found no working provider endpoint for this goal kind, and it
-   * does not learn again (or pay for a call) before this time. `endpoint` is then the one that failed, or empty.
-   */
-  retryAfter?: string;
-  /** Why the entry failed, for example "returned no items". */
-  reason?: string;
+  /** The time of the last fault that the box counted. Faults within `ROUTE_FAULT_GAP_MS` of it count as the same fault. */
+  lastFailureAt?: string;
 };
 
 export type RoutesFile = { schemaVersion: 1; routes: Record<string, RouteEntry> };
@@ -42,10 +37,18 @@ export type ShapeEntry = ShapeRecipe & { origin: "seed" | "learned"; learnedAt: 
 
 export type ShapesFile = { schemaVersion: 1; shapes: Record<string, ShapeEntry> };
 
-/** A route cache entry is dropped after this many failures in a row (risk 1 of design.md). */
+/**
+ * The box removes a route cache entry after this many faults in a row. One fault does not remove
+ * the entry, because a provider endpoint that works gives a provider error or runs out of time now
+ * and then (change route-cache-no-wait, design decision D2).
+ */
 export const MAX_ROUTE_FAILURES = 3;
-/** A failed entry blocks a new learning of its goal kind for this many days. */
-export const NO_ROUTE_RETRY_DAYS = 7;
+/**
+ * Faults of one cached route within one hour count as one fault. The topics of one recurring
+ * report call the same provider endpoint at the same time, so without this rule one passing fault
+ * would count three times and remove a route that works.
+ */
+export const ROUTE_FAULT_GAP_MS = 60 * 60_000;
 
 const SEEDED_AT = "2026-11-01T00:00:00.000Z";
 
@@ -199,13 +202,34 @@ function readJson<T>(file: string): T | null {
   }
 }
 
-/** Make the box skill `joshu-content-cache` with the seed files, when it is not there yet. */
+/**
+ * Remove the "no route" records from a route cache. Releases before change route-cache-no-wait
+ * wrote such a record, with `retryAfter`, when a learned route failed, and did not learn that goal
+ * kind again for 7 days. The route cache now holds only routes that the box can call. Returns true
+ * when it removed a record.
+ */
+export function removeNoRouteRecords(file: RoutesFile): boolean {
+  let removed = false;
+  for (const [key, entry] of Object.entries(file.routes)) {
+    if (!entry || typeof entry !== "object" || !("retryAfter" in entry)) continue;
+    delete file.routes[key];
+    removed = true;
+  }
+  return removed;
+}
+
+/**
+ * Make the box skill `joshu-content-cache` with the seed files, when it is not there yet, and
+ * remove the "no route" records of an older release from an existing route cache.
+ */
 export function ensureContentCache(home = hermesHome()): string {
   const dir = contentCacheDir(home);
   fs.mkdirSync(path.join(dir, "references"), { recursive: true });
   const skill = path.join(dir, "SKILL.md");
   if (!fs.existsSync(skill)) fs.writeFileSync(skill, SKILL_MD, "utf8");
-  if (!readJson<RoutesFile>(routesPath(home))?.routes) writeJsonAtomic(routesPath(home), seedRoutes());
+  const routes = readJson<RoutesFile>(routesPath(home));
+  if (!routes?.routes || typeof routes.routes !== "object") writeJsonAtomic(routesPath(home), seedRoutes());
+  else if (removeNoRouteRecords(routes)) writeJsonAtomic(routesPath(home), routes);
   if (!readJson<ShapesFile>(shapesPath(home))?.shapes) writeJsonAtomic(shapesPath(home), seedShapes());
   return dir;
 }

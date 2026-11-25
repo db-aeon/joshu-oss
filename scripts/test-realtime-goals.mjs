@@ -288,6 +288,111 @@ try {
   assert.match(recoveryNote, /Joshu recovery/);
   assert.match(recoveryNote, /kanban_complete/);
   assert.match(recoveryNote, /never a generic/);
+  assert.doesNotMatch(recoveryNote, /step limit/i, "a plain stall does not mention the step limit");
+
+  // Step limit (fleet box, 2026-11-14, rental pickup): Hermes gives up after
+  // two runs that each used all 90 steps; the recovery note names the step limit.
+  const stepLimitError =
+    "Iteration budget exhausted (90/90) — task could not complete within the allowed iterations";
+  const stepLimitCause = classifyBlockCause({
+    status: "blocked",
+    block_cause: { source: "system", event: "gave_up", trigger: "timed_out", error: stepLimitError },
+  });
+  assert.equal(stepLimitCause.kind, "system");
+  assert.equal(stepLimitCause.stepLimit, true);
+  assert.equal(
+    classifyBlockCause({ status: "blocked", block_reason: null, latest_run: { outcome: "timed_out", error: stepLimitError } })
+      .stepLimit,
+    true,
+    "the error of the newest run counts too",
+  );
+  assert.equal(gaveUp.stepLimit, false, "a crash is not a step-limit run");
+  const stepLimitNote = autoRecoveryKanbanAppend({
+    at: now,
+    attempt: 1,
+    maxAttempts: 2,
+    why: "the previous worker run stopped without kanban_complete or kanban_block",
+    stepLimit: true,
+  });
+  assert.match(stepLimitNote, /reached the step limit/);
+  assert.match(stepLimitNote, /## Step-limit note/);
+  assert.match(stepLimitNote, /Do not repeat the work/);
+  assert.match(stepLimitNote, /kanban_complete/);
+  {
+    const kanbanCalls = [];
+    let blockError = stepLimitError;
+    const kanbanBridge = async (payload) => {
+      kanbanCalls.push(payload);
+      if (payload.action === "show") {
+        return {
+          success: true,
+          task: {
+            task_id: payload.task_id,
+            status: "blocked",
+            block_cause: { source: "system", event: "gave_up", trigger: "timed_out", error: blockError },
+            latest_run: { outcome: "timed_out", error: blockError },
+          },
+        };
+      }
+      return { success: true };
+    };
+    const stepBroker = new RealtimeGoalBroker(process.cwd(), undefined, { kanbanBridge });
+    const rental = await store.insert({
+      id: "goal-rental-step-limit",
+      version: 1,
+      title: "Move rental car pickup to tomorrow",
+      objective: "Move the Enterprise pickup to Saturday",
+      status: "running",
+      origin: { channel: "sms", sessionKey: "sms:+15555550781", messageId: "SM-rental", replyAddress: "+15555550781" },
+      sourceMessageId: "SM-rental",
+      idempotencyKey: "realtime-goal:v1:rental-step-limit",
+      createdAt: now,
+      updatedAt: now,
+      ownerInteractedAt: now,
+      releaseAt: now,
+      kanbanTaskId: "t_rental",
+      lastKanbanStatus: "running",
+      messages: [{ at: now, role: "owner", text: "Move the Enterprise pickup to Saturday" }],
+      intakeReply: "Queued.",
+      delivery: { state: "pending", attempts: 0 },
+    });
+    await stepBroker.tick();
+    const append = kanbanCalls.find((call) => call.action === "append_body" && call.task_id === "t_rental");
+    assert.ok(append, "the broker adds a recovery note");
+    assert.match(append.append, /reached the step limit/);
+    assert.match(append.append, /## Step-limit note/);
+    assert.ok(
+      kanbanCalls.some((call) => call.action === "unblock" && call.task_id === "t_rental"),
+      "the broker unblocks the task",
+    );
+    assert.equal((await store.get(rental.id)).autoRecoveries, 1);
+
+    // A crash: the recovery note does not mention the step limit.
+    kanbanCalls.length = 0;
+    blockError = "worker exited with code 1";
+    await store.update(rental.id, (item) => {
+      item.status = "running";
+      item.lastKanbanStatus = "running";
+    });
+    await stepBroker.tick();
+    const crashAppend = kanbanCalls.find((call) => call.action === "append_body" && call.task_id === "t_rental");
+    assert.ok(crashAppend);
+    assert.doesNotMatch(crashAppend.append, /step limit/i);
+
+    // Restarts spent: no third restart; the owner gets the message that it could not finish.
+    kanbanCalls.length = 0;
+    blockError = stepLimitError;
+    await store.update(rental.id, (item) => {
+      item.status = "running";
+      item.lastKanbanStatus = "running";
+    });
+    await stepBroker.tick();
+    assert.ok(!kanbanCalls.some((call) => call.action === "unblock"), "no restart after 2");
+    const stalled = (await stepBroker.ownerOutbox.list()).find(
+      (item) => item.goalId === rental.id && item.kind === "blocked",
+    );
+    assert.match(stalled.text, /couldn.t finish/);
+  }
 
   // Answering-machine verdicts (the call gate decides on human / unknown).
   assert.equal(answeredByOutcome("machine_end_beep"), "voicemail");
@@ -722,6 +827,22 @@ try {
   // A worker that wrote "Https://" itself does not get the link twice.
   const capitalized = formatOwnerCompletion(`Done.\nHttps://${xLink.slice("https://".length)}`, [xLink]);
   assert.equal(capitalized.toLowerCase().split(xLink.toLowerCase()).length, 2);
+
+  // A file extension, an abbreviation, and a paragraph break survive the layout
+  // (finn 2026-11-02: "saved as.png", "Est.\n1636", and the list ran into the next line).
+  const files = formatOwnerCompletion(
+    "Your 3 backgrounds are done, each saved as .png plus a smaller .jpg:\n\n" +
+      "1 - Harbor at dawn\n2 - Town hall, \"Est. 1636\"\n3 - Main St. at night\n\n" +
+      "To load one, pick the .png in Zoom. Call me by 8 a.m. Tuesday if you want changes. Thanks .",
+    [],
+  );
+  assert.equal(
+    files,
+    "Your 3 backgrounds are done, each saved as .png plus a smaller .jpg:\n\n" +
+      "1 - Harbor at dawn\n2 - Town hall, \"Est. 1636\"\n3 - Main St. at night\n\n" +
+      "To load one, pick the .png in Zoom.\nCall me by 8 a.m. Tuesday if you want changes.\nThanks.",
+  );
+  assert.equal(formatOwnerCompletion("Done.\n\n\n\nSee you.", []), "Done.\n\nSee you.");
 
   // ---- Phone goals: an unheard result is picked up by "any updates?" ----
   const pstnOrigin = { channel: "pstn_voice", sessionKey: "pstn:owner-test" };

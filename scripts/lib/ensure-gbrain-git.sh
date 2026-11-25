@@ -136,7 +136,8 @@ ensure_gbrain_git_repo() {
   elif git -C "${git_root}" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     local toplevel git_abs
     toplevel="$(git -C "${git_root}" rev-parse --show-toplevel 2>/dev/null || true)"
-    git_abs="$(cd "${git_root}" && pwd)"
+    # pwd -P: git prints the path behind a link, and in single-container mode the data folders are links.
+    git_abs="$(cd "${git_root}" && pwd -P)"
     if [[ "${toplevel}" != "${git_abs}" ]]; then
       echo "[gbrain-git] files/users inside ${toplevel}; initializing nested git at ${git_root}" >&2
       git -C "${git_root}" init -q

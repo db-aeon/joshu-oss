@@ -4,6 +4,7 @@ import {
 } from "../day0/llm.js";
 import { formatSessionThreadForPrompt } from "./sessionThread.js";
 import type { OwnerRoute, RealtimeGoalRecord, SessionThreadTurn } from "./types.js";
+import { JOSHU_OPENROUTER_CLASSIFIER_MODEL } from "../joshuOpenRouterDefaults.js";
 
 export type RealtimeGoalRouteDecision = {
   decision: "pass" | "clarify" | "queue" | "update" | "cancel" | "status" | "ack" | "delivery";
@@ -411,7 +412,7 @@ async function runRouterCompletion(
           model:
             process.env.JOSHU_REALTIME_GOALS_CLASSIFIER_MODEL?.trim() ||
             process.env.JOSHU_EA_CLASSIFIER_MODEL?.trim() ||
-            "openai/gpt-5.4-nano",
+            JOSHU_OPENROUTER_CLASSIFIER_MODEL,
           traceName: bound ? "realtime-goal-bound-router" : "realtime-goal-router",
           generationName: bound ? "route-bound-realtime-goal" : "route-realtime-goal",
           tags: ["realtime", "goal", "router", ...(bound ? ["bound"] : [])],

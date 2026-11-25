@@ -15,7 +15,11 @@ import {
 import { resolveJoshuFilesPaths } from "../joshuFilesPaths.js";
 import { bootstrapEaOnboardingKanban } from "./eaOnboardingKanbanBootstrap.js";
 import { evaluateOnboardingPredicate } from "./promptPredicates.js";
-import { listActiveOnboardingPrompts, type OnboardingPromptDefinition } from "./promptRegistry.js";
+import {
+  listActiveOnboardingPrompts,
+  loadOnboardingPromptRegistry,
+  type OnboardingPromptDefinition,
+} from "./promptRegistry.js";
 import {
   readOnboardingPromptState,
   shouldSuppressPrompt,
@@ -82,7 +86,7 @@ export function buildOnboardingTaskBody(prompt: OnboardingPromptDefinition): str
   lines.push(
     "",
     prompt.type === "tip"
-      ? "This card is an optional tip. Joshu closes it when it sees the step done, or you can move it to done."
+      ? "This card is an optional tip. Joshu closes it when it sees the step done."
       : "Joshu closes this card when it sees the step done.",
     `howto_version: ${howtoVersion(prompt)}`,
   );
@@ -127,13 +131,14 @@ async function completeOnboardingTask(
   taskId: string,
   promptId: string,
   bridge: KanbanBridgeCall = callKanbanBridge,
+  comment = `Auto-completed by onboarding reconcile — predicate satisfied for ${promptId}.`,
 ): Promise<CompleteOnboardingTaskResult> {
   try {
     const result = await bridge({
       action: "complete",
       board: EA_ONBOARDING_KANBAN_BOARD,
       task_id: taskId,
-      comment: `Auto-completed by onboarding reconcile — predicate satisfied for ${promptId}.`,
+      comment,
       author: "joshu",
     });
     if (result.success === true) return { ok: true };
@@ -243,7 +248,7 @@ export async function reconcileOnboardingPrompt(
     return { id: prompt.id, status: "skipped" };
   }
 
-  const isComplete = await evaluateOnboardingPredicate(prompt.completeWhen, ctx.projectRoot);
+  const isComplete = await evaluateOnboardingPredicate(prompt.completeWhen, ctx.projectRoot, bridge);
   const existing = await findTaskByIdempotency(prompt.idempotencyKey, bridge);
 
   if (isComplete) {
@@ -267,7 +272,7 @@ export async function reconcileOnboardingPrompt(
   }
   // A setup tip appears only while its showWhen check is true. A card that is already open stays open.
   if (prompt.type === "tip" && prompt.showWhen && !existing) {
-    const show = await evaluateOnboardingPredicate(prompt.showWhen, ctx.projectRoot);
+    const show = await evaluateOnboardingPredicate(prompt.showWhen, ctx.projectRoot, bridge);
     if (!show) return { id: prompt.id, status: "skipped" };
   }
 
@@ -278,6 +283,25 @@ export async function reconcileOnboardingPrompt(
     console.warn(`[onboarding] reconcile prompt ${prompt.id}: ${(err as Error).message}`);
     return { id: prompt.id, status: "skipped" };
   }
+}
+
+/** Complete the open card of a setup step that a release removed. */
+export async function retireOnboardingPrompt(
+  promptId: string,
+  bridge: KanbanBridgeCall = callKanbanBridge,
+): Promise<OnboardingReconcilePromptResult> {
+  const existing = await findTaskByIdempotency(`onboarding:${promptId}`, bridge);
+  if (!existing || existing.status === "done") {
+    return { id: promptId, status: "skipped", taskId: existing?.taskId };
+  }
+  const closed = await completeOnboardingTask(
+    existing.taskId,
+    promptId,
+    bridge,
+    `Completed by onboarding reconcile — setup step ${promptId} was removed.`,
+  );
+  if (closed.ok) return { id: promptId, status: "completed", taskId: existing.taskId };
+  return { id: promptId, status: "complete_failed", taskId: existing.taskId, error: closed.error };
 }
 
 /** Reconcile all active registry prompts to ea-onboarding. */
@@ -325,6 +349,9 @@ export async function reconcileOnboardingBoard(
     });
     if (isNew) created += 1;
     details.push(row);
+  }
+  for (const promptId of loadOnboardingPromptRegistry(projectRoot).retired) {
+    details.push(await retireOnboardingPrompt(promptId));
   }
 
   const count = (status: OnboardingReconcilePromptStatus) =>

@@ -1,7 +1,14 @@
 /**
  * Named onboarding completion predicates — no string eval.
  */
+import { promises as dns } from "node:dns";
+
 import { readConnectorsRegistry } from "../connectors/registry.js";
+import {
+  callKanbanBridge,
+  EA_OWNER_REPLY_KANBAN_BOARD,
+  type KanbanBridgeCall,
+} from "../hermesKanbanBridge.js";
 import { isValidIanaTimezone } from "../ianaTimezone.js";
 import { readAgentProfile } from "../nylas/profile.js";
 import { RealtimeGoalStore } from "../realtimeGoals/store.js";
@@ -61,6 +68,38 @@ export async function workAccountConnected(projectRoot = process.cwd()): Promise
   );
 }
 
+type ResolveMx = (domain: string) => Promise<Array<{ exchange: string }>>;
+
+/**
+ * The mail of the primary work email runs on Google: an MX host of its domain is a Google host.
+ * Null when the box cannot tell (no work email, or the DNS lookup failed).
+ */
+export async function workMailOnGoogle(
+  projectRoot = process.cwd(),
+  resolveMx: ResolveMx = dns.resolveMx,
+): Promise<boolean | null> {
+  const domain = readAgentProfile(projectRoot)?.primaryWorkEmail?.split("@")[1]?.trim().toLowerCase();
+  if (!domain) return null;
+  try {
+    const records = await resolveMx(domain);
+    return records.some(({ exchange }) => /(^|\.)(google|googlemail)\.com\.?$/i.test(exchange.trim()));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Nothing is left to do for the work account: it is connected, or the work mail is not on Google,
+ * so no Google account can have it.
+ */
+export async function workAccountSettled(
+  projectRoot = process.cwd(),
+  resolveMx: ResolveMx = dns.resolveMx,
+): Promise<boolean> {
+  if (await workAccountConnected(projectRoot)) return true;
+  return (await workMailOnGoogle(projectRoot, resolveMx)) === false;
+}
+
 /** The Telephone settings have a voice PIN. */
 export function voicePinSet(projectRoot = process.cwd()): boolean {
   return readTelephoneStatus(projectRoot).pinConfigured;
@@ -72,14 +111,27 @@ export async function ownerCalledBox(projectRoot = process.cwd()): Promise<boole
   return Boolean(state.owner?.presence.lastByChannel?.pstn_voice);
 }
 
-/** The owner completes the card; the box cannot check the step. */
-function manual(): boolean {
-  return false;
+/**
+ * The owner has emailed the box: board ea-owner-reply has an owner-reply task.
+ * The board gets an owner-reply task only for an email from an owner address.
+ */
+export async function ownerEmailedBox(
+  _projectRoot = process.cwd(),
+  bridge: KanbanBridgeCall = callKanbanBridge,
+): Promise<boolean> {
+  const result = await bridge({
+    action: "list",
+    board: EA_OWNER_REPLY_KANBAN_BOARD,
+    limit: 50,
+    include_body: true,
+  }).catch(() => null);
+  if (!result?.success || !result.tasks) return false;
+  return result.tasks.some((task) => (task.body ?? "").includes("kind: owner_reply"));
 }
 
 const PREDICATES: Record<
   OnboardingPredicateId,
-  (projectRoot: string) => boolean | Promise<boolean>
+  (projectRoot: string, bridge: KanbanBridgeCall) => boolean | Promise<boolean>
 > = {
   ownerProfileComplete,
   workGmailConnected,
@@ -87,18 +139,20 @@ const PREDICATES: Record<
   ownerMobileConfigured,
   anyGoogleAccountConnected,
   workAccountConnected,
+  workAccountSettled: (projectRoot) => workAccountSettled(projectRoot),
   voicePinSet,
   ownerCalledBox,
-  manual,
+  ownerEmailedBox,
 };
 
 export async function evaluateOnboardingPredicate(
   predicateId: OnboardingPredicateId,
   projectRoot = process.cwd(),
+  bridge: KanbanBridgeCall = callKanbanBridge,
 ): Promise<boolean> {
   const fn = PREDICATES[predicateId];
   if (!fn) return false;
-  return Boolean(await fn(projectRoot));
+  return Boolean(await fn(projectRoot, bridge));
 }
 
 /** Count required prompts still incomplete (for proactive rank boost). */

@@ -2,12 +2,12 @@
  * The company step of the research pipeline (change research-report-sources, design decisions D4
  * and D5): when the plan names one public company, the box writes one page with the stock prices
  * of the last month and one page for each of the newest SEC filings, with the passages of the
- * filing that match the research brief. The box drops both when the company name from SEC or
- * Google Finance shares no word with the company of the plan.
+ * filing that match the research brief. The box drops both when the company name that the name
+ * lookup of the ticker returns shares no word with the company of the plan.
  */
 
 import type { PlanCompany, SourceState, WebPage } from "../types.js";
-import type { CompanyFilings, ComposioSearchClient, StockPrices } from "./composioSearch.js";
+import type { CompanyFilings, SourceSearchClient, StockPrices } from "./sourceSearch.js";
 import { withDeadline } from "./llm.js";
 
 const FILING_TEXT = 3000;
@@ -44,11 +44,9 @@ export function pricePage(company: PlanCompany, prices: StockPrices): WebPage | 
   const high = closes.reduce((a, b) => (b.price > a.price ? b : a));
   const low = closes.reduce((a, b) => (b.price < a.price ? b : a));
   const change = ((last.price - first.price) / first.price) * 100;
-  const latest = prices.points.at(-1)!;
   const lines = [
     `${company.name} (${company.ticker}) closed at ${money(first.price, c)} on ${first.day} and at ${money(last.price, c)} on ${last.day}, a change of ${change >= 0 ? "+" : ""}${change.toFixed(1)}%.`,
     `The highest close of the period was ${money(high.price, c)} on ${high.day}, and the lowest close was ${money(low.price, c)} on ${low.day}.`,
-    ...(latest.close ? [] : [`The latest price was ${money(latest.price, c)} on ${latest.day} at ${latest.time}, before the close.`]),
     ...closes.map((p) => `${p.day}: closing price ${money(p.price, c)}${volume(p.volume)}.`),
   ];
   return {
@@ -56,7 +54,7 @@ export function pricePage(company: PlanCompany, prices: StockPrices): WebPage | 
     url: `https://www.google.com/finance/quote/${prices.symbol}`,
     title: `${company.name} (${company.ticker}) stock price, last month`,
     site: "google.com",
-    publishedAt: latest.day,
+    publishedAt: last.day,
     highlights: [],
     text: lines.join("\n"),
     pictures: [],
@@ -106,11 +104,11 @@ function state(name: string, label: string, outcome: Outcome<unknown>, found: nu
 
 /**
  * The price page and the filing pages for the company of the plan, and the source states of the
- * stock prices and the SEC filings. The two Composio calls run at the same time, and the Exa call
+ * stock prices and the SEC filings. The two source search calls run at the same time, and the Exa call
  * for the passages of the filings runs after the SEC call.
  */
 export async function collectCompany(
-  composio: ComposioSearchClient,
+  sourceSearch: SourceSearchClient,
   company: PlanCompany,
   /** The passages of each filing URL that match the research brief (one Exa call). */
   readPassages: (urls: string[]) => Promise<Map<string, string[]>>,
@@ -118,9 +116,9 @@ export async function collectCompany(
 ): Promise<{ pages: WebPage[]; sources: SourceState[] }> {
   const symbol = `${company.ticker}:${company.exchange}`;
   const [prices, filings] = await Promise.all([
-    attempt(() => composio.prices(symbol, deadline), deadline),
+    attempt(() => sourceSearch.prices(symbol, deadline), deadline),
     attempt(async () => {
-      const found = await composio.filings(company.ticker, deadline);
+      const found = await sourceSearch.filings(company.ticker, deadline);
       const passages = found.filings.length ? await readPassages(found.filings.map((f) => f.url)) : new Map<string, string[]>();
       return { found, passages };
     }, deadline),
@@ -138,7 +136,7 @@ export async function collectCompany(
   return {
     pages: [...(price ? [price] : []), ...filed],
     sources: [
-      state("prices", "Stock prices (Google Finance)", prices, price ? 1 : 0, note),
+      state("prices", "Stock prices", prices, price ? 1 : 0, note),
       state("filings", "SEC filings", filings, filed.length, note),
     ],
   };

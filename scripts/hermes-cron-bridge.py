@@ -185,6 +185,31 @@ def _realign_timezone() -> Dict[str, Any]:
     return {"success": True, "timezone": str(tz), "realigned": realigned}
 
 
+def _unpin_models(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Remove the model pin of each cron job pinned to one of payload["models"].
+
+    The control plane once wrote the Hermes model into instance.env, and some cron jobs were
+    pinned to that model by hand (2026-10-03). Such a pin keeps the job on an old model after a
+    release changes the model. An unpinned job runs on cron.model, which Joshu sets to the model
+    of the box, so the Hermes drift guard does not skip it. A job pinned to another provider keeps
+    its pin.
+    """
+    from cron.jobs import load_jobs, update_job
+
+    models = {str(m).strip().lower() for m in (payload.get("models") or []) if str(m).strip()}
+    if not models:
+        return {"success": False, "error": "models is required"}
+    unpinned: List[Dict[str, Any]] = []
+    for job in load_jobs():
+        model = str(job.get("model") or "").strip().lower()
+        provider = str(job.get("provider") or "").strip().lower()
+        if model not in models or provider not in ("", "openrouter"):
+            continue
+        update_job(job["id"], {"model": None, "provider": None})
+        unpinned.append({"job_id": job["id"], "name": job.get("name"), "model": job.get("model")})
+    return {"success": True, "unpinned": unpinned}
+
+
 def _dispatch(payload: Dict[str, Any]) -> Dict[str, Any]:
     action = str(payload.get("action") or "").strip().lower()
     if not action:
@@ -195,6 +220,9 @@ def _dispatch(payload: Dict[str, Any]) -> Dict[str, Any]:
 
     if action == "realign_timezone":
         return _realign_timezone()
+
+    if action == "unpin_models":
+        return _unpin_models(payload)
 
     if action == "get":
         job_id = str(payload.get("job_id") or "").strip()

@@ -22,6 +22,8 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.release.outputs.version }}
     permissions:
       contents: write
       packages: write
@@ -205,3 +207,67 @@ jobs:
           body_path: release-notes.md
           generate_release_notes: true
           make_latest: true
+
+  # Starts the public image the way docs/self-host.md tells a self-hoster to (change
+  # single-container-only): one container, an empty data root, port 8080, no instance config.
+  smoke-single-container:
+    needs: build
+    if: inputs.images != 'voice-only'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      packages: read
+    env:
+      IMAGE: ghcr.io/${{ github.repository_owner }}/joshu-oss:${{ needs.build.outputs.version }}
+    steps:
+      - name: Free runner disk
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          docker system prune -af >/dev/null 2>&1 || true
+          df -h /
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Start the image in single-container mode
+        run: |
+          docker pull "${IMAGE}"
+          mkdir -p "${RUNNER_TEMP}/joshu-data"
+          docker run -d --name joshu \
+            -v "${RUNNER_TEMP}/joshu-data:/data" \
+            -e JOSHU_DATA_ROOT=/data \
+            -p 127.0.0.1:8080:8080 \
+            "${IMAGE}" \
+            bash /opt/joshu/.image/scripts/vps-start.sh
+
+      - name: Wait for the box on port 8080
+        run: |
+          for _ in $(seq 1 90); do
+            body="$(curl -fsS --max-time 5 http://127.0.0.1:8080/joshu/api/instance/version 2>/dev/null || true)"
+            if [[ -n "${body}" ]] && jq -e '.runtime == "single-container"' >/dev/null <<<"${body}"; then
+              echo "${body}"
+              # A box with no tunnel token and no control plane runs neither of these.
+              if docker exec joshu pgrep -f 'cloudflared tunnel|instance-agent' >/dev/null; then
+                echo "::error::the box runs cloudflared or the instance agent without a token or a control plane"
+                exit 1
+              fi
+              exit 0
+            fi
+            if [[ "$(docker inspect -f '{{.State.Running}}' joshu)" != "true" ]]; then
+              echo "::error::the container exited before port 8080 answered"
+              break
+            fi
+            sleep 10
+          done
+          echo "::error::/joshu/api/instance/version did not answer with runtime single-container within 15 minutes"
+          exit 1
+
+      - name: Container log
+        if: always()
+        run: |
+          docker logs --tail 300 joshu 2>&1 || true
+          docker rm -f joshu >/dev/null 2>&1 || true

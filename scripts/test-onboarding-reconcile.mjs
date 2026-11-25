@@ -20,10 +20,13 @@ import {
   calendarConnected,
   evaluateOnboardingPredicate,
   ownerCalledBox,
+  ownerEmailedBox,
   ownerMobileConfigured,
   ownerProfileComplete,
   voicePinSet,
   workAccountConnected,
+  workAccountSettled,
+  workMailOnGoogle,
   workGmailConnected,
 } from "../src/onboarding/promptPredicates.js";
 import { toProactiveCandidate } from "../src/proactive/sweep.js";
@@ -45,6 +48,7 @@ import { sortHygieneCandidates } from "../src/proactive/hygienePrepare.js";
 import {
   buildOnboardingTaskBody,
   reconcileOnboardingPrompt,
+  retireOnboardingPrompt,
   upsertBlockedOnboardingTask,
 } from "../src/onboarding/reconcileOnboardingBoard.js";
 
@@ -283,7 +287,7 @@ const registry = (gmail = [], calendar = []) => ({
 
 // Task 2.1: registry parser (type, how-to, mention).
 {
-  const base = { id: "x", title: "X", introducedIn: "0.1.50", deepLink: "Welcome", completeWhen: "manual" };
+  const base = { id: "x", title: "X", introducedIn: "0.1.50", deepLink: "Welcome", completeWhen: "voicePinSet" };
   const howto = { why: "Why.", steps: ["Do it."], mention: "Do X." };
   // A required setup step without why, steps, or mention is rejected.
   assert.equal(parsePrompt({ ...base, type: "required", steps: ["a"], mention: "m" }), null);
@@ -302,6 +306,8 @@ const registry = (gmail = [], calendar = []) => ({
   assert.equal(tip?.showWhen, "anyGoogleAccountConnected");
   // An unknown check is rejected.
   assert.equal(parsePrompt({ ...base, type: "tip", why: "w", steps: ["a"], showWhen: "nope" }), null);
+  // There is no manual check: every setup step closes by a check that the box runs.
+  assert.equal(parsePrompt({ ...base, type: "tip", why: "w", steps: ["a"], completeWhen: "manual" }), null);
 }
 
 // Task 2.3: the shipped setup steps.
@@ -314,8 +320,16 @@ const registry = (gmail = [], calendar = []) => ({
   );
   for (const p of required) assert.ok(p.mention && p.why && p.steps.length > 0, `${p.id} has a how-to and a mention`);
   const tips = prompts.filter((p) => p.type === "tip");
-  assert.equal(tips.length, 5);
+  assert.deepEqual(
+    tips.map((p) => p.id),
+    ["tip-connect-work-account", "tip-voice-pin", "tip-first-phone-request", "tip-email-a-request"],
+  );
   for (const p of tips) assert.equal(p.mention, undefined);
+  for (const p of prompts) assert.ok(!p.steps.some((step) => /card to done/i.test(step)), `${p.id} asks for no card move`);
+  assert.equal(prompts.find((p) => p.id === "tip-email-a-request")?.completeWhen, "ownerEmailedBox");
+  // The save-the-number tip is retired; its advice is now a step of the phone tip.
+  assert.deepEqual(loadOnboardingPromptRegistry(process.cwd()).retired, ["tip-save-box-number"]);
+  assert.match(prompts.find((p) => p.id === "tip-first-phone-request")?.steps[0] ?? "", /save it as a contact/);
   // Existing idempotency keys stay, so boxes keep their cards.
   assert.equal(prompts.find((p) => p.id === "connect-work-gmail")?.idempotencyKey, "onboarding:connect-work-gmail");
   assert.equal(prompts.find((p) => p.id === "owner-mobile-sms")?.idempotencyKey, "onboarding:owner-mobile-sms");
@@ -330,8 +344,58 @@ await withOwnerFiles({}, async (dir) => {
   assert.equal(await workAccountConnected(dir), false);
   assert.equal(voicePinSet(dir), false);
   assert.equal(await ownerCalledBox(dir), false);
-  assert.equal(await evaluateOnboardingPredicate("manual", dir), false);
 });
+
+// workAccountSettled: the work account is connected, or the work mail is not on Google.
+{
+  const mx = (hosts) => async () => hosts.map((exchange) => ({ exchange }));
+  const failing = async () => {
+    throw new Error("ENOTFOUND");
+  };
+  const profile = { "nylas/profile.json": { ownerName: "Sam", timezone: "UTC", primaryWorkEmail: "sam@work.example" } };
+  await withOwnerFiles(profile, async (dir) => {
+    assert.equal(await workMailOnGoogle(dir, mx(["aspmx.l.google.com"])), true);
+    assert.equal(await workMailOnGoogle(dir, mx(["ALT1.ASPMX.L.GOOGLE.COM."])), true);
+    assert.equal(await workMailOnGoogle(dir, mx(["work-example.mail.protection.outlook.com"])), false);
+    assert.equal(await workMailOnGoogle(dir, mx(["mx.notgoogle.com"])), false);
+    assert.equal(await workMailOnGoogle(dir, failing), null);
+    // Microsoft 365 work mail: no Google account can have it, so the tip is settled.
+    assert.equal(await workAccountSettled(dir, mx(["work-example.mail.protection.outlook.com"])), true);
+    // Google work mail, not connected: the tip stays.
+    assert.equal(await workAccountSettled(dir, mx(["aspmx.l.google.com"])), false);
+    // DNS failure: the box cannot tell, so the tip stays.
+    assert.equal(await workAccountSettled(dir, failing), false);
+  });
+  await withOwnerFiles({}, async (dir) => assert.equal(await workMailOnGoogle(dir, mx(["aspmx.l.google.com"])), null));
+}
+
+// ownerEmailedBox: board ea-owner-reply has an owner-reply task.
+{
+  const listing = (tasks, success = true) => {
+    const calls = [];
+    const bridge = async (payload) => {
+      calls.push(payload);
+      return { success, tasks };
+    };
+    return { bridge, calls };
+  };
+  const noTasks = listing([]);
+  assert.equal(await ownerEmailedBox("/nowhere", noTasks.bridge), false);
+  assert.equal(noTasks.calls[0].action, "list");
+  assert.equal(noTasks.calls[0].board, "ea-owner-reply");
+  assert.equal(noTasks.calls[0].status, undefined, "done owner-reply tasks count too");
+  assert.equal(await ownerEmailedBox("/nowhere", listing([{ task_id: "t_i", body: "kind: mail_ingress\n" }]).bridge), false);
+  assert.equal(await ownerEmailedBox("/nowhere", listing([{ task_id: "t_o", body: "kind: owner_reply\nstate: open" }]).bridge), true);
+  assert.equal(await ownerEmailedBox("/nowhere", listing(undefined, false).bridge), false);
+  const throwing = async () => {
+    throw new Error("bridge down");
+  };
+  assert.equal(await ownerEmailedBox("/nowhere", throwing), false);
+  assert.equal(
+    await evaluateOnboardingPredicate("ownerEmailedBox", "/nowhere", listing([{ task_id: "t_o", body: "kind: owner_reply" }]).bridge),
+    true,
+  );
+}
 
 // Scenario "Profile without work email".
 await withOwnerFiles(
@@ -389,10 +453,11 @@ await withOwnerFiles(
   const prompts = loadOnboardingPromptRegistry(process.cwd()).prompts;
   const byId = (id) => prompts.find((p) => p.id === id);
   /** Fake bridge with one task per idempotency key. */
-  const board = (tasks = {}) => {
+  const board = (tasks = {}, listed = []) => {
     const calls = [];
     const bridge = async (payload) => {
       calls.push(payload);
+      if (payload.action === "list") return { success: true, tasks: listed };
       if (payload.action === "find_by_idempotency") {
         const task = tasks[payload.idempotency_key];
         return task ? { success: true, found: true, task } : { success: true, found: false };
@@ -511,28 +576,53 @@ await withOwnerFiles(
     },
   );
 
-  // Scenario "Owner completes a tip without a check": a done card is not opened again.
+  // A done tip card is not opened again.
   await withOwnerFiles({}, async (dir) => {
-    const fake = board({ "onboarding:tip-save-box-number": { task_id: "t_box", status: "done", block_kind: null } });
-    const out = await run(dir, fake, ["tip-save-box-number"]);
-    assert.equal(out["tip-save-box-number"].status, "skipped");
-    assert.deepEqual(fake.calls.map((c) => c.action), ["find_by_idempotency"]);
+    const fake = board({ "onboarding:tip-email-a-request": { task_id: "t_mail", status: "done", block_kind: null } });
+    const out = await run(dir, fake, ["tip-email-a-request"]);
+    assert.equal(out["tip-email-a-request"].status, "skipped");
+    assert.deepEqual(fake.calls.map((c) => c.action), ["list", "find_by_idempotency"]);
   });
 
   // An open tip card keeps no block kind: the repair to needs_input applies only to required setup steps.
   await withOwnerFiles({}, async (dir) => {
-    const prompt = byId("tip-save-box-number");
+    const prompt = byId("tip-email-a-request");
     const fake = board({
-      "onboarding:tip-save-box-number": {
-        task_id: "t_box",
+      "onboarding:tip-email-a-request": {
+        task_id: "t_mail",
         status: "blocked",
         block_kind: null,
         body: buildOnboardingTaskBody(prompt),
       },
     });
-    await run(dir, fake, ["tip-save-box-number"]);
-    assert.deepEqual(fake.calls.map((c) => c.action), ["find_by_idempotency"]);
+    await run(dir, fake, ["tip-email-a-request"]);
+    assert.deepEqual(fake.calls.map((c) => c.action), ["list", "find_by_idempotency"]);
   });
+
+  // The owner emails the box (box mina, 2026-11-11): the reconcile completes the email tip card.
+  await withOwnerFiles({}, async (dir) => {
+    const fake = board(
+      { "onboarding:tip-email-a-request": { task_id: "t_mail", status: "blocked", block_kind: null } },
+      [{ task_id: "t_or", status: "done", body: "kind: owner_reply\nstate: open" }],
+    );
+    const out = await run(dir, fake, ["tip-email-a-request"]);
+    assert.equal(out["tip-email-a-request"].status, "completed");
+    assert.ok(fake.calls.some((c) => c.action === "complete" && c.task_id === "t_mail"));
+  });
+
+  // A retired setup step: the reconcile completes its open card, and leaves a done or missing card alone.
+  {
+    const open = board({ "onboarding:tip-save-box-number": { task_id: "t_box", status: "blocked", block_kind: null } });
+    const out = await retireOnboardingPrompt("tip-save-box-number", open.bridge);
+    assert.equal(out.status, "completed");
+    const complete = open.calls.find((c) => c.action === "complete");
+    assert.equal(complete?.task_id, "t_box");
+    assert.equal(complete?.board, "ea-onboarding");
+    const done = board({ "onboarding:tip-save-box-number": { task_id: "t_box", status: "done", block_kind: null } });
+    assert.equal((await retireOnboardingPrompt("tip-save-box-number", done.bridge)).status, "skipped");
+    assert.deepEqual(done.calls.map((c) => c.action), ["find_by_idempotency"]);
+    assert.equal((await retireOnboardingPrompt("tip-save-box-number", board().bridge)).status, "skipped");
+  }
 
   // Task 4.2, scenario "Tip card and the proactive sweep": a tip card is never a nudge candidate.
   await withOwnerFiles({}, async (dir) => {

@@ -1,0 +1,8 @@
+{
+  "ticker": "NVDA",
+  "name": "NVIDIA Corp",
+  "description": "NVIDIA is the world leader in accelerated computing.",
+  "startDate": "1999-01-22",
+  "endDate": "2026-10-20",
+  "exchangeCode": "NASDAQ"
+}
